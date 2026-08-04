@@ -1,0 +1,272 @@
+"""Cascaded PID autopilot.
+
+Stateless and functional: all memory lives in `APState`, so the whole thing goes
+inside `lax.scan` and vmaps over a batch like everything else.
+
+Two cascade levels, no more:
+
+    altitude  -> pitch command -> elevator
+    heading   -> bank command  -> aileron
+    airspeed  -> throttle
+    sideslip  -> rudder
+
+Deflection limits come from the aircraft; rate limits are applied to the output
+before it reaches the plant, not inside the loops. Integrators use conditional
+integration for anti-windup -- they stop accumulating when the surface they
+drive is already on its stop and the error would push it further.
+"""
+
+from functools import partial
+from typing import NamedTuple
+
+import jax
+import jax.numpy as jnp
+from jax import Array
+
+from flightsim.aero import air_data
+from flightsim.aircraft import Aircraft
+from flightsim.integrate import SimState, step
+from flightsim.state import Controls, State, quat_to_euler
+from flightsim.wind import zero_wind
+
+
+class Targets(NamedTuple):
+    altitude: Array  # m
+    heading: Array  # rad
+    airspeed: Array  # m/s
+
+
+class Gains(NamedTuple):
+    alt_p: Array  # altitude error -> pitch command
+    alt_i: Array
+    theta_limit: Array
+    theta_p: Array  # pitch error -> elevator
+    theta_i: Array
+    q_d: Array
+    hdg_p: Array  # heading error -> bank command
+    phi_limit: Array
+    phi_p: Array  # bank error -> aileron
+    phi_i: Array
+    p_d: Array
+    beta_p: Array  # sideslip -> rudder
+    spd_p: Array  # airspeed error -> throttle
+    spd_i: Array
+    surface_rate: Array  # rad/s
+    throttle_rate: Array  # per s
+
+
+class APState(NamedTuple):
+    alt_i: Array
+    theta_i: Array
+    phi_i: Array
+    spd_i: Array
+    controls: Controls  # last output, for rate limiting and for handback
+
+
+def wrap_pi(angle: Array) -> Array:
+    return (angle + jnp.pi) % (2.0 * jnp.pi) - jnp.pi
+
+
+def _accumulate(
+    acc: Array, err: Array, dt: Array, command: Array, limit: Array, bound: Array
+) -> Array:
+    """Conditional integration plus a hard bound on the accumulated state.
+
+    Conditional integration alone is not enough. It stops the *command* running
+    away, but the integrator state can still sit at a huge value that was only
+    meaningful against the old error -- and integral gains here are small, so
+    "huge" is the normal operating value, not an anomaly. Change the target and
+    that stale state commands full deflection until it unwinds, which takes as
+    long as it took to build.
+
+    `bound` is chosen per loop so the integral term alone can never ask for more
+    than the actuator or command limit, which caps the recovery time.
+    """
+    blocked = ((command >= limit) & (err > 0)) | ((command <= -limit) & (err < 0))
+    return jnp.clip(jnp.where(blocked, acc, acc + err * dt), -bound, bound)
+
+
+def _rate_limit(new: Array, old: Array, rate: Array, dt: Array) -> Array:
+    return old + jnp.clip(new - old, -rate * dt, rate * dt)
+
+
+def autopilot(
+    state: State,
+    ap: APState,
+    targets: Targets,
+    gains: Gains,
+    ac: Aircraft,
+    dt: Array,
+) -> tuple[Controls, APState]:
+    phi, theta, psi = quat_to_euler(state.quat)
+    p, q, r = state.omega
+    altitude = -state.pos_ned[2]
+    airspeed, _, beta = air_data(state.vel_body)
+
+    # --- outer: altitude -> pitch command ---
+    alt_err = targets.altitude - altitude
+    theta_cmd_raw = gains.alt_p * alt_err + gains.alt_i * ap.alt_i
+    theta_cmd = jnp.clip(theta_cmd_raw, -gains.theta_limit, gains.theta_limit)
+    alt_i = _accumulate(
+        ap.alt_i, alt_err, dt, theta_cmd_raw, gains.theta_limit,
+        gains.theta_limit / gains.alt_i,
+    )
+
+    # --- inner: pitch -> elevator. Positive elevator is nose-down, hence the sign.
+    theta_err = theta_cmd - theta
+    elevator_raw = -(gains.theta_p * theta_err + gains.theta_i * ap.theta_i - gains.q_d * q)
+    elevator = jnp.clip(elevator_raw, -ac.elevator_limit, ac.elevator_limit)
+    theta_i = _accumulate(
+        ap.theta_i, theta_err, dt, -elevator_raw, ac.elevator_limit,
+        ac.elevator_limit / gains.theta_i,
+    )
+
+    # --- outer: heading -> bank command ---
+    hdg_err = wrap_pi(targets.heading - psi)
+    phi_cmd_raw = gains.hdg_p * hdg_err
+    phi_cmd = jnp.clip(phi_cmd_raw, -gains.phi_limit, gains.phi_limit)
+
+    # --- inner: bank -> aileron ---
+    phi_err = phi_cmd - phi
+    aileron_raw = gains.phi_p * phi_err + gains.phi_i * ap.phi_i - gains.p_d * p
+    aileron = jnp.clip(aileron_raw, -ac.aileron_limit, ac.aileron_limit)
+    phi_i = _accumulate(
+        ap.phi_i, phi_err, dt, aileron_raw, ac.aileron_limit,
+        ac.aileron_limit / gains.phi_i,
+    )
+
+    # --- turn coordination: drive sideslip to zero ---
+    rudder = jnp.clip(-gains.beta_p * beta, -ac.rudder_limit, ac.rudder_limit)
+
+    # --- airspeed -> throttle. The integrator carries the trim setting. ---
+    spd_err = targets.airspeed - airspeed
+    throttle_raw = gains.spd_p * spd_err + gains.spd_i * ap.spd_i
+    throttle = jnp.clip(throttle_raw, 0.0, 1.0)
+    # Throttle is one-sided, so this integrator is bounded to [0, 1/gain] rather
+    # than symmetrically: its job is to carry the trim setting.
+    spd_i = jnp.clip(
+        jnp.where(
+            ((throttle_raw >= 1.0) & (spd_err > 0))
+            | ((throttle_raw <= 0.0) & (spd_err < 0)),
+            ap.spd_i,
+            ap.spd_i + spd_err * dt,
+        ),
+        0.0,
+        1.0 / gains.spd_i,
+    )
+
+    # --- rate limits, applied last, just before the plant ---
+    out = Controls(
+        elevator=_rate_limit(elevator, ap.controls.elevator, gains.surface_rate, dt),
+        aileron=_rate_limit(aileron, ap.controls.aileron, gains.surface_rate, dt),
+        rudder=_rate_limit(rudder, ap.controls.rudder, gains.surface_rate, dt),
+        throttle=_rate_limit(throttle, ap.controls.throttle, gains.throttle_rate, dt),
+    )
+    return out, APState(alt_i=alt_i, theta_i=theta_i, phi_i=phi_i, spd_i=spd_i, controls=out)
+
+
+def engage(
+    state: State, controls: Controls, targets: Targets, gains: Gains, ac: Aircraft
+) -> APState:
+    """Seed the integrators so the first output equals the current controls.
+
+    Without this the aircraft lurches the instant the autopilot is switched on,
+    by exactly the difference between the trimmed deflections and whatever the
+    proportional terms happen to ask for. Ten lines, and it is the most common
+    bug in this kind of system.
+    """
+    phi, theta, psi = quat_to_euler(state.quat)
+    p, q, r = state.omega
+    altitude = -state.pos_ned[2]
+    airspeed, _, _ = air_data(state.vel_body)
+
+    # Choose alt_i so the pitch command equals the current pitch attitude: the
+    # aircraft is then already tracking its own state and nothing moves.
+    #
+    # The seeds are clamped to the same bounds the running loops enforce. That
+    # matters: engaging with a large target error would otherwise seed a state
+    # the first update immediately clips, which is worse than not seeding at
+    # all. Transfer is therefore exactly bumpless when engaging near the
+    # targets, and a normal bounded capture when engaging far from them --
+    # which is the correct behaviour in both cases.
+    alt_err = targets.altitude - altitude
+    alt_i = jnp.clip(
+        (theta - gains.alt_p * alt_err) / gains.alt_i,
+        -gains.theta_limit / gains.alt_i,
+        gains.theta_limit / gains.alt_i,
+    )
+
+    # theta_err is zero by that construction, so the integrator carries the
+    # whole current elevator deflection.
+    theta_i = jnp.clip(
+        (-controls.elevator - gains.q_d * q) / gains.theta_i,
+        -ac.elevator_limit / gains.theta_i,
+        ac.elevator_limit / gains.theta_i,
+    )
+
+    hdg_err = wrap_pi(targets.heading - psi)
+    phi_cmd = jnp.clip(gains.hdg_p * hdg_err, -gains.phi_limit, gains.phi_limit)
+    phi_i = jnp.clip(
+        (controls.aileron - gains.phi_p * (phi_cmd - phi) + gains.p_d * p) / gains.phi_i,
+        -ac.aileron_limit / gains.phi_i,
+        ac.aileron_limit / gains.phi_i,
+    )
+
+    spd_err = targets.airspeed - airspeed
+    spd_i = jnp.clip(
+        (controls.throttle - gains.spd_p * spd_err) / gains.spd_i, 0.0, 1.0 / gains.spd_i
+    )
+
+    return APState(
+        alt_i=alt_i, theta_i=theta_i, phi_i=phi_i, spd_i=spd_i, controls=controls
+    )
+
+
+@partial(jax.jit, static_argnames=("n_steps", "wind_model"))
+def closed_loop_rollout(
+    sim: SimState,
+    ap: APState,
+    targets: Targets,
+    gains: Gains,
+    dt: Array,
+    ac: Aircraft,
+    n_steps: int,
+    wind_model=zero_wind,
+):
+    """Fly the autopilot inside lax.scan.
+
+    This is the Monte Carlo path: vmap it over a batch of PRNG keys and it flies
+    the same profile through many turbulence realisations.
+    """
+
+    def body(carry, _):
+        sim, ap = carry
+        controls, ap = autopilot(sim.state, ap, targets, gains, ac, dt)
+        sim = step(sim, controls, dt, ac, wind_model=wind_model)
+        return (sim, ap), (sim.state, controls)
+
+    return jax.lax.scan(body, (sim, ap), None, length=n_steps)
+
+
+# Hand-tuned against the trimmed 747 at 40,000 ft, M 0.80. A light aircraft
+# needs its own set -- these will not fly one.
+BOEING747_GAINS = Gains(
+    alt_p=jnp.array(0.0012),
+    alt_i=jnp.array(2.0e-5),
+    theta_limit=jnp.array(0.15),
+    theta_p=jnp.array(2.2),
+    theta_i=jnp.array(0.45),
+    q_d=jnp.array(3.0),
+    hdg_p=jnp.array(1.1),
+    phi_limit=jnp.array(0.44),
+    phi_p=jnp.array(1.0),
+    phi_i=jnp.array(0.08),
+    p_d=jnp.array(0.7),
+    beta_p=jnp.array(1.5),
+    spd_p=jnp.array(0.05),
+    spd_i=jnp.array(0.01),
+    surface_rate=jnp.array(0.6),
+    throttle_rate=jnp.array(0.2),
+)
+
+GAINS: dict[str, Gains] = {"boeing747": BOEING747_GAINS}
