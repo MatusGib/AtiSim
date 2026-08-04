@@ -1,9 +1,16 @@
 """Shared test fixtures."""
 
+import jax
 import jax.numpy as jnp
 import pytest
 
+import flightsim  # noqa: F401  -- enables x64 before any array is made
 from flightsim.aircraft import Aircraft, inertia_tensor
+
+# NaN guard. A NaN produced inside jit is silent and propagates for thousands of
+# steps before anything looks wrong. On for the whole suite: it costs a little
+# runtime and buys back hours.
+jax.config.update("jax_debug_nans", True)
 
 
 def make_test_aircraft(Ixz: float = 0.0) -> Aircraft:
