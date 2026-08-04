@@ -3,8 +3,19 @@ import numpy as np
 import pytest
 
 from flightsim import aero
-from flightsim.atmosphere import RHO0
+from flightsim.atmosphere import RHO0, speed_of_sound
 from flightsim.state import Controls
+
+A0 = float(speed_of_sound(0.0))  # sea-level speed of sound
+
+
+def coef(vel, omega, controls, ac):
+    return aero.coefficients(vel, omega, controls, ac, A0)
+
+
+def fam(vel, omega, controls, ac, rho=RHO0):
+    return aero.aero_forces_moments(vel, omega, controls, ac, rho, A0)
+
 
 ZERO_CONTROLS = Controls(
     elevator=jnp.array(0.0),
@@ -37,11 +48,11 @@ def test_airspeed_floor_prevents_nan_at_zero_velocity():
 def test_force_directions_in_straight_and_level(test_aircraft):
     """At alpha = beta = 0 the force is -drag forward, -lift down, no side."""
     vel = jnp.array([50.0, 0.0, 0.0])
-    force, moment = aero.aero_forces_moments(
+    force, moment = fam(
         vel, jnp.zeros(3), ZERO_CONTROLS, test_aircraft, RHO0
     )
     qbar = 0.5 * RHO0 * 50.0**2
-    CL, CD, _, _, _, _ = aero.coefficients(
+    CL, CD, _, _, _, _ = coef(
         vel, jnp.zeros(3), ZERO_CONTROLS, test_aircraft
     )
     assert float(force[0]) == pytest.approx(-qbar * float(test_aircraft.S) * float(CD))
@@ -52,10 +63,10 @@ def test_force_directions_in_straight_and_level(test_aircraft):
 
 def test_lift_rotates_forward_at_positive_alpha(test_aircraft):
     """At positive alpha the lift vector tilts and contributes +x in body axes."""
-    fwd_level = aero.aero_forces_moments(
+    fwd_level = fam(
         jnp.array([50.0, 0.0, 0.0]), jnp.zeros(3), ZERO_CONTROLS, test_aircraft, RHO0
     )[0][0]
-    fwd_alpha = aero.aero_forces_moments(
+    fwd_alpha = fam(
         jnp.array([50.0, 0.0, 8.0]), jnp.zeros(3), ZERO_CONTROLS, test_aircraft, RHO0
     )[0][0]
     assert float(fwd_alpha) > float(fwd_level)
@@ -63,10 +74,10 @@ def test_lift_rotates_forward_at_positive_alpha(test_aircraft):
 
 def test_static_pitch_stability(test_aircraft):
     """Cma < 0: increasing alpha must produce a more nose-down moment."""
-    low = aero.coefficients(
+    low = coef(
         jnp.array([50.0, 0.0, 0.0]), jnp.zeros(3), ZERO_CONTROLS, test_aircraft
     )[4]
-    high = aero.coefficients(
+    high = coef(
         jnp.array([50.0, 0.0, 10.0]), jnp.zeros(3), ZERO_CONTROLS, test_aircraft
     )[4]
     assert float(high) < float(low)
@@ -75,23 +86,23 @@ def test_static_pitch_stability(test_aircraft):
 def test_control_sign_conventions(test_aircraft):
     """Each surface must move its moment the documented way."""
     vel = jnp.array([50.0, 0.0, 0.0])
-    base = aero.coefficients(vel, jnp.zeros(3), ZERO_CONTROLS, test_aircraft)
+    base = coef(vel, jnp.zeros(3), ZERO_CONTROLS, test_aircraft)
 
     up_elev = ZERO_CONTROLS._replace(elevator=jnp.array(0.1))
     right_ail = ZERO_CONTROLS._replace(aileron=jnp.array(0.1))
     left_rud = ZERO_CONTROLS._replace(rudder=jnp.array(0.1))
 
     # Positive elevator is trailing-edge down: more lift, nose-down moment.
-    e = aero.coefficients(vel, jnp.zeros(3), up_elev, test_aircraft)
+    e = coef(vel, jnp.zeros(3), up_elev, test_aircraft)
     assert float(e[0]) > float(base[0])  # CL up
     assert float(e[4]) < float(base[4])  # Cm down
 
     # Positive aileron rolls right.
-    a = aero.coefficients(vel, jnp.zeros(3), right_ail, test_aircraft)
+    a = coef(vel, jnp.zeros(3), right_ail, test_aircraft)
     assert float(a[3]) > float(base[3])  # Cl up
 
     # Positive rudder is trailing-edge left: side force right, nose-left yaw.
-    r = aero.coefficients(vel, jnp.zeros(3), left_rud, test_aircraft)
+    r = coef(vel, jnp.zeros(3), left_rud, test_aircraft)
     assert float(r[2]) > float(base[2])  # CY up
     assert float(r[5]) < float(base[5])  # Cn down
 
@@ -104,17 +115,17 @@ def test_damping_derivatives_oppose_rotation(test_aircraft):
         (4, jnp.array([0.0, 0.2, 0.0])),  # pitch rate -> pitching moment
         (5, jnp.array([0.0, 0.0, 0.2])),  # yaw rate -> yawing moment
     ]:
-        base = aero.coefficients(vel, jnp.zeros(3), ZERO_CONTROLS, test_aircraft)[idx]
-        rotating = aero.coefficients(vel, omega, ZERO_CONTROLS, test_aircraft)[idx]
+        base = coef(vel, jnp.zeros(3), ZERO_CONTROLS, test_aircraft)[idx]
+        rotating = coef(vel, omega, ZERO_CONTROLS, test_aircraft)[idx]
         assert float(rotating) < float(base)
 
 
 def test_dynamic_pressure_scaling(test_aircraft):
     """Force scales with V^2 at fixed alpha."""
-    f1 = aero.aero_forces_moments(
+    f1 = fam(
         jnp.array([50.0, 0.0, 0.0]), jnp.zeros(3), ZERO_CONTROLS, test_aircraft, RHO0
     )[0]
-    f2 = aero.aero_forces_moments(
+    f2 = fam(
         jnp.array([100.0, 0.0, 0.0]), jnp.zeros(3), ZERO_CONTROLS, test_aircraft, RHO0
     )[0]
     np.testing.assert_allclose(np.asarray(f2), 4.0 * np.asarray(f1), rtol=1e-12)

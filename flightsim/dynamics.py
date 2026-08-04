@@ -14,7 +14,7 @@ from jax import Array
 
 from flightsim.aero import aero_forces_moments, thrust_force
 from flightsim.aircraft import Aircraft
-from flightsim.atmosphere import G0, density
+from flightsim.atmosphere import G0, density, speed_of_sound
 from flightsim.state import Controls, State, quat_derivative, quat_to_dcm
 
 
@@ -37,8 +37,11 @@ def derivatives(
     vel_rel = relative_velocity(state.vel_body, state.quat, wind_ned)
     omega_rel = state.omega - omega_gust
 
-    rho = density(-state.pos_ned[2])
-    force, moment = aero_forces_moments(vel_rel, omega_rel, controls, ac, rho)
+    altitude = -state.pos_ned[2]
+    rho = density(altitude)
+    force, moment = aero_forces_moments(
+        vel_rel, omega_rel, controls, ac, rho, speed_of_sound(altitude)
+    )
     force = force + thrust_force(controls, ac, rho)
 
     gravity_body = dcm.T @ jnp.array([0.0, 0.0, G0])

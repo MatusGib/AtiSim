@@ -24,6 +24,38 @@ from flightsim.state import Controls
 # it never binds in normal operation.
 V_MIN = 1.0  # m/s
 
+# Lock's fourth-power drag-rise law is anchored on the definition of drag
+# divergence, dCD/dM = 0.1 at M_dd. With CD_wave = 20 (M - M_crit)^4 that fixes
+# M_crit = M_dd - (0.1/80)^(1/3).
+_MDD_OFFSET = (0.1 / 80.0) ** (1.0 / 3.0)  # 0.10772
+
+
+def drag_divergence_mach(CL: Array, ac: Aircraft) -> Array:
+    """Korn equation.
+
+    M_dd = kappa/cos(L) - (t/c)/cos^2(L) - CL/(10 cos^3(L))
+
+    kappa is the airfoil technology factor: ~0.87 conventional, ~0.95
+    supercritical. The CL term is what makes the drag rise lift-dependent, which
+    is the whole point -- it couples wave drag to angle of attack.
+    """
+    cos_sweep = jnp.cos(ac.sweep)
+    return (
+        ac.kappa_airfoil / cos_sweep
+        - ac.t_over_c / cos_sweep**2
+        - CL / (10.0 * cos_sweep**3)
+    )
+
+
+def wave_drag(mach: Array, CL: Array, ac: Aircraft) -> Array:
+    """Compressibility drag rise above the critical Mach number.
+
+    Identically zero for the light aircraft, which never approach M_crit, so
+    this needs no special-casing per aircraft.
+    """
+    m_crit = drag_divergence_mach(CL, ac) - _MDD_OFFSET
+    return 20.0 * jnp.maximum(mach - m_crit, 0.0) ** 4
+
 
 def air_data(vel_rel: Array) -> tuple[Array, Array, Array]:
     """(true airspeed, alpha, beta) from body-axis velocity relative to air."""
@@ -35,9 +67,17 @@ def air_data(vel_rel: Array) -> tuple[Array, Array, Array]:
 
 
 def coefficients(
-    vel_rel: Array, omega_rel: Array, controls: Controls, ac: Aircraft
+    vel_rel: Array,
+    omega_rel: Array,
+    controls: Controls,
+    ac: Aircraft,
+    a_sound: Array,
 ) -> tuple[Array, Array, Array, Array, Array, Array]:
-    """(CL, CD, CY, Cl, Cm, Cn). Lift and drag wind-axis, the rest body-axis."""
+    """(CL, CD, CY, Cl, Cm, Cn). Lift and drag wind-axis, the rest body-axis.
+
+    Speed of sound is passed rather than Mach so that the Mach used for wave
+    drag is built from the same airspeed as alpha and dynamic pressure.
+    """
     V, alpha, beta = air_data(vel_rel)
     p, q, r = omega_rel
 
@@ -50,7 +90,12 @@ def coefficients(
 
     CL = ac.CL0 + ac.CLa * alpha + ac.CLq * q_hat + ac.CLde * de
     Cm = ac.Cm0 + ac.Cma * alpha + ac.Cmq * q_hat + ac.Cmde * de
-    CD = ac.CD0 + CL**2 / (jnp.pi * ac.e * ac.AR)
+    # Parabolic core plus a lift-dependent compressibility rise.
+    CD = (
+        ac.CD0
+        + CL**2 / (jnp.pi * ac.e * ac.AR)
+        + wave_drag(V / a_sound, CL, ac)
+    )
 
     CY = ac.CYb * beta + ac.CYp * p_hat + ac.CYr * r_hat + ac.CYdr * dr
     Cl = (
@@ -76,11 +121,12 @@ def aero_forces_moments(
     controls: Controls,
     ac: Aircraft,
     rho: Array,
+    a_sound: Array,
 ) -> tuple[Array, Array]:
     """Body-axis aerodynamic force (N) and moment (N.m)."""
     V, alpha, beta = air_data(vel_rel)
     qbar = 0.5 * rho * V**2
-    CL, CD, CY, Cl, Cm, Cn = coefficients(vel_rel, omega_rel, controls, ac)
+    CL, CD, CY, Cl, Cm, Cn = coefficients(vel_rel, omega_rel, controls, ac, a_sound)
 
     lift = qbar * ac.S * CL
     drag = qbar * ac.S * CD

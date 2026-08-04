@@ -82,11 +82,14 @@ def test_wind_is_resolved_through_attitude():
 def test_omega_gust_subtracts_from_body_rates(test_aircraft):
     """A rolling gust must change the aerodynamics exactly like a roll rate."""
     from flightsim.aero import coefficients
+    from flightsim.atmosphere import speed_of_sound
+
+    A0 = speed_of_sound(0.0)
 
     vel = jnp.array([50.0, 0.0, 0.0])
     gust = jnp.array([0.2, 0.0, 0.0])
-    rolling = coefficients(vel, -gust, ZERO_CONTROLS, test_aircraft)
-    still = coefficients(vel, jnp.zeros(3), ZERO_CONTROLS, test_aircraft)
+    rolling = coefficients(vel, -gust, ZERO_CONTROLS, test_aircraft, A0)
+    still = coefficients(vel, jnp.zeros(3), ZERO_CONTROLS, test_aircraft, A0)
     assert float(rolling[3]) > float(still[3])  # Clp < 0, negative rate -> +Cl
 
 
