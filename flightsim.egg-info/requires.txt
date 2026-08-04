@@ -1,0 +1,8 @@
+jax
+numpy
+scipy
+matplotlib
+
+[dev]
+pytest
+pymupdf
