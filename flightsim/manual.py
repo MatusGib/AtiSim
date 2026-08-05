@@ -221,4 +221,36 @@ BOEING747_MANUAL = ManualGains(
     throttle_rate=jnp.array(0.2),
 )
 
-MANUAL_GAINS: dict[str, ManualGains] = {"boeing747": BOEING747_MANUAL}
+# Hand-tuned against the trimmed Cherokee on a keyboard. The elevator is geared
+# right down: this aircraft has 39x the 747's pitch acceleration per radian, so
+# full stick is 1.5 deg of elevator and still pitches it 14 deg in two seconds.
+CHEROKEE_MANUAL = ManualGains(
+    elevator_authority=jnp.array(0.06),
+    aileron_authority=jnp.array(0.60),
+    rudder_authority=jnp.array(0.30),
+    surface_rate=jnp.array(1.0),
+    throttle_rate=jnp.array(0.5),
+)
+
+# Hand-tuned against the trimmed Cessna on a keyboard.
+#
+# rudder_authority is ZERO: aircraft.py zeroes this aircraft's rudder because
+# the source does not provide it, so the pedals would move a surface that
+# produces no force and no moment. The aileron gearing is high to compensate --
+# with no rudder a roll input builds sideslip, and the strong dihedral effect
+# (Clb -0.21) against weak directional stability (Cnb 0.0126) turns that
+# sideslip straight back into an opposing roll moment, so bank builds a few
+# degrees and stalls there instead of continuing to roll.
+CESSNA172_MANUAL = ManualGains(
+    elevator_authority=jnp.array(0.08),
+    aileron_authority=jnp.array(0.40),
+    rudder_authority=jnp.array(0.0),
+    surface_rate=jnp.array(1.0),
+    throttle_rate=jnp.array(0.5),
+)
+
+MANUAL_GAINS: dict[str, ManualGains] = {
+    "boeing747": BOEING747_MANUAL,
+    "cherokee": CHEROKEE_MANUAL,
+    "cessna172": CESSNA172_MANUAL,
+}

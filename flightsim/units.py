@@ -38,3 +38,6 @@ FTS2MS = FT2M
 
 # Density
 SLUG_FT3_TO_KG_M3 = SLUG2KG / (FT2M**3)
+
+# Power. Mechanical (imperial) horsepower, 550 ft.lbf/s, exact by definition.
+HP2W = 550.0 * LBF2N * FT2M

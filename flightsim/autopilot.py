@@ -269,4 +269,66 @@ BOEING747_GAINS = Gains(
     throttle_rate=jnp.array(0.2),
 )
 
-GAINS: dict[str, Gains] = {"boeing747": BOEING747_GAINS}
+# Hand-tuned against the trimmed Cherokee at 4,920 ft, 50 m/s. The pitch and
+# speed loops are scaled from the 747's by control authority -- this aircraft
+# has 39x the pitch acceleration per radian of elevator -- so those gains come
+# down by roughly that factor.
+#
+# The roll loop is NOT scaled that way. It is sized from the roll dynamics
+# themselves (wn ~ 2 rad/s against Lda = 3.1, Lp = -2.78), because the Cherokee's
+# spiral is mildly unstable (T2 = 52 s) and an authority-scaled loop is too weak
+# to hold it: during tuning it diverged to 48 deg of bank on a 30 deg heading
+# change. Authority scaling sets how hard a surface pushes; it says nothing about
+# what the airframe does when the loop lets go.
+CHEROKEE_GAINS = Gains(
+    alt_p=jnp.array(0.0025),
+    alt_i=jnp.array(2.5e-5),
+    theta_limit=jnp.array(0.20),
+    theta_p=jnp.array(0.057),
+    theta_i=jnp.array(0.012),
+    q_d=jnp.array(0.077),
+    hdg_p=jnp.array(0.8),
+    phi_limit=jnp.array(0.44),
+    phi_p=jnp.array(1.0),
+    phi_i=jnp.array(0.05),
+    p_d=jnp.array(0.15),
+    beta_p=jnp.array(1.0),
+    spd_p=jnp.array(0.026),
+    spd_i=jnp.array(0.005),
+    surface_rate=jnp.array(1.0),
+    throttle_rate=jnp.array(0.5),
+)
+
+# Hand-tuned against the trimmed Cessna at 5,000 ft, 60 m/s.
+#
+# beta_p is ZERO because this aircraft has no rudder: the source gives neither
+# Cldr nor Cndr, and the one rudder derivative it does give is inconsistent, so
+# aircraft.py zeroes the whole set. A non-zero sideslip gain would deflect a
+# surface that produces no moment, which reads as a control system doing
+# something when it is doing nothing. Turns are therefore uncoordinated:
+# sideslip peaks near 1.9 deg in a 30 deg heading change, against 0.6 deg for the
+# Cherokee, which has a working rudder. Restore this gain if Cndr is sourced.
+CESSNA172_GAINS = Gains(
+    alt_p=jnp.array(0.0015),
+    alt_i=jnp.array(2.5e-5),
+    theta_limit=jnp.array(0.20),
+    theta_p=jnp.array(0.087),
+    theta_i=jnp.array(0.018),
+    q_d=jnp.array(0.119),
+    hdg_p=jnp.array(0.8),
+    phi_limit=jnp.array(0.44),
+    phi_p=jnp.array(0.15),
+    phi_i=jnp.array(0.01),
+    p_d=jnp.array(0.02),
+    beta_p=jnp.array(0.0),
+    spd_p=jnp.array(0.035),
+    spd_i=jnp.array(0.007),
+    surface_rate=jnp.array(1.0),
+    throttle_rate=jnp.array(0.5),
+)
+
+GAINS: dict[str, Gains] = {
+    "boeing747": BOEING747_GAINS,
+    "cherokee": CHEROKEE_GAINS,
+    "cessna172": CESSNA172_GAINS,
+}

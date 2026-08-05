@@ -17,7 +17,9 @@ import jax
 import jax.numpy as jnp
 from jax import Array
 
+from flightsim.aero import wave_drag
 from flightsim.aircraft import Aircraft
+from flightsim.atmosphere import G0, density, speed_of_sound
 from flightsim.dynamics import derivatives
 from flightsim.state import Controls, State, euler_to_quat
 
@@ -52,6 +54,35 @@ def residual(x: Array, airspeed: Array, altitude: Array, ac: Aircraft) -> Array:
         jnp.zeros(3),
     )
     return jnp.array([d.vel_body[0], d.vel_body[2], d.omega[1]])
+
+
+def minimum_drag_speed(
+    ac: Aircraft, altitude: Array, low: float = 20.0, high: float = 400.0, n: int = 4000
+) -> Array:
+    """Level-flight speed of minimum drag, swept from the real drag model.
+
+    This is the boundary of the autopilot's loop pairing. Below it the drag
+    curve slopes the wrong way -- slowing down increases drag, which slows the
+    aircraft further -- so throttle-to-airspeed and elevator-to-altitude stop
+    being the right assignment. No gain set repairs that; it is the shape of the
+    drag curve.
+
+    The textbook closed form assumes a parabolic polar and is wrong wherever
+    wave drag is active: it puts the 747's V_md 32 m/s ABOVE its own cruise
+    speed. Sweeping the actual coefficients costs nothing here and is right for
+    every aircraft in the registry.
+    """
+    rho = density(altitude)
+    a_sound = speed_of_sound(altitude)
+    speeds = jnp.linspace(low, high, n)
+
+    def drag(V):
+        qS = 0.5 * rho * V**2 * ac.S
+        CL = ac.mass * G0 / qS
+        CD = ac.CD0 + CL**2 / (jnp.pi * ac.e * ac.AR) + wave_drag(V / a_sound, CL, ac)
+        return qS * CD
+
+    return speeds[jnp.argmin(jax.vmap(drag)(speeds))]
 
 
 @partial(jax.jit, static_argnames=("iterations",))

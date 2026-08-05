@@ -16,7 +16,8 @@ from typing import NamedTuple
 import jax.numpy as jnp
 from jax import Array
 
-from flightsim.units import DEG2RAD, FT2M, LB2KG, LBF2N, SLUG_FT2_TO_KG_M2
+from flightsim.atmosphere import G0
+from flightsim.units import DEG2RAD, FT2M, HP2W, LB2KG, LBF2N, SLUG_FT2_TO_KG_M2
 
 
 class Aircraft(NamedTuple):
@@ -266,11 +267,301 @@ def _boeing_747() -> Aircraft:
     )
 
 
+# ---------------------------------------------------------------------------
+# Piper PA-28-180 Cherokee
+#
+# Source: McCormick, "Aerodynamics, Aeronautics, and Flight Mechanics", worked
+# example for the Cherokee 180, as collated in aircraft_data_validated.py. Two
+# independent transcriptions of the same textbook table agree on every digit.
+# This is a published worked example, not a flight-test report.
+#
+# Flight condition: level flight, 4,920 ft, V0 = 50 m/s, rho = 1.06. ISA density
+# at that altitude is 1.0581, so the source condition is ISA to 0.18%.
+#
+# The source tabulates DIMENSIONAL derivatives. They are converted here with the
+# same relations used for the 747 above. That conversion is checked against the
+# source's own non-dimensional table (CZa -4.68, CMa -0.741, CMq -7.42,
+# CZde -0.934, CMde -2.4): all five reproduce to better than 0.7%, which is what
+# makes this set trustworthy rather than merely transcribed. The check is
+# asserted in tests/test_aircraft.py, not just claimed here.
+#
+# Two numbers are flagged by the source's own author and carried as given rather
+# than corrected, per the project rule against inventing plausible data:
+#   Izz = 1400 < Iyy = 1700, atypical for a conventional aeroplane.
+#   The lateral set has no independent second source.
+# ---------------------------------------------------------------------------
+
+
+def _cherokee_pa28_180() -> Aircraft:
+    m = 1090.0  # kg
+    S, b, c = 15.0, 9.11, 1.6  # m^2, m, m
+    U0, rho = 50.0, 1.06  # m/s, kg/m^3
+    Ixx, Iyy, Izz = 3100.0, 1700.0, 1400.0  # kg.m^2
+    CD_trim = 0.0615  # TOTAL drag at trim, not parasite drag -- see below
+
+    # -- longitudinal dimensional derivatives --
+    Xw, Zw, Zq, Mw, Mq = 0.02323, -1.729, -1.6804, -0.2772, -2.207
+    Zde, Mde = -17.01, -44.71
+    # -- lateral dimensional derivatives (Ixz = 0, so these are unprimed) --
+    Yv, Lv, Nv = -0.1444, -0.1166, 0.174
+    Lp, Np, Lr, Nr = -2.283, -1.732, 1.053, -1.029
+    Ydr, Ldr, Ndr = 2.113, 0.6133, -6.583
+    Lda, Nda = 3.101, 0.0
+
+    qS = 0.5 * rho * U0**2 * S
+    AR = b * b / S
+    # theta0 = 0 in level flight, so alpha0 = 0 and the trim CL is the weight
+    # coefficient. It agrees with the source's stated CL0 = 0.543 to 0.95%.
+    CL_trim = m * G0 / qS
+
+    CLa = -Zw * m * U0 / qS - CD_trim
+    CLq = -Zq * 2.0 * U0 * m / (qS * c)
+    CLde = -Zde * m / qS
+    Cma = Mw * U0 * Iyy / (qS * c)
+    Cmq = Mq * 2.0 * U0 * Iyy / (qS * c * c)
+    Cmde = Mde * Iyy / (qS * c)
+
+    # Drag. The source's CD = 0.0615 is total drag at trim, and its own notes
+    # warn against using it as a polar CD0. Oswald efficiency is recovered from
+    # Xw exactly as for the 747 -- alpha0 = 0 collapses that relation to
+    # dCD/dalpha = CL - Xw m U0 / qS -- and CD0 is what is left of CD_trim after
+    # induced drag. That gives CD0 = 0.0343, inside the 0.03-0.04 band the
+    # source predicts independently. The agreement is unforced, and it is the
+    # reason this back-solve is trusted.
+    CDa = CL_trim - Xw * m * U0 / qS
+    e = 2.0 * CL_trim * CLa / (math.pi * AR * CDa)
+    CD0 = CD_trim - CL_trim**2 / (math.pi * e * AR)
+
+    CYb = Yv * U0 * m / qS
+    Clb, Cnb = Lv * U0 * Ixx / (qS * b), Nv * U0 * Izz / (qS * b)
+    Clp, Cnp = Lp * 2 * U0 * Ixx / (qS * b * b), Np * 2 * U0 * Izz / (qS * b * b)
+    Clr, Cnr = Lr * 2 * U0 * Ixx / (qS * b * b), Nr * 2 * U0 * Izz / (qS * b * b)
+    Clda, Cnda = Lda * Ixx / (qS * b), Nda * Izz / (qS * b)
+    Cldr, Cndr = Ldr * Ixx / (qS * b), Ndr * Izz / (qS * b)
+    CYdr = Ydr * m / qS
+
+    inertia = inertia_tensor(Ixx, Iyy, Izz, 0.0)
+    return Aircraft(
+        mass=jnp.array(m),
+        inertia=inertia,
+        inertia_inv=jnp.linalg.inv(inertia),
+        S=jnp.array(S),
+        b=jnp.array(b),
+        c=jnp.array(c),
+        CD0=jnp.array(CD0),
+        e=jnp.array(e),
+        AR=jnp.array(AR),
+        # Unswept, NACA 65(2)-415. At M 0.15 the Korn/Lock term is identically
+        # zero, so these exist only to satisfy the shared drag build-up.
+        sweep=jnp.array(0.0),
+        t_over_c=jnp.array(0.15),
+        kappa_airfoil=jnp.array(0.87),
+        CL0=jnp.array(CL_trim),  # alpha0 = 0, so CL0 is the trim CL
+        CLa=jnp.array(CLa),
+        CLq=jnp.array(CLq),
+        CLde=jnp.array(CLde),
+        # alpha0 = 0 and the aircraft is trimmed there with zero elevator, so
+        # Cm0 = -Cma * alpha0 = 0, the same convention used for the 747.
+        Cm0=jnp.array(0.0),
+        Cma=jnp.array(Cma),
+        Cmq=jnp.array(Cmq),
+        Cmde=jnp.array(Cmde),
+        CYb=jnp.array(CYb),
+        # Not tabulated by the source, as for the 747. Zero matches the source
+        # rather than inventing a value; it understates Dutch roll damping.
+        CYp=jnp.array(0.0),
+        CYr=jnp.array(0.0),
+        CYdr=jnp.array(CYdr),
+        Clb=jnp.array(Clb),
+        Clp=jnp.array(Clp),
+        Clr=jnp.array(Clr),
+        Clda=jnp.array(Clda),
+        Cldr=jnp.array(Cldr),
+        Cnb=jnp.array(Cnb),
+        Cnp=jnp.array(Cnp),
+        Cnr=jnp.array(Cnr),
+        Cnda=jnp.array(Cnda),
+        Cndr=jnp.array(Cndr),
+        # MODELLING CHOICE, not source data -- the source has no propulsion at
+        # all. Sea-level rated power for the Lycoming O-360 (180 hp) at 80%
+        # propeller efficiency, evaluated at the cruise speed. The plant applies
+        # thrust independent of airspeed, so this is a fixed-thrust stand-in for
+        # a fixed-power propeller, calibrated only at cruise. Altitude is not
+        # double-counted: the rating is sea-level and thrust_lapse handles the
+        # falloff, which is why cruise trims at 66% throttle rather than 57%.
+        max_thrust=jnp.array(0.8 * 180.0 * HP2W / U0),
+        thrust_lapse=jnp.array(1.0),  # normally aspirated piston
+        # MODELLING CHOICE -- deflection limits are not in the source.
+        elevator_limit=jnp.array(25.0 * DEG2RAD),
+        aileron_limit=jnp.array(20.0 * DEG2RAD),
+        rudder_limit=jnp.array(25.0 * DEG2RAD),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Cessna 172
+#
+# Source: Roskam and USAF DATCOM as transcribed in PyFME (AeroPython/PyFME,
+# MIT), collated in aircraft_data_validated.py. Mass, inertia and geometry are
+# independently corroborated by a second citation of the same Roskam table, and
+# the inertia ordering Izz > Iyy > Ixx is the physically expected one.
+#
+# Unlike the Cherokee this data is already NON-DIMENSIONAL, tabulated against
+# angle of attack, so no dimensional conversion is needed. The project's aero
+# model is linear in alpha with a parabolic polar, so the tables are fitted over
+# alpha <= 10 deg -- below the stall knee, where they are straight to within
+# 0.03 in CL and 0.0004 in CD.
+#
+# *** THE TABLE CARRIES STALL DATA THIS MODEL CANNOT USE. *** CL_data runs to
+# CLmax 1.889 at 19.5 deg. flightsim.aero is linear in alpha and has no stall,
+# so above roughly 10 deg this aircraft reports lift the source says it does not
+# have. That matters for the intended vortex work, where the source's own note
+# estimates alpha excursions of order 20 deg. The tables are therefore kept
+# whole in CESSNA172_TABLES so a nonlinear aero path can use them later without
+# going back to source.
+#
+# *** THE RUDDER IS ABSENT. *** Cl_delta_rud and CN_delta_rud are deliberately
+# omitted by the source (PyFME applies an undocumented x0.075 tuning factor to
+# them). The one rudder derivative given, Ydr = -20.63, is negative and about
+# five times the Cherokee's CYdr in magnitude, inconsistent with the sign
+# convention used throughout this package. A side force with no matching yawing
+# moment is worse than no rudder, so the whole rudder set is zeroed here.
+# Consequences: no rudder authority, and the autopilot's sideslip term does
+# nothing, so turns in this aircraft are uncoordinated.
+# ---------------------------------------------------------------------------
+
+# Non-dimensional aero against angle of attack, degrees. Kept whole so that a
+# nonlinear table-lookup aero path can use it without re-sourcing.
+CESSNA172_TABLES: dict[str, tuple[float, ...]] = {
+    "alpha_deg": (-7.5, -5, -2.5, 0, 2.5, 5, 7.5, 10, 15, 17, 18, 19.5),
+    "CL": (-0.571, -0.321, -0.083, 0.148, 0.392, 0.65, 0.918, 1.195,
+           1.659, 1.789, 1.84, 1.889),
+    "CD": (0.044, 0.034, 0.03, 0.03, 0.036, 0.048, 0.067, 0.093,
+           0.15, 0.169, 0.177, 0.184),
+    "Cm": (0.0597, 0.0498, 0.0314, 0.0075, -0.0248, -0.068, -0.1227, -0.1927,
+           -0.3779, -0.4605, -0.5043, -0.5496),
+    "Clb": (-0.178, -0.186, -0.1943, -0.202, -0.2103, -0.219, -0.2283,
+            -0.2376, -0.2516, -0.255, -0.256, -0.257),
+    # The source corrects a sign-flip typo at alpha = 2.5 (PyFME has +0.487
+    # against neighbours of -0.44 to -0.51); the corrected value is used.
+    "Clp": (-0.4968, -0.4678, -0.4489, -0.4595, -0.487, -0.5085, -0.5231,
+            -0.4916, -0.301, -0.203, -0.1498, -0.0671),
+    "Clr": (-0.09675, -0.05245, -0.01087, 0.02986, 0.07342, 0.1193, 0.1667,
+            0.2152, 0.2909, 0.3086, 0.3146, 0.3197),
+    "Cnp": (0.03, 0.016, 0.00262, -0.0108, -0.0245, -0.0385, -0.0528, -0.0708,
+            -0.113, -0.1284, -0.1356, -0.1422),
+    "Cnr": (-0.028, -0.027, -0.027, -0.0275, -0.0293, -0.0325, -0.037, -0.043,
+            -0.05484, -0.058, -0.0592, -0.06015),
+}
+
+_C172_LINEAR_MAX_ALPHA_DEG = 10.0
+
+
+def _cessna_172() -> Aircraft:
+    m = 1043.3  # kg, 2,300 lb
+    S, b, c = 16.2, 10.91184, 1.49352  # m^2, m, m
+    Ixx, Iyy, Izz = 1285.3, 1824.7, 2666.7  # kg.m^2
+    AR = b * b / S
+
+    # Cruise for the fit and the trim reference. The source linearises at
+    # 67 m/s, but that sits at about 93% of full-throttle thrust for a 150 hp
+    # 172, and its own stated trim alpha of 2.5 deg is inconsistent with its CL
+    # table by roughly 13 m/s. 60 m/s (117 KTAS) at 5,000 ft is a
+    # self-consistent ~70% power cruise. The tables are non-dimensional, so no
+    # aero number here depends on that choice.
+    U0, rho = 60.0, 1.055
+
+    tables = {k: jnp.array(v) for k, v in CESSNA172_TABLES.items()}
+    alpha = tables["alpha_deg"] * DEG2RAD
+    linear = tables["alpha_deg"] <= _C172_LINEAR_MAX_ALPHA_DEG
+    fit_a = alpha[linear]
+
+    CLa, CL0 = jnp.polyfit(fit_a, tables["CL"][linear], 1)
+    Cma, Cm0 = jnp.polyfit(fit_a, tables["Cm"][linear], 1)
+    # Parabolic polar by least squares on CD against CL^2 over the same range.
+    # e comes out 0.97 -- close to the elliptical limit and optimistic for a
+    # strut-braced high-wing aeroplane, but it is what the DATCOM table implies
+    # and it is not adjusted here.
+    k, CD0 = jnp.polyfit(tables["CL"][linear] ** 2, tables["CD"][linear], 1)
+    e = 1.0 / (jnp.pi * AR * k)
+
+    # Reference alpha: level-flight incidence at the cruise condition. The
+    # alpha-dependent lateral derivatives are read there.
+    qS = 0.5 * rho * U0**2 * S
+    alpha_ref = (m * G0 / qS - CL0) / CLa
+
+    # The control derivatives are the only DIMENSIONAL numbers in this set, and
+    # they belong to the source's own linearisation at 67 m/s. A non-dimensional
+    # coefficient is a property of the airframe, so it has to be recovered at the
+    # condition the dimensional value was defined at -- not at the cruise chosen
+    # above. Using the wrong dynamic pressure here inflates all four by 25%.
+    qS_source = 0.5 * rho * 67.0**2 * S
+
+    def at_reference(name):
+        return jnp.interp(alpha_ref, alpha, tables[name])
+
+    inertia = inertia_tensor(Ixx, Iyy, Izz, 0.0)
+    return Aircraft(
+        mass=jnp.array(m),
+        inertia=inertia,
+        inertia_inv=jnp.linalg.inv(inertia),
+        S=jnp.array(S),
+        b=jnp.array(b),
+        c=jnp.array(c),
+        CD0=CD0,
+        e=e,
+        AR=jnp.array(AR),
+        sweep=jnp.array(0.0),  # unswept NACA 2412; wave drag is zero at M 0.18
+        t_over_c=jnp.array(0.12),
+        kappa_airfoil=jnp.array(0.87),
+        CL0=CL0,
+        CLa=CLa,
+        CLq=jnp.array(7.282),  # constant with alpha in the source table
+        CLde=jnp.array(17.19 * m / qS_source),
+        Cm0=Cm0,
+        Cma=Cma,
+        Cmq=jnp.array(-6.232),  # constant with alpha in the source table
+        Cmde=jnp.array(-36.23 * Iyy / (qS_source * c)),
+        CYb=jnp.array(-0.268),
+        CYp=jnp.array(0.0),  # not tabulated
+        CYr=jnp.array(0.0),  # not tabulated
+        CYdr=jnp.array(0.0),  # zeroed -- see the rudder note above
+        Clb=at_reference("Clb"),
+        Clp=at_reference("Clp"),
+        Clr=at_reference("Clr"),
+        # Control power comes from the source's derived linear point, which its
+        # author rates MEDIUM confidence; unlike the tables above these are not
+        # published numbers. Clda 0.42 is high against the 747's 0.014 and is
+        # the least certain number in this definition.
+        Clda=jnp.array(135.9 * Ixx / (qS_source * b)),
+        Cldr=jnp.array(0.0),  # zeroed -- see the rudder note above
+        Cnb=jnp.array(0.0126),
+        Cnp=at_reference("Cnp"),
+        Cnr=at_reference("Cnr"),
+        Cnda=jnp.array(-3.108 * Izz / (qS_source * b)),
+        Cndr=jnp.array(0.0),  # zeroed -- see the rudder note above
+        # MODELLING CHOICE, as for the Cherokee. Lycoming O-320, 150 hp sea-level
+        # rating at the 2,300 lb gross weight this data is quoted for, 80%
+        # propeller efficiency, evaluated at cruise. thrust_lapse handles
+        # altitude, so cruise trims near 80% throttle at 5,000 ft.
+        max_thrust=jnp.array(0.8 * 150.0 * HP2W / U0),
+        thrust_lapse=jnp.array(1.0),
+        # MODELLING CHOICE -- deflection limits are not in the source.
+        elevator_limit=jnp.array(25.0 * DEG2RAD),
+        aileron_limit=jnp.array(20.0 * DEG2RAD),
+        rudder_limit=jnp.array(25.0 * DEG2RAD),
+    )
+
+
 REGISTRY: dict[str, Aircraft] = {
     "boeing747": _boeing_747(),
+    "cherokee": _cherokee_pa28_180(),
+    "cessna172": _cessna_172(),
 }
 
 # Reference trim conditions, for the trim solver and for tests. SI.
 CRUISE: dict[str, dict[str, float]] = {
     "boeing747": {"altitude": 40000.0 * FT2M, "airspeed": 774.0 * FT2M},
+    "cherokee": {"altitude": 4920.0 * FT2M, "airspeed": 50.0},
+    "cessna172": {"altitude": 5000.0 * FT2M, "airspeed": 60.0},
 }
