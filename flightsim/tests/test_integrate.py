@@ -37,9 +37,10 @@ def test_rollout_shapes_and_finiteness(test_aircraft):
 
 
 def test_quaternion_norm_holds_over_a_long_rollout(test_aircraft):
+    """1e5 steps: the design spec's own stated norm-stability horizon."""
     sim = integrate.init_sim(initial_state(), jax.random.PRNGKey(0))
     _, history = integrate.rollout(
-        sim, CRUISE_CONTROLS, jnp.array(0.02), test_aircraft, 20_000
+        sim, CRUISE_CONTROLS, jnp.array(0.02), test_aircraft, 100_000
     )
     norms = np.linalg.norm(np.asarray(history.quat), axis=1)
     np.testing.assert_allclose(norms, 1.0, atol=1e-12)
