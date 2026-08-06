@@ -162,20 +162,89 @@ def gust_rates(pos_ned: Array, quat: Array, field) -> Array:
     return jnp.array([grad_body[2, 1], -grad_body[2, 0], grad_body[1, 0]])
 
 
-def vortex_model(array: VortexArray):
-    """Build a `wind_model` for a vortex array.
+# ---------------------------------------------------------------------------
+# Thunderstorm updraft column
+#
+# Source for the MAGNITUDES and the DURATION: Wingrove & Bach 1994, p. 756.
+# Updrafts of 50 ft/s in the initial stage of thunderstorm development, rising
+# to 100 ft/s as the storm builds; the Bermuda 12 Oct 1983 case measured over
+# 80 ft/s and took 20 s to traverse, producing a 5.2 deg pitch variation.
+#
+# *** THE EDGE SHARPNESS IS NOT IN ANY SOURCE. *** The paper constrains the core
+# magnitude and the traverse duration and says nothing about how abruptly the
+# updraft begins. That matters more than the magnitude does: a smooth column at
+# these dimensions is traversed in about three short periods, so the aircraft
+# simply climbs with the air and the load factor barely moves. The paper's own
+# +0.66 / -1.58 g comes from sharp edges, not from the 80 ft/s.
+#
+# So `sharpness` is a DECLARED MODELLING PARAMETER, not source data, and it is
+# named as one here rather than buried in a default. sharpness = 2 is a plain
+# Gaussian; larger values approach a top hat with a correspondingly steeper
+# edge. Any result that depends on it must say which value was used.
+# ---------------------------------------------------------------------------
+
+
+class UpdraftColumn(NamedTuple):
+    """An axisymmetric vertical column, super-Gaussian in horizontal radius.
+
+        w_up(r) = w0 * exp(-(r / radius) ** sharpness)
+
+    `radius` is where the updraft has fallen to w0/e. The paper's "20 s
+    encounter" is a traverse time, so at a given flight speed it fixes the
+    diameter: 20 s at the 747's 236 m/s cruise is about 4.7 km, hence a radius
+    of order 2.4 km.
+    """
+
+    north: Array  # m, NED north of the column axis
+    east: Array  # m, NED east of the column axis
+    w0: Array  # m/s, peak updraft (positive UP)
+    radius: Array  # m
+    sharpness: Array  # DECLARED, not sourced. 2 = Gaussian; larger = sharper edge.
+
+
+def updraft_wind(pos_ned: Array, column: UpdraftColumn) -> Array:
+    """Wind velocity (NED, m/s) of an updraft column at a point."""
+    offset = jnp.hypot(pos_ned[0] - column.north, pos_ned[1] - column.east)
+    # Guard the fractional power at r = 0: for sharpness < 2 the derivative of
+    # r**sharpness is singular there, and jax.grad would produce a NaN that
+    # conftest's jax_debug_nans would trip on.
+    scaled = jnp.maximum(offset / column.radius, 1e-12)
+    w_up = column.w0 * jnp.exp(-(scaled**column.sharpness))
+    return jnp.array([0.0, 0.0, -w_up])  # NED z is DOWN; an updraft is negative
+
+
+# ---------------------------------------------------------------------------
+# Composition
+#
+# Every model here is a velocity field, and aero.py sees only vel_rel and
+# omega_rel, so summing fields is exact within the model's own linearisation.
+# That is what makes "a vortex array sitting in background turbulence" cost
+# nothing beyond the two components themselves.
+# ---------------------------------------------------------------------------
+
+
+def superpose(*fields):
+    """Sum wind fields. Parks et al. 1985 builds its vortex arrays this way."""
+
+    def combined(pos_ned: Array) -> Array:
+        return sum(field(pos_ned) for field in fields)
+
+    return combined
+
+
+def field_model(field):
+    """Turn a position-only wind field into a `wind_model`.
 
     Returned closure matches the `zero_wind` signature, so it drops straight
     into `integrate.step`/`rollout` and `autopilot.closed_loop_rollout`.
+    `omega_gust` is the analytic gradient of the field, so a component cannot
+    contribute a translational gust while silently omitting its rotational one.
 
     The key is returned UNTOUCHED. That is what makes a batch of PRNG keys vary
     only the stochastic components of a composed field, so every member of a
     Monte Carlo ensemble meets the same vortex at the same place -- which is the
     experiment design an error bar on a deterministic encounter needs.
     """
-
-    def field(pos_ned: Array) -> Array:
-        return vortex_wind(pos_ned, array)
 
     def model(
         wind_state: WindState, state: State, key: Array, dt: float
@@ -186,3 +255,13 @@ def vortex_model(array: VortexArray):
         return wind_ned, omega_gust, wind_state, key
 
     return model
+
+
+def vortex_model(array: VortexArray):
+    """`wind_model` for a vortex array."""
+    return field_model(lambda pos_ned: vortex_wind(pos_ned, array))
+
+
+def updraft_model(column: UpdraftColumn):
+    """`wind_model` for an updraft column."""
+    return field_model(lambda pos_ned: updraft_wind(pos_ned, column))

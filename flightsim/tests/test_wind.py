@@ -253,6 +253,128 @@ def test_the_vortex_produces_a_pitching_gust_at_the_core_edge():
     assert abs(float(omega_gust[2])) < 1e-12
 
 
+# --- the updraft column ------------------------------------------------------
+
+# Wingrove & Bach 1994 p.756, Bermuda 12 Oct 1983: over 80 ft/s, 20 s traverse.
+UPDRAFT_W0 = 80.0 * FT2M
+UPDRAFT_SECONDS = 20.0
+
+
+def _column(sharpness, w0=UPDRAFT_W0, radius=2360.0):
+    return wind.UpdraftColumn(
+        north=jnp.array(0.0), east=jnp.array(0.0), w0=jnp.array(w0),
+        radius=jnp.array(radius), sharpness=jnp.array(float(sharpness)),
+    )
+
+
+def test_the_updraft_peaks_at_its_stated_magnitude_and_points_up():
+    """Sign first: an updraft is air moving UP, which is NEGATIVE in NED z.
+
+    Getting this backwards is the single most likely error in the whole
+    module and it would look plausible for a long time -- the aircraft would
+    simply pitch the wrong way.
+    """
+    column = _column(2.0)
+    centre = np.asarray(wind.updraft_wind(jnp.array([0.0, 0.0, -11278.0]), column))
+    assert centre[2] == pytest.approx(-UPDRAFT_W0, rel=1e-9)  # negative == up
+    assert abs(centre[0]) < 1e-12 and abs(centre[1]) < 1e-12
+    # and it decays away from the axis
+    far = np.asarray(wind.updraft_wind(jnp.array([8000.0, 0.0, -11278.0]), column))
+    assert abs(far[2]) < 0.01 * UPDRAFT_W0
+
+
+def test_the_declared_sharpness_controls_the_edge_gradient_not_the_magnitude():
+    """`sharpness` is a MODELLING PARAMETER, not source data.
+
+    The paper fixes the magnitude and the duration and says nothing about the
+    edge. This asserts what the knob actually does -- it steepens the edge while
+    leaving the peak alone -- so that a result which depends on it is visibly a
+    function of a declared choice rather than of the cited 80 ft/s.
+    """
+    radius = 2360.0
+    gradients = {}
+    for sharpness in (2.0, 4.0, 8.0):
+        column = _column(sharpness, radius=radius)
+        offsets = np.linspace(0.0, 2.5 * radius, 1200)
+        w_up = -np.array(
+            [
+                float(wind.updraft_wind(jnp.array([x, 0.0, -11278.0]), column)[2])
+                for x in offsets[::40]
+            ]
+        )
+        gradients[sharpness] = np.abs(np.gradient(w_up, offsets[::40])).max()
+        assert w_up.max() == pytest.approx(UPDRAFT_W0, rel=1e-6)  # peak unchanged
+    assert gradients[4.0] > gradients[2.0]
+    assert gradients[8.0] > gradients[4.0]
+
+
+def test_fields_superpose():
+    """Parks builds arrays by superposition and aero sees only the summed field,
+    so a vortex sitting inside an updraft costs nothing beyond the two parts.
+    """
+    alt = 11278.0
+    array = single()
+    column = _column(4.0)
+    combined = wind.superpose(
+        lambda p: wind.vortex_wind(p, array), lambda p: wind.updraft_wind(p, column)
+    )
+    for x in (-500.0, 0.0, 137.0, 3000.0):
+        point = jnp.array([x, 0.0, -alt])
+        np.testing.assert_allclose(
+            np.asarray(combined(point)),
+            np.asarray(wind.vortex_wind(point, array))
+            + np.asarray(wind.updraft_wind(point, column)),
+            atol=1e-12,
+        )
+
+
+def test_the_updraft_weathercocks_where_the_vortex_does_not():
+    """The mechanism behind Wingrove & Bach's Fig. 8 discriminator.
+
+    A 20 s updraft traverse is about three 747 short periods (6.6 s undamped),
+    so the aircraft has time to reach a new trim attitude and weathercocks by
+    several degrees. A 1.5 s vortex traverse is a fifth of one, so the same
+    aircraft absorbs the incidence change as load with almost no attitude
+    response. Same airframe, same linear aero -- the separation is a pure
+    rigid-body timescale effect, which is exactly why this model can reproduce
+    the discriminator while it cannot reproduce the papers' +/-g asymmetry.
+    """
+    from flightsim import integrate, trim
+    from flightsim.aircraft import CRUISE, REGISTRY
+    from flightsim.state import quat_to_euler
+    from flightsim.units import RAD2DEG
+
+    ac = REGISTRY["boeing747"]
+    v, h = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
+    x, _ = trim.trim(jnp.array(v), jnp.array(h), ac)
+    controls = trim.trimmed_controls(x[1], x[2])
+
+    radius = 0.5 * UPDRAFT_SECONDS * v  # the paper's 20 s traverse, as a distance
+    column = _column(6.0, radius=radius)
+    state = trim.trimmed_state(x[0], jnp.array(v), jnp.array(h))
+    state = state._replace(pos_ned=jnp.array([-2.0 * radius, 0.0, -h]))
+
+    dt = 0.02
+    n = int(round(4.0 * radius / v / dt))
+    _, hist = integrate.rollout(
+        integrate.init_sim(state, jax.random.PRNGKey(0)), controls,
+        jnp.array(dt), ac, n, wind_model=wind.updraft_model(column),
+    )
+    theta = np.asarray(jax.vmap(quat_to_euler)(hist.quat))[:, 1]
+    north = np.asarray(hist.pos_ned)[:, 0]
+
+    inside = np.abs(north) <= radius
+    dtheta = (theta[inside].max() - theta[inside].min()) * RAD2DEG
+    # Measured in-column pitch excursion, by declared sharpness:
+    #   2 -> 3.63 deg,  4 -> 3.63,  6 -> 4.39,  10 -> 5.34
+    # against the vortex's 1.89 deg in-core measured above, the paper's stated
+    # 5.2 deg for this case, and Fig. 8's 6.2 deg updraft cluster. The spread
+    # across sharpness is the whole reason that parameter is declared rather
+    # than defaulted: the ANSWER depends on it, so a result must state it.
+    assert dtheta > 3.0, dtheta  # measured 4.39 at sharpness 6
+    assert dtheta > 1.5 * 1.89  # separated from the vortex case, the Fig. 8 claim
+
+
 # --- the regression guarantee ------------------------------------------------
 
 
