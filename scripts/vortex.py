@@ -17,16 +17,9 @@ import matplotlib.pyplot as plt
 import flightsim  # noqa: F401  -- enables x64
 from flightsim import trim, vortex_viz, wind
 from flightsim.aircraft import CRUISE, REGISTRY
-from flightsim.units import FT2M, RAD2DEG
-
-# Parks et al. 1985, J. Aircraft 22(2), pp. 127-128. Both cases were DC-10s.
-CASES = {
-    "hannibal": dict(r0=600.0 * FT2M, v0=85.0 * FT2M, spacing=3500.0 * FT2M),
-    "morton": dict(r0=450.0 * FT2M, v0=70.0 * FT2M, spacing=3200.0 * FT2M),
-}
-# Wingrove & Bach 1994 p.756, Bermuda 12 Oct 1983: over 80 ft/s, 20 s traverse.
-UPDRAFT_W0 = 80.0 * FT2M
-UPDRAFT_SECONDS = 20.0
+from flightsim.units import RAD2DEG
+from flightsim.wind import PARKS_CASES as CASES
+from flightsim.wind import UPDRAFT_SECONDS, UPDRAFT_W0
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--case", default="hannibal", choices=sorted(CASES))

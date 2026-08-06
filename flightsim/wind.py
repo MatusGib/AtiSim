@@ -29,6 +29,7 @@ import jax.numpy as jnp
 from jax import Array
 
 from flightsim.state import State, quat_to_dcm
+from flightsim.units import FT2M
 
 
 class WindState(NamedTuple):
@@ -100,6 +101,16 @@ class VortexArray(NamedTuple):
     down: Array  # (N,) m, NED down of each core
     r0: Array  # m, solid-body core radius
     v0: Array  # m/s, tangential velocity at the core edge
+
+
+# The two cases Parks et al. 1985 identifies, J. Aircraft 22(2) pp. 127-128.
+# They live here rather than in a script because more than one entry point needs
+# them, and a sourced number restated in two places is a number that will
+# eventually disagree with itself.
+PARKS_CASES: dict[str, dict[str, float]] = {
+    "hannibal": {"r0": 600.0 * FT2M, "v0": 85.0 * FT2M, "spacing": 3500.0 * FT2M},
+    "morton": {"r0": 450.0 * FT2M, "v0": 70.0 * FT2M, "spacing": 3200.0 * FT2M},
+}
 
 
 def vortex_wind(pos_ned: Array, array: VortexArray) -> Array:
@@ -182,6 +193,12 @@ def gust_rates(pos_ned: Array, quat: Array, field) -> Array:
 # Gaussian; larger values approach a top hat with a correspondingly steeper
 # edge. Any result that depends on it must say which value was used.
 # ---------------------------------------------------------------------------
+
+
+# Wingrove & Bach 1994 p. 756, Bermuda 12 Oct 1983: over 80 ft/s, 20 s traverse.
+# Here for the same reason as PARKS_CASES above.
+UPDRAFT_W0 = 80.0 * FT2M  # m/s, peak updraft
+UPDRAFT_SECONDS = 20.0  # s. A TRAVERSE time -- it fixes a diameter only with a speed.
 
 
 class UpdraftColumn(NamedTuple):
