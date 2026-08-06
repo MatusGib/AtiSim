@@ -60,7 +60,17 @@ from flightsim.sensors import AirData, Accelerations, accelerometers, sense
 from flightsim.state import Controls, quat_to_dcm
 from flightsim.units import RAD2DEG
 from flightsim.viz import Recorder, Trajectory
-from flightsim.wind import zero_wind
+from flightsim.wind import (
+    PARKS_CASES,
+    UPDRAFT_SECONDS,
+    UPDRAFT_W0,
+    UpdraftColumn,
+    VortexArray,
+    field_model,
+    updraft_wind,
+    vortex_wind,
+    zero_wind,
+)
 
 # Held keys. Signs follow flightsim.manual: the arrows are a centre stick, so
 # "up" is stick forward and pitches the nose down.
@@ -80,8 +90,12 @@ TOGGLE_KEY = "a"
 TRIM_HERE_KEY = "t"
 
 HELP = (
-    "arrows  stick (up = nose down)    , .  rudder      -  =  throttle\n"
-    "[  ]    trim (nose down / up)     t    trim here   a     autopilot"
+    "arrows  stick (up = nose down)\n"
+    ",  .    rudder\n"
+    "-  =    throttle\n"
+    "[  ]    trim (nose down / up)\n"
+    "t       trim here\n"
+    "a       autopilot"
 )
 
 # Instrument-panel colours.
@@ -127,7 +141,7 @@ VSI_SPAN: dict[str, float] = {"boeing747": 20.0, "cherokee": 10.0, "cessna172": 
 # Tape scales: (full span either side of the value, gap between labelled ticks).
 TAPE_AIRSPEED = (40.0, 10.0)
 TAPE_ALTITUDE = (600.0, 200.0)
-TAPE_HEADING = (60.0, 20.0)  # degrees
+TAPE_HEADING = (40.0, 10.0)  # degrees
 
 
 # ---------------------------------------------------------------------------
@@ -259,15 +273,18 @@ class Tape:
             ax.plot([], [], color=_FG, lw=0.8, animated=True)[0]
             for _ in range(self.N_TICKS)
         ]
+        # Ticks and their labels live in the right-hand half, the current-value
+        # box in the left. They are kept apart rather than layered, because the
+        # tick nearest the value is exactly the one the box would sit on.
         self.tick_labels = [
             ax.text(
-                0.52, 0.0, "", color=_FG, fontsize=7, family="monospace",
-                ha="left", va="center", animated=True,
+                0.70, 0.0, "", color=_FG, fontsize=7, family="monospace",
+                ha="right", va="center", animated=True,
             )
             for _ in range(self.N_TICKS)
         ]
         self.box = ax.text(
-            0.5, 0.0, "", color=_SYMBOL, fontsize=9, family="monospace",
+            0.30, 0.0, "", color=_SYMBOL, fontsize=9, family="monospace",
             ha="center", va="center", animated=True,
             bbox=dict(facecolor=_BG, edgecolor=_SYMBOL, boxstyle="square,pad=0.25"),
         )
@@ -282,10 +299,14 @@ class Tape:
         first = centre - (self.N_TICKS // 2) * self.step
         for index, (tick, text) in enumerate(zip(self.ticks, self.tick_labels)):
             mark = first + index * self.step
-            y = float(np.clip(mark - value, -self.span, self.span))
-            visible = abs(mark - value) <= self.span
-            tick.set_data([0.30, 0.48] if visible else [], [y, y] if visible else [])
-            text.set_position((0.52, y))
+            offset = mark - value
+            y = float(np.clip(offset, -self.span, self.span))
+            # Off the end of the scale, or underneath the value box. A real PFD
+            # box covers the tape it sits on; hiding that one tick is what the
+            # instrument does, not a fudge to avoid overlapping text.
+            visible = abs(offset) <= self.span and abs(offset) > 0.35 * self.step
+            tick.set_data([0.74, 0.92] if visible else [], [y, y] if visible else [])
+            text.set_position((0.70, y))
             text.set_text(self.fmt.format(mark) if visible else "")
         self.box.set_text(self.fmt.format(value))
 
@@ -332,6 +353,8 @@ class HeadingTape(Tape):
             tick.set_data([x, x] if visible else [], [0.36, 0.52] if visible else [])
             text.set_position((x, 0.30))
             text.set_text(self.fmt.format(mark % 360.0) if visible else "")
+        # The box sits above the ticks here rather than on them, so nothing is
+        # covered and no tick has to be suppressed.
         self.box.set_text(self.fmt.format(value % 360.0))
 
 
@@ -348,7 +371,10 @@ class VSI:
         ax.axhline(0.0, color="#5a6a78", lw=0.9)
         for fraction in (-0.5, 0.5):
             ax.axhline(fraction, color=_EDGE, lw=0.6)
-        (self.needle,) = ax.plot([], [], color=_TRACE, lw=2.0, animated=True)
+        # A horizontal needle that slides up and down the scale. Drawing it as a
+        # line from the centre to the value reads as a diagonal, which is not
+        # what a VSI looks like and is harder to read at a glance.
+        (self.needle,) = ax.plot([], [], color=_TRACE, lw=3.0, animated=True)
         self.readout = ax.text(
             0.0, -0.90, "", color=_SYMBOL, fontsize=8, family="monospace",
             ha="center", animated=True,
@@ -361,7 +387,7 @@ class VSI:
     def update(self, r: Readout) -> None:
         vs = float(r.air.vertical_speed)
         y = float(np.clip(vs / self.span, -1.0, 1.0))
-        self.needle.set_data([-0.55, 0.55], [0.0, y])
+        self.needle.set_data([-0.7, 0.7], [y, y])
         self.readout.set_text(f"{vs:+5.1f}")
 
 
@@ -664,9 +690,13 @@ class Panel:
             3,
             6,
             width_ratios=(0.30, 1.05, 0.30, 0.17, 0.70, 0.92),
-            height_ratios=(1.00, 0.18, 0.34),
-            hspace=0.42,
-            wspace=0.34,
+            height_ratios=(1.00, 0.16, 0.22),
+            hspace=0.40,
+            wspace=0.42,
+            left=0.035,
+            right=0.965,
+            top=0.94,
+            bottom=0.04,
         )
 
         span, tick = TAPE_AIRSPEED
@@ -749,6 +779,10 @@ class Panel:
         ax.set_xlim(-self.window, 0.0)
         ax.set_ylim(centre - span, centre + span)
         ax.set_xticks([-self.window, -self.window / 2.0, 0.0])
+        # Labels and ticks on the RIGHT: the strips sit at the right-hand edge of
+        # the figure, so a left-hand label lands on top of the overlay gauges.
+        ax.yaxis.set_label_position("right")
+        ax.yaxis.tick_right()
         ax.set_ylabel(label, color=_FG, fontsize=8)
         ax.axhline(centre, color="#5a6a78", lw=0.9, ls="--")  # target, background
         ax.grid(color="#232b33", lw=0.6)
@@ -1144,6 +1178,77 @@ def updraft_range(column, *, label: str):
         )
 
     return ranged
+
+
+def field_ahead(
+    name: str,
+    *,
+    airspeed: float,
+    altitude: float,
+    lead_in: float = 40.0,
+    sharpness: float = 6.0,
+):
+    """Place a cited wind field ahead of the origin: `(wind_model, range, note)`.
+
+    The FIELD is offset rather than the aircraft being started behind it, which
+    is the other way round from `scripts/vortex.py`. Physically identical --
+    only the relative geometry enters a position-only field -- but every run
+    still begins at the origin, so ground tracks and saved `.npz` files stay
+    comparable and nothing about `trimmed_state` or `init_sim` changes.
+
+    Placement and the range callable come out of the same object on purpose. Two
+    functions each deciding for themselves where the field is, is how a readout
+    ends up confidently pointing at somewhere the aircraft is not.
+
+    `lead_in` is in core radii, matching vortex.py. Below about 12 the 1/r far
+    field launches the aircraft out of equilibrium (PROJECT.md section 9,
+    session 3). `sharpness` is a DECLARED modelling parameter, not source data.
+    """
+    if name == "none":
+        return zero_wind, None, "still air"
+
+    if name in PARKS_CASES:
+        case = PARKS_CASES[name]
+        lead = lead_in * case["r0"]
+        array = VortexArray(
+            north=jnp.array([lead, lead + case["spacing"]]),
+            down=jnp.array([-altitude, -altitude]),
+            r0=jnp.array(case["r0"]),
+            v0=jnp.array(case["v0"]),
+        )
+        note = (
+            f"vortex array ({name}): r0 {case['r0']:.0f} m, V0 {case['v0']:.1f} m/s, "
+            f"first core {lead:.0f} m ahead ({lead / airspeed:.0f} s at cruise)"
+        )
+        return (
+            field_model(lambda p: vortex_wind(p, array)),
+            vortex_range(array, label=f"vortex {name}"),
+            note,
+        )
+
+    if name == "updraft":
+        # The paper's 20 s is a TRAVERSE time, so it fixes a diameter only once
+        # a flight speed is chosen -- hence the radius depending on airspeed.
+        radius = 0.5 * UPDRAFT_SECONDS * airspeed
+        lead = lead_in * 0.1 * radius + radius
+        column = UpdraftColumn(
+            north=jnp.array(lead),
+            east=jnp.array(0.0),
+            w0=jnp.array(UPDRAFT_W0),
+            radius=jnp.array(radius),
+            sharpness=jnp.array(sharpness),
+        )
+        note = (
+            f"updraft column: w0 {UPDRAFT_W0:.1f} m/s, radius {radius:.0f} m, "
+            f"sharpness {sharpness:.1f} (DECLARED), centre {lead:.0f} m ahead"
+        )
+        return (
+            field_model(lambda p: updraft_wind(p, column)),
+            updraft_range(column, label="updraft column"),
+            note,
+        )
+
+    raise ValueError(f"unknown wind field {name!r}")
 
 
 def run_live(

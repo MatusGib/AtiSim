@@ -651,3 +651,76 @@ def test_the_updraft_range_has_a_bearing_because_a_column_is_a_point():
     assert got.distance == pytest.approx(3000.0, abs=1e-9)
     assert np.degrees(got.bearing) == pytest.approx(90.0, abs=1e-6)  # due east
     assert got.closing == pytest.approx(0.0, abs=1e-9)  # flying north, not closing
+
+
+# --- flying a cited field, end to end ----------------------------------------
+#
+# `field_ahead` is what scripts/fly.py actually calls, so these exercise the
+# real path rather than a copy of it. A test that rebuilt the field itself would
+# pass happily while fly.py placed it somewhere else.
+
+
+def test_field_ahead_puts_the_first_core_where_the_lead_in_says(targets):
+    model, ranger, note = panel_mod.field_ahead(
+        "hannibal", airspeed=V, altitude=H, lead_in=40.0
+    )
+    from flightsim.state import State
+    from flightsim.wind import PARKS_CASES
+
+    expected = 40.0 * PARKS_CASES["hannibal"]["r0"]
+    got = ranger(State(
+        pos_ned=jnp.array([0.0, 0.0, -H]),
+        vel_body=jnp.array([V, 0.0, 0.0]),
+        quat=jnp.array([1.0, 0.0, 0.0, 0.0]),
+        omega=jnp.zeros(3),
+    ))
+    assert got.distance == pytest.approx(expected, rel=1e-9)
+    assert got.bearing is None
+    assert "hannibal" in note and "core" in note
+
+
+def test_still_air_asks_for_no_field_at_all(targets):
+    model, ranger, note = panel_mod.field_ahead("none", airspeed=V, altitude=H)
+    assert ranger is None
+    assert note == "still air"
+
+
+def test_an_unknown_field_is_refused_rather_than_silently_still_air():
+    with pytest.raises(ValueError, match="unknown wind field"):
+        panel_mod.field_ahead("hurricane", airspeed=V, altitude=H)
+
+
+def test_flying_the_parks_array_closes_the_range_and_moves_the_gust_bars(trimmed, targets):
+    """The whole feature, end to end: place the field, fly at it, watch it arrive.
+
+    A short lead-in is used so the encounter fits in a test. That is BELOW the
+    ~12 core radii PROJECT.md section 9 warns about, so the aircraft starts out
+    of equilibrium and no number from this run means anything -- which is fine,
+    because what is asserted is that the machinery connects, not what the
+    encounter measures.
+    """
+    model, ranger, _ = panel_mod.field_ahead(
+        "hannibal", airspeed=V, altitude=H, lead_in=14.0
+    )
+    state, controls = trimmed
+    ctl = man.start(sense(state), controls, targets, GAINS, AC)
+    sim = integrate.init_sim(state, jax.random.PRNGKey(0))
+    p = panel_mod.Panel(targets, window=20.0, fps=20.0)
+    run = panel_mod.LiveSim(
+        sim, ctl, targets, GAINS, MGAINS, AC, p,
+        dt=DT, real_time=False, wind_model=model, field_range=ranger,
+    )
+
+    start = ranger(run.sim.state).distance
+    gust_seen = 0.0
+    for _ in range(120):
+        run.frame()
+        gust_seen = max(gust_seen, float(np.abs(run.sim.omega_gust).max()))
+
+    assert ranger(run.sim.state).distance < start  # the range closed
+    assert gust_seen > 1e-4  # the rotational gust reached the aircraft
+    assert "vortex hannibal core" in p.status.get_text()
+    assert "closing" in p.status.get_text()
+    # And the panel showed the wind rather than reporting still air.
+    assert np.abs(run.sim.wind_ned).max() > 1e-3
+    assert len(p.wind_gauge.arrow.get_xdata()) > 0  # the arrow is drawn
