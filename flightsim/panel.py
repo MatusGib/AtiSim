@@ -1230,7 +1230,12 @@ def field_ahead(
         # The paper's 20 s is a TRAVERSE time, so it fixes a diameter only once
         # a flight speed is chosen -- hence the radius depending on airspeed.
         radius = 0.5 * UPDRAFT_SECONDS * airspeed
-        lead = lead_in * 0.1 * radius + radius
+        # `lead_in` cannot mean the same thing here as it does for a vortex. A
+        # column radius is over a dozen vortex core radii, so 40 of them would be
+        # 90 km -- six minutes of flying before anything happened. It is read as
+        # tenths of a radius beyond the edge instead, which puts the default 40
+        # four radii clear. Stated rather than hidden in the arithmetic.
+        lead = radius * (1.0 + lead_in / 10.0)
         column = UpdraftColumn(
             north=jnp.array(lead),
             east=jnp.array(0.0),

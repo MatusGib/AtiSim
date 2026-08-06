@@ -4,7 +4,8 @@ A 6-DOF fixed-wing flight-dynamics core in JAX, built as a foundation for turbul
 modelling. This document is the standing record: what exists, what is validated, what is
 known-broken, and what happens next.
 
-**Last updated:** session 5 (latent bugs (a)-(d) fixed; extensibility seams).
+**Last updated:** session 6 (the free-air flying interface: basic-T cockpit, wind in the
+live loop, ramped stick and trim).
 
 **To run any of it, see §10.**
 
@@ -65,8 +66,9 @@ without a core rewrite. Both have now been exercised and both held.
 | `sensors.py` | `AirData`, `sense(state, wind_ned)` | **the only supported way to ask what the aircraft is doing**; air-relative where a real sensor is |
 | `trim.py` | Newton solve for steady level flight | still-air by construction, and must stay so |
 | `autopilot.py` | cascaded PID | per-aircraft gains; bumpless engage |
-| `manual.py` | manual control and mode switching | |
-| `viz.py` | live panel, `Trajectory`, `post_flight` | air-relative since session 5; `Trajectory` records the applied wind |
+| `manual.py` | manual control, mode switching, pitch trim | trim moves the stick's centring point, never `controls` |
+| `panel.py` | live cockpit, instruments, `Stick`, `LiveSim`, `run_live` | basic T + test overlay; takes a `wind_model` and a `field_range` |
+| `viz.py` | `Trajectory`, `Recorder`, `derived`, `post_flight` | the log and the post-flight figure only; no simulator needed to read a run |
 | `vortex_viz.py` | turbulence encounter analysis and figure | air-relative throughout; deliberately separate from `viz.py` |
 
 ### The two interfaces turbulence depends on
@@ -179,6 +181,23 @@ mechanism changes, since both are orderings rather than values.
 | …and groundspeed 25 m/s below it | yes | ±1.5 m/s |
 | Attitude/rates unmoved by the wind correction | exact | atol 1e-12 |
 | Bugs (a)+(b) re-introduced → their tests go red | 2 failed, 219 passed | — |
+
+### The live flying interface (session 6)
+
+| Check | Measured | Tolerance |
+|---|---|---|
+| Live loop in still air, with and without an explicit `zero_wind` | **bit-identical** | `np.array_equal` |
+| Live loop through an updraft vs still air, 40 frames | 1.0 m of altitude | > 1.0 m |
+| `vortex.py` unmoved by the constants move: first-core Δθ | 2.240 deg | was 2.24 |
+| …updraft Δθ / peak load | 4.366 deg / −1.235 g | were 4.37 / −1.23 |
+| Slip ball vs β under held rudder | **opposite signs** | product < 0 |
+| Stick ramp: 10 steps in 1 frame vs in 10 frames | identical | `approx` |
+| One second of held trim, all three aircraft | 0.25 × full stick | rel 0.05 |
+| Suite | 256 tests, 207 s | — |
+
+The bit-identical row is the one that matters: it is the same statement §4 already
+makes about a zero-strength wind model, applied to the live loop, and it is what says
+the wind hook did not perturb the default path.
 
 ### Vortex and updraft encounters (747 at CR-2144 FC9)
 
@@ -385,10 +404,75 @@ protocol with a linear and a table implementation. That was the option not taken
   cleanly from the updraft. It is currently an explicit argument, printed in the figure's
   provenance footer.
 - **Suite runtime is not currently measurable.** The same untouched tests (187 at the time,
-  209 now) have run in 53 s and 164 s on the same machine. Re-measure on a quiet machine
-  before treating any timing as a baseline.
+  221 by session 5) have run in 53 s and 164 s on the same machine. Session 6 saw 126–207 s
+  across runs of the same suite. Re-measure on a quiet machine before treating any timing
+  as a baseline.
+- **Whether the panel still holds 20 fps.** The re-layout traded one 3D axes for a dozen 2D
+  ones, and blitting cost scales with the number of axes. §10's 19.9 fps measurement
+  predates it and has not been re-taken on an interactive backend.
 
 ## 9. Session log
+
+### Session 6 — the free-air flying interface
+`run_live` took no wind model at all. `LiveSim.advance` called `step(sim, controls, dt,
+ac)` and got the `zero_wind` default, so the Parks array and the Wingrove updraft — the
+only things this project is building toward — could not be hand-flown. §10's "still air
+only" note read as the session-5 sensing bug; this was a separate gap and it was still
+open. It is now threaded through, with `--wind {none,hannibal,morton,updraft}` on
+`fly.py`.
+
+**The verification that mattered** was the same shape as session 5's: the guard test was
+re-run with the wind model accepted but not applied, and the blown and still-air runs came
+out at *identical* altitude while exactly that one test went red. An accepted-and-ignored
+parameter is precisely how (a) and (b) survived three sessions.
+
+The panel was re-laid-out as a basic T with a flight-test overlay. The 3D trace is gone;
+it was the largest cell and told a pilot the least. New: VSI, slip ball, α against the
+declared §7 band, load factor with a peak hold, wind, gust rate. Two decisions worth
+keeping:
+
+- **The slip ball reads lateral specific force, not β.** A ball is a pendulum. The two
+  agree in steady coordinated flight and part company everywhere interesting — under held
+  rudder they come out with *opposite signs*, which is what the test asserts. Wiring β into
+  a ball would have been the same shape of mistake as §6(a): right in the easy case.
+- **`omega_gust` is labelled SIM TRUTH.** It is a gradient across the span and chord and no
+  instrument can sense it. The translational wind is not labelled, because with no sensor
+  noise ground velocity minus air velocity *is* the wind and a real aircraft could compute
+  it.
+
+`dynamics.load_factor` was factored into `specific_force` returning all three components;
+its two existing tests pass unchanged, which is the regression guard. `AirData` gained
+`vertical_speed`; the accelerometer package is a *separate* function because a specific
+force needs a mass and a set of deflections and an air-data computer has neither.
+
+The stick now ramps, and there is pitch trim plus a trim-here key. The three `trim_rate`
+values are derived from one stated rule — one second of trim is a quarter of full stick —
+and a test asserts the rule, so the next person cannot quietly pick a fourth number.
+
+`viz.py` was split: `panel.py` takes the live cockpit, `viz.py` keeps the log and the
+post-flight figure. The split was landed as a **pure move** in its own commit, verified by
+the collected test count not changing, so the re-layout's diff is only the re-layout.
+
+Two things found in this session's own work, both by rendering the panel rather than by a
+test: four layout defects (help text off the edge, strip labels over the overlay gauges, a
+VSI drawn as a diagonal, a third of the figure empty), and a first trim test that asserted
+the wrong thing — it trimmed *after* the stick had centred, where trim-here is correctly a
+no-op. The test was rewritten, not the code.
+
+**Deliberately not done:** `ManualGains` not re-tuned. The ramp makes higher authorities
+available for the first time — they were geared down because a keyboard snapped to full
+travel — but re-tuning is hand work verifiable only by flying, and `test_manual.py`'s
+response bounds (±2°/±45°) are far too loose to pin it. No Mach, no control-position
+display, no re-arm key, no uniform-wind option: considered and not chosen. `test_viz.py`'s
+`test_derived_agrees_with_the_aero_module` is left alone — it is the
+structurally-cannot-fail test §6(b) says was replaced, and the replacement did land in
+`test_sensors.py`, but the original was never deleted. Flagged, not this work's mess.
+
+**Unchanged, and still the Dryden blocker:** `init_sim`/`batch_sim` still hard-code
+`zero_wind_state()`. Threading a wind *model* through the live loop does not touch that,
+so §7's three structural changes stand exactly as written.
+
+256 tests.
 
 ### Session 5 — the four latent bugs, and the extensibility seams
 Fixed (a)-(d). (a) and (b) were one root cause, so they got one fix: `sensors.AirData`
@@ -482,29 +566,68 @@ root**; the scripts import `flightsim` from the editable install, not from `scri
 
 | Command | What it does |
 |---|---|
-| `.venv/Scripts/python.exe -m pytest flightsim/tests -q` | 209 tests. The first thing to run and the only complete statement of what works. |
+| `.venv/Scripts/python.exe -m pytest flightsim/tests -q` | 256 tests. The first thing to run and the only complete statement of what works. |
 | `.venv/Scripts/python.exe scripts/checkpoint.py` | 747 only, no flags. Trim residuals, 60 s fixed-control hold, longitudinal modes against CR-2144 Table IX-5. |
 | `.venv/Scripts/python.exe scripts/tune.py --aircraft cherokee` | Autopilot step responses for one aircraft. Exits non-zero on failure, so it is usable as a gate. |
-| `.venv/Scripts/python.exe scripts/fly.py --aircraft cherokee --save runs/a.npz` | Interactive flight. **Still air only — see the warning below.** |
+| `.venv/Scripts/python.exe scripts/fly.py --aircraft cherokee --save runs/a.npz` | Interactive flight, basic-T cockpit plus a flight-test overlay. |
+| `.venv/Scripts/python.exe scripts/fly.py --wind hannibal` | The same, hand-flown into the Parks vortex array. The panel counts the range down. |
 | `.venv/Scripts/python.exe scripts/vortex.py --case hannibal --png runs/v.png` | Flies the 747 through the Parks vortex array and the Wingrove updraft, draws the analysis figure. This is the turbulence path. |
 | `.venv/Scripts/python.exe scripts/analyse.py runs/a.npz` | Replays a saved `.npz`. Accepts several files; `--png DIR` writes instead of showing. |
 
 Flags: `tune.py` takes `--aircraft` only. `fly.py` takes `--aircraft --autopilot --save
---dt --fps --window --seed`. `vortex.py` takes `--case {hannibal,morton} --aircraft --dt
---lead-in --sharpness --png`. `--lead-in` below ~12 core radii contaminates the first core
-(§9 session 3); `--sharpness` is a declared modelling parameter, not source data.
+--dt --fps --window --seed --wind --lead-in --sharpness`. `vortex.py` takes `--case
+{hannibal,morton} --aircraft --dt --lead-in --sharpness --png`. `--lead-in` below ~12 core
+radii contaminates the first core (§9 session 3); `--sharpness` is a declared modelling
+parameter, not source data. Both scripts read the case constants from `wind.PARKS_CASES`,
+so they cannot disagree about a sourced number.
 
 ### Flying it
 
-Arrows are a spring-centred centre stick, so **up is stick forward and pitches the nose
-down**. `,` and `.` are rudder, `-` and `=` throttle, `a` toggles the autopilot. Releasing
-a surface axis returns it to the deflection held at the last mode handover, not to zero;
-the throttle stays where it is left, because a lever does. Close the window to end the
-flight — the post-flight figure opens afterwards, and `--save` writes the `.npz` first.
+    arrows   centre stick: up is stick forward, so up pitches the nose DOWN
+    ,  .     rudder left/right
+    -  =     throttle down/up
+    [  ]     pitch trim, nose down/up
+    t        trim here — hold the deflections the stick is holding now
+    a        toggle manual/autopilot
+
+The stick **ramps** rather than snapping to full travel: a held key reaches the stop in
+0.4 s and a released one springs back at the same rate, so a tap is a small input. That
+rate is a declared figure in `panel.py`, not a measured one, and it is stepped on the
+physics clock — stepping it per frame would make the feel depend on the render rate.
+
+Releasing a surface axis returns it to `ManualState.reference`, and **trim is what moves
+that reference**. Without trimming, the reference is whatever the surfaces were doing at
+the last mode handover, so after a manoeuvre it is stale and the aircraft drifts. `t`
+trims to what the stick is holding *right now*, so it must be pressed while the stick is
+still held — once the stick has centred, the surfaces are already at the reference and
+trim-here correctly does nothing. The throttle stays where it is left, because a lever
+does, and trim is not sprung either.
+
+Close the window to end the flight — the post-flight figure opens afterwards, and
+`--save` writes the `.npz` first.
+
+### What is on the panel
+
+Basic T: airspeed and altitude tapes flanking the attitude ball, VSI beside the altitude,
+heading tape below. The slip ball is at the top of the ball and reads **lateral specific
+force, not β** — a ball is a pendulum, and the two quantities agree only in steady
+coordinated flight. The teal marker on the ball is the body-axis **incidence** pair
+(−α, +β); it is deliberately not called a flight path vector, which is earth-referenced
+and would rotate with bank.
+
+The overlay is the flight-test half: load factor with a peak hold, air-relative α against
+the **declared** linear-aero band (green to 10°, amber to 12°, red beyond — PROJECT.md §7,
+not a stall table), the applied wind, and the gust rate labelled **SIM TRUTH** because
+`omega_gust` is a span-wise gradient and no instrument can sense it. Under `--wind` the
+status line carries the range to the field: a north distance and a closure rate for a
+vortex array, whose cores are infinite east–west lines and therefore have no bearing, and
+a range and bearing for an updraft column, which is a point.
 
 Physics runs at a fixed 50 Hz regardless of frame rate; rendering targets 20 fps and
 measures itself to hold that (matplotlib's `interval` is the gap between frames, not the
-period). Measured on TkAgg: 19.9 fps, real-time ratio 0.9994, no drift over 15 s.
+period). Measured on TkAgg: 19.9 fps, real-time ratio 0.9994, no drift over 15 s. That
+measurement predates the re-layout, which replaced a 3D axes with a dozen 2D ones — it
+should be re-taken before being quoted again.
 
 ### Which paths are trustworthy under wind
 
@@ -516,7 +639,8 @@ model and silently assumes still air.
 | `scripts/vortex.py`, `vortex_viz.py` | **Correct.** Air-relative throughout, by construction. |
 | `integrate.step`, `dynamics`, `aero` | **Correct.** The core has always been air-relative. |
 | `autopilot.py`, `manual.py` | **Correct since session 5.** Take `AirData`; the speed loop holds true airspeed. |
-| `viz.py` live panel and `Derived` | **Correct since session 5.** Sensed from the recorded wind. |
+| `scripts/fly.py`, `panel.py` | **Correct since session 6.** `run_live` takes a `wind_model` and the panel senses from the wind the last step applied. Before that the live path could not fly through a field at all. |
+| `viz.py` `Derived` and `post_flight` | **Correct since session 5.** Sensed from the recorded wind. |
 | `viz.Trajectory` / saved `.npz` | Records the applied wind. Files written before session 5 load as still air. |
 | `trim.py` | Still-air by construction and must stay so. Not a defect. |
 
