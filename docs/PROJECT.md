@@ -4,7 +4,9 @@ A 6-DOF fixed-wing flight-dynamics core in JAX, built as a foundation for turbul
 modelling. This document is the standing record: what exists, what is validated, what is
 known-broken, and what happens next.
 
-**Last updated:** session 3 (vortex model, updraft, analysis figure).
+**Last updated:** session 4 (usage record).
+
+**To run any of it, see §10.**
 
 ---
 
@@ -16,7 +18,8 @@ session normally edits only the volatile ones.
 | When you… | Edit |
 |---|---|
 | finish any session | §9 session log — add an entry at the top |
-| land a new module or change a public API | §2 architecture |
+| land a new module or change a public API | §2 architecture **and** §10 running it |
+| add or change a script, flag or key binding | §10 running it |
 | measure a number against a source | §4 evidence ledger — never delete a row, supersede it |
 | find a gap the source cannot fill | §5 gaps — say which source failed and why |
 | find a bug that does not fail a test | §6 latent bugs |
@@ -268,11 +271,24 @@ Steps 4 and 5 are independent and either may go first. Step 6 needs both.
   whole array (6.75) give three different answers, and only the first core separates
   cleanly from the updraft. It is currently an explicit argument, printed in the figure's
   provenance footer.
-- **Suite runtime is not currently measurable.** The same untouched 187 tests have run in
-  53 s and 164 s on the same machine. Re-measure on a quiet machine before treating any
-  timing as a baseline.
+- **Suite runtime is not currently measurable.** The same untouched tests (187 at the time,
+  209 now) have run in 53 s and 164 s on the same machine. Re-measure on a quiet machine
+  before treating any timing as a baseline.
 
 ## 9. Session log
+
+### Session 4 — usage record
+No code changed. Added §10 because nothing in this document said how to *run* any of it:
+the architecture table names modules, not entry points, and the four scripts had their
+usage only in their own docstrings. Recorded every script, flag, key binding and library
+entry point, and which of them are trustworthy under wind (most are not — §6(a) and (b)
+mean the live panel and the autopilot both mis-sense under a wind field, so `scripts/
+vortex.py` and `vortex_viz.py` are the only air-relative analysis path).
+
+Corrected a stale count in §8: 187 → 209 collected tests.
+
+Deliberately not done: the Cessna was left exactly as it is (§5 keeps it out of scope) and
+no attempt was made to reconcile the design spec, which stays a historical document per §1.
 
 ### Session 3 — vortex model, updraft, analysis figure
 Retrieved Parks 1985 and used it to replace every assumed part of the vortex model with a
@@ -308,3 +324,94 @@ What changed and why. Numbers measured, with what they were compared against.
 Anything found to be wrong in earlier work, stated plainly.
 What was deliberately not done.
 ```
+
+---
+
+## 10. Running it
+
+Python 3.10.11, `.venv` in the project root. All commands are run **from the project
+root**; the scripts import `flightsim` from the editable install, not from `scripts/`.
+
+### The five entry points
+
+| Command | What it does |
+|---|---|
+| `.venv/Scripts/python.exe -m pytest flightsim/tests -q` | 209 tests. The first thing to run and the only complete statement of what works. |
+| `.venv/Scripts/python.exe scripts/checkpoint.py` | 747 only, no flags. Trim residuals, 60 s fixed-control hold, longitudinal modes against CR-2144 Table IX-5. |
+| `.venv/Scripts/python.exe scripts/tune.py --aircraft cherokee` | Autopilot step responses for one aircraft. Exits non-zero on failure, so it is usable as a gate. |
+| `.venv/Scripts/python.exe scripts/fly.py --aircraft cherokee --save runs/a.npz` | Interactive flight. **Still air only — see the warning below.** |
+| `.venv/Scripts/python.exe scripts/vortex.py --case hannibal --png runs/v.png` | Flies the 747 through the Parks vortex array and the Wingrove updraft, draws the analysis figure. This is the turbulence path. |
+| `.venv/Scripts/python.exe scripts/analyse.py runs/a.npz` | Replays a saved `.npz`. Accepts several files; `--png DIR` writes instead of showing. |
+
+Flags: `tune.py` takes `--aircraft` only. `fly.py` takes `--aircraft --autopilot --save
+--dt --fps --window --seed`. `vortex.py` takes `--case {hannibal,morton} --aircraft --dt
+--lead-in --sharpness --png`. `--lead-in` below ~12 core radii contaminates the first core
+(§9 session 3); `--sharpness` is a declared modelling parameter, not source data.
+
+### Flying it
+
+Arrows are a spring-centred centre stick, so **up is stick forward and pitches the nose
+down**. `,` and `.` are rudder, `-` and `=` throttle, `a` toggles the autopilot. Releasing
+a surface axis returns it to the deflection held at the last mode handover, not to zero;
+the throttle stays where it is left, because a lever does. Close the window to end the
+flight — the post-flight figure opens afterwards, and `--save` writes the `.npz` first.
+
+Physics runs at a fixed 50 Hz regardless of frame rate; rendering targets 20 fps and
+measures itself to hold that (matplotlib's `interval` is the gap between frames, not the
+period). Measured on TkAgg: 19.9 fps, real-time ratio 0.9994, no drift over 15 s.
+
+### Which paths are trustworthy under wind
+
+This is the part that is easy to get wrong, because most of the tooling predates the wind
+model and silently assumes still air.
+
+| Path | Under wind |
+|---|---|
+| `scripts/vortex.py`, `vortex_viz.py` | **Correct.** Air-relative throughout, by construction. |
+| `integrate.step`, `dynamics`, `aero` | **Correct.** The core has always been air-relative. |
+| `trim.py` | Still-air by construction and must stay so. Not a defect. |
+| `autopilot.py` | **Wrong under wind** — §6(a). The speed loop regulates groundspeed and the sideslip term sees a flow angle no vane would produce. |
+| `viz.py` live panel and `Derived` | **Wrong under wind** — §6(b). Incidence comes from inertial velocity; measured error up to 7 deg of α in a Parks encounter. Its own test cannot catch this. |
+| `viz.Trajectory` / saved `.npz` | Records no wind — §6(c). Recoverable only by replaying the wind model over the logged states. |
+
+So: `fly.py` is a still-air tool. Turbulence work goes through `scripts/vortex.py`.
+
+### Aircraft
+
+`--aircraft` accepts `boeing747`, `cherokee`, `cessna172`. The 747 is the only one with
+modes validated against a source (§4) and the only one used for turbulence work. The
+Cherokee is the validated light aircraft. **The Cessna is out of scope** (§5): its rudder
+set is zeroed because the source omits it, so its turns are uncoordinated. It trims, flies
+and passes its tests, but no result should be quoted from it.
+
+### Library use, without any script
+
+```python
+import flightsim                                   # enables x64 — import first
+from flightsim import trim, integrate, autopilot as ap
+from flightsim.aircraft import REGISTRY, CRUISE
+
+ac = REGISTRY["boeing747"]
+V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
+x, residual = trim.trim(jnp.array(V), jnp.array(H), ac)         # [alpha, elevator, throttle]
+state    = trim.trimmed_state(x[0], jnp.array(V), jnp.array(H))
+controls = trim.trimmed_controls(x[1], x[2])
+sim      = integrate.init_sim(state, jax.random.PRNGKey(0))
+```
+
+- Open loop: `integrate.rollout(sim, controls, dt, ac, n_steps, wind_model=...)`.
+- Closed loop: `ap.engage(...)` then `ap.closed_loop_rollout(...)` — autopilot inside `lax.scan`.
+- Ensembles: `integrate.batch_sim(state, keys)` then `jax.vmap` the rollout. Deterministic
+  wind components return the key untouched, so every member meets the same field.
+- Wind: build with `wind.VortexArray` / `wind.UpdraftColumn`, wrap with
+  `wind.field_model(...)`, combine with `wind.superpose(...)`, pass as `wind_model=`.
+- `trim.minimum_drag_speed(ac, altitude)` bounds the autopilot: below V_md the
+  throttle-to-speed, elevator-to-altitude pairing inverts and no gain set repairs it. The
+  Cherokee cruises 2.7 m/s above it, the 747 2.5 m/s.
+
+### Environment notes
+
+The `.venv` lives in the project root and only there — running from a git worktree needs
+`PYTHONPATH` set to the worktree, or the editable install resolves to the main checkout.
+Live flight needs an interactive matplotlib backend (TkAgg is the default here); the test
+suite forces Agg and drives the animation, blitting and key events for real.
