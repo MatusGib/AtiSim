@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 
 import flightsim  # noqa: F401  -- enables x64 before any array is made
 from flightsim import autopilot as ap_mod
-from flightsim import integrate, manual as man, trim, viz
+from flightsim import integrate, manual as man, panel as panel_mod, trim, viz
 from flightsim.aircraft import CRUISE, REGISTRY
 from flightsim.sensors import sense
 from flightsim.units import RAD2DEG
@@ -63,7 +63,7 @@ ctl = man.start(sense(state), controls, targets, gains, ac, mode=mode)
 sim = integrate.init_sim(state, jax.random.PRNGKey(args.seed))
 
 print(f"  starting in {mode.name}. Close the window to finish.")
-traj = viz.run_live(
+traj = panel_mod.run_live(
     sim, ctl, targets, gains, mgains, ac, dt=args.dt, fps=args.fps, window=args.window
 )
 
