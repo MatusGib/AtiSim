@@ -42,10 +42,19 @@ specific force, which is a force over a mass, so they need the controls and the
 aircraft -- and the air-data computer has neither. A real aircraft has two boxes
 here, and so does this module. Making `sense` depend on `dynamics` to fold them
 in would be worse than a second function.
+
+**Both readers are jitted**, which is a performance decision with a measured
+reason rather than a reflex. Eager JAX dispatches every operation separately, and
+`sense` is about twenty tiny operations on 3- and 4-element arrays, so the Python
+dispatch overhead swamps the arithmetic completely: 6.56 ms eager against 0.028
+ms jitted, a factor of 234. The live panel calls `sense` once per physics step
+and `accelerometers` once per frame, so eager dispatch alone was costing about
+44 ms of every 73 ms frame -- more than the whole instrument panel took to draw.
 """
 
 from typing import NamedTuple
 
+import jax
 import jax.numpy as jnp
 from jax import Array
 
@@ -73,6 +82,7 @@ class AirData(NamedTuple):
     vertical_speed: Array  # m/s, positive UP, inertial
 
 
+@jax.jit
 def sense(state: State, wind_ned: Array = STILL_AIR) -> AirData:
     """Read the instruments.
 
@@ -120,6 +130,7 @@ class Accelerations(NamedTuple):
     n_z: Array  # g, positive UP-ish: +1 in level flight
 
 
+@jax.jit
 def accelerometers(
     state: State,
     controls: Controls,
