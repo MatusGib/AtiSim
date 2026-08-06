@@ -27,10 +27,21 @@ without saying what the air is doing.
                             does not.
     altitude                barometric. Treated as geometric here; the
                             atmosphere model has no pressure-error term.
+    vertical_speed          barometric VSI. INERTIAL. It reads the rate of
+                            change of geometric height, so an updraft that
+                            CARRIES the aircraft up is read -- but through the
+                            trajectory, on the next step. The wind vector itself
+                            never enters the calculation.
 
 Getting the rate group wrong in the other direction is the classic
 overcorrection: feeding `omega - omega_gust` to a rate-damping loop makes the
 autopilot chase a gust gradient no gyro can see.
+
+**The accelerometer package is a SEPARATE function.** `n_x, n_y, n_z` are a
+specific force, which is a force over a mass, so they need the controls and the
+aircraft -- and the air-data computer has neither. A real aircraft has two boxes
+here, and so does this module. Making `sense` depend on `dynamics` to fold them
+in would be worse than a second function.
 """
 
 from typing import NamedTuple
@@ -39,8 +50,9 @@ import jax.numpy as jnp
 from jax import Array
 
 from flightsim.aero import air_data
-from flightsim.dynamics import relative_velocity
-from flightsim.state import State, quat_to_euler
+from flightsim.aircraft import Aircraft
+from flightsim.dynamics import relative_velocity, specific_force
+from flightsim.state import Controls, State, quat_to_dcm, quat_to_euler
 
 STILL_AIR = jnp.zeros(3)
 
@@ -58,6 +70,7 @@ class AirData(NamedTuple):
     q: Array  # rad/s, inertial
     r: Array  # rad/s, inertial
     altitude: Array  # m
+    vertical_speed: Array  # m/s, positive UP, inertial
 
 
 def sense(state: State, wind_ned: Array = STILL_AIR) -> AirData:
@@ -70,6 +83,10 @@ def sense(state: State, wind_ned: Array = STILL_AIR) -> AirData:
     airspeed, alpha, beta = air_data(relative_velocity(state.vel_body, state.quat, wind_ned))
     phi, theta, psi = quat_to_euler(state.quat)
     p, q, r = state.omega
+    # Inertial, and deliberately not built from `relative_velocity`: the VSI
+    # reads how fast the airframe is actually changing height, not how fast it
+    # is moving through the air mass.
+    vel_ned = quat_to_dcm(state.quat) @ state.vel_body
     return AirData(
         airspeed=airspeed,
         alpha=alpha,
@@ -81,4 +98,40 @@ def sense(state: State, wind_ned: Array = STILL_AIR) -> AirData:
         q=q,
         r=r,
         altitude=-state.pos_ned[2],
+        vertical_speed=-vel_ned[2],
     )
+
+
+class Accelerations(NamedTuple):
+    """The accelerometer package. Body axes, in g.
+
+    NOTE THE SIGN ASYMMETRY, which is inherited rather than a mistake: `n_z`
+    follows the load-factor convention and reads +1 in level flight, so it is
+    the NEGATED z component of the specific force. `n_x` and `n_y` are the raw
+    components, positive forward and positive right.
+
+    These are neither air-relative nor inertial in the sense the table above
+    uses. They are a FORCE over a mass, so a gust moves them -- by changing the
+    flow the wings see, which changes the lift.
+    """
+
+    n_x: Array  # g, positive FORWARD
+    n_y: Array  # g, positive RIGHT
+    n_z: Array  # g, positive UP-ish: +1 in level flight
+
+
+def accelerometers(
+    state: State,
+    controls: Controls,
+    ac: Aircraft,
+    wind_ned: Array = STILL_AIR,
+    omega_gust: Array = STILL_AIR,
+) -> Accelerations:
+    """Read the accelerometer package.
+
+    Separate from `sense` for the reason given in the module docstring: a
+    specific force needs a mass and a set of deflections, and an air-data
+    computer has neither.
+    """
+    n = specific_force(state, controls, ac, wind_ned, omega_gust)
+    return Accelerations(n_x=n[0], n_y=n[1], n_z=-n[2])

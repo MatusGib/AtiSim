@@ -254,3 +254,68 @@ def test_the_747_pitch_damping_matches_cr2144_table_ix_4():
     # Cmq is linear in Mq, so the shipped value pins the transcription.
     # -0.330 gives Cmq -23.288; -0.339 gives -23.923.
     assert float(REGISTRY["boeing747"].Cmq) == pytest.approx(-23.923, rel=1e-3)
+
+
+# --- vertical speed and the accelerometer package ---------------------------
+
+
+def test_vertical_speed_is_inertial_and_matches_the_ned_velocity(trimmed):
+    """Computed independently from the quaternion, not by calling the same helper.
+
+    A VSI fed anything else -- body w, or the down component of the AIR-relative
+    velocity -- passes any still-air level test. This one is rolled, pitched and
+    yawed in a wind, so neither substitution survives.
+    """
+    from flightsim.state import euler_to_quat, quat_to_dcm
+
+    state, _, _ = trimmed
+    tilted = state._replace(
+        quat=euler_to_quat(jnp.array(0.3), jnp.array(0.15), jnp.array(0.7))
+    )
+    air = sense(tilted, jnp.array([5.0, -3.0, 2.0]))
+
+    vel_ned = quat_to_dcm(tilted.quat) @ tilted.vel_body
+    assert float(air.vertical_speed) == pytest.approx(-float(vel_ned[2]), abs=1e-12)
+    # Body w would be a different number entirely; make sure we did not get it.
+    assert abs(float(air.vertical_speed) + float(tilted.vel_body[2])) > 1.0
+
+
+def test_vertical_speed_ignores_the_wind_argument_itself(trimmed):
+    """It is INERTIAL.
+
+    A barometric VSI reads the rate of change of geometric height, so an updraft
+    that CARRIES the aircraft up is read -- through the trajectory, on the next
+    step. But the instantaneous wind vector must not enter the calculation, or
+    the VSI would show a climb the aircraft is not making.
+    """
+    state, _, _ = trimmed
+    still = sense(state, jnp.zeros(3))
+    blown = sense(state, jnp.array([0.0, 0.0, -12.0]))
+    assert float(blown.vertical_speed) == pytest.approx(float(still.vertical_speed), abs=1e-12)
+
+
+def test_accelerometers_report_specific_force_with_the_load_factor_sign(trimmed):
+    from flightsim import dynamics
+    from flightsim.sensors import accelerometers
+
+    state, controls, _ = trimmed
+    n = accelerometers(state, controls, AC, jnp.zeros(3), jnp.zeros(3))
+    raw = dynamics.specific_force(state, controls, AC, jnp.zeros(3), jnp.zeros(3))
+
+    assert float(n.n_x) == pytest.approx(float(raw[0]), abs=1e-15)
+    assert float(n.n_y) == pytest.approx(float(raw[1]), abs=1e-15)
+    assert float(n.n_z) == pytest.approx(-float(raw[2]), abs=1e-15)
+    # Trimmed level flight: n_z is cos(theta) (see test_dynamics), lateral quiet.
+    assert float(n.n_z) == pytest.approx(0.9967, abs=1e-3)
+    assert abs(float(n.n_y)) < 1e-6
+
+
+def test_accelerometers_see_a_gust_because_it_changes_the_aerodynamic_force(trimmed):
+    """The accelerometer package is not air-relative or inertial -- it reads a
+    FORCE, and a gust changes the force by changing the flow over the wings."""
+    from flightsim.sensors import accelerometers
+
+    state, controls, _ = trimmed
+    still = accelerometers(state, controls, AC, jnp.zeros(3), jnp.zeros(3))
+    gusted = accelerometers(state, controls, AC, jnp.array([0.0, 0.0, -10.0]), jnp.zeros(3))
+    assert float(gusted.n_z) > float(still.n_z) + 0.05
