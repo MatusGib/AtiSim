@@ -20,7 +20,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from flightsim import wind
+from flightsim import dynamics, wind
 from flightsim.units import FT2M
 
 # Parks Table/prose values, Case 1 (Hannibal, MO, 3 April 1981, DC-10, 37,000 ft)
@@ -440,9 +440,18 @@ def test_parks_case_1_reproduces_the_gust_spacing_and_pitch_signature():
     3500 ft at this aircraft's 235.9 m/s gives 4.52 s.
 
     The in-core pitch excursion is the Wingrove & Bach Fig. 8 discriminator.
-    Measured here: 1.89 deg over the first core, against Fig. 8's 1.4 deg
+    Measured here: 2.20 deg over the first core, against Fig. 8's 1.4 deg
     extreme for the vortex category and 6.2 deg / 12 deg for the updraft and
     manoeuvring categories -- the right cluster by a wide margin.
+
+    *** THE LEAD-IN IS PART OF THE MEASUREMENT. *** The vortex far field falls
+    off only as 1/r, so starting too close launches the aircraft out of
+    equilibrium and contaminates the first core. Measured n_z at t=0 against
+    lead-in distance: 1.2033 at 6*r0, 1.0696 at 20, 1.0352 at 40, 1.0127 at
+    100; first-core pitch excursion correspondingly 1.888 deg at 6*r0 rising to
+    a converged 2.18-2.22 beyond about 12. The 6*r0 lead-in used originally
+    understated the answer by 15% and did so invisibly, which is why the
+    initial load factor is now asserted rather than assumed.
 
     NOTE the windowing trap, which is why the assertion is on the FIRST core
     and not the run: whole-run pitch excursion is 8.79 deg, because the
@@ -466,26 +475,37 @@ def test_parks_case_1_reproduces_the_gust_spacing_and_pitch_signature():
         r0=jnp.array(CASE1_R0),
         v0=jnp.array(CASE1_V0),
     )
+    lead_in = 40.0 * CASE1_R0
     state = trim.trimmed_state(jnp.array(alpha), jnp.array(v), jnp.array(h))
-    state = state._replace(pos_ned=jnp.array([-6.0 * CASE1_R0, 0.0, -h]))
+    state = state._replace(pos_ned=jnp.array([-lead_in, 0.0, -h]))
 
+    model = wind.vortex_model(array)
     dt = 0.01
-    n = int(round((CASE1_SPACING + 12.0 * CASE1_R0) / v / dt))
+    n = int(round((CASE1_SPACING + lead_in + 6.0 * CASE1_R0) / v / dt))
     _, hist = integrate.rollout(
         integrate.init_sim(state, jax.random.PRNGKey(0)), controls,
-        jnp.array(dt), ac, n, wind_model=wind.vortex_model(array),
+        jnp.array(dt), ac, n, wind_model=model,
     )
     theta = np.asarray(jax.vmap(quat_to_euler)(hist.quat))[:, 1]
     north = np.asarray(hist.pos_ned)[:, 0]
+
+    # The aircraft must START in equilibrium, or the first core is measuring
+    # the launch transient as much as the vortex.
+    n_z0 = float(
+        dynamics.load_factor(state, controls, ac, *model(
+            wind.zero_wind_state(), state, jax.random.PRNGKey(0), jnp.array(dt)
+        )[:2])
+    )
+    assert n_z0 == pytest.approx(0.9967, abs=0.05), n_z0  # measured 1.0352
 
     # kinematics: gust spacing is airframe-independent
     assert CASE1_SPACING / v == pytest.approx(4.52, abs=0.05)
 
     in_first_core = np.abs(north - 0.0) <= CASE1_R0
     dtheta = (theta[in_first_core].max() - theta[in_first_core].min()) * RAD2DEG
-    assert 0.5 < dtheta < 3.0, dtheta  # measured 1.89 deg; Fig. 8 vortex ~1.4
+    assert 1.0 < dtheta < 3.5, dtheta  # measured 2.20 deg; Fig. 8 vortex ~1.4
 
     # and the encounter must be far smaller in pitch than the post-encounter
     # phugoid, which is the windowing trap this test exists to pin down
     whole = (theta.max() - theta.min()) * RAD2DEG
-    assert whole > 3.0 * dtheta  # measured 8.79 vs 1.89
+    assert whole > 3.0 * dtheta  # measured 8.33 vs 2.20

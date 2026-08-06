@@ -1,0 +1,310 @@
+# JAX Flight Simulator — project record
+
+A 6-DOF fixed-wing flight-dynamics core in JAX, built as a foundation for turbulence
+modelling. This document is the standing record: what exists, what is validated, what is
+known-broken, and what happens next.
+
+**Last updated:** session 3 (vortex model, updraft, analysis figure).
+
+---
+
+## How to update this document
+
+This file is split into **stable** sections (§1–§5) and **volatile** ones (§6–§9). A
+session normally edits only the volatile ones.
+
+| When you… | Edit |
+|---|---|
+| finish any session | §9 session log — add an entry at the top |
+| land a new module or change a public API | §2 architecture |
+| measure a number against a source | §4 evidence ledger — never delete a row, supersede it |
+| find a gap the source cannot fill | §5 gaps — say which source failed and why |
+| find a bug that does not fail a test | §6 latent bugs |
+| complete or re-order planned work | §7 plan |
+| discover something that changes the approach | §8 open questions |
+
+Two rules carried from `CLAUDE.md` and enforced throughout the code:
+
+- **Flag, never invent.** Every number carries the table it came from. A parameter the
+  source does not supply is named as a declared modelling choice, not given a plausible
+  default. If you add a number here without a citation, you have broken the project.
+- **Do not edit a tolerance to make a test pass.** §4's "validated baseline" files are
+  off-limits to feature work; if one moves, something real broke.
+
+---
+
+## 1. What this is
+
+Quaternion state, fixed-step RK4, `lax.scan` rollout, `jit` + `vmap` over PRNG keys.
+Three aircraft, a cascaded PID autopilot, manual control, matplotlib visuals, and a
+turbulence layer under construction. Float64 throughout (`jax_enable_x64`, set before any
+array is created — a Newton trim solve to 1e-10 and quaternion norm stability over 1e5
+steps are both marginal in float32).
+
+The original design spec is `docs/superpowers/specs/2026-08-04-jax-flight-sim-design.md`.
+It remains accurate on architecture. **It is stale in one respect: it lists turbulence as
+out of scope, which is no longer true** — that was always the intended destination, and
+the two "non-negotiable interfaces" it names exist precisely so turbulence could be added
+without a core rewrite. Both have now been exercised and both held.
+
+## 2. Architecture
+
+| Module | Responsibility | Notes |
+|---|---|---|
+| `units.py` | conversion constants only | no logic; factors are never inlined elsewhere |
+| `state.py` | `State`/`Controls`, quaternion utilities | NED inertial, body x-fwd/y-right/z-down; quat is `[w,x,y,z]`, body→NED |
+| `atmosphere.py` | ISA to 20 km | two layers — the 747 cruise sits above the tropopause |
+| `aero.py` | coefficient build-up | **takes `vel_rel`/`omega_rel` only; never sees inertial velocity** |
+| `dynamics.py` | 6-DOF Newton-Euler, `load_factor` | wind enters here and nowhere else |
+| `wind.py` | wind fields and composition | vortex array, updraft column, `superpose`, `field_model` |
+| `integrate.py` | RK4 `step`, `rollout`, batched rollout | wind sampled once per step, held across the four stages |
+| `aircraft.py` | three aircraft + `REGISTRY`/`CRUISE` | every derivative cites its source table |
+| `trim.py` | Newton solve for steady level flight | still-air by construction, and must stay so |
+| `autopilot.py` | cascaded PID | per-aircraft gains; bumpless engage |
+| `manual.py` | manual control and mode switching | |
+| `viz.py` | live panel, `Trajectory`, `post_flight` | **inertial incidence — see §6(b)** |
+| `vortex_viz.py` | turbulence encounter analysis and figure | air-relative throughout; deliberately separate from `viz.py` |
+
+### The two interfaces turbulence depends on
+
+1. **Aero is air-relative.** `dynamics.py` forms `vel_rel = vel_body - dcm.T @ wind_ned`
+   and `omega_rel = omega - omega_gust`, then passes only those to `aero.py`. The
+   Coriolis, gyroscopic and kinematic terms deliberately keep the **inertial** velocity
+   and rate — a gust changes the flow the wings see, not the airframe's ground velocity.
+   Substituting `vel_rel` into the Coriolis term breaks Galilean invariance; adding an
+   explicit `-m·dW/dt` term double-counts. Both are classic gust-modelling errors.
+2. **A PRNG key is threaded through `step`.** Deterministic components return it
+   untouched, so a batch of keys varies only the stochastic part — every member of an
+   ensemble meets the same vortex at the same place.
+
+### Wind model contract
+
+```python
+wind_model(wind_state, state, key, dt) -> (wind_ned, omega_gust, wind_state, key)
+```
+`wind_ned` is NED; **`omega_gust` is body-axis** (it is subtracted from `state.omega`).
+`state.pos_ned` is available, so a spatial field needs no signature change.
+`field_model(field)` wraps any position-only field and derives `omega_gust` from its
+analytic gradient, so a component cannot contribute a translational gust while silently
+omitting its rotational one.
+
+Gust-rate signs, derived from the repo's own conventions:
+`p_gust = +∂w_g/∂y`, `q_gust = −∂w_g/∂x`, `r_gust = +∂v_g/∂x`.
+
+## 3. Sources
+
+| Source | Supplied | Known gap |
+|---|---|---|
+| NASA CR-2144 (Heffley & Jewell 1972), §IX | 747 geometry, inertia, dimensional derivatives, transfer-function factors, drag figure | no non-dimensional cruise set; **no buffet-onset data at all** |
+| McCormick (via a worked example) | Cherokee PA-28-180 dimensional derivatives | no second source for the lateral set; `Izz < Iyy` flagged by its own author |
+| Roskam / USAF DATCOM via PyFME | Cessna 172 non-dimensional tables | rudder derivatives omitted and inconsistent — the whole rudder set is zeroed |
+| Nelson / Etkin / McRuer | Navion per-radian derivatives | no extractable published mode table was found; tests assert ranges, not values |
+| **Parks, Wingrove, Bach & Mehta 1985**, J. Aircraft 22(2) 124–129 | **the vortex model** — Rankine core, array by superposition, and identified parameters | α is *inferred* from accelerometers through an assumed aero model — see §5 |
+| **Wingrove & Bach 1994**, J. Aircraft 31(4) 753–760 | updraft magnitudes/duration, g-load statistics, the Fig. 8 discriminator | never identifies an aircraft type; no updraft edge gradient; no lateral data |
+| MIL-F-8785C | (not yet used) Dryden spectra | σ above 2000 ft is a **chart read**, not a formula — must be digitised |
+
+### The vortex model, as cited
+
+Parks §"Vortex Modeling", Eqs. (3)–(6): *"a rotational (solid-body) core embedded in an
+irrotational flow"*, axis horizontal and perpendicular to the wind vector, with
+`r = (ℓ²cos²Δψ + d²)^½`:
+
+| | horizontal `w_xy` | vertical `w_z` |
+|---|---|---|
+| outside (`r ≥ r₀`) | `V₀r₀d/r²` | `−V₀r₀ℓcosΔψ/r²` |
+| inside (`r < r₀`) | `V₀d/r₀` | `−V₀ℓcosΔψ/r₀` |
+
+Arrays are linear superposition. Identified cases, both DC-10s near the tropopause:
+
+| Case | Altitude | r₀ | V₀ | Spacing | Spacing/diameter |
+|---|---|---|---|---|---|
+| 1 Hannibal MO | 37,000 ft | 600 ft | 85 ft/s | 3500 ft | 2.92 |
+| 2 Morton WY | 39,000 ft | 450 ft | 70 ft/s | 3200 ft | 3.56 |
+
+Parks checks that ratio against Scorer's theoretical 2.7 — which is what turned the array
+spacing from a free parameter into a cited one.
+
+> **Note a source conflict:** Wingrove & Bach 1994 Fig. 4 gives Hannibal's core diameter
+> as 1000 ft; Parks 1985 gives r₀ = 600 ft, i.e. **1200 ft**, and its abstract states the
+> range "900 to 1200 ft". Parks is the primary identification source and is used here.
+
+## 4. Evidence ledger
+
+Every figure below is measured, with the tolerance the test asserts.
+
+### Integrator and rigid body
+
+| Check | Measured | Tolerance |
+|---|---|---|
+| Angular-momentum magnitude drift, 600 s / 60,000 steps | 5.7e-13 | 1e-11 |
+| Angular-momentum direction drift | 1.5e-6 deg | 3e-5 deg |
+| Rotational KE drift | 9.3e-13 | 2e-11 |
+| Quaternion norm, 1e5 steps | holds | atol 1e-12 |
+| Coordinated turn vs `g·tanφ/V`, 25.4° bank | 1.12% | 3% |
+| Zero-strength wind vs still air, 2000 steps | **bit-identical**, max diff 0.0 | `np.array_equal` |
+
+### 747 modes vs CR-2144
+
+| Mode | Model | Reference | Error |
+|---|---|---|---|
+| Dutch roll ωn | 0.943 | 0.947 rad/s | 0.4% |
+| Dutch roll ζ | 0.0361 | 0.0349 | 3.4% |
+| Roll τ | 1.795 s | 1.779 s | 0.9% |
+| Spiral τ | 138.0 s | 137.0 s | 0.8% |
+| Phugoid ωn (as shipped) | 0.0554 | 0.0673 rad/s | 18% — attributed, §5 |
+| Short-period ζ (as shipped) | 0.338 | 0.387 | 13% — attributed, §5 |
+| Phugoid / short period (augmented model) | — | — | ~1% |
+
+### Vortex and updraft encounters (747 at CR-2144 FC9)
+
+| Quantity | Measured | Reference |
+|---|---|---|
+| Gust spacing, Parks Case 1 | 4.52 s | "about 5 s apart" |
+| In-core Δθ, first core | 2.20 deg | Fig. 8 vortex ≈1.4 deg |
+| In-core Δθ, second core | 4.17 deg | response builds through the array |
+| Whole-run Δθ | 8.33 deg | the phugoid, **not** the encounter |
+| Peak load excursion, vortex | −1.23 g | — |
+| In-column Δθ, updraft (sharpness 6) | 4.39 deg | paper states 5.2 deg; Fig. 8 cluster 6.2 |
+| Updraft Δθ across sharpness 2→10 | 3.63 → 5.34 deg | the declared parameter's influence |
+| Air-relative vs inertial α, peak difference | 7.0 deg | — |
+| corr(n_z, α) air-relative / inertial | 0.9990 / 0.5572 | — |
+
+### The Fig. 8 mechanism
+
+747 short period is 6.6 s undamped. A 1.5 s vortex traverse is ~0.2 of that (impulsive);
+a 20 s updraft is ~3 (quasi-steady). **That 17× separation in non-dimensional encounter
+duration is the whole discriminator**, and it is a rigid-body timescale effect requiring
+no nonlinear aerodynamics — which is why this model reproduces the clustering while it
+can never reproduce the ±g asymmetry.
+
+### The validated baseline — do not touch these tolerances
+
+`test_conservation.py`, `test_cr2144_modes.py`, `test_drag_polar.py`, `test_navion.py`,
+`test_trim.py`. All are still-air statements; no reading of "turbulence landed" makes any
+of them stale. If one moves, the derivative chain or the integrator changed.
+
+## 5. Attributed gaps and structural impossibilities
+
+**Attributed — understood, documented, not bugs:**
+
+- **Phugoid and short-period offsets.** The sim's aero form is α/q/δe only; CR-2144 Table
+  IX-4's `Xu, Zu, Mu, Żw, Ṁw` are deliberately excluded. A second linear model built for
+  mode extraction only, restoring them, closes both to ~1% of the reference.
+- **Drag polar away from its fitted point.** `CD0` and `e` were back-solved from a single
+  reading. Residuals are within 0.004 near the fit, up to 0.014 below M 0.75 (parabolic
+  polar misses the induced rise) and 0.006 above M 0.88 (Korn law extrapolating past its
+  single anchor).
+- **Vortex parameter uncertainty inherited from the source.** Parks derives α from
+  accelerometers *"together with a knowledge of the aircraft's aerodynamic
+  characteristics"* — so there are two layers of modelling between the raw DFDR data and
+  the identified r₀/V₀. A 1° α error maps to 4.12 m/s of wind, 27% of a 50 ft/s peak.
+  Treat the identified parameters as order-of-magnitude with roughly ±25% bands.
+
+**Structurally impossible — cannot be fixed from any source currently held:**
+
+- **The ±g asymmetry.** Both papers attribute it to stall buffet. `aero.py` is
+  `CL = CL0 + CLa·α`, exactly odd-symmetric in Δα, so an up-gust and an equal down-gust
+  give equal and opposite load increments to machine precision. The only aircraft in the
+  project with nonlinear data is the Cessna, which is out of scope; **CR-2144 provides no
+  buffet-onset table for the 747**. Reproducing this needs a source the project does not
+  have. Do not promise it.
+- **Absolute agreement with the papers' g-loads.** Wingrove & Bach never identifies an
+  aircraft type; Parks' two cases are DC-10s at 37–39 kft against this project's 747 at
+  40 kft with roughly 0.8× the wing loading. Every load comparison is order-of-magnitude
+  or clustering. Assert bands and orderings, never values.
+
+## 6. Latent bugs — real, and none of them fail a test today
+
+**(a) `autopilot.py:104` senses inertial airspeed.** `air_data(state.vel_body)` — under
+wind the speed loop regulates *groundspeed* and the sideslip-to-rudder term receives a
+flow angle no vane would produce. Same at `autopilot.py:181` in `engage`.
+
+**(b) `viz.py:120-125` computes incidence from inertial velocity.** Under wind
+`Derived.airspeed/.alpha/.beta` are ground-relative. Worse: `test_viz.py`'s
+`test_derived_agrees_with_the_aero_module` compares viz against aero *given the same
+input*, so both sides move together and it **stays green while reporting the wrong
+quantity**. Measured error in a Parks Case 1 encounter: up to 7 deg of α.
+`vortex_viz.py` sidesteps this by computing air-relative quantities itself.
+
+**(c) `viz.Trajectory` records no wind**, so a saved `.npz` cannot be corrected even in
+principle. Zero-churn fix: replay. The wind model is a pure function of
+`(wind_state, state, key, dt)`, so re-evaluating it over the logged states reproduces the
+applied wind exactly.
+
+**(d) `aircraft.py` transcribes the 747's `Mq` as −0.330**; CR-2144 Table IX-4 flight
+condition 9 gives **−0.339**. 2.7% and it slightly worsens the short-period damping match.
+
+## 7. Plan
+
+```
+1. [DONE] Rankine vortex array, cited to Parks 1985       -> verify: source's own three
+                                                                    stated properties
+2. [DONE] Updraft column, declared edge sharpness         -> verify: Δθ(updraft) > 1.5×Δθ(vortex)
+3. [DONE] load_factor + air-relative analysis figure      -> verify: corr(n_z, α_air) > 0.999
+4. Dryden background layer                                -> verify: sample σ to rel 0.10;
+   (needs MIL-F-8785C Fig. 7 σ at 40 kft DIGITISED;                AR(1) pole = exp(−V·dt/L)
+    forces init_sim/batch_sim to be parameterised)
+5. Manoeuvring case: elevator pushdown to Δn ≈ −1.9 g     -> verify: third Fig. 8 cluster
+   at zero wind                                                    separates from the other two
+6. Fig. 8 with ensemble error bars                        -> verify: vortex/updraft/manoeuvre
+   (vmap over keys; deterministic parts see the same field)        ordering holds across the ensemble
+7. Fix latent bugs (a)-(d)                                -> verify: test_viz's derived test
+                                                                    can actually go red
+8. Mountain lee wave + F-factor                           -> verify: F exceeds the measured
+                                                                    +0.023/−0.066 thrust envelope
+```
+
+Steps 4 and 5 are independent and either may go first. Step 6 needs both.
+
+## 8. Open questions
+
+- **Row spacing beyond two cores.** Parks identifies two significant vortices per case.
+  Whether Mehta 1987 (*JGCD* 10, 27–31, DOI 10.2514/3.20176) uses a longer periodic train
+  is unconfirmed — it is paywalled and was not retrieved.
+- **The Fig. 8 load-band convention.** Whether the paper's "−1.7 to −2.0 g" is absolute
+  load factor or an increment is not resolvable from the text. The model's in-core
+  excursion of −1.23 g sits between the two readings.
+- **Which window is canonical for Fig. 8.** First core (2.20 deg), second core (4.17) and
+  whole array (6.75) give three different answers, and only the first core separates
+  cleanly from the updraft. It is currently an explicit argument, printed in the figure's
+  provenance footer.
+- **Suite runtime is not currently measurable.** The same untouched 187 tests have run in
+  53 s and 164 s on the same machine. Re-measure on a quiet machine before treating any
+  timing as a baseline.
+
+## 9. Session log
+
+### Session 3 — vortex model, updraft, analysis figure
+Retrieved Parks 1985 and used it to replace every assumed part of the vortex model with a
+cited one: Rankine profile, superposed arrays, and a spacing that Parks itself checks
+against Scorer. Added the updraft column with edge sharpness as a declared parameter.
+Added `dynamics.load_factor`, `vortex_viz.py` and `scripts/vortex.py`.
+
+Two defects found in the previous session's own work:
+- The committed vortex test used a −6·r₀ lead-in, which starts the aircraft 0.20 g out of
+  equilibrium because the 1/r far field has not died away. First-core Δθ was understated
+  by 15% (1.89 vs a converged 2.20 deg). The initial load factor is now asserted.
+- `n_z` in trimmed level flight is `cos θ = 0.9967`, not 1.0 — the body-normal
+  accelerometer reads `g·cos θ`. The first version of the test asserted the wrong physics.
+
+### Session 2 — turbulence design
+Design pass over turbulence options and analysis methods. Established that a zero-strength
+wind model is bit-identical to still air, that the rotational gust from a Wingrove-scale
+vortex exceeds the 747's full aileron authority by ~1.5×, and that the mountain-wave
+thrust-authority result (+0.023/−0.066 against F-factor ±0.2) is already true from
+existing data with no wind model at all. Surfaced latent bugs (a)–(c).
+
+### Session 1 — validation pass
+Converted ad hoc checkpoint prints into 18 asserted tolerance-bound tests. Found no
+lateral bug — the suspected Dutch-roll damping gap did not exist. Established that a
+previously reported 103 s spiral was a linearisation artifact (a dropped
+`r·cosφ·tanθ₀` term), confirmed by a nonlinear decay fit giving 138.05 s. Attributed the
+phugoid/short-period gap to the excluded speed and α̇ derivatives.
+
+### Template for a new entry
+```
+### Session N — one-line theme
+What changed and why. Numbers measured, with what they were compared against.
+Anything found to be wrong in earlier work, stated plainly.
+What was deliberately not done.
+```

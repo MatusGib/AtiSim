@@ -196,6 +196,63 @@ def test_stability_to_body_round_trips():
     assert float(cn_s) == pytest.approx(0.09, abs=1e-15)
 
 
+def test_load_factor_in_trimmed_level_flight_is_cos_theta_not_one():
+    """n_z is the BODY-NORMAL load factor -- what an accelerometer reads.
+
+    In trimmed level flight the body z axis is tilted from the vertical by the
+    pitch attitude, so the reading is g*cos(theta), not g. At the 747's CR-2144
+    trim of theta = 4.636 deg that is 0.99673, and asserting 1.0 here would be
+    asserting the wrong physics.
+
+    The distinction matters for the turbulence work: Wingrove & Bach's Fig. 8
+    is built from DFDR "normal acceleration", which is exactly this body-normal
+    quantity, so this is the right convention for that comparison rather than a
+    flight-path-normal one.
+    """
+    import jax.numpy as jnp
+
+    from flightsim import trim
+    from flightsim.aircraft import CRUISE, REGISTRY
+    from flightsim.state import quat_to_euler
+
+    ac = REGISTRY["boeing747"]
+    v, h = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
+    x, _ = trim.trim(jnp.array(v), jnp.array(h), ac)
+    state = trim.trimmed_state(x[0], jnp.array(v), jnp.array(h))
+    n_z = dynamics.load_factor(
+        state, trim.trimmed_controls(x[1], x[2]), ac, jnp.zeros(3), jnp.zeros(3)
+    )
+    theta = float(quat_to_euler(state.quat)[1])
+    assert float(n_z) == pytest.approx(np.cos(theta), abs=1e-9)  # measured 0.996728
+    assert float(n_z) == pytest.approx(0.9967, abs=1e-4)
+
+
+def test_load_factor_matches_the_aerodynamic_and_thrust_force_directly(test_aircraft):
+    """n_z is recovered by INVERTING derivatives, so check it against the forces.
+
+    The inversion is what makes it robust to a future force term being added to
+    `derivatives`; this test is what proves the inversion is right today.
+    """
+    from flightsim.aero import aero_forces_moments, thrust_force
+    from flightsim.atmosphere import density, speed_of_sound
+
+    s = level_state(u=60.0, altitude=2000.0)._replace(omega=jnp.array([0.1, 0.2, -0.05]))
+    controls = Controls(
+        elevator=jnp.array(0.1), aileron=jnp.array(-0.05),
+        rudder=jnp.array(0.02), throttle=jnp.array(0.6),
+    )
+    altitude = -s.pos_ned[2]
+    force, _ = aero_forces_moments(
+        s.vel_body, s.omega, controls, test_aircraft,
+        density(altitude), speed_of_sound(altitude),
+    )
+    force = force + thrust_force(controls, test_aircraft, density(altitude))
+    expected = -float((force / test_aircraft.mass)[2]) / G0
+
+    got = float(dynamics.load_factor(s, controls, test_aircraft, jnp.zeros(3), jnp.zeros(3)))
+    assert got == pytest.approx(expected, abs=1e-12)  # measured agreement ~4e-16
+
+
 def test_derivatives_are_finite_across_a_wide_envelope(test_aircraft):
     """NaN guard. NaNs inside jit are silent, so catch them at the source."""
     for u in [1.0, 30.0, 250.0]:

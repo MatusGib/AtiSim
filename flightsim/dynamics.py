@@ -57,3 +57,34 @@ def derivatives(
         quat=quat_derivative(state.quat, state.omega),
         omega=omega_dot,
     )
+
+
+def load_factor(
+    state: State,
+    controls: Controls,
+    ac: Aircraft,
+    wind_ned: Array,
+    omega_gust: Array,
+) -> Array:
+    """Normal load factor n_z. +1 in level flight, 0 in free fall.
+
+    This is what an accelerometer at the CG reads, normalised by g: the
+    specific force, which is the aerodynamic plus propulsive force over mass
+    and excludes gravity. `derivatives` computes exactly that quantity as
+    `force / ac.mass` and then discards it inside the sum at the top of this
+    module, so it is recovered here by inverting that sum:
+
+        a_spec = vdot_body - g_body + omega x vel_body
+
+    Inverting rather than recomputing `force / mass` is deliberate. It cannot
+    silently disagree with the plant if a force term is ever added to
+    `derivatives`, because it inverts whatever `derivatives` actually did.
+
+    Needed because the turbulence work's headline comparison -- Wingrove &
+    Bach's Fig. 8, pitch-attitude change against g-load change -- is stated in
+    load factor, and nothing in the package produced it before.
+    """
+    d = derivatives(state, controls, ac, wind_ned, omega_gust)
+    gravity_body = quat_to_dcm(state.quat).T @ jnp.array([0.0, 0.0, G0])
+    a_spec = d.vel_body - gravity_body + jnp.cross(state.omega, state.vel_body)
+    return -a_spec[2] / G0
