@@ -372,3 +372,52 @@ def test_post_flight_shows_both_modes_on_the_timeline(live):
     figure = viz.post_flight(traj)
     timeline = next(ax for ax in figure.axes if ax.get_title() == "mode timeline")
     assert [t.get_text() for t in timeline.get_yticklabels()] == ["MANUAL", "AUTOPILOT"]
+
+
+# --- the wind hook in the live loop -----------------------------------------
+
+
+def _fly_live(trimmed, targets, frames=40, **kwargs):
+    state, controls = trimmed
+    ctl = man.start(sense(state), controls, targets, GAINS, AC)
+    sim = integrate.init_sim(state, jax.random.PRNGKey(0))
+    panel = viz.Panel(targets, window=20.0, fps=20.0)
+    live = viz.LiveSim(
+        sim, ctl, targets, GAINS, MGAINS, AC, panel, dt=DT, real_time=False, **kwargs
+    )
+    for _ in range(frames):
+        live.frame()
+    return np.asarray(live.trajectory().pos_ned)
+
+
+def test_a_live_run_through_a_wind_field_differs_from_still_air(trimmed, targets):
+    """The wind must actually reach the plant.
+
+    This is the test that stops the whole feature being a parameter that is
+    accepted and ignored -- the exact shape of latent bugs (a) and (b), which
+    survived three sessions because nothing in the project flew through a
+    non-zero field.
+    """
+    from flightsim import wind as wind_mod
+
+    column = wind_mod.UpdraftColumn(
+        north=jnp.array(0.0), east=jnp.array(0.0), w0=jnp.array(20.0),
+        radius=jnp.array(3000.0), sharpness=jnp.array(6.0),
+    )
+    blown = _fly_live(
+        trimmed, targets,
+        wind_model=wind_mod.field_model(lambda p: wind_mod.updraft_wind(p, column)),
+    )
+    still = _fly_live(trimmed, targets)
+    assert abs(blown[-1, 2] - still[-1, 2]) > 1.0  # metres of altitude
+
+
+def test_the_live_loop_in_still_air_is_untouched_by_the_wind_plumbing(trimmed, targets):
+    """Mirrors PROJECT.md section 4's zero-strength-wind row: adding the hook
+    must not perturb the default path by one bit."""
+    from flightsim import wind as wind_mod
+
+    assert np.array_equal(
+        _fly_live(trimmed, targets),
+        _fly_live(trimmed, targets, wind_model=wind_mod.zero_wind),
+    )

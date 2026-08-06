@@ -52,6 +52,7 @@ from flightsim.manual import Controller, ManualGains, Mode, PilotInput
 from flightsim.sensors import sense
 from flightsim.state import Controls, State
 from flightsim.units import RAD2DEG
+from flightsim.wind import zero_wind
 
 # ---------------------------------------------------------------------------
 # Trajectory log
@@ -574,6 +575,8 @@ class LiveSim:
         dt: float = 0.02,
         real_time: bool = True,
         max_steps_per_frame: int = 20,
+        wind_model=zero_wind,
+        field_range=None,
     ):
         self.sim = sim
         self.ctl = ctl
@@ -585,6 +588,13 @@ class LiveSim:
         self.dt = dt
         self.real_time = real_time
         self.max_steps_per_frame = max_steps_per_frame
+        self.wind_model = wind_model
+        # An optional `State -> FieldRange`, built by the caller alongside the
+        # field. Kept separate from the wind model because the panel needs the
+        # geometry in a form the model does not carry, and a model with no
+        # meaningful "where is it" -- a future Dryden layer -- can pass None
+        # rather than being forced to invent one.
+        self.field_range = field_range
 
         self.t = 0.0
         self.controls = man.current_controls(ctl)
@@ -615,7 +625,7 @@ class LiveSim:
                 self.ac,
                 self.dt,
             )
-            self.sim = step(self.sim, self.controls, self.dt, self.ac)
+            self.sim = step(self.sim, self.controls, self.dt, self.ac, self.wind_model)
             self.t += self.dt
             self._backlog -= self.dt
             steps += 1
@@ -680,6 +690,8 @@ def run_live(
     dt: float = 0.02,
     fps: float = 20.0,
     window: float = 60.0,
+    wind_model=zero_wind,
+    field_range=None,
 ) -> Trajectory:
     """Fly interactively until the window is closed, then return the run."""
     # Warm the jit caches before the window opens. Each of these compiles on
@@ -692,10 +704,18 @@ def run_live(
     warm, _ = man.update(ctl, warm_air, man.NEUTRAL, targets, gains, mgains, ac, dt)
     other = man.toggle(ctl, warm_air, targets, gains, ac)
     man.update(other, warm_air, man.NEUTRAL, targets, gains, mgains, ac, dt)
-    step(sim, warm, dt, ac)
+    # Warmed with the ACTUAL wind model, not the default. `step` takes
+    # wind_model as a static argument, so a different model is a different
+    # compilation -- warming zero_wind here would leave the real one to compile
+    # inside the first frame, which is precisely what this warm-up exists to
+    # prevent.
+    step(sim, warm, dt, ac, wind_model)
 
     panel = Panel(targets, window=window, fps=fps)
-    live = LiveSim(sim, ctl, targets, gains, mgains, ac, panel, dt=dt)
+    live = LiveSim(
+        sim, ctl, targets, gains, mgains, ac, panel,
+        dt=dt, wind_model=wind_model, field_range=field_range,
+    )
     animation = FuncAnimation(
         panel.fig,
         live.frame,
