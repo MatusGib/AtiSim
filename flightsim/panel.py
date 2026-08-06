@@ -1,5 +1,10 @@
 """The live instrument panel and the loop that drives it.
 
+The layout is the basic T -- airspeed left, attitude centre, altitude right,
+heading below -- with a flight-test overlay beside it. The T is not decoration:
+it has been the standard arrangement since the RAF specified it in 1937, and the
+point of it is that the scan is the same in every aircraft.
+
 **Physics and rendering are decoupled.** The animation timer asks for a frame at
 roughly 20 fps; `LiveSim.advance` then runs however many fixed 50 Hz physics
 steps are needed to catch up with the wall clock. The physics step never changes
@@ -15,22 +20,30 @@ the animation blits.** That constrains the design in one way worth naming:
 blitting redraws the animated artists over a cached background, so no axis limit
 on the panel may ever change. The consequences are deliberate:
 
+  - A TAPE works by sliding the SCALE past a fixed pointer. The value stays at
+    the centre of the axes and the tick marks and their labels move, so the
+    limits never have to. That is what lets a tape live on a blitted panel.
   - The rolling strips are windowed on time-before-now, so the data slides
     through fixed axes instead of the axes chasing the data. Their y-limits are
     centred on the targets, which are fixed for a run.
-  - The 3D trace is plotted relative to the aircraft's current position, so the
-    box never has to move. It is a trailing ribbon with the aircraft at the
-    origin. The absolute path is in the post-flight ground track, which is
-    where you would actually measure it.
+  - Every gauge has a fixed full scale, chosen per aircraft where the right
+    scale depends on the aircraft. Values outside it clip against the edge and
+    the numeric readout stays correct, so nothing is ever silently wrong, only
+    off-scale.
   - The aircraft symbol and pitch ladder are animated artists despite never
     moving, because the horizon polygons are drawn over the whole axes and would
     otherwise bury anything left in the background.
 
-Values outside a strip's window clip against the edge; the numeric readout beside
-each strip is always correct, so nothing is ever silently wrong, only off-scale.
+**What is sensed and what is truth.** Everything on the cockpit side comes
+through `sensors.sense` and `sensors.accelerometers`. The wind readout is
+legitimate cockpit information -- with no sensor noise, ground velocity minus air
+velocity IS the wind, so a real air-data/INS pair could compute it. The gust RATE
+is not: `omega_gust` is a gradient across the span and chord, no instrument can
+sense it, and it is labelled SIM TRUTH on the panel for that reason.
 """
 
 import time
+from typing import NamedTuple
 
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -43,8 +56,8 @@ from flightsim.aircraft import Aircraft
 from flightsim.autopilot import Gains, Targets, wrap_pi
 from flightsim.integrate import SimState, step
 from flightsim.manual import Controller, ManualGains, Mode, PilotInput
-from flightsim.sensors import sense
-from flightsim.state import Controls
+from flightsim.sensors import AirData, Accelerations, accelerometers, sense
+from flightsim.state import Controls, quat_to_dcm
 from flightsim.units import RAD2DEG
 from flightsim.viz import Recorder, Trajectory
 from flightsim.wind import zero_wind
@@ -60,24 +73,100 @@ KEYMAP = {
     ",": ("yaw", -1.0),
     "=": ("throttle", +1.0),
     "-": ("throttle", -1.0),
+    "]": ("trim", +1.0),  # nose up
+    "[": ("trim", -1.0),  # nose down
 }
 TOGGLE_KEY = "a"
+TRIM_HERE_KEY = "t"
 
 HELP = (
-    "arrows  stick (up = nose down)     , .  rudder\n"
-    "-  =    throttle                    a   autopilot"
+    "arrows  stick (up = nose down)    , .  rudder      -  =  throttle\n"
+    "[  ]    trim (nose down / up)     t    trim here   a     autopilot"
 )
 
 # Instrument-panel colours.
 _BG = "#101418"
+_PANEL = "#161b21"
 _FG = "#c8d0d8"
 _SKY = "#2c6fb5"
 _GROUND = "#7a5230"
 _SYMBOL = "#ffd24a"
 _TRACE = "#4ec9b0"
+_TRUTH = "#c04a3a"
+_EDGE = "#39424b"
 
 PITCH_SPAN_DEG = 30.0  # degrees from the horizon to the top of the horizon ball
 _HORIZON_L = 4.0  # half-length of the sky/ground quads, in axes units
+
+# ---------------------------------------------------------------------------
+# Declared display constants
+#
+# None of these come from a source. They are display choices, named here rather
+# than buried in a call so that changing one is a visible decision.
+# ---------------------------------------------------------------------------
+
+# PROJECT.md section 7: "any encounter driving alpha past ~10-12 deg reports lift
+# the sources say is not there". That is a statement about THIS MODEL's linear
+# aero, not a stall table -- aero.py is CL = CL0 + CLa*alpha with no stall at
+# all, and the only aircraft in the project with nonlinear data is out of scope.
+# The band exists so that a run leaving the model's valid range says so on the
+# panel, instead of in a footnote nobody reads until afterwards.
+ALPHA_LINEAR_DEG = 10.0
+ALPHA_INVALID_DEG = 12.0
+ALPHA_SPAN_DEG = 15.0
+
+NZ_RANGE = (-1.0, 3.0)  # g, full scale of the load-factor gauge
+SLIP_SPAN = 0.30  # g of lateral specific force at full ball deflection
+WIND_SPAN = 40.0  # m/s at full arrow length
+GUST_SPAN = 0.15  # rad/s, full scale of the gust-rate bars
+
+# Vertical-speed full scale. Per aircraft, because the 747 at cruise trades
+# altitude for speed an order faster than a light aircraft does.
+VSI_SPAN: dict[str, float] = {"boeing747": 20.0, "cherokee": 10.0, "cessna172": 10.0}
+
+# Tape scales: (full span either side of the value, gap between labelled ticks).
+TAPE_AIRSPEED = (40.0, 10.0)
+TAPE_ALTITUDE = (600.0, 200.0)
+TAPE_HEADING = (60.0, 20.0)  # degrees
+
+
+# ---------------------------------------------------------------------------
+# What one frame shows
+# ---------------------------------------------------------------------------
+
+
+class FieldRange(NamedTuple):
+    """Where the wind field is, in the terms its own geometry supports.
+
+    `bearing` is None for a `VortexArray`, and that is not an omission. Its cores
+    are infinite line vortices running east-west -- `wind.vortex_wind` reads only
+    `pos_ned[0]` and `pos_ned[2]`, and the induced wind has no east component at
+    all. A bearing to a line is meaningless, so none is reported rather than one
+    being invented. It also means you cannot miss a core by turning.
+    """
+
+    label: str
+    distance: float  # m. North distance to a line vortex; slant range to a column.
+    closing: float  # m/s, rate of change of `distance`
+    bearing: float | None  # rad, None for a line vortex
+
+
+class Readout(NamedTuple):
+    """One frame's worth of everything the panel shows.
+
+    Exists so that every instrument has the same update signature and can be
+    driven directly in a test without standing up a figure.
+    """
+
+    t: float
+    air: AirData
+    accel: Accelerations
+    controls: Controls
+    reference: Controls  # the stick's centring point, for the trim readout
+    mode: Mode
+    wind_ned: np.ndarray
+    omega_gust: np.ndarray
+    field: FieldRange | None  # None in still air
 
 
 def _push(buffer: np.ndarray, value) -> None:
@@ -129,6 +218,410 @@ _SYMBOL_X = np.array([-0.45, -0.15, np.nan, -0.03, 0.03, np.nan, 0.15, 0.45])
 _SYMBOL_Y = np.array([0.0, 0.0, np.nan, 0.0, 0.0, np.nan, 0.0, 0.0])
 
 
+def _style(ax, title: str = "") -> None:
+    ax.set_facecolor(_PANEL)
+    ax.tick_params(colors=_FG, labelsize=7)
+    for spine in ax.spines.values():
+        spine.set_color(_EDGE)
+    if title:
+        ax.set_title(title, color=_FG, fontsize=8)
+
+
+# ---------------------------------------------------------------------------
+# Instruments
+#
+# Each one pre-allocates its artists, fixes its axis limits once, and exposes
+# `artists` and `update(Readout)`. Nothing here computes physics: everything
+# arrives already sensed.
+# ---------------------------------------------------------------------------
+
+
+class Tape:
+    """A vertical scale that slides past a fixed pointer.
+
+    Blitting forbids moving an axis limit, so the VALUE stays fixed at the centre
+    and the SCALE moves: tick positions and tick label text are animated artists
+    inside axes whose limits never change. A fixed number of ticks is
+    pre-allocated for the same reason.
+    """
+
+    N_TICKS = 7
+
+    def __init__(self, ax, label, span, step, fmt, source):
+        self.ax, self.span, self.step, self.fmt, self.source = ax, span, step, fmt, source
+        ax.set_xlim(0.0, 1.0)
+        ax.set_ylim(-span, span)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        _style(ax, label)
+        ax.axhline(0.0, color=_EDGE, lw=0.8)
+        self.ticks = [
+            ax.plot([], [], color=_FG, lw=0.8, animated=True)[0]
+            for _ in range(self.N_TICKS)
+        ]
+        self.tick_labels = [
+            ax.text(
+                0.52, 0.0, "", color=_FG, fontsize=7, family="monospace",
+                ha="left", va="center", animated=True,
+            )
+            for _ in range(self.N_TICKS)
+        ]
+        self.box = ax.text(
+            0.5, 0.0, "", color=_SYMBOL, fontsize=9, family="monospace",
+            ha="center", va="center", animated=True,
+            bbox=dict(facecolor=_BG, edgecolor=_SYMBOL, boxstyle="square,pad=0.25"),
+        )
+
+    @property
+    def artists(self) -> list:
+        return [*self.ticks, *self.tick_labels, self.box]
+
+    def update(self, r: Readout) -> None:
+        value = self.source(r)
+        centre = round(value / self.step) * self.step
+        first = centre - (self.N_TICKS // 2) * self.step
+        for index, (tick, text) in enumerate(zip(self.ticks, self.tick_labels)):
+            mark = first + index * self.step
+            y = float(np.clip(mark - value, -self.span, self.span))
+            visible = abs(mark - value) <= self.span
+            tick.set_data([0.30, 0.48] if visible else [], [y, y] if visible else [])
+            text.set_position((0.52, y))
+            text.set_text(self.fmt.format(mark) if visible else "")
+        self.box.set_text(self.fmt.format(value))
+
+
+class HeadingTape(Tape):
+    """The same idea laid on its side, under the stem of the T.
+
+    The value is unwrapped about the target so that a heading either side of
+    north does not jump the width of the tape.
+    """
+
+    def __init__(self, ax, span, step, fmt, source):
+        self.ax, self.span, self.step, self.fmt, self.source = ax, span, step, fmt, source
+        ax.set_xlim(-span, span)
+        ax.set_ylim(0.0, 1.0)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        _style(ax)
+        self.ticks = [
+            ax.plot([], [], color=_FG, lw=0.8, animated=True)[0]
+            for _ in range(self.N_TICKS)
+        ]
+        self.tick_labels = [
+            ax.text(
+                0.0, 0.30, "", color=_FG, fontsize=7, family="monospace",
+                ha="center", va="top", animated=True,
+            )
+            for _ in range(self.N_TICKS)
+        ]
+        self.box = ax.text(
+            0.0, 0.78, "", color=_SYMBOL, fontsize=9, family="monospace",
+            ha="center", va="center", animated=True,
+            bbox=dict(facecolor=_BG, edgecolor=_SYMBOL, boxstyle="square,pad=0.25"),
+        )
+
+    def update(self, r: Readout) -> None:
+        value = self.source(r)
+        centre = round(value / self.step) * self.step
+        first = centre - (self.N_TICKS // 2) * self.step
+        for index, (tick, text) in enumerate(zip(self.ticks, self.tick_labels)):
+            mark = first + index * self.step
+            x = float(np.clip(mark - value, -self.span, self.span))
+            visible = abs(mark - value) <= self.span
+            tick.set_data([x, x] if visible else [], [0.36, 0.52] if visible else [])
+            text.set_position((x, 0.30))
+            text.set_text(self.fmt.format(mark % 360.0) if visible else "")
+        self.box.set_text(self.fmt.format(value % 360.0))
+
+
+class VSI:
+    """Vertical speed as a needle on a fixed scale. Full scale is per aircraft."""
+
+    def __init__(self, ax, span: float):
+        self.span = span
+        ax.set_xlim(-1.0, 1.0)
+        ax.set_ylim(-1.0, 1.0)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        _style(ax, "VS")
+        ax.axhline(0.0, color="#5a6a78", lw=0.9)
+        for fraction in (-0.5, 0.5):
+            ax.axhline(fraction, color=_EDGE, lw=0.6)
+        (self.needle,) = ax.plot([], [], color=_TRACE, lw=2.0, animated=True)
+        self.readout = ax.text(
+            0.0, -0.90, "", color=_SYMBOL, fontsize=8, family="monospace",
+            ha="center", animated=True,
+        )
+
+    @property
+    def artists(self) -> list:
+        return [self.needle, self.readout]
+
+    def update(self, r: Readout) -> None:
+        vs = float(r.air.vertical_speed)
+        y = float(np.clip(vs / self.span, -1.0, 1.0))
+        self.needle.set_data([-0.55, 0.55], [0.0, y])
+        self.readout.set_text(f"{vs:+5.1f}")
+
+
+class SlipBall:
+    """Lateral specific force, drawn where a PFD puts it: at the top of the ball.
+
+    A slip ball is a bead in a curved tube, so it reads n_y and NOT beta. The two
+    agree in steady coordinated flight and part company everywhere interesting,
+    which in a turbulence simulator is everywhere that matters. A vane measures
+    beta; a pendulum measures a force.
+
+    Sign: the bead settles where the tube's normal force supplies the aircraft's
+    specific force. The tube curves upward, so a bead displaced to +y is pushed
+    back toward -y -- meaning a specific force to the RIGHT puts the ball LEFT.
+    Hence the negation. It is pinned by
+    test_the_ball_indicates_the_rudder_that_would_reduce_the_sideslip, because a
+    derivation is not evidence.
+
+    Simplification, stated rather than hidden: a real PFD hangs the slip index
+    under the roll pointer, so it rotates with bank. This one sits at a fixed
+    screen position, which is the older inclinometer presentation and is
+    unambiguous to read.
+    """
+
+    def __init__(self, ax, y: float = 0.84, half_width: float = 0.15):
+        self.y, self.half_width = y, half_width
+        self.offset = 0.0
+        (self.cage,) = ax.plot(
+            [-half_width, -half_width, np.nan, half_width, half_width],
+            [y - 0.05, y + 0.05, np.nan, y - 0.05, y + 0.05],
+            color=_FG, lw=1.2, animated=True,
+        )
+        (self.ball,) = ax.plot([], [], marker="o", ms=7, color=_SYMBOL, animated=True)
+
+    @property
+    def artists(self) -> list:
+        return [self.cage, self.ball]
+
+    def update(self, r: Readout) -> None:
+        self.offset = float(np.clip(-float(r.accel.n_y) / SLIP_SPAN, -1.0, 1.0))
+        self.ball.set_data([self.offset * self.half_width], [self.y])
+
+
+class IncidenceMarker:
+    """Where the relative wind is coming from, in body axes: (-alpha, +beta).
+
+    Deliberately NOT called a flight path vector. A HUD's FPV is earth-referenced
+    and rotates with bank; this is the body-axis incidence pair the vanes
+    actually measure, drawn on the same angular scale as the pitch ladder. Naming
+    it after what it is costs nothing and stops it being read as something the
+    sensors do not provide.
+    """
+
+    def __init__(self, ax):
+        (self.marker,) = ax.plot(
+            [], [], marker="o", ms=9, mfc="none", mec=_TRACE, mew=1.6, animated=True
+        )
+        (self.wings,) = ax.plot([], [], color=_TRACE, lw=1.6, animated=True)
+
+    @property
+    def artists(self) -> list:
+        return [self.marker, self.wings]
+
+    def update(self, r: Readout) -> None:
+        x = float(r.air.beta) * RAD2DEG / PITCH_SPAN_DEG
+        y = -float(r.air.alpha) * RAD2DEG / PITCH_SPAN_DEG
+        x = float(np.clip(x, -0.9, 0.9))
+        y = float(np.clip(y, -0.9, 0.9))
+        self.marker.set_data([x], [y])
+        self.wings.set_data(
+            [x - 0.16, x - 0.07, np.nan, x + 0.07, x + 0.16], [y, y, np.nan, y, y]
+        )
+
+
+class AlphaGauge:
+    """Air-relative alpha against the DECLARED linear-aero ceiling."""
+
+    def __init__(self, ax):
+        ax.set_xlim(0.0, ALPHA_SPAN_DEG)
+        ax.set_ylim(0.0, 1.0)
+        ax.set_yticks([])
+        _style(ax, "alpha  air-relative")
+        ax.axvspan(0.0, ALPHA_LINEAR_DEG, color="#2f5f42")
+        ax.axvspan(ALPHA_LINEAR_DEG, ALPHA_INVALID_DEG, color="#6d5423")
+        ax.axvspan(ALPHA_INVALID_DEG, ALPHA_SPAN_DEG, color="#5f2a24")
+        (self.needle,) = ax.plot([], [], color="white", lw=2.4, animated=True)
+        self.readout = ax.text(
+            0.03, 0.88, "", transform=ax.transAxes, color=_SYMBOL,
+            fontsize=8, family="monospace", va="top", animated=True,
+        )
+        self._deg = 0.0
+
+    @property
+    def artists(self) -> list:
+        return [self.needle, self.readout]
+
+    def state(self) -> str:
+        """Which band the model is in. `invalid` means the run proves nothing."""
+        if self._deg >= ALPHA_INVALID_DEG:
+            return "invalid"
+        if self._deg >= ALPHA_LINEAR_DEG:
+            return "marginal"
+        return "linear"
+
+    def update(self, r: Readout) -> None:
+        self._deg = float(r.air.alpha) * RAD2DEG
+        x = float(np.clip(self._deg, 0.0, ALPHA_SPAN_DEG))
+        self.needle.set_data([x, x], [0.0, 1.0])
+        self.readout.set_text(f"{self._deg:+5.1f} deg  {self.state()}")
+
+
+class LoadFactorGauge:
+    """n_z with a peak hold, because in an encounter the excursion IS the result."""
+
+    def __init__(self, ax):
+        ax.set_xlim(*NZ_RANGE)
+        ax.set_ylim(0.0, 1.0)
+        ax.set_yticks([])
+        _style(ax, "load factor  n_z")
+        ax.axvline(1.0, color="#5a6a78", lw=0.9, ls="--")
+        (self.needle,) = ax.plot([], [], color=_TRACE, lw=2.4, animated=True)
+        self.readout = ax.text(
+            0.03, 0.88, "", transform=ax.transAxes, color=_SYMBOL,
+            fontsize=8, family="monospace", va="top", animated=True,
+        )
+        self.peak_high = 1.0
+        self.peak_low = 1.0
+
+    @property
+    def artists(self) -> list:
+        return [self.needle, self.readout]
+
+    def update(self, r: Readout) -> None:
+        n_z = float(r.accel.n_z)
+        self.peak_high = max(self.peak_high, n_z)
+        self.peak_low = min(self.peak_low, n_z)
+        x = float(np.clip(n_z, *NZ_RANGE))
+        self.needle.set_data([x, x], [0.0, 1.0])
+        self.readout.set_text(
+            f"{n_z:+5.2f} g  peak {self.peak_low:+.2f}/{self.peak_high:+.2f}"
+        )
+
+
+class WindGauge:
+    """Applied wind as an arrow, with the groundspeed it implies.
+
+    Legitimate cockpit information rather than a cheat: with no sensor noise,
+    ground velocity minus air velocity IS the wind, so a real air-data and
+    inertial pair could compute exactly this. Screen x is east, screen y north.
+    """
+
+    def __init__(self, ax):
+        ax.set_xlim(-1.15, 1.15)
+        ax.set_ylim(-1.15, 1.15)
+        ax.set_aspect("equal", adjustable="box")
+        ax.set_xticks([])
+        ax.set_yticks([])
+        _style(ax, "wind")
+        ax.plot(
+            np.cos(np.linspace(0, 2 * np.pi, 64)),
+            np.sin(np.linspace(0, 2 * np.pi, 64)),
+            color=_EDGE, lw=0.8,
+        )
+        (self.arrow,) = ax.plot([], [], color=_TRACE, lw=2.0, animated=True)
+        self.readout = ax.text(
+            0.0, -1.02, "", color=_SYMBOL, fontsize=8, family="monospace",
+            ha="center", va="top", animated=True,
+        )
+
+    @property
+    def artists(self) -> list:
+        return [self.arrow, self.readout]
+
+    def update(self, r: Readout) -> None:
+        north, east = float(r.wind_ned[0]), float(r.wind_ned[1])
+        speed = float(np.hypot(north, east))
+        if speed > 1e-9:
+            scale = min(speed / WIND_SPAN, 1.0)
+            self.arrow.set_data([0.0, scale * east / speed], [0.0, scale * north / speed])
+        else:
+            self.arrow.set_data([], [])
+        down = float(r.wind_ned[2])
+        self.readout.set_text(f"{speed:4.1f} m/s  up {-down:+5.1f}")
+
+
+class GustGauge:
+    """The three body-axis gust rates. SIM TRUTH -- no instrument senses these.
+
+    `omega_gust` is a gradient across the span and chord. A rate gyro measures
+    the airframe's own rotation and cannot see it, which is exactly why aero.py
+    is handed `omega - omega_gust` and a controller is not. Drawing it without
+    saying so would present a number no aircraft has as an instrument reading.
+    """
+
+    def __init__(self, ax):
+        ax.set_xlim(-GUST_SPAN, GUST_SPAN)
+        ax.set_ylim(-0.6, 2.6)
+        ax.set_yticks([0, 1, 2])
+        ax.set_yticklabels(["r", "q", "p"])
+        _style(ax)
+        ax.set_title("gust rate   SIM TRUTH", color=_TRUTH, fontsize=8)
+        ax.axvline(0.0, color="#5a6a78", lw=0.9)
+        self.bars = [
+            ax.plot(
+                [], [], color=_TRACE, lw=6.0, solid_capstyle="butt", animated=True
+            )[0]
+            for _ in range(3)
+        ]
+
+    @property
+    def artists(self) -> list:
+        return self.bars
+
+    def update(self, r: Readout) -> None:
+        # Bar 0 is the bottom row, labelled r; omega_gust is ordered (p, q, r).
+        for index, bar in enumerate(self.bars):
+            value = float(np.clip(r.omega_gust[2 - index], -GUST_SPAN, GUST_SPAN))
+            bar.set_data([0.0, value], [index, index])
+
+
+# ---------------------------------------------------------------------------
+# Input
+# ---------------------------------------------------------------------------
+
+# How fast a hand moves a spring-centred stick: full travel in 0.4 s. A DECLARED
+# figure, not a measured one. It lives here rather than in ManualGains because it
+# is a property of the input device and not of the aircraft, which keeps
+# manual.manual a pure function of stick position.
+STICK_RATE = 2.5  # per second
+
+
+class Stick:
+    """Three ramped surface axes.
+
+    Held keys ramp toward the demand and released keys spring back to centre,
+    both at STICK_RATE. Without this a keyboard is a switch: a tap commands full
+    travel for as long as it is held, which is why the per-aircraft authorities
+    in manual.py are geared so far down.
+
+    Stepped once per PHYSICS step, never per frame -- stepping it per frame would
+    make the control feel depend on the render rate, and the render rate is
+    corrected against the wall clock, so it is not even constant.
+
+    Throttle and trim are deliberately absent. They are rate-integrating keys
+    whose demand passes straight to `manual`, which integrates it; ramping them
+    would put a lag on top of an integrator.
+    """
+
+    AXES = ("pitch", "roll", "yaw")
+
+    def __init__(self) -> None:
+        self.position = {axis: 0.0 for axis in self.AXES}
+
+    def step(self, demand: dict, dt: float) -> None:
+        move = STICK_RATE * dt
+        for axis in self.AXES:
+            delta = demand[axis] - self.position[axis]
+            self.position[axis] += float(np.clip(delta, -move, move))
+
+
 class Panel:
     """The figure, its pre-allocated artists, and the held-keys set.
 
@@ -137,12 +630,22 @@ class Panel:
     `LiveSim` asks for the resulting stick position once per physics step.
     """
 
-    def __init__(self, targets: Targets, *, window: float = 60.0, fps: float = 20.0):
+    def __init__(
+        self,
+        targets: Targets,
+        *,
+        window: float = 60.0,
+        fps: float = 20.0,
+        aircraft_name: str = "boeing747",
+    ):
         self.targets = targets
         self.window = window
         self.fps = fps
+        self.aircraft_name = aircraft_name
         self.held: set[str] = set()
+        self.stick = Stick()
         self._toggle_requested = False
+        self._trim_here_requested = False
 
         target_speed = float(targets.airspeed)
         target_altitude = float(targets.altitude)
@@ -150,75 +653,69 @@ class Panel:
 
         n = int(window * fps) + 1
         self._t = np.full(n, np.nan)
-        self._pos = np.full((n, 3), np.nan)
         self._speed = np.full(n, np.nan)
         self._altitude = np.full(n, np.nan)
         self._heading = np.full(n, np.nan)
 
-        self.fig = plt.figure(figsize=(14.0, 8.0), facecolor=_BG)
+        self.fig = plt.figure(figsize=(15.0, 8.5), facecolor=_BG)
         if getattr(self.fig.canvas, "manager", None) is not None:
             self.fig.canvas.manager.set_window_title("flightsim")
         grid = self.fig.add_gridspec(
             3,
-            3,
-            width_ratios=(1.3, 0.95, 0.85),
-            height_ratios=(1.0, 1.0, 0.5),
-            hspace=0.45,
-            wspace=0.38,
+            6,
+            width_ratios=(0.30, 1.05, 0.30, 0.17, 0.70, 0.92),
+            height_ratios=(1.00, 0.18, 0.34),
+            hspace=0.42,
+            wspace=0.34,
         )
 
-        self._build_trace(grid, target_speed)
-        self._build_horizon(grid)
+        span, tick = TAPE_AIRSPEED
+        self.asi = Tape(
+            self.fig.add_subplot(grid[0, 0]), "TAS m/s", span, tick, "{:.0f}",
+            lambda r: float(r.air.airspeed),
+        )
+        self._build_horizon(grid[0, 1])
+        span, tick = TAPE_ALTITUDE
+        self.alt = Tape(
+            self.fig.add_subplot(grid[0, 2]), "ALT m", span, tick, "{:.0f}",
+            lambda r: float(r.air.altitude),
+        )
+        self.vsi = VSI(self.fig.add_subplot(grid[0, 3]), VSI_SPAN[aircraft_name])
+        span, tick = TAPE_HEADING
+        self.hdg = HeadingTape(
+            self.fig.add_subplot(grid[1, 0:4]), span, tick, "{:03.0f}",
+            self._unwrapped_heading,
+        )
+
+        overlay = grid[0:2, 4].subgridspec(4, 1, hspace=0.60)
+        self.nz_gauge = LoadFactorGauge(self.fig.add_subplot(overlay[0]))
+        self.alpha_gauge = AlphaGauge(self.fig.add_subplot(overlay[1]))
+        self.wind_gauge = WindGauge(self.fig.add_subplot(overlay[2]))
+        self.gust_gauge = GustGauge(self.fig.add_subplot(overlay[3]))
+
+        cells = grid[0:2, 5].subgridspec(3, 1, hspace=0.38)
         self.strips = [
-            self._build_strip(grid[0, 2], "TAS  m/s", target_speed, 40.0),
-            self._build_strip(grid[1, 2], "ALT  m", target_altitude, 600.0),
-            self._build_strip(grid[2, 2], "HDG  deg", target_heading, 90.0, xlabel=True),
+            self._build_strip(cells[0], "TAS  m/s", target_speed, 40.0),
+            self._build_strip(cells[1], "ALT  m", target_altitude, 600.0),
+            self._build_strip(cells[2], "HDG  deg", target_heading, 90.0, xlabel=True),
         ]
         self._build_status(grid)
         self._connect_keys()
 
+        self.instruments = [
+            self.asi, self.alt, self.vsi, self.hdg, self.slip, self.incidence,
+            self.nz_gauge, self.alpha_gauge, self.wind_gauge, self.gust_gauge,
+        ]
+
     # -- construction ------------------------------------------------------
 
-    def _style(self, ax) -> None:
-        ax.set_facecolor(_BG)
-        ax.tick_params(colors=_FG, labelsize=8)
-        for spine in ax.spines.values():
-            spine.set_color("#39424b")
+    def _unwrapped_heading(self, r: Readout) -> float:
+        """Heading unwrapped about the target, so either side of north is smooth."""
+        target = float(self.targets.heading)
+        return (target + float(wrap_pi(jnp.array(float(r.air.psi) - target)))) * RAD2DEG
 
-    def _build_trace(self, grid, target_speed: float) -> None:
-        # The box is sized to the distance covered in one window, so the trail
-        # just fills it at the target speed.
-        reach = max(target_speed * self.window / 1000.0, 1.0)  # km
-        self.ax_trace = self.fig.add_subplot(grid[0:2, 0], projection="3d")
-        ax = self.ax_trace
-        ax.set_facecolor(_BG)
-        ax.set_xlim(-reach, reach)
-        ax.set_ylim(-reach, reach)
-        ax.set_zlim(-max(reach / 10.0, 0.3), max(reach / 10.0, 0.3))
-        ax.set_xlabel("east  km", color=_FG, fontsize=8)
-        ax.set_ylabel("north  km", color=_FG, fontsize=8)
-        ax.set_zlabel("up  km", color=_FG, fontsize=8)
-        ax.tick_params(colors=_FG, labelsize=7)
-        for pane in (ax.xaxis, ax.yaxis, ax.zaxis):
-            pane.set_pane_color((0.06, 0.08, 0.10, 1.0))
-        ax.set_title(
-            f"trajectory  (last {self.window:.0f} s, relative to aircraft)",
-            color=_FG,
-            fontsize=9,
-        )
-        ax.view_init(elev=24.0, azim=-58.0)
-        # The box has to be +-reach in both horizontal axes, because the trail
-        # can lie in any direction, but a trail only ever runs one way from the
-        # aircraft and so uses half of it. Zoom compensates rather than shrinking
-        # the box, which would clip a straight run at the window length.
-        ax.set_box_aspect((1.0, 1.0, 0.55), zoom=1.15)
-        (self.trace,) = ax.plot([], [], [], color=_TRACE, lw=1.4, animated=True)
-        (self.trace_now,) = ax.plot(
-            [], [], [], marker="o", color=_SYMBOL, ms=5, animated=True
-        )
-
-    def _build_horizon(self, grid) -> None:
-        self.ax_horizon = self.fig.add_subplot(grid[0:2, 1])
+    def _build_horizon(self, cell) -> None:
+        self.ax_horizon = self.fig.add_subplot(cell)
         ax = self.ax_horizon
         ax.set_xlim(-1.0, 1.0)
         ax.set_ylim(-1.0, 1.0)
@@ -227,7 +724,7 @@ class Panel:
         ax.set_yticks([])
         ax.set_facecolor(_BG)
         for spine in ax.spines.values():
-            spine.set_color("#39424b")
+            spine.set_color(_EDGE)
         ax.set_title("attitude", color=_FG, fontsize=9)
 
         self.sky = Polygon(np.zeros((4, 2)), closed=True, color=_SKY, animated=True)
@@ -238,15 +735,17 @@ class Panel:
         ax.add_patch(self.ground)
         (self.horizon_line,) = ax.plot([], [], color="white", lw=1.6, animated=True)
         (self.ladder,) = ax.plot([], [], color="white", lw=1.0, animated=True)
+        self.incidence = IncidenceMarker(ax)
         (self.symbol,) = ax.plot(
             _SYMBOL_X, _SYMBOL_Y, color=_SYMBOL, lw=2.4, animated=True
         )
+        self.slip = SlipBall(ax)
 
     def _build_strip(
         self, cell, label: str, centre: float, span: float, *, xlabel: bool = False
     ):
         ax = self.fig.add_subplot(cell)
-        self._style(ax)
+        _style(ax)
         ax.set_xlim(-self.window, 0.0)
         ax.set_ylim(centre - span, centre + span)
         ax.set_xticks([-self.window, -self.window / 2.0, 0.0])
@@ -257,42 +756,25 @@ class Panel:
             ax.set_xlabel("seconds before now", color=_FG, fontsize=8)
         (line,) = ax.plot([], [], color=_TRACE, lw=1.3, animated=True)
         readout = ax.text(
-            0.02,
-            0.90,
-            "",
-            transform=ax.transAxes,
-            color=_SYMBOL,
-            fontsize=9,
-            family="monospace",
-            va="top",
-            animated=True,
+            0.02, 0.90, "", transform=ax.transAxes, color=_SYMBOL, fontsize=9,
+            family="monospace", va="top", animated=True,
         )
         return line, readout, centre
 
     def _build_status(self, grid) -> None:
-        ax = self.fig.add_subplot(grid[2, 0:2])
+        ax = self.fig.add_subplot(grid[2, 0:5])
         ax.set_axis_off()
         ax.set_facecolor(_BG)
-        ax.text(
-            0.0,
-            0.02,
-            HELP,
-            transform=ax.transAxes,
-            color="#7d8a96",
-            fontsize=9,
-            family="monospace",
-            va="bottom",
-        )
         self.status = ax.text(
-            0.0,
-            0.98,
-            "",
-            transform=ax.transAxes,
-            color=_FG,
-            fontsize=10,
-            family="monospace",
-            va="top",
-            animated=True,
+            0.0, 0.98, "", transform=ax.transAxes, color=_FG, fontsize=10,
+            family="monospace", va="top", animated=True,
+        )
+        help_ax = self.fig.add_subplot(grid[2, 5])
+        help_ax.set_axis_off()
+        help_ax.set_facecolor(_BG)
+        help_ax.text(
+            0.0, 0.98, HELP, transform=help_ax.transAxes, color="#7d8a96",
+            fontsize=8, family="monospace", va="top",
         )
 
     # -- keyboard ----------------------------------------------------------
@@ -313,6 +795,8 @@ class Panel:
             return
         if event.key == TOGGLE_KEY:
             self._toggle_requested = True
+        if event.key == TRIM_HERE_KEY:
+            self._trim_here_requested = True
         self.held.add(event.key)
 
     def on_release(self, event) -> None:
@@ -323,29 +807,58 @@ class Panel:
         requested, self._toggle_requested = self._toggle_requested, False
         return requested
 
-    def pilot_input(self) -> PilotInput:
-        axes = {"pitch": 0.0, "roll": 0.0, "yaw": 0.0, "throttle": 0.0}
+    def take_trim_here_request(self) -> bool:
+        """Edge-triggered, exactly as the autopilot toggle is."""
+        requested, self._trim_here_requested = self._trim_here_requested, False
+        return requested
+
+    def key_demand(self) -> dict:
+        """Where the keys are asking each axis to go, BEFORE the stick ramp."""
+        axes = {"pitch": 0.0, "roll": 0.0, "yaw": 0.0, "throttle": 0.0, "trim": 0.0}
         for key in self.held:
             if key in KEYMAP:
                 axis, sign = KEYMAP[key]
                 axes[axis] += sign
         # Opposite keys held together cancel; the clip is for a stuck repeat.
-        return PilotInput(**{k: float(np.clip(v, -1.0, 1.0)) for k, v in axes.items()})
+        return {k: float(np.clip(v, -1.0, 1.0)) for k, v in axes.items()}
+
+    def step_stick(self, dt: float) -> None:
+        """Advance the ramp by one PHYSICS step."""
+        self.stick.step(self.key_demand(), dt)
+
+    def pilot_input(self) -> PilotInput:
+        """The stick as the aircraft sees it: ramped surfaces, raw rate keys."""
+        demand = self.key_demand()
+        return PilotInput(
+            pitch=self.stick.position["pitch"],
+            roll=self.stick.position["roll"],
+            yaw=self.stick.position["yaw"],
+            throttle=demand["throttle"],
+            trim=demand["trim"],
+        )
 
     # -- drawing -----------------------------------------------------------
 
     @property
     def artists(self) -> list:
         # Order matters under blitting: within the horizon axes the artists are
-        # drawn in this order, so the polygons must come before the symbol.
+        # drawn in this order, so the polygons must come before anything on top.
         return [
-            self.trace,
-            self.trace_now,
             self.sky,
             self.ground,
             self.horizon_line,
             self.ladder,
+            *self.incidence.artists,
             self.symbol,
+            *self.slip.artists,
+            *self.asi.artists,
+            *self.alt.artists,
+            *self.vsi.artists,
+            *self.hdg.artists,
+            *self.nz_gauge.artists,
+            *self.alpha_gauge.artists,
+            *self.wind_gauge.artists,
+            *self.gust_gauge.artists,
             self.status,
             *[artist for line, readout, _ in self.strips for artist in (line, readout)],
         ]
@@ -354,34 +867,40 @@ class Panel:
         return self.artists
 
     def update(
-        self, t: float, sim: SimState, controls: Controls, mode: Mode
+        self,
+        t: float,
+        sim: SimState,
+        controls: Controls,
+        mode: Mode,
+        accel: Accelerations,
+        reference: Controls,
+        field: FieldRange | None = None,
     ) -> list:
         # Sensed from the wind the last step applied, so the readouts are
         # air-relative under a wind field rather than quietly ground-relative.
         air = sense(sim.state, sim.wind_ned)
-        speed, alpha, beta = float(air.airspeed), float(air.alpha), float(air.beta)
-        phi, theta, psi = float(air.phi), float(air.theta), float(air.psi)
-        altitude = float(air.altitude)
-        state = sim.state
-        target_heading = float(self.targets.heading)
-        # Unwrapped about the target so a heading either side of north does not
-        # jump the width of the strip.
-        heading = (
-            target_heading + float(wrap_pi(jnp.array(psi - target_heading)))
-        ) * RAD2DEG
+        r = Readout(
+            t=t,
+            air=air,
+            accel=accel,
+            controls=controls,
+            reference=reference,
+            mode=mode,
+            wind_ned=np.asarray(sim.wind_ned, dtype=float),
+            omega_gust=np.asarray(sim.omega_gust, dtype=float),
+            field=field,
+        )
 
-        _push(self._t, t)
-        _push(self._pos, np.asarray(state.pos_ned, dtype=float))
-        _push(self._speed, speed)
-        _push(self._altitude, altitude)
-        _push(self._heading, heading)
+        for instrument in self.instruments:
+            instrument.update(r)
+        self._draw_horizon(r)
+        self._draw_strips(r)
+        self._draw_status(r)
+        return self.artists
 
-        relative = (self._pos - self._pos[-1]) / 1000.0
-        self.trace.set_data_3d(relative[:, 1], relative[:, 0], -relative[:, 2])
-        self.trace_now.set_data_3d([0.0], [0.0], [0.0])
-
-        theta_deg = theta * RAD2DEG
-        centre, along, sky = _horizon_frame(phi, theta_deg)
+    def _draw_horizon(self, r: Readout) -> None:
+        theta_deg = float(r.air.theta) * RAD2DEG
+        centre, along, sky = _horizon_frame(float(r.air.phi), theta_deg)
         self.sky.set_xy(_quad(centre, along, sky, _HORIZON_L, 2.0 * _HORIZON_L))
         self.ground.set_xy(_quad(centre, along, sky, _HORIZON_L, -2.0 * _HORIZON_L))
         self.horizon_line.set_data(
@@ -390,7 +909,13 @@ class Panel:
         )
         self.ladder.set_data(*_ladder(centre, along, sky, theta_deg))
 
-        elapsed = self._t - t
+    def _draw_strips(self, r: Readout) -> None:
+        _push(self._t, r.t)
+        _push(self._speed, float(r.air.airspeed))
+        _push(self._altitude, float(r.air.altitude))
+        _push(self._heading, self._unwrapped_heading(r))
+
+        elapsed = self._t - r.t
         for (line, readout, _), values, fmt in zip(
             self.strips,
             (self._speed, self._altitude, self._heading),
@@ -399,18 +924,36 @@ class Panel:
             line.set_data(elapsed, values)
             readout.set_text(fmt.format(values[-1]))
 
+    def _draw_status(self, r: Readout) -> None:
+        if r.field is None:
+            field_line = "still air"
+        elif r.field.bearing is None:
+            field_line = (
+                f"{r.field.label}   {r.field.distance:7.0f} m   "
+                f"closing {r.field.closing:+5.0f} m/s"
+            )
+        else:
+            field_line = (
+                f"{r.field.label}   {r.field.distance:7.0f} m   "
+                f"brg {np.degrees(r.field.bearing) % 360.0:5.1f}"
+            )
         self.status.set_text(
-            f"{Mode(mode).name:<10s} t {t:7.1f} s\n"
-            f"TAS {speed:7.1f} m/s   ALT {altitude:8.0f} m   "
-            f"HDG {np.degrees(psi) % 360.0:5.1f} deg\n"
-            f"pitch {theta_deg:+6.1f}   bank {phi * RAD2DEG:+6.1f}   "
-            f"aoa {alpha * RAD2DEG:+5.1f}   beta {beta * RAD2DEG:+5.1f}\n"
-            f"elev {float(controls.elevator) * RAD2DEG:+6.2f}   "
-            f"ail {float(controls.aileron) * RAD2DEG:+6.2f}   "
-            f"rud {float(controls.rudder) * RAD2DEG:+6.2f}   "
-            f"thr {float(controls.throttle):5.3f}"
+            f"{Mode(r.mode).name:<10s} t {r.t:7.1f} s     {field_line}\n"
+            f"TAS {float(r.air.airspeed):7.1f} m/s   "
+            f"ALT {float(r.air.altitude):8.0f} m   "
+            f"VS {float(r.air.vertical_speed):+6.1f} m/s   "
+            f"HDG {np.degrees(float(r.air.psi)) % 360.0:5.1f} deg\n"
+            f"pitch {float(r.air.theta) * RAD2DEG:+6.1f}   "
+            f"bank {float(r.air.phi) * RAD2DEG:+6.1f}   "
+            f"aoa {float(r.air.alpha) * RAD2DEG:+5.1f}   "
+            f"beta {float(r.air.beta) * RAD2DEG:+5.1f}   "
+            f"n_z {float(r.accel.n_z):+5.2f}\n"
+            f"elev {float(r.controls.elevator) * RAD2DEG:+6.2f}   "
+            f"ail {float(r.controls.aileron) * RAD2DEG:+6.2f}   "
+            f"rud {float(r.controls.rudder) * RAD2DEG:+6.2f}   "
+            f"thr {float(r.controls.throttle):5.3f}   "
+            f"trim {float(r.reference.elevator) * RAD2DEG:+6.2f}"
         )
-        return self.artists
 
 
 class LiveSim:
@@ -459,6 +1002,10 @@ class LiveSim:
         # Set by run_live once FuncAnimation exists; see _retime.
         self.animation = None
 
+    def request_trim_here(self) -> None:
+        """Ask for a trim-here on the next physics step, as the key would."""
+        self.panel._trim_here_requested = True
+
     def advance(self, seconds: float) -> int:
         """Run whole physics steps until caught up. Returns how many it ran."""
         self._backlog += seconds
@@ -466,9 +1013,11 @@ class LiveSim:
         while self._backlog >= self.dt and steps < self.max_steps_per_frame:
             air = sense(self.sim.state, self.sim.wind_ned)
             if self.panel.take_toggle_request():
-                self.ctl = man.toggle(
-                    self.ctl, air, self.targets, self.gains, self.ac
-                )
+                self.ctl = man.toggle(self.ctl, air, self.targets, self.gains, self.ac)
+            if self.panel.take_trim_here_request():
+                self.ctl = man.trim_here(self.ctl)
+            # Ramp the stick on the PHYSICS clock, not the render clock.
+            self.panel.step_stick(self.dt)
             self.controls, self.ctl = man.update(
                 self.ctl,
                 air,
@@ -495,11 +1044,11 @@ class LiveSim:
 
         matplotlib's `interval` is the delay *between* frames, not the frame
         period, so the rate you actually get is `interval` plus however long the
-        frame took to draw. On this panel that draw is over 20 ms -- six axes
-        means six region restores and six canvas blits -- so a nominal 20 fps
-        comes out at about 13. Correcting the delay from the measured period is
-        what makes `fps` mean frames per second on a machine other than the one
-        it was tuned on.
+        frame took to draw. On this panel that draw is over 20 ms -- a dozen axes
+        means a dozen region restores and a dozen canvas blits -- so a nominal
+        20 fps comes out well short. Correcting the delay from the measured
+        period is what makes `fps` mean frames per second on a machine other than
+        the one it was tuned on.
 
         It has to be `Animation._interval`: `TimedAnimation._step` rewrites
         `event_source.interval` from it after every frame, so setting the timer
@@ -527,10 +1076,74 @@ class LiveSim:
             elapsed = 1.0 / self.panel.fps
         self._last_wall = now
         self.advance(elapsed)
-        return self.panel.update(self.t, self.sim, self.controls, self.ctl.mode)
+        accel = accelerometers(
+            self.sim.state, self.controls, self.ac,
+            self.sim.wind_ned, self.sim.omega_gust,
+        )
+        field = None if self.field_range is None else self.field_range(self.sim.state)
+        return self.panel.update(
+            self.t, self.sim, self.controls, self.ctl.mode,
+            accel, self.ctl.manual.reference, field,
+        )
 
     def trajectory(self) -> Trajectory:
         return self.recorder.trajectory()
+
+
+# ---------------------------------------------------------------------------
+# Where a wind field is, in the terms its own geometry supports
+# ---------------------------------------------------------------------------
+
+
+def vortex_range(array, *, label: str):
+    """Distance to the next VortexArray core ahead, as a `State -> FieldRange`.
+
+    The cores are infinite line vortices running east-west: `wind.vortex_wind`
+    reads only `pos_ned[0]` and `pos_ned[2]`, and the induced wind has no east
+    component. So the distance is a perpendicular north distance whatever the
+    heading, and there is no bearing -- you cannot miss a line by turning away
+    from it.
+    """
+    cores = np.sort(np.asarray(array.north, dtype=float))
+
+    def ranged(state) -> FieldRange:
+        north = float(state.pos_ned[0])
+        ahead = cores[cores >= north - 1e-9]
+        target = float(ahead[0]) if len(ahead) else float(cores[-1])
+        index = int(np.searchsorted(cores, target)) + 1
+        vel_ned = np.asarray(quat_to_dcm(state.quat) @ state.vel_body, dtype=float)
+        return FieldRange(
+            label=f"{label} core {index}",
+            distance=target - north,
+            closing=float(vel_ned[0]),
+            bearing=None,
+        )
+
+    return ranged
+
+
+def updraft_range(column, *, label: str):
+    """Range and bearing to an UpdraftColumn, which IS a point and so has both."""
+    north0, east0 = float(column.north), float(column.east)
+
+    def ranged(state) -> FieldRange:
+        north, east = float(state.pos_ned[0]), float(state.pos_ned[1])
+        dn, de = north0 - north, east0 - east
+        distance = float(np.hypot(dn, de))
+        vel_ned = np.asarray(quat_to_dcm(state.quat) @ state.vel_body, dtype=float)
+        closing = (
+            float((dn * vel_ned[0] + de * vel_ned[1]) / distance)
+            if distance > 1e-9
+            else 0.0
+        )
+        return FieldRange(
+            label=label,
+            distance=distance,
+            closing=closing,
+            bearing=float(np.arctan2(de, dn)),
+        )
+
+    return ranged
 
 
 def run_live(
@@ -546,6 +1159,7 @@ def run_live(
     window: float = 60.0,
     wind_model=zero_wind,
     field_range=None,
+    aircraft_name: str = "boeing747",
 ) -> Trajectory:
     """Fly interactively until the window is closed, then return the run."""
     # Warm the jit caches before the window opens. Each of these compiles on
@@ -564,8 +1178,9 @@ def run_live(
     # inside the first frame, which is precisely what this warm-up exists to
     # prevent.
     step(sim, warm, dt, ac, wind_model)
+    accelerometers(sim.state, warm, ac, sim.wind_ned, sim.omega_gust)
 
-    panel = Panel(targets, window=window, fps=fps)
+    panel = Panel(targets, window=window, fps=fps, aircraft_name=aircraft_name)
     live = LiveSim(
         sim, ctl, targets, gains, mgains, ac, panel,
         dt=dt, wind_model=wind_model, field_range=field_range,
@@ -584,5 +1199,3 @@ def run_live(
     panel.fig._flightsim_animation = animation
     plt.show()
     return live.trajectory()
-
-

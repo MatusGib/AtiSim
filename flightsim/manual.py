@@ -13,11 +13,18 @@ limit, and releasing it returns the surface to `ManualState.reference` -- the
 deflection the stick centres to. That reference is whatever the surfaces were
 doing at the moment manual control was taken, so letting go leaves the aircraft
 where the previous controller left it rather than snapping the surfaces to zero.
-It is not a trim system: after a manoeuvre the reference is stale and the
-aircraft will drift, exactly as it would with an untrimmed real stick.
+
+**Trim is what moves that reference.** Without it the reference goes stale after
+any manoeuvre and the aircraft drifts, exactly as an untrimmed real stick would;
+`pilot.trim` walks the elevator reference at `gains.trim_rate`, and `trim_here`
+snaps it to the deflections currently reaching the plant. Trim writes to the
+reference and never to `controls`, which is the whole distinction between a trim
+system and a second elevator: let go, and the aircraft stays trimmed.
 
 The throttle is *not* spring-centred, because a throttle lever is not. The key
-integrates the setting at a fixed rate and it stays where it is left.
+integrates the setting at a fixed rate and it stays where it is left. Trim is
+not sprung either, for the same reason -- a trim wheel that recentred itself
+would be worse than no trim at all.
 
 **Sign conventions** follow flightsim.aero, so pushing the stick forward pitches
 the nose down:
@@ -36,7 +43,7 @@ the animation loop. Both directions are handled in `toggle`:
 
 Nothing in this module goes inside `lax.scan`: `Mode` is a Python enum and the
 dispatch in `update` is a Python branch. The live loop is plain Python at 50 Hz
-(see flightsim.viz), so that is where this runs. The jitted, scannable path is
+(see flightsim.panel), so that is where this runs. The jitted, scannable path is
 `autopilot.closed_loop_rollout`, which is unaffected.
 """
 
@@ -54,6 +61,7 @@ from flightsim.autopilot import APState, Gains, Targets, autopilot, engage
 from flightsim.autopilot import _rate_limit
 from flightsim.sensors import AirData
 from flightsim.state import Controls
+from flightsim.units import DEG2RAD
 
 
 class PilotInput(NamedTuple):
@@ -63,6 +71,7 @@ class PilotInput(NamedTuple):
     roll: Array = 0.0
     yaw: Array = 0.0
     throttle: Array = 0.0
+    trim: Array = 0.0  # +1 is nose-up: moves the CENTRING POINT, not the surface
 
 
 NEUTRAL = PilotInput()
@@ -77,6 +86,7 @@ class ManualGains(NamedTuple):
     rudder_authority: Array
     surface_rate: Array  # rad/s
     throttle_rate: Array  # per s
+    trim_rate: Array  # rad/s of elevator REFERENCE per unit trim input
 
 
 class ManualState(NamedTuple):
@@ -97,14 +107,27 @@ def manual(
     def surface(reference, demand, authority, limit):
         return jnp.clip(reference + demand * authority * limit, -limit, limit)
 
+    # Trim moves the point a released stick returns to, which is what makes it a
+    # trim system rather than a second elevator: let go, and the aircraft stays
+    # where it was trimmed. Nose-up is trailing-edge up, i.e. a NEGATIVE
+    # deflection here -- the same convention as the stick, where +pitch is
+    # forward and pitches the nose down.
+    reference = ms.reference._replace(
+        elevator=jnp.clip(
+            ms.reference.elevator - pilot.trim * gains.trim_rate * dt,
+            -ac.elevator_limit,
+            ac.elevator_limit,
+        )
+    )
+
     elevator = surface(
-        ms.reference.elevator, pilot.pitch, gains.elevator_authority, ac.elevator_limit
+        reference.elevator, pilot.pitch, gains.elevator_authority, ac.elevator_limit
     )
     aileron = surface(
-        ms.reference.aileron, pilot.roll, gains.aileron_authority, ac.aileron_limit
+        reference.aileron, pilot.roll, gains.aileron_authority, ac.aileron_limit
     )
     rudder = surface(
-        ms.reference.rudder, -pilot.yaw, gains.rudder_authority, ac.rudder_limit
+        reference.rudder, -pilot.yaw, gains.rudder_authority, ac.rudder_limit
     )
 
     out = Controls(
@@ -117,7 +140,7 @@ def manual(
             ms.controls.throttle + pilot.throttle * gains.throttle_rate * dt, 0.0, 1.0
         ),
     )
-    return out, ManualState(controls=out, reference=ms.reference)
+    return out, ManualState(controls=out, reference=reference)
 
 
 def take_control(controls: Controls) -> ManualState:
@@ -183,6 +206,22 @@ def toggle(
     return Controller(mode=Mode.MANUAL, manual=take_control(controls), ap=ctl.ap)
 
 
+def trim_here(ctl: Controller) -> Controller:
+    """Snap the stick's centring point to the deflections now reaching the plant.
+
+    Not a control any real aircraft has, but it is the reference concept made
+    explicit: "the aircraft is doing what I want -- hold this". Without it,
+    trimming out a manoeuvre on a keyboard means holding two keys and watching a
+    number, which is a worse experience than the trim wheel it stands in for.
+
+    A no-op in AUTOPILOT, because `toggle` already reseeds the reference from the
+    live deflections on the way out, so there is nothing left for it to do.
+    """
+    if ctl.mode is not Mode.MANUAL:
+        return ctl
+    return ctl._replace(manual=take_control(ctl.manual.controls))
+
+
 def update(
     ctl: Controller,
     air: AirData,
@@ -219,12 +258,21 @@ def update(
 # of sideslip -- a coordination input. Holding it there for eight seconds still
 # rolls the aircraft past 60 deg of bank through dihedral effect; that is the
 # aeroplane, not a missing limiter, and a real 747 behaves the same way.
+# `trim_rate` is DECLARED, and derived from one rule so that the three numbers
+# are not three separate guesses: one second of held trim moves the reference by
+# about a quarter of what full stick commands. Finer than that and trim is
+# useless; coarser and it is unflyable. Every deflection limit here is 25 deg.
+#
+#   747       full stick 0.25 * 25 = 6.25 deg  ->  1.50 deg/s
+#   cherokee  full stick 0.06 * 25 = 1.50 deg  ->  0.37 deg/s
+#   cessna    full stick 0.08 * 25 = 2.00 deg  ->  0.50 deg/s
 BOEING747_MANUAL = ManualGains(
     elevator_authority=jnp.array(0.25),
     aileron_authority=jnp.array(1.00),
     rudder_authority=jnp.array(0.15),
     surface_rate=jnp.array(0.6),
     throttle_rate=jnp.array(0.2),
+    trim_rate=jnp.array(1.5 * DEG2RAD),
 )
 
 # Hand-tuned against the trimmed Cherokee on a keyboard. The elevator is geared
@@ -236,6 +284,7 @@ CHEROKEE_MANUAL = ManualGains(
     rudder_authority=jnp.array(0.30),
     surface_rate=jnp.array(1.0),
     throttle_rate=jnp.array(0.5),
+    trim_rate=jnp.array(0.37 * DEG2RAD),
 )
 
 # Hand-tuned against the trimmed Cessna on a keyboard.
@@ -253,6 +302,7 @@ CESSNA172_MANUAL = ManualGains(
     rudder_authority=jnp.array(0.0),
     surface_rate=jnp.array(1.0),
     throttle_rate=jnp.array(0.5),
+    trim_rate=jnp.array(0.5 * DEG2RAD),
 )
 
 MANUAL_GAINS: dict[str, ManualGains] = {

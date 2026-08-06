@@ -263,3 +263,80 @@ def test_round_trip_through_both_modes_leaves_no_discontinuity():
 
     assert worst <= float(GAINS.surface_rate) + 1e-9
     assert np.isfinite(np.asarray(sim.state.vel_body)).all()
+
+
+# --- trim -------------------------------------------------------------------
+
+
+def test_trim_moves_the_reference_and_not_the_current_deflection():
+    """Trim writes to the CENTRING POINT. That is the whole distinction between
+    a trim system and a second elevator: let go, and the aircraft stays put."""
+    _, controls = trimmed()
+    ms = man.take_control(controls)
+    before = float(ms.reference.elevator)
+
+    _, ms = hold(ms, PilotInput(trim=1.0), 1.0)  # one second of nose-up trim
+    assert float(ms.reference.elevator) < before  # nose-up is trailing edge UP
+
+    # And a released stick now settles on the NEW reference, not the old one.
+    released, ms = hold(ms, man.NEUTRAL, 5.0)
+    assert float(released.elevator) == pytest.approx(
+        float(ms.reference.elevator), abs=1e-9
+    )
+    assert float(released.elevator) != pytest.approx(before, abs=1e-6)
+
+
+def test_one_second_of_trim_is_about_a_quarter_of_full_stick():
+    """The rule the three trim_rate values were derived from, asserted rather
+    than left in a comment -- otherwise the next person picks a fourth number."""
+    _, controls = trimmed()
+    for name in ("boeing747", "cherokee", "cessna172"):
+        ac = REGISTRY[name]
+        gains = man.MANUAL_GAINS[name]
+        ms = man.take_control(controls)
+        for _ in range(int(1.0 / DT)):
+            _, ms = man.manual(ms, PilotInput(trim=1.0), gains, ac, jnp.array(DT))
+        moved = abs(float(ms.reference.elevator) - float(controls.elevator))
+        full_stick = float(gains.elevator_authority) * float(ac.elevator_limit)
+        assert moved == pytest.approx(0.25 * full_stick, rel=0.05)
+
+
+def test_trim_respects_the_elevator_limit():
+    _, controls = trimmed()
+    ms = man.take_control(controls)
+    _, ms = hold(ms, PilotInput(trim=1.0), 600.0)  # far longer than full travel
+    assert abs(float(ms.reference.elevator)) <= float(AC.elevator_limit) + 1e-12
+
+
+def test_neutral_trim_leaves_the_reference_untouched():
+    """Every existing manual test passes PilotInput without a trim field, so a
+    sign or scale error here would move the reference under all of them."""
+    _, controls = trimmed()
+    ms = man.take_control(controls)
+    _, ms = hold(ms, man.NEUTRAL, 10.0)
+    assert float(ms.reference.elevator) == pytest.approx(
+        float(controls.elevator), abs=1e-15
+    )
+
+
+def test_trim_here_snaps_the_reference_to_the_live_deflections():
+    state, controls = trimmed()
+    ctl = man.start(sense(state), controls, hold_targets(), GAINS, AC)
+    held, ctl = man.update(
+        ctl, sense(state), PilotInput(pitch=1.0), hold_targets(),
+        GAINS, MGAINS, AC, jnp.array(DT),
+    )
+    assert float(ctl.manual.reference.elevator) != pytest.approx(float(held.elevator))
+
+    ctl = man.trim_here(ctl)
+    assert float(ctl.manual.reference.elevator) == pytest.approx(float(held.elevator))
+
+
+def test_trim_here_does_nothing_under_the_autopilot():
+    """`toggle` already reseeds the reference on the way out, so there is nothing
+    left to do -- and trim-here must not reach into the autopilot's state."""
+    state, controls = trimmed()
+    ctl = man.start(
+        sense(state), controls, hold_targets(), GAINS, AC, mode=Mode.AUTOPILOT
+    )
+    assert man.trim_here(ctl) is ctl
