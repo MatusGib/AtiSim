@@ -26,6 +26,7 @@ import flightsim  # noqa: F401  -- enables x64 before any array is made
 from flightsim import autopilot as ap_mod
 from flightsim import integrate, manual as man, trim, viz
 from flightsim.aircraft import CRUISE, REGISTRY
+from flightsim.sensors import sense
 from flightsim.units import RAD2DEG
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -58,7 +59,7 @@ targets = ap_mod.Targets(
     altitude=jnp.array(H), heading=jnp.array(0.0), airspeed=jnp.array(V)
 )
 mode = man.Mode.AUTOPILOT if args.autopilot else man.Mode.MANUAL
-ctl = man.start(state, controls, targets, gains, ac, mode=mode)
+ctl = man.start(sense(state), controls, targets, gains, ac, mode=mode)
 sim = integrate.init_sim(state, jax.random.PRNGKey(args.seed))
 
 print(f"  starting in {mode.name}. Close the window to finish.")

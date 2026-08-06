@@ -23,6 +23,7 @@ from flightsim import integrate, manual as man, trim, viz
 from flightsim.aero import air_data
 from flightsim.aircraft import CRUISE, REGISTRY
 from flightsim.manual import Mode
+from flightsim.sensors import sense
 from flightsim.state import Controls, quat_to_euler
 from flightsim.viz import PITCH_SPAN_DEG, _horizon_frame, _ladder
 
@@ -60,7 +61,7 @@ def targets():
 def live(trimmed, targets):
     """Panel plus LiveSim, stepping a fixed 1/fps of sim time per frame."""
     state, controls = trimmed
-    ctl = man.start(state, controls, targets, GAINS, AC)
+    ctl = man.start(sense(state), controls, targets, GAINS, AC)
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
     panel = viz.Panel(targets, window=20.0, fps=20.0)
     return viz.LiveSim(

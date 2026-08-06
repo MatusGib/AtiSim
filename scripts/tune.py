@@ -15,6 +15,7 @@ from flightsim import autopilot as ap_mod
 from flightsim import integrate, trim
 from flightsim.aero import air_data
 from flightsim.aircraft import CRUISE, REGISTRY
+from flightsim.sensors import sense
 from flightsim.state import quat_to_euler
 from flightsim.units import RAD2DEG
 
@@ -40,7 +41,7 @@ def fly(targets, seconds, gains=GAINS):
     x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
     state = trim.trimmed_state(x[0], jnp.array(V), jnp.array(H))
     controls = trim.trimmed_controls(x[1], x[2])
-    ap = ap_mod.engage(state, controls, targets, gains, ac)
+    ap = ap_mod.engage(sense(state), controls, targets, gains, ac)
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
     (_, _), (hist, ctrl) = ap_mod.closed_loop_rollout(
         sim, ap, targets, gains, jnp.array(DT), ac, int(seconds / DT)

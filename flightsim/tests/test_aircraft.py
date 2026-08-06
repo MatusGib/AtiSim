@@ -14,6 +14,7 @@ import pytest
 
 from flightsim import trim
 from flightsim.aircraft import CESSNA172_TABLES, CRUISE, REGISTRY
+from flightsim.sensors import sense
 from flightsim.atmosphere import G0
 from flightsim.units import RAD2DEG
 
@@ -221,7 +222,7 @@ def test_each_aircraft_is_flown_by_its_own_gains(named):
     targets = ap_mod.Targets(
         altitude=jnp.array(H), heading=jnp.array(0.0), airspeed=jnp.array(V)
     )
-    ap = ap_mod.engage(state, controls, targets, gains, ac)
+    ap = ap_mod.engage(sense(state), controls, targets, gains, ac)
     (_, _), (hist, ctrl) = ap_mod.closed_loop_rollout(
         integrate.init_sim(state, jax.random.PRNGKey(0)),
         ap, targets, gains, jnp.array(0.02), ac, 3000,
@@ -247,7 +248,7 @@ def test_each_aircraft_captures_an_altitude_step(named):
     targets = ap_mod.Targets(
         altitude=jnp.array(H + step), heading=jnp.array(0.0), airspeed=jnp.array(V)
     )
-    ap = ap_mod.engage(state, controls, targets, gains, ac)
+    ap = ap_mod.engage(sense(state), controls, targets, gains, ac)
     (_, _), (hist, _) = ap_mod.closed_loop_rollout(
         integrate.init_sim(state, jax.random.PRNGKey(0)),
         ap, targets, gains, jnp.array(0.02), ac, int(300.0 / 0.02),
@@ -274,7 +275,7 @@ def test_each_aircraft_captures_a_heading_step(named):
         heading=jnp.array(np.deg2rad(30.0)),
         airspeed=jnp.array(V),
     )
-    ap = ap_mod.engage(state, controls, targets, gains, ac)
+    ap = ap_mod.engage(sense(state), controls, targets, gains, ac)
     (_, _), (hist, _) = ap_mod.closed_loop_rollout(
         integrate.init_sim(state, jax.random.PRNGKey(0)),
         ap, targets, gains, jnp.array(0.02), ac, int(300.0 / 0.02),

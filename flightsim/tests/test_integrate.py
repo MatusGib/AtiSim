@@ -153,6 +153,8 @@ def test_wind_state_and_key_are_threaded_through_the_scan(test_aircraft):
         state=initial_state(),
         wind=FilterState(accumulated=jnp.array(0.0)),
         key=key0,
+        wind_ned=jnp.zeros(3),
+        omega_gust=jnp.zeros(3),
     )
     final, _ = integrate.rollout(
         sim, CRUISE_CONTROLS, jnp.array(0.02), test_aircraft, 250, wind_model=counting_wind
@@ -174,7 +176,11 @@ def test_different_keys_diverge_once_wind_is_stochastic(test_aircraft):
         lambda x: jnp.broadcast_to(x, (n,) + x.shape), initial_state()
     )
     sim = integrate.SimState(
-        state=tiled, wind=FilterState(accumulated=jnp.zeros(n)), key=keys
+        state=tiled,
+        wind=FilterState(accumulated=jnp.zeros(n)),
+        key=keys,
+        wind_ned=jnp.zeros((n, 3)),
+        omega_gust=jnp.zeros((n, 3)),
     )
     _, hist = jax.vmap(
         lambda s: integrate.rollout(
@@ -192,6 +198,8 @@ def test_wind_is_sampled_once_per_step_not_per_rk4_stage(test_aircraft):
         state=initial_state(),
         wind=FilterState(accumulated=jnp.array(0.0)),
         key=jax.random.PRNGKey(1),
+        wind_ned=jnp.zeros(3),
+        omega_gust=jnp.zeros(3),
     )
     after_one = integrate.step(
         sim, CRUISE_CONTROLS, jnp.array(0.02), test_aircraft, wind_model=counting_wind

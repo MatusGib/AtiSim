@@ -23,10 +23,10 @@ import jax
 import jax.numpy as jnp
 from jax import Array
 
-from flightsim.aero import air_data
 from flightsim.aircraft import Aircraft
 from flightsim.integrate import SimState, step
-from flightsim.state import Controls, State, quat_to_euler
+from flightsim.sensors import AirData, sense
+from flightsim.state import Controls
 from flightsim.wind import zero_wind
 
 
@@ -91,17 +91,26 @@ def _rate_limit(new: Array, old: Array, rate: Array, dt: Array) -> Array:
 
 
 def autopilot(
-    state: State,
+    air: AirData,
     ap: APState,
     targets: Targets,
     gains: Gains,
     ac: Aircraft,
     dt: Array,
 ) -> tuple[Controls, APState]:
-    phi, theta, psi = quat_to_euler(state.quat)
-    p, q, r = state.omega
-    altitude = -state.pos_ned[2]
-    airspeed, _, beta = air_data(state.vel_body)
+    """One control step from sensed air data.
+
+    This takes `AirData` rather than `State` on purpose. Given a `State` the
+    natural thing to write is `air_data(state.vel_body)`, which is inertial --
+    so under wind the speed loop regulates GROUNDSPEED and the sideslip-to-rudder
+    term receives a flow angle no vane would produce. That was a real defect
+    here for three sessions. Taking the sensor set as an argument means the
+    caller has to have decided what the air is doing.
+    """
+    phi, theta, psi = air.phi, air.theta, air.psi
+    p, q, r = air.p, air.q, air.r
+    altitude = air.altitude
+    airspeed, beta = air.airspeed, air.beta
 
     # --- outer: altitude -> pitch command ---
     alt_err = targets.altitude - altitude
@@ -166,7 +175,7 @@ def autopilot(
 
 
 def engage(
-    state: State, controls: Controls, targets: Targets, gains: Gains, ac: Aircraft
+    air: AirData, controls: Controls, targets: Targets, gains: Gains, ac: Aircraft
 ) -> APState:
     """Seed the integrators so the first output equals the current controls.
 
@@ -175,10 +184,10 @@ def engage(
     proportional terms happen to ask for. Ten lines, and it is the most common
     bug in this kind of system.
     """
-    phi, theta, psi = quat_to_euler(state.quat)
-    p, q, r = state.omega
-    altitude = -state.pos_ned[2]
-    airspeed, _, _ = air_data(state.vel_body)
+    phi, theta, psi = air.phi, air.theta, air.psi
+    p, q, r = air.p, air.q, air.r
+    altitude = air.altitude
+    airspeed = air.airspeed
 
     # Choose alt_i so the pitch command equals the current pitch attitude: the
     # aircraft is then already tracking its own state and nothing moves.
@@ -241,7 +250,12 @@ def closed_loop_rollout(
 
     def body(carry, _):
         sim, ap = carry
-        controls, ap = autopilot(sim.state, ap, targets, gains, ac, dt)
+        # Sense the wind the previous step applied. Re-evaluating the model here
+        # would split the key a second time and hand the controller a different
+        # realisation from the one the aircraft is flying through.
+        controls, ap = autopilot(
+            sense(sim.state, sim.wind_ned), ap, targets, gains, ac, dt
+        )
         sim = step(sim, controls, dt, ac, wind_model=wind_model)
         return (sim, ap), (sim.state, controls)
 

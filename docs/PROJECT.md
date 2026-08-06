@@ -4,7 +4,7 @@ A 6-DOF fixed-wing flight-dynamics core in JAX, built as a foundation for turbul
 modelling. This document is the standing record: what exists, what is validated, what is
 known-broken, and what happens next.
 
-**Last updated:** session 4 (usage record).
+**Last updated:** session 5 (latent bugs (a)-(d) fixed; extensibility seams).
 
 **To run any of it, see §10.**
 
@@ -61,11 +61,12 @@ without a core rewrite. Both have now been exercised and both held.
 | `dynamics.py` | 6-DOF Newton-Euler, `load_factor` | wind enters here and nowhere else |
 | `wind.py` | wind fields and composition | vortex array, updraft column, `superpose`, `field_model` |
 | `integrate.py` | RK4 `step`, `rollout`, batched rollout | wind sampled once per step, held across the four stages |
-| `aircraft.py` | three aircraft + `REGISTRY`/`CRUISE` | every derivative cites its source table |
+| `aircraft.py` | three aircraft + `REGISTRY`/`CRUISE` | every derivative cites its source table; `FlightCondition` + `from_dimensional_*` do the conversions |
+| `sensors.py` | `AirData`, `sense(state, wind_ned)` | **the only supported way to ask what the aircraft is doing**; air-relative where a real sensor is |
 | `trim.py` | Newton solve for steady level flight | still-air by construction, and must stay so |
 | `autopilot.py` | cascaded PID | per-aircraft gains; bumpless engage |
 | `manual.py` | manual control and mode switching | |
-| `viz.py` | live panel, `Trajectory`, `post_flight` | **inertial incidence — see §6(b)** |
+| `viz.py` | live panel, `Trajectory`, `post_flight` | air-relative since session 5; `Trajectory` records the applied wind |
 | `vortex_viz.py` | turbulence encounter analysis and figure | air-relative throughout; deliberately separate from `viz.py` |
 
 ### The two interfaces turbulence depends on
@@ -154,20 +155,41 @@ Every figure below is measured, with the tolerance the test asserts.
 | Dutch roll ζ | 0.0361 | 0.0349 | 3.4% |
 | Roll τ | 1.795 s | 1.779 s | 0.9% |
 | Spiral τ | 138.0 s | 137.0 s | 0.8% |
-| Phugoid ωn (as shipped) | 0.0554 | 0.0673 rad/s | 18% — attributed, §5 |
-| Short-period ζ (as shipped) | 0.338 | 0.387 | 13% — attributed, §5 |
+| Phugoid ωn (as shipped) | 0.0553 | 0.0673 rad/s | 17.8% — attributed, §5 |
+| Short-period ζ (as shipped) | 0.3425 | 0.387 | 11.5% — attributed, §5 |
 | Phugoid / short period (augmented model) | — | — | ~1% |
+
+Superseded by the session-5 `Mq` fix (§6d), kept per §4's rule: short-period ζ read
+**0.338 / 12.6%** and phugoid ωn **0.0554** while `Mq` was −0.330. Short-period ωn moved
+0.9493 → 0.9508.
+
+The same fix moved the encounter table below, because `Mq` is pitch damping and those runs
+are open-loop pitch responses: first-core Δθ **2.20 → 2.24 deg**, updraft Δθ
+**4.39 → 4.37 deg**. Superseded values recorded here; no conclusion in §5 or the Fig. 8
+mechanism changes, since both are orderings rather than values.
+
+### Air-relative sensing (session 5)
+
+| Check | Measured | Tolerance |
+|---|---|---|
+| Still-air sensing unchanged by the fix | exact | atol 1e-12 |
+| Airspeed in a 25 m/s headwind vs groundspeed + 25 | exact | rel 1e-6 |
+| Δα from a 10 m/s updraft at 236 m/s | 2.43 deg = atan(10/236) | rel 0.02 |
+| Autopilot into a 25 m/s headwind: airspeed on target | yes | ±1.5 m/s |
+| …and groundspeed 25 m/s below it | yes | ±1.5 m/s |
+| Attitude/rates unmoved by the wind correction | exact | atol 1e-12 |
+| Bugs (a)+(b) re-introduced → their tests go red | 2 failed, 219 passed | — |
 
 ### Vortex and updraft encounters (747 at CR-2144 FC9)
 
 | Quantity | Measured | Reference |
 |---|---|---|
 | Gust spacing, Parks Case 1 | 4.52 s | "about 5 s apart" |
-| In-core Δθ, first core | 2.20 deg | Fig. 8 vortex ≈1.4 deg |
+| In-core Δθ, first core | 2.24 deg | Fig. 8 vortex ≈1.4 deg |
 | In-core Δθ, second core | 4.17 deg | response builds through the array |
 | Whole-run Δθ | 8.33 deg | the phugoid, **not** the encounter |
 | Peak load excursion, vortex | −1.23 g | — |
-| In-column Δθ, updraft (sharpness 6) | 4.39 deg | paper states 5.2 deg; Fig. 8 cluster 6.2 |
+| In-column Δθ, updraft (sharpness 6) | 4.37 deg | paper states 5.2 deg; Fig. 8 cluster 6.2 |
 | Updraft Δθ across sharpness 2→10 | 3.63 → 5.34 deg | the declared parameter's influence |
 | Air-relative vs inertial α, peak difference | 7.0 deg | — |
 | corr(n_z, α) air-relative / inertial | 0.9990 / 0.5572 | — |
@@ -216,26 +238,43 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   40 kft with roughly 0.8× the wing loading. Every load comparison is order-of-magnitude
   or clustering. Assert bands and orderings, never values.
 
-## 6. Latent bugs — real, and none of them fail a test today
+## 6. Latent bugs — all four fixed in session 5
 
-**(a) `autopilot.py:104` senses inertial airspeed.** `air_data(state.vel_body)` — under
-wind the speed loop regulates *groundspeed* and the sideslip-to-rudder term receives a
-flow angle no vane would produce. Same at `autopilot.py:181` in `engage`.
+All four are closed. Kept here rather than deleted because the *shape* of (a) and (b) is
+the thing worth remembering: both survived three sessions and a 209-test suite because
+every test in the project was still air, and still air cannot distinguish airspeed from
+groundspeed.
 
-**(b) `viz.py:120-125` computes incidence from inertial velocity.** Under wind
-`Derived.airspeed/.alpha/.beta` are ground-relative. Worse: `test_viz.py`'s
-`test_derived_agrees_with_the_aero_module` compares viz against aero *given the same
-input*, so both sides move together and it **stays green while reporting the wrong
-quantity**. Measured error in a Parks Case 1 encounter: up to 7 deg of α.
-`vortex_viz.py` sidesteps this by computing air-relative quantities itself.
+**(a) `autopilot.py` sensed inertial airspeed.** FIXED. `autopilot` and `engage` now take
+`sensors.AirData` rather than `State`, so they cannot be handed inertial velocity — there
+is no `vel_body` in scope to misuse. Verified by
+`test_the_autopilot_holds_airspeed_not_groundspeed`: into a 25 m/s headwind the loop now
+settles airspeed on target with groundspeed 25 m/s below, where it previously did the
+reverse.
 
-**(c) `viz.Trajectory` records no wind**, so a saved `.npz` cannot be corrected even in
-principle. Zero-churn fix: replay. The wind model is a pure function of
-`(wind_state, state, key, dt)`, so re-evaluating it over the logged states reproduces the
-applied wind exactly.
+**(b) `viz.derived` computed incidence from inertial velocity.** FIXED. It now uses the
+recorded wind. The old `test_derived_agrees_with_the_aero_module` fed both sides the same
+input and structurally could not fail; the replacement,
+`test_derived_is_air_relative_and_this_test_can_fail`, computes the expectation
+independently. **Verified by re-introducing the bug**: exactly that test and (a)'s went
+red, and nothing else moved.
 
-**(d) `aircraft.py` transcribes the 747's `Mq` as −0.330**; CR-2144 Table IX-4 flight
-condition 9 gives **−0.339**. 2.7% and it slightly worsens the short-period damping match.
+**(c) `viz.Trajectory` recorded no wind.** FIXED, by recording rather than replay.
+`SimState` now carries the wind the previous step applied, and `Recorder.append` takes the
+whole `SimState`, so a run is self-describing. Replay was the cheaper option but needs the
+caller to reconstruct the exact model and key; recording cannot be got wrong later.
+`load` defaults the two new columns to zero, so `.npz` written before they existed still
+open — honestly, since those runs were all still air.
+
+**(d) 747 `Mq` transcribed as −0.330.** FIXED to −0.339. Short-period damping error
+12.6% → 11.5%; everything else moved in the fourth decimal or not at all.
+
+### What made (a) and (b) invisible
+
+A still-air test suite cannot catch an air-relative/inertial confusion, because in still
+air the two are the same number. Any future quantity with an air-relative and an inertial
+form needs at least one test that flies through a non-zero wind field —
+`test_sensors.py` exists for exactly that and nothing else.
 
 ## 7. Plan
 
@@ -244,6 +283,9 @@ condition 9 gives **−0.339**. 2.7% and it slightly worsens the short-period da
                                                                     stated properties
 2. [DONE] Updraft column, declared edge sharpness         -> verify: Δθ(updraft) > 1.5×Δθ(vortex)
 3. [DONE] load_factor + air-relative analysis figure      -> verify: corr(n_z, α_air) > 0.999
+7. [DONE] Fix latent bugs (a)-(d)                         -> verify: DONE, by re-introducing
+   (was step 7; done early because 4 and 6 both                     (a) and (b) and watching
+    depend on the sensing being right)                              exactly their tests go red
 4. Dryden background layer                                -> verify: sample σ to rel 0.10;
    (needs MIL-F-8785C Fig. 7 σ at 40 kft DIGITISED;                AR(1) pole = exp(−V·dt/L)
     forces init_sim/batch_sim to be parameterised)
@@ -251,13 +293,84 @@ condition 9 gives **−0.339**. 2.7% and it slightly worsens the short-period da
    at zero wind                                                    separates from the other two
 6. Fig. 8 with ensemble error bars                        -> verify: vortex/updraft/manoeuvre
    (vmap over keys; deterministic parts see the same field)        ordering holds across the ensemble
-7. Fix latent bugs (a)-(d)                                -> verify: test_viz's derived test
-                                                                    can actually go red
 8. Mountain lee wave + F-factor                           -> verify: F exceeds the measured
                                                                     +0.023/−0.066 thrust envelope
 ```
 
 Steps 4 and 5 are independent and either may go first. Step 6 needs both.
+
+### Extensibility: what the next wind model will cost
+
+Everything so far is a **deterministic, position-only field**: `field_model(field)` wraps
+`pos_ned -> wind_ned` and derives `omega_gust` from the analytic gradient. Dryden is not
+that, and the gap is where the work is.
+
+| | Deterministic field (vortex, updraft, lee wave) | Stochastic filter (Dryden, von Kármán) |
+|---|---|---|
+| Depends on | position only | its own previous output |
+| Needs `WindState` | no — it is an empty tuple today | **yes**, one filter state per axis |
+| Needs the key | no — returns it untouched | **yes**, splits it every step |
+| `omega_gust` from | analytic gradient of the field | its own separate shaping filter |
+| Ensemble meaning | every member meets the same field | every member is a different realisation |
+
+Three things must change before Dryden lands, none of them large but all of them structural:
+
+1. **`WindState` has to carry filter states**, and `init_sim`/`batch_sim` must be
+   parameterised to seed them. Today they hard-code `zero_wind_state()`, so a stateful
+   model cannot be initialised at all. This is the actual blocker.
+2. **`omega_gust` needs its own filter.** `field_model`'s analytic-gradient trick has no
+   equivalent for a stochastic field; MIL-F-8785C gives separate rate spectra, and reusing
+   the translational filter would be wrong.
+3. **The ensemble contract needs stating in a test.** "Deterministic components return the
+   key untouched, so every member meets the same vortex" is currently true by construction
+   and asserted nowhere. It stops being true for free the moment a stochastic layer is
+   superposed with a deterministic one.
+
+Adding another *deterministic* field — mountain lee wave, microburst, wake vortex from a
+preceding aircraft — needs none of this. Write the field function, wrap it in
+`field_model`, done. That path is genuinely extensible today.
+
+### Extensibility: what the next aircraft will cost
+
+`FlightCondition` + `from_dimensional_longitudinal/lateral/controls` (session 5) are the
+shared conversion path. They exist because the same algebra was hand-transcribed three
+times and produced a real bug the third time — the Cessna's control derivatives recovered
+at the wrong dynamic pressure, 25% high across all four.
+
+Adding an aircraft whose source gives **dimensional** derivatives is now: state the source's
+own `FlightCondition`, call the three helpers, fill in propulsion and limits, add gains.
+Whose source gives **non-dimensional** derivatives (Navion, Cessna): skip the helpers
+entirely.
+
+What is still per-aircraft and unavoidable: the drag polar. `CD0` and `e` are back-solved
+differently for every aircraft — from `Xw` for the 747 and Cherokee, by least squares on a
+table for the Cessna — because no source states them. That is source variety, not missing
+abstraction, and pushing it into a data file would hide the derivation rather than share it.
+
+**Data-file definitions were considered and deferred.** The blocker is that the per-number
+provenance comments and the back-solve logic are the most valuable part of `aircraft.py`,
+and TOML expresses neither. The sequence that would work: keep factoring derivation into
+tested helpers until a definition is *only* citations plus literal numbers, then the data
+file is a mechanical translation. Not before.
+
+### Extensibility: the ceiling nobody should walk into
+
+`aero.py` is `CL = CL0 + CLa·α`, linear, with no stall — and by decision it stays that way.
+Three consequences, stated here so they are not rediscovered:
+
+- **The ±g asymmetry cannot be reproduced.** It is exactly odd-symmetric in Δα, so an
+  up-gust and an equal down-gust give equal and opposite load increments to machine
+  precision. §5 already calls this structurally impossible; the decision to stay linear
+  makes it permanent, not merely pending.
+- **The Cessna's stall tables stay unused.** `CESSNA172_TABLES` runs to CLmax 1.889 at
+  19.5 deg and nothing reads it.
+- **Any encounter driving α past ~10-12 deg reports lift the sources say is not there.**
+  Parks-scale vortices do exactly this: the source's own note estimates α excursions of
+  order 20 deg. Analysis windows must therefore stay in the linear range, and a run that
+  leaves it is not evidence of anything.
+
+If that ceiling ever needs lifting, the seam is `aero.coefficients` — swap it for a
+protocol with a linear and a table implementation. That was the option not taken.
 
 ## 8. Open questions
 
@@ -276,6 +389,39 @@ Steps 4 and 5 are independent and either may go first. Step 6 needs both.
   before treating any timing as a baseline.
 
 ## 9. Session log
+
+### Session 5 — the four latent bugs, and the extensibility seams
+Fixed (a)-(d). (a) and (b) were one root cause, so they got one fix: `sensors.AirData`
+and `sense(state, wind_ned)`, with `autopilot`/`engage`/`manual.update`/`viz.derived` now
+taking the sensor set instead of `State`. That is deliberately the invasive option — with
+no `vel_body` in scope there is nothing left to misuse. Which quantities are air-relative
+is physics and is documented in `sensors.py`: pitot and vanes yes, IMU and rate gyros no.
+Feeding `omega - omega_gust` to a rate-damping loop is the overcorrection, and there is a
+test pinning against it.
+
+(c) was fixed by recording rather than the replay §6 originally suggested: `SimState`
+carries the wind the previous step applied, `Recorder` takes the whole `SimState`, and
+`load` defaults the new columns so old `.npz` still open. Replay was cheaper but needs the
+caller to reconstruct the model and key correctly every time.
+
+(d) was one character. Short-period ζ error 12.6% → 11.5%; the affected ledger rows are
+superseded in §4, not deleted.
+
+**The verification that mattered:** re-introduced (a) and (b) and confirmed exactly their
+two tests went red while the other 219 stayed green. §7 asked for "test_viz's derived test
+can actually go red" and the honest answer was that it never could — it fed both sides the
+same input. It is replaced rather than repaired.
+
+Also added `FlightCondition` and the `from_dimensional_*` helpers, and retrofitted the
+Cherokee and Cessna onto them. They exist because the Cessna bug was a wrong dynamic
+pressure, and bundling the condition with the conversion leaves no argument to get wrong.
+
+Deliberately not done: nonlinear aero. Asked and declined, so the ±g asymmetry is now
+permanently out of reach rather than pending — recorded in §7 so it is not rediscovered.
+Data-file aircraft definitions also deferred, with the condition for revisiting written
+down.
+
+221 tests.
 
 ### Session 4 — usage record
 No code changed. Added §10 because nothing in this document said how to *run* any of it:
@@ -369,12 +515,13 @@ model and silently assumes still air.
 |---|---|
 | `scripts/vortex.py`, `vortex_viz.py` | **Correct.** Air-relative throughout, by construction. |
 | `integrate.step`, `dynamics`, `aero` | **Correct.** The core has always been air-relative. |
+| `autopilot.py`, `manual.py` | **Correct since session 5.** Take `AirData`; the speed loop holds true airspeed. |
+| `viz.py` live panel and `Derived` | **Correct since session 5.** Sensed from the recorded wind. |
+| `viz.Trajectory` / saved `.npz` | Records the applied wind. Files written before session 5 load as still air. |
 | `trim.py` | Still-air by construction and must stay so. Not a defect. |
-| `autopilot.py` | **Wrong under wind** — §6(a). The speed loop regulates groundspeed and the sideslip term sees a flow angle no vane would produce. |
-| `viz.py` live panel and `Derived` | **Wrong under wind** — §6(b). Incidence comes from inertial velocity; measured error up to 7 deg of α in a Parks encounter. Its own test cannot catch this. |
-| `viz.Trajectory` / saved `.npz` | Records no wind — §6(c). Recoverable only by replaying the wind model over the logged states. |
 
-So: `fly.py` is a still-air tool. Turbulence work goes through `scripts/vortex.py`.
+Ask for state through `sensors.sense(state, wind_ned)`. Reaching into `state.vel_body` for
+"airspeed" is the bug that took three sessions to find — see §6.
 
 ### Aircraft
 

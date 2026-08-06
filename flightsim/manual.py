@@ -52,7 +52,8 @@ from flightsim.autopilot import APState, Gains, Targets, autopilot, engage
 # Shared with the autopilot on purpose: the rate limit is a property of the
 # actuator, so both controllers must apply the same one.
 from flightsim.autopilot import _rate_limit
-from flightsim.state import Controls, State
+from flightsim.sensors import AirData
+from flightsim.state import Controls
 
 
 class PilotInput(NamedTuple):
@@ -148,7 +149,7 @@ class Controller(NamedTuple):
 
 
 def start(
-    state: State,
+    air: AirData,
     controls: Controls,
     targets: Targets,
     gains: Gains,
@@ -159,7 +160,7 @@ def start(
     return Controller(
         mode=mode,
         manual=take_control(controls),
-        ap=engage(state, controls, targets, gains, ac),
+        ap=engage(air, controls, targets, gains, ac),
     )
 
 
@@ -169,7 +170,7 @@ def current_controls(ctl: Controller) -> Controls:
 
 
 def toggle(
-    ctl: Controller, state: State, targets: Targets, gains: Gains, ac: Aircraft
+    ctl: Controller, air: AirData, targets: Targets, gains: Gains, ac: Aircraft
 ) -> Controller:
     """Switch mode, seeding the incoming controller from the outgoing deflections."""
     controls = current_controls(ctl)
@@ -177,14 +178,14 @@ def toggle(
         return Controller(
             mode=Mode.AUTOPILOT,
             manual=ctl.manual,
-            ap=engage(state, controls, targets, gains, ac),
+            ap=engage(air, controls, targets, gains, ac),
         )
     return Controller(mode=Mode.MANUAL, manual=take_control(controls), ap=ctl.ap)
 
 
 def update(
     ctl: Controller,
-    state: State,
+    air: AirData,
     pilot: PilotInput,
     targets: Targets,
     gains: Gains,
@@ -192,12 +193,17 @@ def update(
     ac: Aircraft,
     dt: Array,
 ) -> tuple[Controls, Controller]:
-    """One control step from whichever controller currently has the aircraft."""
+    """One control step from whichever controller currently has the aircraft.
+
+    Takes `AirData` rather than `State` for the reason given in
+    `autopilot.autopilot`: the manual branch ignores it, but the autopilot branch
+    must not be handed inertial velocity.
+    """
     if ctl.mode is Mode.MANUAL:
         controls, ms = manual(ctl.manual, pilot, mgains, ac, dt)
         return controls, ctl._replace(manual=ms)
 
-    controls, ap = autopilot(state, ctl.ap, targets, gains, ac, dt)
+    controls, ap = autopilot(air, ctl.ap, targets, gains, ac, dt)
     return controls, ctl._replace(ap=ap)
 
 

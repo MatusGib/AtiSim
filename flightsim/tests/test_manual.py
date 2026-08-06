@@ -7,6 +7,7 @@ from flightsim import autopilot as ap_mod
 from flightsim import integrate, manual as man, trim
 from flightsim.aircraft import CRUISE, REGISTRY
 from flightsim.manual import Mode, PilotInput
+from flightsim.sensors import sense
 from flightsim.state import Controls, quat_to_euler
 
 AC = REGISTRY["boeing747"]
@@ -186,7 +187,7 @@ def test_right_stick_rolls_right_without_departing():
 
 def test_start_seeds_both_controllers_from_the_same_deflections():
     state, controls = trimmed()
-    ctl = man.start(state, controls, hold_targets(), GAINS, AC)
+    ctl = man.start(sense(state), controls, hold_targets(), GAINS, AC)
     assert ctl.mode is Mode.MANUAL
     for held, current in zip(man.current_controls(ctl), controls):
         assert float(held) == float(current)
@@ -195,17 +196,17 @@ def test_start_seeds_both_controllers_from_the_same_deflections():
 def test_toggle_into_autopilot_is_bumpless_from_a_hand_flown_deflection():
     """The classic lurch: engage while holding the stick off-centre."""
     state, controls = trimmed()
-    ctl = man.start(state, controls, hold_targets(), GAINS, AC)
+    ctl = man.start(sense(state), controls, hold_targets(), GAINS, AC)
     targets = hold_targets()
 
     flown, ctl = man.update(
-        ctl, state, PilotInput(pitch=1.0), targets, GAINS, MGAINS, AC, jnp.array(DT)
+        ctl, sense(state), PilotInput(pitch=1.0), targets, GAINS, MGAINS, AC, jnp.array(DT)
     )
-    ctl = man.toggle(ctl, state, targets, GAINS, AC)
+    ctl = man.toggle(ctl, sense(state), targets, GAINS, AC)
     assert ctl.mode is Mode.AUTOPILOT
 
     first, _ = man.update(
-        ctl, state, man.NEUTRAL, targets, GAINS, MGAINS, AC, jnp.array(DT)
+        ctl, sense(state), man.NEUTRAL, targets, GAINS, MGAINS, AC, jnp.array(DT)
     )
     for engaged, hand_flown in zip(first, flown):
         assert float(engaged) == pytest.approx(float(hand_flown), abs=1e-12)
@@ -216,25 +217,25 @@ def test_toggle_out_of_autopilot_hands_back_the_live_deflections():
     targets = ap_mod.Targets(
         altitude=jnp.array(H + 300.0), heading=jnp.array(0.0), airspeed=jnp.array(V)
     )
-    ctl = man.start(state, controls, targets, GAINS, AC, mode=Mode.AUTOPILOT)
+    ctl = man.start(sense(state), controls, targets, GAINS, AC, mode=Mode.AUTOPILOT)
 
     # Let the autopilot pull the surfaces away from trim chasing the step.
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
     for _ in range(500):
         flown, ctl = man.update(
-            ctl, sim.state, man.NEUTRAL, targets, GAINS, MGAINS, AC, jnp.array(DT)
+            ctl, sense(sim.state), man.NEUTRAL, targets, GAINS, MGAINS, AC, jnp.array(DT)
         )
         sim = integrate.step(sim, flown, jnp.array(DT), AC)
     assert abs(float(flown.elevator) - float(controls.elevator)) > 1e-4
 
-    ctl = man.toggle(ctl, sim.state, targets, GAINS, AC)
+    ctl = man.toggle(ctl, sense(sim.state), targets, GAINS, AC)
     assert ctl.mode is Mode.MANUAL
     for handback, live in zip(man.current_controls(ctl), flown):
         assert float(handback) == float(live)
 
     # And with the stick centred the first manual step must not move anything.
     first, _ = man.update(
-        ctl, sim.state, man.NEUTRAL, targets, GAINS, MGAINS, AC, jnp.array(DT)
+        ctl, sense(sim.state), man.NEUTRAL, targets, GAINS, MGAINS, AC, jnp.array(DT)
     )
     for after, before in zip(first, flown):
         assert float(after) == pytest.approx(float(before), abs=1e-12)
@@ -244,17 +245,17 @@ def test_round_trip_through_both_modes_leaves_no_discontinuity():
     """Toggle repeatedly while hand flying; no switch may step the surfaces."""
     state, controls = trimmed()
     targets = hold_targets()
-    ctl = man.start(state, controls, targets, GAINS, AC)
+    ctl = man.start(sense(state), controls, targets, GAINS, AC)
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
 
     previous = controls
     worst = 0.0
     for i in range(1500):
         if i % 300 == 299:
-            ctl = man.toggle(ctl, sim.state, targets, GAINS, AC)
+            ctl = man.toggle(ctl, sense(sim.state), targets, GAINS, AC)
         pilot = PilotInput(pitch=0.3) if ctl.mode is Mode.MANUAL else man.NEUTRAL
         flown, ctl = man.update(
-            ctl, sim.state, pilot, targets, GAINS, MGAINS, AC, jnp.array(DT)
+            ctl, sense(sim.state), pilot, targets, GAINS, MGAINS, AC, jnp.array(DT)
         )
         worst = max(worst, abs(float(flown.elevator) - float(previous.elevator)) / DT)
         previous = flown

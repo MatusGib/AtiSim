@@ -45,12 +45,12 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.patches import Polygon
 
 from flightsim import manual as man
-from flightsim.aero import air_data
 from flightsim.aircraft import Aircraft
 from flightsim.autopilot import Gains, Targets, wrap_pi
 from flightsim.integrate import SimState, step
 from flightsim.manual import Controller, ManualGains, Mode, PilotInput
-from flightsim.state import Controls, State, quat_to_euler
+from flightsim.sensors import sense
+from flightsim.state import Controls, State
 from flightsim.units import RAD2DEG
 
 # ---------------------------------------------------------------------------
@@ -59,7 +59,13 @@ from flightsim.units import RAD2DEG
 
 
 class Trajectory(NamedTuple):
-    """A flown run, as numpy. Controls are stored in `Controls._fields` order."""
+    """A flown run, as numpy. Controls are stored in `Controls._fields` order.
+
+    `wind_ned` and `omega_gust` are recorded because without them a saved run
+    cannot be corrected even in principle: every incidence angle in it would be
+    ground-relative with no way to recover the air-relative one. They are last so
+    that `.npz` files written before they existed still load -- see `load`.
+    """
 
     t: np.ndarray  # (n,) s
     pos_ned: np.ndarray  # (n, 3) m
@@ -68,6 +74,8 @@ class Trajectory(NamedTuple):
     omega: np.ndarray  # (n, 3) rad/s
     controls: np.ndarray  # (n, 4)
     mode: np.ndarray  # (n,) Mode
+    wind_ned: np.ndarray  # (n, 3) m/s NED, the wind actually applied
+    omega_gust: np.ndarray  # (n, 3) rad/s body, the gust rate actually applied
 
 
 def save(traj: Trajectory, path) -> None:
@@ -81,8 +89,19 @@ def save(traj: Trajectory, path) -> None:
 
 
 def load(path) -> Trajectory:
+    """Read a run back.
+
+    Files written before wind was recorded load as still air rather than being
+    rejected. That is honest for those files -- every run predating the wind
+    columns was flown in still air because nothing else was possible -- and it
+    keeps them analysable instead of stranding them.
+    """
     with np.load(path) as data:
-        return Trajectory(**{name: data[name] for name in Trajectory._fields})
+        fields = {name: data[name] for name in Trajectory._fields if name in data}
+        n = len(fields["t"])
+        for name in ("wind_ned", "omega_gust"):
+            fields.setdefault(name, np.zeros((n, 3)))
+        return Trajectory(**fields)
 
 
 class Recorder:
@@ -91,7 +110,20 @@ class Recorder:
     def __init__(self) -> None:
         self._rows: list[tuple] = []
 
-    def append(self, t: float, state: State, controls: Controls, mode: Mode) -> None:
+    def append(
+        self,
+        t: float,
+        sim: SimState,
+        controls: Controls,
+        mode: Mode,
+    ) -> None:
+        """Log one physics step.
+
+        Takes the whole `SimState` rather than just `State` so the wind that was
+        actually applied is recorded alongside the motion it caused. Passing only
+        the rigid-body state is what made saved runs uncorrectable.
+        """
+        state = sim.state
         self._rows.append(
             (
                 t,
@@ -101,6 +133,8 @@ class Recorder:
                 np.asarray(state.omega, dtype=float),
                 np.array([float(c) for c in controls]),
                 int(mode),
+                np.asarray(sim.wind_ned, dtype=float),
+                np.asarray(sim.omega_gust, dtype=float),
             )
         )
 
@@ -114,36 +148,46 @@ class Recorder:
             omega=np.stack(columns[4]),
             controls=np.stack(columns[5]),
             mode=np.array(columns[6], dtype=int),
+            wind_ned=np.stack(columns[7]),
+            omega_gust=np.stack(columns[8]),
         )
 
 
-@jax.jit
-def instantaneous(state: State) -> Array:
-    """[V, alpha, beta, phi, theta, psi, altitude] -- everything the panels show."""
-    V, alpha, beta = air_data(state.vel_body)
-    phi, theta, psi = quat_to_euler(state.quat)
-    return jnp.array([V, alpha, beta, phi, theta, psi, -state.pos_ned[2]])
-
-
 class Derived(NamedTuple):
-    airspeed: np.ndarray  # m/s
-    alpha: np.ndarray  # rad
-    beta: np.ndarray  # rad
-    phi: np.ndarray  # rad
-    theta: np.ndarray  # rad
-    psi: np.ndarray  # rad
+    """Air-relative incidence and inertial attitude, over a whole trajectory."""
+
+    airspeed: np.ndarray  # m/s, AIR-RELATIVE
+    alpha: np.ndarray  # rad, AIR-RELATIVE
+    beta: np.ndarray  # rad, AIR-RELATIVE
+    phi: np.ndarray  # rad, inertial
+    theta: np.ndarray  # rad, inertial
+    psi: np.ndarray  # rad, inertial
     altitude: np.ndarray  # m
 
 
 def derived(traj: Trajectory) -> Derived:
-    """Airspeed, incidence and attitude for a whole trajectory, in one vmap."""
+    """Sensed air data for a whole trajectory, in one vmap.
+
+    Uses the recorded wind, so the incidence angles are air-relative. Before the
+    wind was recorded these were ground-relative and wrong by up to 7 deg in a
+    vortex encounter, and no still-air test could see it.
+    """
     states = State(
         pos_ned=jnp.asarray(traj.pos_ned),
         vel_body=jnp.asarray(traj.vel_body),
         quat=jnp.asarray(traj.quat),
         omega=jnp.asarray(traj.omega),
     )
-    return Derived(*np.asarray(jax.vmap(instantaneous)(states)).T)
+    air = jax.vmap(sense)(states, jnp.asarray(traj.wind_ned))
+    return Derived(
+        airspeed=np.asarray(air.airspeed),
+        alpha=np.asarray(air.alpha),
+        beta=np.asarray(air.beta),
+        phi=np.asarray(air.phi),
+        theta=np.asarray(air.theta),
+        psi=np.asarray(air.psi),
+        altitude=np.asarray(air.altitude),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -454,10 +498,16 @@ class Panel:
     def init(self) -> list:
         return self.artists
 
-    def update(self, t: float, state: State, controls: Controls, mode: Mode) -> list:
-        speed, alpha, beta, phi, theta, psi, altitude = (
-            float(v) for v in instantaneous(state)
-        )
+    def update(
+        self, t: float, sim: SimState, controls: Controls, mode: Mode
+    ) -> list:
+        # Sensed from the wind the last step applied, so the readouts are
+        # air-relative under a wind field rather than quietly ground-relative.
+        air = sense(sim.state, sim.wind_ned)
+        speed, alpha, beta = float(air.airspeed), float(air.alpha), float(air.beta)
+        phi, theta, psi = float(air.phi), float(air.theta), float(air.psi)
+        altitude = float(air.altitude)
+        state = sim.state
         target_heading = float(self.targets.heading)
         # Unwrapped about the target so a heading either side of north does not
         # jump the width of the strip.
@@ -539,7 +589,7 @@ class LiveSim:
         self.t = 0.0
         self.controls = man.current_controls(ctl)
         self.recorder = Recorder()
-        self.recorder.append(self.t, sim.state, self.controls, ctl.mode)
+        self.recorder.append(self.t, sim, self.controls, ctl.mode)
         self._backlog = 0.0
         self._last_wall = None
         # Set by run_live once FuncAnimation exists; see _retime.
@@ -550,13 +600,14 @@ class LiveSim:
         self._backlog += seconds
         steps = 0
         while self._backlog >= self.dt and steps < self.max_steps_per_frame:
+            air = sense(self.sim.state, self.sim.wind_ned)
             if self.panel.take_toggle_request():
                 self.ctl = man.toggle(
-                    self.ctl, self.sim.state, self.targets, self.gains, self.ac
+                    self.ctl, air, self.targets, self.gains, self.ac
                 )
             self.controls, self.ctl = man.update(
                 self.ctl,
-                self.sim.state,
+                air,
                 self.panel.pilot_input(),
                 self.targets,
                 self.gains,
@@ -568,7 +619,7 @@ class LiveSim:
             self.t += self.dt
             self._backlog -= self.dt
             steps += 1
-            self.recorder.append(self.t, self.sim.state, self.controls, self.ctl.mode)
+            self.recorder.append(self.t, self.sim, self.controls, self.ctl.mode)
         if steps == self.max_steps_per_frame:
             # Drop the backlog. Trying to run it off makes the next frame later
             # still, and the sim ends up chasing a clock it cannot catch.
@@ -612,7 +663,7 @@ class LiveSim:
             elapsed = 1.0 / self.panel.fps
         self._last_wall = now
         self.advance(elapsed)
-        return self.panel.update(self.t, self.sim.state, self.controls, self.ctl.mode)
+        return self.panel.update(self.t, self.sim, self.controls, self.ctl.mode)
 
     def trajectory(self) -> Trajectory:
         return self.recorder.trajectory()
@@ -637,9 +688,10 @@ def run_live(
     # sim's real-time budget. Both controllers are warmed, so the first press of
     # `a` does not stall either. Everything here is pure; the results are
     # discarded and `toggle` returns a new controller rather than mutating one.
-    warm, _ = man.update(ctl, sim.state, man.NEUTRAL, targets, gains, mgains, ac, dt)
-    other = man.toggle(ctl, sim.state, targets, gains, ac)
-    man.update(other, sim.state, man.NEUTRAL, targets, gains, mgains, ac, dt)
+    warm_air = sense(sim.state, sim.wind_ned)
+    warm, _ = man.update(ctl, warm_air, man.NEUTRAL, targets, gains, mgains, ac, dt)
+    other = man.toggle(ctl, warm_air, targets, gains, ac)
+    man.update(other, warm_air, man.NEUTRAL, targets, gains, mgains, ac, dt)
     step(sim, warm, dt, ac)
 
     panel = Panel(targets, window=window, fps=fps)

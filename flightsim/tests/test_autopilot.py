@@ -8,6 +8,7 @@ from flightsim import integrate, trim
 from flightsim.autopilot import _accumulate as _acc
 from flightsim.aero import air_data
 from flightsim.aircraft import CRUISE, REGISTRY
+from flightsim.sensors import sense
 from flightsim.state import quat_to_euler
 from flightsim.units import RAD2DEG
 
@@ -28,7 +29,7 @@ def trimmed():
 
 def fly(targets, seconds, gains=GAINS):
     state, controls = trimmed()
-    ap = ap_mod.engage(state, controls, targets, gains, AC)
+    ap = ap_mod.engage(sense(state), controls, targets, gains, AC)
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
     (_, _), (hist, ctrl) = ap_mod.closed_loop_rollout(
         sim, ap, targets, gains, jnp.array(DT), AC, int(seconds / DT)
@@ -48,8 +49,8 @@ def hold_targets():
 def test_engagement_reproduces_the_current_controls_exactly():
     state, controls = trimmed()
     targets = hold_targets()
-    ap = ap_mod.engage(state, controls, targets, GAINS, AC)
-    out, _ = ap_mod.autopilot(state, ap, targets, GAINS, AC, jnp.array(DT))
+    ap = ap_mod.engage(sense(state), controls, targets, GAINS, AC)
+    out, _ = ap_mod.autopilot(sense(state), ap, targets, GAINS, AC, jnp.array(DT))
     for field, current in zip(out, controls):
         assert float(field) == pytest.approx(float(current), abs=1e-12)
 
@@ -59,8 +60,8 @@ def test_engagement_from_a_non_trim_deflection_still_matches():
     state, _ = trimmed()
     controls = trim.trimmed_controls(jnp.array(0.06), jnp.array(0.9))
     targets = hold_targets()
-    ap = ap_mod.engage(state, controls, targets, GAINS, AC)
-    out, _ = ap_mod.autopilot(state, ap, targets, GAINS, AC, jnp.array(DT))
+    ap = ap_mod.engage(sense(state), controls, targets, GAINS, AC)
+    out, _ = ap_mod.autopilot(sense(state), ap, targets, GAINS, AC, jnp.array(DT))
     assert float(out.elevator) == pytest.approx(0.06, abs=1e-12)
     assert float(out.throttle) == pytest.approx(0.9, abs=1e-12)
 
@@ -76,8 +77,8 @@ def test_disengagement_hands_back_the_current_deflections():
     """APState.controls is what the pilot inherits; it must be the live output."""
     state, controls = trimmed()
     targets = hold_targets()
-    ap = ap_mod.engage(state, controls, targets, GAINS, AC)
-    out, ap2 = ap_mod.autopilot(state, ap, targets, GAINS, AC, jnp.array(DT))
+    ap = ap_mod.engage(sense(state), controls, targets, GAINS, AC)
+    out, ap2 = ap_mod.autopilot(sense(state), ap, targets, GAINS, AC, jnp.array(DT))
     for handback, live in zip(ap2.controls, out):
         assert float(handback) == float(live)
 
@@ -216,7 +217,7 @@ def test_anti_windup_recovers_promptly_from_an_unreachable_target():
     unreachable = ap_mod.Targets(
         altitude=jnp.array(H + 8000.0), heading=jnp.array(0.0), airspeed=jnp.array(V)
     )
-    ap = ap_mod.engage(state, controls, unreachable, GAINS, AC)
+    ap = ap_mod.engage(sense(state), controls, unreachable, GAINS, AC)
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
     (sim, ap), _ = ap_mod.closed_loop_rollout(
         sim, ap, unreachable, GAINS, jnp.array(DT), AC, int(400.0 / DT)
@@ -240,7 +241,7 @@ def test_anti_windup_recovers_promptly_from_an_unreachable_target():
 def test_closed_loop_rollout_vmaps_over_keys():
     state, controls = trimmed()
     targets = hold_targets()
-    ap = ap_mod.engage(state, controls, targets, GAINS, AC)
+    ap = ap_mod.engage(sense(state), controls, targets, GAINS, AC)
     keys = jax.random.split(jax.random.PRNGKey(0), 4)
     sims = integrate.batch_sim(state, keys)
     aps = jax.tree.map(lambda x: jnp.broadcast_to(x, (4,) + jnp.shape(x)), ap)

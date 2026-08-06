@@ -100,6 +100,86 @@ def stability_to_body(Cl_s, Cn_s, alpha_ref):
     return Cl_s * ca - Cn_s * sa, Cn_s * ca + Cl_s * sa
 
 
+class FlightCondition(NamedTuple):
+    """The condition a set of DIMENSIONAL derivatives was linearised at.
+
+    This type exists because of a bug that actually happened. The Cessna's
+    dimensional control derivatives belong to its source's 67 m/s linearisation,
+    but they were first recovered using the dynamic pressure at the 60 m/s cruise
+    this package chose -- inflating all four by 25%. A non-dimensional
+    coefficient is a property of the airframe, so it must be recovered at the
+    condition its dimensional form was quoted at, and nothing in the arithmetic
+    complains if it is not.
+
+    Bundling the condition with the conversion makes the mismatch impossible to
+    express: there is no argument left to get wrong.
+    """
+
+    airspeed: float  # m/s, the U0 the source linearised at
+    density: float  # kg/m^3, the rho that goes with it
+    mass: float  # kg
+    Ixx: float  # kg.m^2
+    Iyy: float
+    Izz: float
+    S: float  # m^2
+    b: float  # m
+    c: float  # m
+
+    @property
+    def qS(self) -> float:
+        return 0.5 * self.density * self.airspeed**2 * self.S
+
+
+def from_dimensional_longitudinal(fc: FlightCondition, *, Zw, Zq, Mw, Mq, Zde, Mde, CD):
+    """(CLa, CLq, CLde, Cma, Cmq, Cmde) from body-axis dimensional derivatives.
+
+    The relations are the ones in CR-2144 Appendix A, and they are shared rather
+    than rewritten per aircraft: they were transcribed by hand three times before
+    this helper existed. `CD` is the trim drag coefficient, which enters CLa only.
+    """
+    return (
+        -Zw * fc.mass * fc.airspeed / fc.qS - CD,  # CLa
+        -Zq * 2.0 * fc.airspeed * fc.mass / (fc.qS * fc.c),  # CLq
+        -Zde * fc.mass / fc.qS,  # CLde
+        Mw * fc.airspeed * fc.Iyy / (fc.qS * fc.c),  # Cma
+        Mq * 2.0 * fc.airspeed * fc.Iyy / (fc.qS * fc.c * fc.c),  # Cmq
+        Mde * fc.Iyy / (fc.qS * fc.c),  # Cmde
+    )
+
+
+def from_dimensional_lateral(fc: FlightCondition, *, Yv, Lv, Nv, Lp, Np, Lr, Nr):
+    """(CYb, Clb, Cnb, Clp, Cnp, Clr, Cnr) from body-axis dimensional derivatives.
+
+    Assumes the derivatives are UNPRIMED. CR-2144 tabulates primed values, which
+    fold the Ixz cross-coupling in; run those through `_unprime` first or this
+    double-counts it.
+    """
+    span = fc.qS * fc.b
+    rate = fc.qS * fc.b * fc.b / (2.0 * fc.airspeed)
+    return (
+        Yv * fc.airspeed * fc.mass / fc.qS,  # CYb
+        Lv * fc.airspeed * fc.Ixx / span,  # Clb
+        Nv * fc.airspeed * fc.Izz / span,  # Cnb
+        Lp * fc.Ixx / rate,  # Clp
+        Np * fc.Izz / rate,  # Cnp
+        Lr * fc.Ixx / rate,  # Clr
+        Nr * fc.Izz / rate,  # Cnr
+    )
+
+
+def from_dimensional_controls(fc: FlightCondition, *, Ydr=0.0, Lda=0.0, Nda=0.0,
+                              Ldr=0.0, Ndr=0.0):
+    """(CYdr, Clda, Cnda, Cldr, Cndr). Omitted derivatives stay zero, not guessed."""
+    span = fc.qS * fc.b
+    return (
+        Ydr * fc.mass / fc.qS,  # CYdr
+        Lda * fc.Ixx / span,  # Clda
+        Nda * fc.Izz / span,  # Cnda
+        Ldr * fc.Ixx / span,  # Cldr
+        Ndr * fc.Izz / span,  # Cndr
+    )
+
+
 def _unprime(Lp, Np, Ix, Iz, Ixz):
     """Recover raw rolling/yawing derivatives from Ixz-corrected primed ones.
 
@@ -155,7 +235,10 @@ def _boeing_747() -> Aircraft:
     CD_trim = 0.043
 
     # -- Table IX-4: longitudinal dimensional derivatives, body axis --
-    Xw, Zw, Zq, Mw, Mq, Zde, Mde = 0.0389, -0.317, -5.16, -0.00105, -0.330, -17.9, -1.16
+    # Mq is -0.339, not the -0.330 this line carried until it was caught by a
+    # line-by-line re-read against Table IX-4. The transcription slip cost 1.1
+    # points of short-period damping match (12.6% -> 11.5% against the reference).
+    Xw, Zw, Zq, Mw, Mq, Zde, Mde = 0.0389, -0.317, -5.16, -0.00105, -0.339, -17.9, -1.16
     # (Xu, Zu, Mu, Zwd, Mwd, Xde also tabulated; the speed and alpha-dot
     #  derivatives are outside this model's form, which is alpha/q/de only.)
 
@@ -308,18 +391,18 @@ def _cherokee_pa28_180() -> Aircraft:
     Ydr, Ldr, Ndr = 2.113, 0.6133, -6.583
     Lda, Nda = 3.101, 0.0
 
-    qS = 0.5 * rho * U0**2 * S
+    fc = FlightCondition(
+        airspeed=U0, density=rho, mass=m, Ixx=Ixx, Iyy=Iyy, Izz=Izz, S=S, b=b, c=c
+    )
+    qS = fc.qS
     AR = b * b / S
     # theta0 = 0 in level flight, so alpha0 = 0 and the trim CL is the weight
     # coefficient. It agrees with the source's stated CL0 = 0.543 to 0.95%.
     CL_trim = m * G0 / qS
 
-    CLa = -Zw * m * U0 / qS - CD_trim
-    CLq = -Zq * 2.0 * U0 * m / (qS * c)
-    CLde = -Zde * m / qS
-    Cma = Mw * U0 * Iyy / (qS * c)
-    Cmq = Mq * 2.0 * U0 * Iyy / (qS * c * c)
-    Cmde = Mde * Iyy / (qS * c)
+    CLa, CLq, CLde, Cma, Cmq, Cmde = from_dimensional_longitudinal(
+        fc, Zw=Zw, Zq=Zq, Mw=Mw, Mq=Mq, Zde=Zde, Mde=Mde, CD=CD_trim
+    )
 
     # Drag. The source's CD = 0.0615 is total drag at trim, and its own notes
     # warn against using it as a polar CD0. Oswald efficiency is recovered from
@@ -332,13 +415,12 @@ def _cherokee_pa28_180() -> Aircraft:
     e = 2.0 * CL_trim * CLa / (math.pi * AR * CDa)
     CD0 = CD_trim - CL_trim**2 / (math.pi * e * AR)
 
-    CYb = Yv * U0 * m / qS
-    Clb, Cnb = Lv * U0 * Ixx / (qS * b), Nv * U0 * Izz / (qS * b)
-    Clp, Cnp = Lp * 2 * U0 * Ixx / (qS * b * b), Np * 2 * U0 * Izz / (qS * b * b)
-    Clr, Cnr = Lr * 2 * U0 * Ixx / (qS * b * b), Nr * 2 * U0 * Izz / (qS * b * b)
-    Clda, Cnda = Lda * Ixx / (qS * b), Nda * Izz / (qS * b)
-    Cldr, Cndr = Ldr * Ixx / (qS * b), Ndr * Izz / (qS * b)
-    CYdr = Ydr * m / qS
+    CYb, Clb, Cnb, Clp, Cnp, Clr, Cnr = from_dimensional_lateral(
+        fc, Yv=Yv, Lv=Lv, Nv=Nv, Lp=Lp, Np=Np, Lr=Lr, Nr=Nr
+    )
+    CYdr, Clda, Cnda, Cldr, Cndr = from_dimensional_controls(
+        fc, Ydr=Ydr, Lda=Lda, Nda=Nda, Ldr=Ldr, Ndr=Ndr
+    )
 
     inertia = inertia_tensor(Ixx, Iyy, Izz, 0.0)
     return Aircraft(
@@ -491,11 +573,18 @@ def _cessna_172() -> Aircraft:
     alpha_ref = (m * G0 / qS - CL0) / CLa
 
     # The control derivatives are the only DIMENSIONAL numbers in this set, and
-    # they belong to the source's own linearisation at 67 m/s. A non-dimensional
-    # coefficient is a property of the airframe, so it has to be recovered at the
-    # condition the dimensional value was defined at -- not at the cruise chosen
-    # above. Using the wrong dynamic pressure here inflates all four by 25%.
-    qS_source = 0.5 * rho * 67.0**2 * S
+    # they belong to the source's own linearisation at 67 m/s -- NOT the 60 m/s
+    # cruise chosen above. Recovering them at the wrong dynamic pressure inflates
+    # all four by 25%, which is exactly the bug FlightCondition exists to prevent,
+    # so the condition is stated once here and the helper does the rest.
+    source_fc = FlightCondition(
+        airspeed=67.0, density=rho, mass=m, Ixx=Ixx, Iyy=Iyy, Izz=Izz, S=S, b=b, c=c
+    )
+    _, _, CLde, _, _, Cmde = from_dimensional_longitudinal(
+        source_fc, Zw=0.0, Zq=0.0, Mw=0.0, Mq=0.0, Zde=-17.19, Mde=-36.23, CD=0.0
+    )
+    # Rudder deliberately omitted -- see the module comment above.
+    _, Clda, Cnda, _, _ = from_dimensional_controls(source_fc, Lda=135.9, Nda=-3.108)
 
     def at_reference(name):
         return jnp.interp(alpha_ref, alpha, tables[name])
@@ -517,11 +606,11 @@ def _cessna_172() -> Aircraft:
         CL0=CL0,
         CLa=CLa,
         CLq=jnp.array(7.282),  # constant with alpha in the source table
-        CLde=jnp.array(17.19 * m / qS_source),
+        CLde=jnp.array(CLde),
         Cm0=Cm0,
         Cma=Cma,
         Cmq=jnp.array(-6.232),  # constant with alpha in the source table
-        Cmde=jnp.array(-36.23 * Iyy / (qS_source * c)),
+        Cmde=jnp.array(Cmde),
         CYb=jnp.array(-0.268),
         CYp=jnp.array(0.0),  # not tabulated
         CYr=jnp.array(0.0),  # not tabulated
@@ -533,12 +622,12 @@ def _cessna_172() -> Aircraft:
         # author rates MEDIUM confidence; unlike the tables above these are not
         # published numbers. Clda 0.42 is high against the 747's 0.014 and is
         # the least certain number in this definition.
-        Clda=jnp.array(135.9 * Ixx / (qS_source * b)),
+        Clda=jnp.array(Clda),
         Cldr=jnp.array(0.0),  # zeroed -- see the rudder note above
         Cnb=jnp.array(0.0126),
         Cnp=at_reference("Cnp"),
         Cnr=at_reference("Cnr"),
-        Cnda=jnp.array(-3.108 * Izz / (qS_source * b)),
+        Cnda=jnp.array(Cnda),
         Cndr=jnp.array(0.0),  # zeroed -- see the rudder note above
         # MODELLING CHOICE, as for the Cherokee. Lycoming O-320, 150 hp sea-level
         # rating at the 2,300 lb gross weight this data is quoted for, 80%
