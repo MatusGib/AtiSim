@@ -278,3 +278,44 @@ def test_derivatives_are_finite_across_a_wide_envelope(test_aircraft):
                 )
                 for field in d:
                     assert np.isfinite(np.asarray(field)).all(), (u, w, h)
+
+
+def test_specific_force_matches_the_forces_in_all_three_axes(test_aircraft):
+    """All three components, recomputed from aero + thrust rather than from the same call.
+
+    load_factor only ever pinned the z component. n_x and n_y are new, and n_y is
+    about to drive the slip indicator, so a wrong sign there would be a display
+    that is confidently backwards.
+    """
+    from flightsim.aero import aero_forces_moments, thrust_force
+    from flightsim.atmosphere import density, speed_of_sound
+
+    s = level_state(u=60.0, altitude=2000.0)._replace(omega=jnp.array([0.1, 0.2, -0.05]))
+    controls = Controls(
+        elevator=jnp.array(0.1), aileron=jnp.array(-0.05),
+        rudder=jnp.array(0.02), throttle=jnp.array(0.6),
+    )
+    altitude = -s.pos_ned[2]
+    force, _ = aero_forces_moments(
+        s.vel_body, s.omega, controls, test_aircraft,
+        density(altitude), speed_of_sound(altitude),
+    )
+    force = force + thrust_force(controls, test_aircraft, density(altitude))
+    expected = np.asarray(force / test_aircraft.mass) / G0
+
+    got = np.asarray(
+        dynamics.specific_force(s, controls, test_aircraft, jnp.zeros(3), jnp.zeros(3))
+    )
+    assert got == pytest.approx(expected, abs=1e-12)
+
+
+def test_load_factor_is_the_negated_z_component_of_specific_force(test_aircraft):
+    """The wrapper must not quietly change sign or scale."""
+    s = level_state(u=60.0, altitude=2000.0)._replace(omega=jnp.array([0.1, 0.2, -0.05]))
+    controls = Controls(
+        elevator=jnp.array(0.1), aileron=jnp.array(-0.05),
+        rudder=jnp.array(0.02), throttle=jnp.array(0.6),
+    )
+    n = dynamics.specific_force(s, controls, test_aircraft, jnp.zeros(3), jnp.zeros(3))
+    n_z = dynamics.load_factor(s, controls, test_aircraft, jnp.zeros(3), jnp.zeros(3))
+    assert float(n_z) == pytest.approx(-float(n[2]), abs=1e-15)
