@@ -69,7 +69,7 @@ without a core rewrite. Both have now been exercised and both held.
 | `manual.py` | manual control, mode switching, pitch trim | trim moves the stick's centring point, never `controls` |
 | `panel.py` | live cockpit, instruments, `Stick`, `LiveSim`, `run_live` | basic T + test overlay; takes a `wind_model` and a `field_range` |
 | `viz.py` | `Trajectory`, `Recorder`, `derived`, `post_flight` | the log and the post-flight figure only; no simulator needed to read a run |
-| `vortex_viz.py` | turbulence encounter analysis and figure | air-relative throughout; deliberately separate from `viz.py` |
+| `vortex_viz.py` | encounter analysis and the Fig. 8 figure | air-relative throughout; deliberately separate from `viz.py`. `fly` for a wind field with fixed controls, `manoeuvre` for an elevator schedule at zero wind; both go through `_measure`, so the three Fig. 8 points cannot drift apart |
 
 ### The two interfaces turbulence depends on
 
@@ -221,7 +221,7 @@ eagerly once per frame, and together they were 17.3 ms of a 73.0 ms frame. Blitt
 now the floor — 30.1 ms of 37.8 — and it did not improve, which is the expected result
 of jitting something that was never the bottleneck's neighbour.
 
-### Vortex and updraft encounters (747 at CR-2144 FC9)
+### Vortex, updraft and manoeuvre encounters (747 at CR-2144 FC9)
 
 | Quantity | Measured | Reference |
 |---|---|---|
@@ -234,6 +234,33 @@ of jitting something that was never the bottleneck's neighbour.
 | Updraft Δθ across sharpness 2→10 | 3.63 → 5.34 deg | the declared parameter's influence |
 | Air-relative vs inertial α, peak difference | 7.0 deg | — |
 | corr(n_z, α) air-relative / inertial | 0.9990 / 0.5572 | — |
+
+### The manoeuvring case (session 7)
+
+Zero wind. Elevator pulse of one short period, **declared**; the deflection is
+**bisected**, not chosen, so the sourced quantity is the load and the angle is an output.
+
+| Quantity | Measured | Reference |
+|---|---|---|
+| Elevator to reach the band | 8.926 deg from trim | derived by bisection, tol 1e-5 rad |
+| Load excursion, in-pulse | −1.900 g | Fig. 8 band −2.01…−1.69, **increment** reading |
+| Δθ, in-pulse | 30.37 deg | Fig. 8 manoeuvring 12.0 |
+| Peak \|α\| in-pulse | 10.31 deg | **marginal** — §7's 10–12 deg amber band |
+| n_z at the first sample | 0.9967 | the trimmed value, i.e. the lead-in worked |
+| Δθ, whole run vs in-pulse | 30.74 vs 30.37 deg | 1.2% — the window barely matters here |
+| Fig. 8 pitch ordering, model | 2.24 < 4.37 < 30.37 | paper 1.4 < 6.2 < 12.0 — **ordering holds** |
+| Suite | 260 tests, 104 s | was 256, 126 s on the same machine this session |
+
+Two of those rows are the result and the rest are the guard. **The ordering holds**, which
+is the only claim §5 permits. **The absolute values do not agree** and are not meant to:
+30.37 against 12.0 is 2.5×, in a comparison whose reference aircraft the paper never
+identifies.
+
+The whole-run/in-pulse row is worth keeping for contrast: the vortex moves 2.24 → 8.33 deg
+between the two windows and the manoeuvre moves 30.37 → 30.74. A manoeuvre is bounded —
+the elevator comes back — so the window rule barely bites. For a vortex the aircraft is
+left ringing and it bites hard. That asymmetry is why §8's window rule had to be stated
+before the third point could be computed rather than after.
 
 ### The Fig. 8 mechanism
 
@@ -356,15 +383,18 @@ form needs at least one test that flies through a non-zero wind field —
 4. Dryden background layer                                -> verify: sample σ to rel 0.10;
    (needs MIL-F-8785C Fig. 7 σ at 40 kft DIGITISED;                AR(1) pole = exp(−V·dt/L)
     forces init_sim/batch_sim to be parameterised)
-5. Manoeuvring case: elevator pushdown to Δn ≈ −1.9 g     -> verify: third Fig. 8 cluster
-   at zero wind                                                    separates from the other two
+5. [DONE] Manoeuvring case: elevator pushdown to        -> verify: DONE, 30.37 deg against
+   Δn = −1.9 g at zero wind, elevator bisected                     the updraft's 4.37 and the
+                                                                   vortex's 2.24; ordering holds
 6. Fig. 8 with ensemble error bars                        -> verify: vortex/updraft/manoeuvre
    (vmap over keys; deterministic parts see the same field)        ordering holds across the ensemble
 8. Mountain lee wave + F-factor                           -> verify: F exceeds the measured
                                                                     +0.023/−0.066 thrust envelope
 ```
 
-Steps 4 and 5 are independent and either may go first. Step 6 needs both.
+Step 5 is done, so **step 6 now waits only on step 4** (Dryden), which is where the
+ensemble spread would come from — the three deterministic points have no spread by
+construction, since every member of a batch meets the same field.
 
 ### Extensibility: what the next wind model will cost
 
@@ -511,6 +541,61 @@ recorded rather than fixed: the panel is now comfortably above its target.
 `scripts/summary.py` generates the plain-English summary PDF rather than it being written
 by hand, so it cannot drift from the code — page 6's vortex figures call `wind.vortex_wind`
 and the aircraft table reads `CRUISE`.
+
+**The α gauge was one-sided**, and it was found by asking what the manoeuvring case would
+*display* rather than by any test failing. §6(e) has the detail. It is (a) and (b)'s shape
+a third time — correct in the easy case — and it would have lied during precisely the run
+built next.
+
+**Two open questions were closed before any code was written**, which is the part of this
+session worth copying. Both had sat in §8 as "not resolvable from the paper's text", and
+both still are; what changed is that they became decidable on *the model's own evidence*:
+
+- The Fig. 8 load band's two readings turn out to land on **opposite sides of this model's
+  validity boundary** — 10.31° of |α| as an increment, ≈18.5° as an absolute load. That
+  makes the choice forced rather than arbitrary. §5 now carries the unreachability of the
+  absolute reading next to the ±g asymmetry, which it shares a cause with: no stall means
+  no way to reach a big negative load except a big negative α.
+- The analysis window is **the disturbance's own extent** — which is what the vortex and
+  updraft points were already doing, unstated. Writing it down was the whole difficulty:
+  the third point had no rule to follow. The measurement that forced it is that Δn and
+  |α| both **saturate 4 s into a held elevator** and never move again, while Δθ grows at
+  3.6°/s for as long as it is held. A "manoeuvre" measured over 12 s reads 43° because by
+  then it is a descent.
+
+**The third cluster is in**, and `vortex_viz.fly` could not do it: it flies with fixed
+controls by design, and a manoeuvre needs a time-varying elevator. `manoeuvre` is a
+sibling rather than a generalisation of `fly` — a schedule that happens to be constant is
+a strictly larger surface than a constant — and both now go through `_measure`, so the
+three Fig. 8 coordinates are computed by one piece of code rather than two that could
+drift. The elevator angle is **bisected** to reach the band, not chosen, so the sourced
+quantity is the load. Result: 2.24 < 4.37 < 30.37 deg against the paper's 1.4 < 6.2 <
+12.0. **The ordering holds; the values do not agree and §5 forbids claiming they should.**
+
+Found while building it, and it would have been an invisible 0.08 g error: `fig8_point`
+measures the load excursion from `enc.n_z[0]`, the run's own first sample. For a vortex
+that is the trimmed value because the run has a long lead-in. Step the elevator at t=0 and
+it is not — the first sample is already loaded. `manoeuvre` therefore has a lead-in at
+trim for the same reason the vortex run has 40 core radii, and §4 records `n_z[0] = 0.9967`
+as the check that it worked.
+
+The figure's "manoeuvring: NOT MODELLED" annotation is gone because the slot is filled,
+and the discriminator panel's x-axis is now scaled to the data rather than to the paper's
+range — cropping to the reference would have hidden the 2.5× disagreement instead of
+showing it.
+
+**Deliberately not done:** `_trace_stack` still hard-codes the elevator trace to ±5°, which
+would clip if the manoeuvre were ever made the figure's *primary* encounter. It is not —
+`scripts/vortex.py` keeps the vortex primary — so this is flagged, not fixed. Dryden
+(§7 step 4) is untouched and still blocked on digitising MIL-F-8785C Fig. 7. `ManualGains`
+still not re-tuned. The interactive TkAgg frame rate still not re-taken.
+
+`test_viz.py::test_derived_agrees_with_the_aero_module` is **deleted**, after being flagged
+in two session logs. Every assertion in it re-derived the implementation, so none could go
+red; the replacement in `test_sensors.py` computes its expectation from the recorded wind
+independently. What went with it: nothing else asserts `viz.derived`'s field wiring or its
+altitude sign convention. That is a real if small loss, recorded here rather than left to
+be discovered.
 
 ### Session 6 — the free-air flying interface
 `run_live` took no wind model at all. `LiveSim.advance` called `step(sim, controls, dt,
@@ -665,21 +750,25 @@ root**; the scripts import `flightsim` from the editable install, not from `scri
 
 | Command | What it does |
 |---|---|
-| `.venv/Scripts/python.exe -m pytest flightsim/tests -q` | 256 tests. The first thing to run and the only complete statement of what works. |
+| `.venv/Scripts/python.exe -m pytest flightsim/tests -q` | 260 tests. The first thing to run and the only complete statement of what works. |
 | `.venv/Scripts/python.exe scripts/checkpoint.py` | 747 only, no flags. Trim residuals, 60 s fixed-control hold, longitudinal modes against CR-2144 Table IX-5. |
 | `.venv/Scripts/python.exe scripts/tune.py --aircraft cherokee` | Autopilot step responses for one aircraft. Exits non-zero on failure, so it is usable as a gate. |
 | `.venv/Scripts/python.exe scripts/fly.py --aircraft cherokee --save runs/a.npz` | Interactive flight, basic-T cockpit plus a flight-test overlay. |
 | `.venv/Scripts/python.exe scripts/fly.py --wind hannibal` | The same, hand-flown into the Parks vortex array. The panel counts the range down. |
-| `.venv/Scripts/python.exe scripts/vortex.py --case hannibal --png runs/v.png` | Flies the 747 through the Parks vortex array and the Wingrove updraft, draws the analysis figure. This is the turbulence path. |
+| `.venv/Scripts/python.exe scripts/vortex.py --case hannibal --png runs/v.png` | Flies the 747 through the Parks vortex array, the Wingrove updraft, and an elevator pushdown, and draws the analysis figure with all three Fig. 8 categories. This is the turbulence path. Prints each point's Δθ, Δn and peak \|α\| with its band, then whether the ordering holds. |
 | `.venv/Scripts/python.exe scripts/analyse.py runs/a.npz` | Replays a saved `.npz`. Accepts several files; `--png DIR` writes instead of showing. |
 | `.venv/Scripts/python.exe scripts/summary.py docs/summary/flightsim-summary.pdf docs/summary/panel.png` | Rebuilds the plain-English summary PDF. It is generated rather than written by hand so it cannot drift from the code — the vortex figures on its page 6 are computed by calling `wind.vortex_wind`, and the aircraft table reads `CRUISE`. |
 
 Flags: `tune.py` takes `--aircraft` only. `fly.py` takes `--aircraft --autopilot --save
 --dt --fps --window --seed --wind --lead-in --sharpness`. `vortex.py` takes `--case
-{hannibal,morton} --aircraft --dt --lead-in --sharpness --png`. `--lead-in` below ~12 core
-radii contaminates the first core (§9 session 3); `--sharpness` is a declared modelling
-parameter, not source data. Both scripts read the case constants from `wind.PARKS_CASES`,
-so they cannot disagree about a sourced number.
+{hannibal,morton} --aircraft --dt --lead-in --sharpness --pushdown-seconds --png`.
+`--lead-in` below ~12 core radii contaminates the first core (§9 session 3);
+`--sharpness` and `--pushdown-seconds` are declared modelling parameters, not source data
+— the papers fix the updraft's magnitude and duration but not its edge, and fix the load
+the pilot reached but not how long they held it. Both scripts read the case constants from
+`wind.PARKS_CASES`, so they cannot disagree about a sourced number. The manoeuvre's
+elevator angle is **not** a flag: it is bisected to land on the Fig. 8 load band, so the
+sourced quantity is the load and the deflection is an output.
 
 ### Flying it
 

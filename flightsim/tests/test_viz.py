@@ -18,11 +18,10 @@ import matplotlib.pyplot as plt
 
 from flightsim import autopilot as ap_mod
 from flightsim import integrate, manual as man, panel as panel_mod, trim, viz
-from flightsim.aero import air_data
 from flightsim.aircraft import CRUISE, REGISTRY
 from flightsim.manual import Mode
 from flightsim.sensors import sense
-from flightsim.state import Controls, quat_to_euler
+from flightsim.state import Controls
 
 AC = REGISTRY["boeing747"]
 GAINS = ap_mod.GAINS["boeing747"]
@@ -104,23 +103,13 @@ def test_the_log_has_one_row_per_step_and_the_documented_shapes(live):
     assert np.diff(traj.t) == pytest.approx(DT)
 
 
-def test_derived_agrees_with_the_aero_module(live):
-    press(live.panel, "right")
-    for _ in range(40):
-        live.frame()
-    traj = live.trajectory()
-    d = viz.derived(traj)
-
-    for index in (0, len(traj.t) // 2, -1):
-        speed, alpha, beta = air_data(jnp.asarray(traj.vel_body[index]))
-        phi, theta, psi = quat_to_euler(jnp.asarray(traj.quat[index]))
-        assert d.airspeed[index] == pytest.approx(float(speed))
-        assert d.alpha[index] == pytest.approx(float(alpha))
-        assert d.beta[index] == pytest.approx(float(beta))
-        assert d.phi[index] == pytest.approx(float(phi))
-        assert d.theta[index] == pytest.approx(float(theta))
-        assert d.psi[index] == pytest.approx(float(psi))
-        assert d.altitude[index] == pytest.approx(-traj.pos_ned[index, 2])
+# test_derived_agrees_with_the_aero_module was deleted in session 7. It fed
+# viz.derived and aero.air_data the same input and compared them, so every
+# assertion in it re-derived the implementation and none could go red -- flagged
+# as such in PROJECT.md section 6(b) and again in session 6's log. Its
+# replacement is test_sensors.py's
+# test_derived_is_air_relative_and_this_test_can_fail, which computes the
+# expectation from the recorded wind independently.
 
 
 def test_a_saved_run_can_be_replotted_without_the_simulator(live, tmp_path):

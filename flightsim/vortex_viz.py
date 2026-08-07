@@ -16,6 +16,7 @@ re-evaluating the model at each logged state -- exact for a deterministic
 position-dependent field, which is all this module currently handles.
 """
 
+from functools import partial
 from typing import NamedTuple
 
 import jax
@@ -36,6 +37,14 @@ from flightsim.units import RAD2DEG
 # and speed, so they are drawn as reference context, never as a target.
 FIG8_REFERENCE = {"vortex": 1.4, "updraft": 6.2, "manoeuvring": 12.0}
 FIG8_LOAD_BAND = (-2.01, -1.69)  # g, the range the three categories span
+
+# The band read as an INCREMENT from trim rather than as an absolute load factor.
+# The paper's text does not resolve which it is; PROJECT.md section 8 records the
+# decision and section 5 the reason it was forced -- the absolute reading needs
+# |alpha| ~18.5 deg, half again past the ceiling where this model's linear aero
+# reports lift the sources deny. The increment reading is flyable at |alpha|
+# 10.31 deg. This is the midpoint of the band, to one decimal as the paper gives it.
+FIG8_LOAD_INCREMENT = -1.9  # g
 
 
 class Encounter(NamedTuple):
@@ -94,8 +103,44 @@ def fly(
         integrate.init_sim(state, jax.random.PRNGKey(0)),
         controls, jnp.array(dt), ac, n, wind_model=model,
     )
+    north = np.asarray(hist.pos_ned)[:, 0]
+    return _measure(
+        label=label, hist=hist,
+        controls_hist=jax.tree.map(lambda v: jnp.full(n, v), controls),
+        model=model, ac=ac, dt=dt,
+        window=(north >= window[0]) & (north <= window[1]),
+        window_name=window_name,
+    )
 
-    def analyse(pos_ned, vel_body, quat, omega):
+
+def _measure(
+    *,
+    label: str,
+    hist: State,
+    controls_hist: Controls,
+    model,
+    ac: Aircraft,
+    dt: float,
+    window: np.ndarray,
+    window_name: str,
+) -> Encounter:
+    """Turn a flown history into an `Encounter`. Every category comes through here.
+
+    Factored out when the manoeuvring case arrived so the three Fig. 8 points are
+    computed by one piece of code rather than by two that could drift apart --
+    the whole value of the discriminator is that its three coordinates mean the
+    same thing.
+
+    `window` arrives as a boolean mask because what DEFINES it differs by
+    category -- a field's extent for the two turbulence cases, the elevator pulse
+    for the manoeuvre -- while what is done with it must not.
+
+    `controls_hist` is per-sample, not one `Controls`, because a manoeuvre's
+    elevator moves and `load_factor` needs the deflection that was actually
+    flown at each sample.
+    """
+
+    def analyse(pos_ned, vel_body, quat, omega, controls):
         s = State(pos_ned=pos_ned, vel_body=vel_body, quat=quat, omega=omega)
         wind_ned, omega_gust, _, _ = model(
             wind.zero_wind_state(), s, jax.random.PRNGKey(0), jnp.array(dt)
@@ -107,24 +152,182 @@ def fly(
         return jnp.array([
             -wind_ned[2], omega_gust[1], alpha_air, alpha_inertial, theta,
             omega[1], dynamics.load_factor(s, controls, ac, wind_ned, omega_gust),
+            controls.elevator,
         ])
 
-    rows = np.asarray(
-        jax.vmap(analyse)(hist.pos_ned, hist.vel_body, hist.quat, hist.omega)
-    )
-    north = np.asarray(hist.pos_ned)[:, 0]
+    rows = np.asarray(jax.vmap(analyse)(
+        hist.pos_ned, hist.vel_body, hist.quat, hist.omega, controls_hist
+    ))
+    n = rows.shape[0]
     return Encounter(
         label=label,
         t=np.arange(1, n + 1) * dt,
-        north=north,
+        north=np.asarray(hist.pos_ned)[:, 0],
         altitude=-np.asarray(hist.pos_ned)[:, 2],
         w_up=rows[:, 0], q_gust=rows[:, 1],
         alpha_air=rows[:, 2], alpha_inertial=rows[:, 3],
         theta=rows[:, 4], q=rows[:, 5], n_z=rows[:, 6],
-        elevator=np.full(n, float(x[1])),
-        window=(north >= window[0]) & (north <= window[1]),
+        elevator=rows[:, 7],
+        window=window,
         window_name=window_name,
     )
+
+
+@partial(jax.jit, static_argnames=("n_steps",))
+def _pulse_rollout(sim, ac, elev_trim, throttle, step, dt, n_steps, lead_in, hold):
+    """Scan an elevator pulse: trim, `step` from trim for `hold`, trim again.
+
+    Zero wind throughout -- a manoeuvre is the category the paper defines by the
+    ABSENCE of turbulence. Returns the state history and the controls flown at
+    each sample, stacked on a leading time axis like `integrate.rollout`.
+    """
+
+    def body(carry, i):
+        t = i * dt
+        pulsing = (t >= lead_in) & (t < lead_in + hold)
+        controls = trim.trimmed_controls(
+            elev_trim + jnp.where(pulsing, step, 0.0), throttle
+        )
+        carry = integrate.step(carry, controls, dt, ac, wind_model=wind.zero_wind)
+        return carry, (carry.state, controls)
+
+    _, out = jax.lax.scan(body, sim, jnp.arange(n_steps))
+    return out
+
+
+def _pushdown_setup(ac: Aircraft, airspeed: float, altitude: float):
+    """Trim, and the SimState a pulse starts from. Shared by both entry points."""
+    x, _ = trim.trim(jnp.array(airspeed), jnp.array(altitude), ac)
+    state = trim.trimmed_state(
+        jnp.array(float(x[0])), jnp.array(airspeed), jnp.array(altitude)
+    )
+    state = state._replace(pos_ned=jnp.array([0.0, 0.0, -altitude]))
+    sim = integrate.init_sim(state, jax.random.PRNGKey(0))
+    return sim, jnp.array(float(x[1])), jnp.array(float(x[2]))
+
+
+def manoeuvre(
+    ac: Aircraft,
+    airspeed: float,
+    altitude: float,
+    *,
+    label: str,
+    elevator_step: float,
+    hold: float,
+    seconds: float,
+    lead_in: float = 2.0,
+    dt: float = 0.01,
+) -> Encounter:
+    """Fly an elevator pushdown at zero wind. The third Fig. 8 category.
+
+    The sibling of `fly`, not a generalisation of it. `fly` holds the controls
+    fixed on purpose -- the discriminator separates turbulence from MANOEUVRING
+    by whether pitch correlates with elevator -- and a manoeuvre is precisely the
+    case needing a time-varying elevator, which fixed `Controls` cannot express.
+    `fly` is left alone deliberately: a schedule that happens to be constant is a
+    strictly larger surface than a constant.
+
+    `hold` is the pulse length, a DECLARED modelling choice in the same sense as
+    the updraft's edge sharpness -- the paper constrains the load the pilot
+    reached, not how long they took to reach it. It is also the analysis window,
+    which is the rule the other two encounters already follow: the window is the
+    disturbance's own extent (PROJECT.md section 8). Everything outside the pulse
+    is flown so the recovery is on the record, and so the figure's whole-run
+    marker means the same thing it means for the other two.
+
+    `lead_in` is why `n_z[0]` is the TRIMMED load factor, which is what
+    `fig8_point` measures the excursion from. Stepping the elevator at t=0 leaves
+    the first sample already loaded and overstates the excursion by about 0.08 g
+    -- the same shape of error as a too-short vortex lead-in (section 9,
+    session 3), and the reason that one is 40 core radii.
+    """
+    sim, elev_trim, throttle = _pushdown_setup(ac, airspeed, altitude)
+    n = int(round(seconds / dt))
+    hist, controls_hist = _pulse_rollout(
+        sim, ac, elev_trim, throttle, jnp.array(elevator_step),
+        jnp.array(dt), n, jnp.array(lead_in), jnp.array(hold),
+    )
+    # Sample i is the state AFTER the step driven by the controls at t = i*dt, so
+    # the samples actually flown under the pulse are (lead_in, lead_in + hold].
+    t = np.arange(1, n + 1) * dt
+    return _measure(
+        label=label, hist=hist, controls_hist=controls_hist,
+        model=wind.zero_wind, ac=ac, dt=dt,
+        window=(t > lead_in) & (t <= lead_in + hold),
+        window_name=f"elevator pulse, {hold:g} s",
+    )
+
+
+def elevator_for_load(
+    ac: Aircraft,
+    airspeed: float,
+    altitude: float,
+    *,
+    target: float,
+    hold: float,
+    seconds: float,
+    lead_in: float = 2.0,
+    dt: float = 0.01,
+    bracket: tuple[float, float] = (0.0, 20.0),
+    tolerance: float = 1e-5,
+) -> float:
+    """Bisect for the elevator step, in RADIANS from trim, reaching `target` g.
+
+    The angle is derived, not chosen. The sourced quantity is the Fig. 8 load
+    band, so the deflection that reaches it is an output -- which is the
+    difference between "the model reaches the paper's load" and "the model was
+    given the paper's answer".
+
+    Bisection over a vmapped batch rather than a scalar one: each round evaluates
+    the whole bracket at once and narrows it by the batch width, so a 20 deg
+    bracket closes to 1e-5 deg in eight rounds instead of thirty-one. A Python
+    loop calling `load_factor` sample by sample was tried first and is far too
+    slow to sit in the analysis path.
+
+    `target` must be reachable within `bracket`; the caller states the bracket
+    because whether it is reachable at all is exactly the question section 5
+    answers for the band's absolute reading (it is not).
+    """
+    sim, elev_trim, throttle = _pushdown_setup(ac, airspeed, altitude)
+    n = int(round(seconds / dt))
+    t = jnp.arange(1, n + 1) * dt
+    mask = (t > lead_in) & (t <= lead_in + hold)
+    zero3 = jnp.zeros(3)
+
+    @jax.jit
+    def excursion(steps):
+        """Windowed load excursion from trim, for a batch of elevator steps."""
+
+        def one(step):
+            hist, controls = _pulse_rollout(
+                sim, ac, elev_trim, throttle, step,
+                jnp.array(dt), n, jnp.array(lead_in), jnp.array(hold),
+            )
+            n_z = jax.vmap(
+                lambda p, v, q, w, c: dynamics.load_factor(
+                    State(pos_ned=p, vel_body=v, quat=q, omega=w), c, ac, zero3, zero3
+                )
+            )(hist.pos_ned, hist.vel_body, hist.quat, hist.omega, controls)
+            return jnp.min(jnp.where(mask, n_z, jnp.inf)) - n_z[0]
+
+        return jax.vmap(one)(steps)
+
+    width = 9  # candidates per round; the bracket narrows by (width - 1) each time
+    low, high = bracket
+    while high - low > tolerance:
+        grid = jnp.linspace(low, high, width)
+        # Monotone decreasing in the step, so the first candidate at or below the
+        # target brackets it with its predecessor.
+        below = np.asarray(excursion(grid)) <= target
+        if not below.any():
+            raise ValueError(
+                f"load excursion {target} g is not reachable within "
+                f"{bracket} rad of elevator: deepest reached "
+                f"{float(np.asarray(excursion(grid)).min()):.4f} g"
+            )
+        index = max(1, int(np.argmax(below)))
+        low, high = float(grid[index - 1]), float(grid[index])
+    return 0.5 * (low + high)
 
 
 def fig8_point(enc: Encounter) -> tuple[float, float]:
@@ -252,11 +455,16 @@ def _load_vs_alpha_panel(ax, enc):
 
 
 def _discriminator_panel(ax, encounters):
-    """Wingrove & Bach Fig. 8, with the model's points and the missing category.
+    """Wingrove & Bach Fig. 8, with the model's points against the paper's three.
 
-    Progress is shown by what is ABSENT as much as by what is present: the
-    manoeuvring cluster is drawn as a labelled empty slot rather than omitted,
-    so the figure cannot read as complete while it is not.
+    All three categories now have a model point. The panel used to draw the
+    manoeuvring slot as a labelled empty marker so the figure could not read as
+    complete while it was not; that annotation is gone because the slot is
+    filled. What it must NOT become is a claim of agreement -- section 5 forbids
+    that outright, since Wingrove & Bach never identifies an aircraft type. The
+    x-axis is therefore scaled to the DATA, not to the paper's range: the
+    model's manoeuvring point sits far to the right of the paper's, and a chart
+    cropped to the reference would hide that rather than show it.
     """
     low, high = FIG8_LOAD_BAND
     ax.axhspan(low, high, color="0.88", zorder=0)
@@ -270,6 +478,7 @@ def _discriminator_panel(ax, encounters):
             ha="center", fontsize=7, color="0.35",
         )
 
+    spread = list(FIG8_REFERENCE.values())
     for index, enc in enumerate(encounters):
         dtheta, dn = fig8_point(enc)
         ax.plot(dtheta, dn, "o", color=f"C{index}", ms=8, label=f"{enc.label} (model)")
@@ -283,14 +492,9 @@ def _discriminator_panel(ax, encounters):
         whole_dn = float(enc.n_z.min() - enc.n_z[0])
         ax.plot(whole, whole_dn, "o", mfc="none", mec=f"C{index}", ms=8)
         ax.plot([dtheta, whole], [dn, whole_dn], ls=":", color=f"C{index}", lw=0.9)
+        spread += [dtheta, whole]
 
-    ax.axvline(FIG8_REFERENCE["manoeuvring"], color="0.6", ls=":", lw=1.0)
-    ax.annotate(
-        "manoeuvring:\nNOT MODELLED", (FIG8_REFERENCE["manoeuvring"], 0.02),
-        xycoords=("data", "axes fraction"), textcoords="offset points",
-        xytext=(-4, 4), ha="right", va="bottom", fontsize=7, color="0.45",
-    )
-    ax.set_xlim(0.0, FIG8_REFERENCE["manoeuvring"] + 2.0)
+    ax.set_xlim(0.0, max(spread) * 1.12)
     ax.set_xlabel("pitch attitude excursion  deg")
     ax.set_ylabel("load excursion from trim  g")
     ax.set_title("Wingrove & Bach 1994 Fig. 8 discriminator (grey = paper, DC-10 class)")

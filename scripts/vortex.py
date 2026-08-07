@@ -1,8 +1,11 @@
 """Vortex-analysis progress figure.
 
-Flies the 747 through the Parks 1985 vortex array and through the Wingrove &
-Bach updraft column, then draws one figure showing where the turbulence work
-currently stands against the papers' own numbers.
+Flies the 747 through the Parks 1985 vortex array, through the Wingrove & Bach
+updraft column, and through an elevator pushdown, then draws one figure showing
+where the turbulence work currently stands against the papers' own numbers.
+Those are Wingrove & Bach Fig. 8's three categories, and the point of having all
+three is that the discriminator is a claim about ORDERING, which two clusters
+cannot test.
 
 Run: .venv/Scripts/python.exe scripts/vortex.py
      .venv/Scripts/python.exe scripts/vortex.py --png runs/vortex.png
@@ -13,10 +16,12 @@ from pathlib import Path
 
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
+import numpy as np
 
 import flightsim  # noqa: F401  -- enables x64
 from flightsim import trim, vortex_viz, wind
 from flightsim.aircraft import CRUISE, REGISTRY
+from flightsim.panel import ALPHA_INVALID_DEG, ALPHA_LINEAR_DEG
 from flightsim.units import RAD2DEG
 from flightsim.wind import PARKS_CASES as CASES
 from flightsim.wind import UPDRAFT_SECONDS, UPDRAFT_W0
@@ -34,6 +39,14 @@ parser.add_argument(
     "--sharpness", type=float, default=6.0,
     help="updraft edge sharpness. DECLARED MODELLING PARAMETER, not source data: "
          "the paper fixes the magnitude and duration and says nothing about the edge.",
+)
+parser.add_argument(
+    "--pushdown-seconds", type=float, default=6.609,
+    help="manoeuvre pulse length, s. DECLARED MODELLING PARAMETER, not source data: "
+         "the paper fixes the load the pilot reached, not how long they held it. "
+         "The default is the 747's short period (PROJECT.md section 4), which puts "
+         "the manoeuvre between the vortex's 0.235 and the updraft's 3.026 short "
+         "periods -- so the third cluster's separation is not a duration effect.",
 )
 parser.add_argument("--png", type=Path, help="save here instead of showing")
 args = parser.parse_args()
@@ -85,6 +98,24 @@ updraft = vortex_viz.fly(
     window_name="column",
 )
 
+# --- the manoeuvre: the third category, and the only one at ZERO wind -------
+#
+# The elevator angle is DERIVED, not chosen: the sourced quantity is Fig. 8's
+# load band, so the deflection that reaches it is an output. Read as an
+# INCREMENT (PROJECT.md section 8) -- the absolute reading needs |alpha| ~18.5
+# deg, well past where this model's linear aero means anything (section 5).
+hold = args.pushdown_seconds
+pushdown_lead = 2.0
+pushdown_seconds = pushdown_lead + 3.0 * hold
+elevator_step = vortex_viz.elevator_for_load(
+    ac, V, H, target=vortex_viz.FIG8_LOAD_INCREMENT,
+    hold=hold, seconds=pushdown_seconds, lead_in=pushdown_lead, dt=args.dt,
+)
+pushdown = vortex_viz.manoeuvre(
+    ac, V, H, label="manoeuvre", elevator_step=elevator_step,
+    hold=hold, seconds=pushdown_seconds, lead_in=pushdown_lead, dt=args.dt,
+)
+
 provenance = (
     f"{args.aircraft}  CR-2144 FC9  {H:.0f} m  {V:.2f} m/s  "
     f"trim alpha {alpha * RAD2DEG:.3f} deg  elev {elevator * RAD2DEG:.3f} deg  "
@@ -94,18 +125,37 @@ provenance = (
     f"updraft: Wingrove & Bach 1994 w0 {UPDRAFT_W0:.2f} m/s, {UPDRAFT_SECONDS:.0f} s "
     f"traverse -> radius {radius:.0f} m; edge sharpness {args.sharpness:g} DECLARED, "
     f"not sourced\n"
+    f"manoeuvre: zero wind, elevator pulse {hold:g} s DECLARED (not sourced), "
+    f"{elevator_step * RAD2DEG:.3f} deg from trim BISECTED to reach "
+    f"d(n) = {vortex_viz.FIG8_LOAD_INCREMENT:+.1f} g, the Fig. 8 band read as an "
+    f"INCREMENT; the absolute reading is out of the linear range (PROJECT.md 5, 8)\n"
+    "Window rule: the disturbance's own extent -- first core, column, elevator pulse.\n"
     "Both papers' records are DC-10 class at 33-39 kft; this is a 747 at 40 kft. "
-    "Load comparisons are order-of-magnitude only."
+    "Load comparisons are order-of-magnitude and ordering only, never values."
 )
 
-for enc in (vortex, updraft):
+for enc in (vortex, updraft, pushdown):
     dtheta, dn = vortex_viz.fig8_point(enc)
-    print(f"{enc.label:22s} window={enc.window_name:12s} "
+    peak_alpha = float(np.abs(enc.alpha_air[enc.window]).max()) * RAD2DEG
+    band = (
+        "linear" if peak_alpha < ALPHA_LINEAR_DEG
+        else "MARGINAL" if peak_alpha < ALPHA_INVALID_DEG
+        else "INVALID -- this run proves nothing"
+    )
+    print(f"{enc.label:22s} window={enc.window_name:22s} "
           f"d(theta)={dtheta:6.3f} deg  d(n)={dn:+.3f} g  "
-          f"n_z(0)={enc.n_z[0]:.4f}")
+          f"n_z(0)={enc.n_z[0]:.4f}  |alpha|max={peak_alpha:5.2f} deg {band}")
+
+paper = [FIG8 for FIG8 in vortex_viz.FIG8_REFERENCE.values()]
+model = [vortex_viz.fig8_point(e)[0] for e in (vortex, updraft, pushdown)]
+ordered = all(a < b for a, b in zip(model, model[1:]))
+print(f"\nFig. 8 pitch excursion, deg:  paper {paper}  model "
+      f"{[round(m, 2) for m in model]}")
+print(f"ordering vortex < updraft < manoeuvre: {'HOLDS' if ordered else 'FAILS'}"
+      "   (ordering is the claim; absolute agreement is forbidden by section 5)")
 
 figure = vortex_viz.figure(
-    [vortex, updraft],
+    [vortex, updraft, pushdown],
     field=vortex_field,
     array_cores=cores,
     core_radius=r0,
