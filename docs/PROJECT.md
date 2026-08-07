@@ -278,6 +278,16 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   aircraft type; Parks' two cases are DC-10s at 37–39 kft against this project's 747 at
   40 kft with roughly 0.8× the wing loading. Every load comparison is order-of-magnitude
   or clustering. Assert bands and orderings, never values.
+- **Half of the Fig. 8 load band is unreachable inside the linear range.** Read as an
+  *absolute* load factor, the band's −1.9 g needs about 13.8° of elevator from trim and
+  drives |α| to roughly 18.5° — half again past the 12° where §7 says this model reports
+  lift the sources deny. Read as an *increment* it needs 8.926° and |α| 10.31°, which is
+  marginal but flyable. §8 records the decision to fly the increment; what belongs *here*
+  is that the choice was not free. This is the same ceiling as the ±g asymmetry seen from
+  the other side: `CL = CL0 + CLa·α` has no stall, so the only way to reach a large
+  negative load is a large negative α, and there is no aerodynamic mechanism to get there
+  sooner. A run flown to the absolute reading would not be a harder test of the model, it
+  would be outside it, and would prove nothing.
 
 ## 6. Latent bugs — (a)–(d) fixed in session 5, (e) in session 7
 
@@ -434,13 +444,45 @@ protocol with a linear and a table implementation. That was the option not taken
 - **Row spacing beyond two cores.** Parks identifies two significant vortices per case.
   Whether Mehta 1987 (*JGCD* 10, 27–31, DOI 10.2514/3.20176) uses a longer periodic train
   is unconfirmed — it is paywalled and was not retrieved.
-- **The Fig. 8 load-band convention.** Whether the paper's "−1.7 to −2.0 g" is absolute
-  load factor or an increment is not resolvable from the text. The model's in-core
-  excursion of −1.23 g sits between the two readings.
-- **Which window is canonical for Fig. 8.** First core (2.20 deg), second core (4.17) and
-  whole array (6.75) give three different answers, and only the first core separates
-  cleanly from the updraft. It is currently an explicit argument, printed in the figure's
-  provenance footer.
+- ~~**The Fig. 8 load-band convention.**~~ **DECIDED, session 7: read as an increment.**
+  Still not resolvable from the paper's text — what forced the decision is that the two
+  readings land on opposite sides of *this model's* validity boundary, so it stopped being
+  harmless the moment a manoeuvre had to be flown to the band. Measured, 747 at CR-2144
+  FC9, elevator pulse held one short period:
+
+  | Reading | Elevator from trim | \|α\| max | Verdict |
+  |---|---|---|---|
+  | increment, Δn = −1.9 g | 8.926° (bisected) | 10.31° | **marginal** — flyable, amber band |
+  | absolute, n_z = −1.9 g | ≈13.8° | ≈18.5° | **outside** — see §5 |
+
+  The increment reading is flown. The absolute one is reported as out of reach, which is a
+  finding about the model's ceiling rather than a dodge — §5 carries it.
+- ~~**Which window is canonical for Fig. 8.**~~ **DECIDED, session 7: the window is the
+  disturbance's own extent.** This is what the two existing points were already doing; it
+  had never been stated as a rule, so the third point had nothing to follow. The vortex
+  window is the core (±r₀), the updraft window is the column (±radius), and the manoeuvre
+  window is the elevator pulse. In seconds, at the 747's 235.9 m/s, against a 6.609 s
+  short period:
+
+  | Encounter | Extent | Window | in short periods |
+  |---|---|---|---|
+  | vortex | first core, ±182.88 m | 1.550 s | 0.235 |
+  | manoeuvre | elevator pulse, **declared** | 6.609 s | 1.000 |
+  | updraft | column, ±2359 m | 20.0 s | 3.026 |
+
+  The rule matters because Δθ is the one quantity with no natural bound: Δn and \|α\| both
+  saturate 4 s into a held elevator and never move again, while Δθ keeps growing at about
+  3.6°/s for as long as the elevator is held. A "manoeuvre" measured over a 12 s hold reads
+  43°, and it reads that because it has stopped being a manoeuvre and become a descent.
+  The window still prints in the figure's provenance footer, and now so does the rule.
+- **What sets the manoeuvre's pulse length.** Decided *as* a declared parameter rather than
+  resolved: one short period, `--pushdown-seconds`, in the same sense `--sharpness` is
+  declared. The paper constrains the load, not how the pilot got there. It is bounded
+  below by the ~4 s the load excursion needs to develop and unbounded above, so it is a
+  choice; one short period puts the manoeuvre *between* the other two in duration, which
+  is what makes the third cluster's separation attributable to the elevator rather than to
+  timescale. Δθ is 25° at the shortest defensible hold and 30° at this one, so the choice
+  moves the number without moving the conclusion.
 - **Suite runtime is not currently measurable.** The same untouched tests (187 at the time,
   221 by session 5) have run in 53 s and 164 s on the same machine. Session 6 saw 126–207 s
   across runs of the same suite. Re-measure on a quiet machine before treating any timing
