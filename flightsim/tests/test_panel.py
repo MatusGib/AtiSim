@@ -405,6 +405,39 @@ def test_the_alpha_gauge_names_the_band_the_model_is_in(targets):
     assert "invalid" in p.alpha_gauge.readout.get_text()
 
 
+def test_the_alpha_gauge_judges_negative_alpha_by_magnitude(targets):
+    """aero.py is CL0 + CLa*alpha, odd-symmetric, so |alpha| decides validity.
+
+    A pushdown drives alpha NEGATIVE -- the manoeuvring case reaches -10 deg --
+    and a one-sided gauge would report "linear" throughout exactly the run whose
+    whole purpose is to say whether the model was still inside its range.
+    """
+    p = panel_mod.Panel(targets, window=20.0, fps=20.0, aircraft_name="boeing747")
+    air = a_readout().air
+
+    p.alpha_gauge.update(a_readout(air=air._replace(alpha=jnp.deg2rad(-4.0))))
+    assert p.alpha_gauge.state() == "linear"
+    p.alpha_gauge.update(a_readout(air=air._replace(alpha=jnp.deg2rad(-11.0))))
+    assert p.alpha_gauge.state() == "marginal"
+    p.alpha_gauge.update(a_readout(air=air._replace(alpha=jnp.deg2rad(-14.0))))
+    assert p.alpha_gauge.state() == "invalid"
+    assert "invalid" in p.alpha_gauge.readout.get_text()
+
+
+def test_the_alpha_gauge_needle_is_not_pegged_at_the_stop_by_negative_alpha(targets):
+    """The state() fix alone would leave the needle lying: clipped to 0.0."""
+    p = panel_mod.Panel(targets, window=20.0, fps=20.0, aircraft_name="boeing747")
+    air = a_readout().air
+
+    p.alpha_gauge.update(a_readout(air=air._replace(alpha=jnp.deg2rad(-8.0))))
+    negative = p.alpha_gauge.needle.get_xdata()[0]
+    p.alpha_gauge.update(a_readout(air=air._replace(alpha=jnp.deg2rad(+8.0))))
+    positive = p.alpha_gauge.needle.get_xdata()[0]
+
+    assert negative == pytest.approx(-positive)
+    assert negative < 0.0
+
+
 def test_the_load_factor_gauge_holds_the_peak_excursion(targets):
     """In an encounter the excursion IS the result, and it is over in a second."""
     p = panel_mod.Panel(targets, window=20.0, fps=20.0, aircraft_name="boeing747")

@@ -279,9 +279,9 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   40 kft with roughly 0.8× the wing loading. Every load comparison is order-of-magnitude
   or clustering. Assert bands and orderings, never values.
 
-## 6. Latent bugs — all four fixed in session 5
+## 6. Latent bugs — (a)–(d) fixed in session 5, (e) in session 7
 
-All four are closed. Kept here rather than deleted because the *shape* of (a) and (b) is
+All five are closed. Kept here rather than deleted because the *shape* of (a) and (b) is
 the thing worth remembering: both survived three sessions and a 209-test suite because
 every test in the project was still air, and still air cannot distinguish airspeed from
 groundspeed.
@@ -309,6 +309,22 @@ open — honestly, since those runs were all still air.
 
 **(d) 747 `Mq` transcribed as −0.330.** FIXED to −0.339. Short-period damping error
 12.6% → 11.5%; everything else moved in the fourth decimal or not at all.
+
+**(e) `panel.AlphaGauge` was one-sided.** FIXED in session 7. Introduced by session 6's
+own re-layout: `set_xlim(0, 15)`, a needle clipped to `[0, 15]`, and a `state()` comparing
+**signed** degrees. At α = −16° it pegged the needle at zero and reported `linear`.
+
+`aero.py` is `CL = CL0 + CLa·α`, exactly odd-symmetric in Δα — the same property §5 blames
+for the ±g asymmetry being unreachable — so **|α| is what decides validity, not α**. The
+gauge could not see half of its own invalid range.
+
+It is (a) and (b)'s shape one more time: right in the easy case. Every test drove the gauge
+positive, because level flight and a pull-up both do; nothing pushed. Found by asking what
+the manoeuvring case (§7 step 5) would display, not by a test failing — a pushdown drives
+α negative, so the instrument would have said `linear` throughout precisely the run whose
+entire job is to report whether the model stayed in range. Two tests now pin it: the band
+by magnitude, and the needle position, because fixing `state()` alone would have left the
+needle still lying.
 
 ### What made (a) and (b) invisible
 
@@ -658,8 +674,10 @@ coordinated flight. The teal marker on the ball is the body-axis **incidence** p
 and would rotate with bank.
 
 The overlay is the flight-test half: load factor with a peak hold, air-relative α against
-the **declared** linear-aero band (green to 10°, amber to 12°, red beyond — PROJECT.md §7,
-not a stall table), the applied wind, and the gust rate labelled **SIM TRUTH** because
+the **declared** linear-aero band (green to ±10°, amber to ±12°, red beyond — PROJECT.md
+§7, not a stall table; the band is **symmetric** because `aero.py` is odd-symmetric in α,
+so a pushdown leaves the model exactly as far as an equal pull-up — see §6(e)), the
+applied wind, and the gust rate labelled **SIM TRUTH** because
 `omega_gust` is a span-wise gradient and no instrument can sense it. Under `--wind` the
 status line carries the range to the field: a north distance and a closure rate for a
 vortex array, whose cores are infinite east–west lines and therefore have no bearing, and
