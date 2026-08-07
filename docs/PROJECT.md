@@ -584,11 +584,23 @@ and the discriminator panel's x-axis is now scaled to the data rather than to th
 range — cropping to the reference would have hidden the 2.5× disagreement instead of
 showing it.
 
-**Deliberately not done:** `_trace_stack` still hard-codes the elevator trace to ±5°, which
-would clip if the manoeuvre were ever made the figure's *primary* encounter. It is not —
-`scripts/vortex.py` keeps the vortex primary — so this is flagged, not fixed. Dryden
-(§7 step 4) is untouched and still blocked on digitising MIL-F-8785C Fig. 7. `ManualGains`
-still not re-tuned. The interactive TkAgg frame rate still not re-taken.
+**The summary PDF's claim about itself was too strong.** §10 said it "cannot drift from the
+code". Its *computed* parts cannot; its prose and summary statistics are literals, and the
+test and line counts had already drifted (256/4,300 against an actual 260/4,600). Corrected
+by hand and the claim in §10 narrowed to what is actually true. A generated document is
+only as undriftable as the fraction of it that is generated.
+
+**Deliberately not done:** the summary PDF's page 5 still tells the Fig. 8 story with **two**
+categories, vortex and updraft. It is not wrong — that is what the paper's clustering
+shows — but it is now less than the project has, and the third bar would fit its
+"how long does the encounter last" chart exactly (one pitch period, between the vortex's
+fifth and the updraft's three). Left alone because it is prose for a non-technical reader
+and a design choice, not a mechanical update. `_trace_stack` still hard-codes the elevator
+trace to ±5°, which would clip if the manoeuvre were ever made the figure's *primary*
+encounter; it is not — `scripts/vortex.py` keeps the vortex primary — so this is flagged,
+not fixed. Dryden (§7 step 4) is untouched and still blocked on digitising MIL-F-8785C
+Fig. 7. `ManualGains` still not re-tuned. The interactive TkAgg frame rate still not
+re-taken.
 
 `test_viz.py::test_derived_agrees_with_the_aero_module` is **deleted**, after being flagged
 in two session logs. Every assertion in it re-derived the implementation, so none could go
@@ -757,7 +769,7 @@ root**; the scripts import `flightsim` from the editable install, not from `scri
 | `.venv/Scripts/python.exe scripts/fly.py --wind hannibal` | The same, hand-flown into the Parks vortex array. The panel counts the range down. |
 | `.venv/Scripts/python.exe scripts/vortex.py --case hannibal --png runs/v.png` | Flies the 747 through the Parks vortex array, the Wingrove updraft, and an elevator pushdown, and draws the analysis figure with all three Fig. 8 categories. This is the turbulence path. Prints each point's Δθ, Δn and peak \|α\| with its band, then whether the ordering holds. |
 | `.venv/Scripts/python.exe scripts/analyse.py runs/a.npz` | Replays a saved `.npz`. Accepts several files; `--png DIR` writes instead of showing. |
-| `.venv/Scripts/python.exe scripts/summary.py docs/summary/flightsim-summary.pdf docs/summary/panel.png` | Rebuilds the plain-English summary PDF. It is generated rather than written by hand so it cannot drift from the code — the vortex figures on its page 6 are computed by calling `wind.vortex_wind`, and the aircraft table reads `CRUISE`. |
+| `.venv/Scripts/python.exe scripts/summary.py docs/summary/flightsim-summary.pdf docs/summary/panel.png` | Rebuilds the plain-English summary PDF. The parts that are *computed* cannot drift from the code — the vortex figures on its page 6 call `wind.vortex_wind`, and the aircraft table reads `CRUISE`. **The prose and the summary statistics are literals and can**: the test and line counts were stale by session 7 and were corrected by hand. Re-run it after anything that changes those. |
 
 Flags: `tune.py` takes `--aircraft` only. `fly.py` takes `--aircraft --autopilot --save
 --dt --fps --window --seed --wind --lead-in --sharpness`. `vortex.py` takes `--case

@@ -193,7 +193,7 @@ with PdfPages(OUT) as pdf:
 
     rows = [
         ("Language", "Python 3.10 with JAX (a numerical library that compiles maths to fast code)"),
-        ("Size", "About 4,300 lines of code and 256 automated tests"),
+        ("Size", "About 4,600 lines of code and 260 automated tests"),
         ("Aircraft", "Boeing 747, Piper PA-28-180 Cherokee, Cessna 172"),
         ("Physics", "Six degrees of freedom, rigid body, fixed-step Runge-Kutta integration"),
         ("Purpose", "Clear-air turbulence response, compared against two published papers"),
@@ -721,7 +721,7 @@ with PdfPages(OUT) as pdf:
     fig = page(pdf, "Running it, and how fast it goes", "Practicalities")
     y = 0.865
     rows = [
-        ("python -m pytest flightsim/tests -q", "All 256 tests. The only complete statement of\nwhat works."),
+        ("python -m pytest flightsim/tests -q", "All 260 tests. The only complete statement of\nwhat works."),
         ("python scripts/fly.py", "Fly it yourself, in still air."),
         ("python scripts/fly.py --wind hannibal", "Fly into the 1985 vortex array."),
         ("python scripts/vortex.py", "Run the turbulence analysis and draw the figure."),
