@@ -264,11 +264,28 @@ before the third point could be computed rather than after.
 
 ### The Fig. 8 mechanism
 
-747 short period is 6.6 s undamped. A 1.5 s vortex traverse is ~0.2 of that (impulsive);
-a 20 s updraft is ~3 (quasi-steady). **That 17× separation in non-dimensional encounter
-duration is the whole discriminator**, and it is a rigid-body timescale effect requiring
-no nonlinear aerodynamics — which is why this model reproduces the clustering while it
-can never reproduce the ±g asymmetry.
+747 short period is 6.609 s undamped. A **Hannibal** core traverse is 1.550 s, 0.235 of
+that (impulsive); a 20 s updraft is 3.026 (quasi-steady). **That 12.9× separation in
+non-dimensional encounter duration is what separates the two weather categories**, and it
+is a rigid-body timescale effect requiring no nonlinear aerodynamics — which is why this
+model reproduces the clustering while it can never reproduce the ±g asymmetry.
+
+> **Superseded, session 7: this said 17×, and 17× is the wrong case.** It is Morton's
+> ratio — r₀ = 137.16 m gives a 1.163 s traverse and 20/1.163 = 17.2 — while every run,
+> figure and ledger row in this project uses Hannibal, whose r₀ = 182.88 m gives 1.550 s
+> and 12.9. Nothing downstream moves: the discriminator is an ordering claim and both
+> ratios are an order of magnitude. Corrected because §8's window table now states the
+> durations to four figures and a reader would otherwise find them contradicting this
+> paragraph.
+
+**The manoeuvre is not a third point on this scale, and that is the point.** Its pulse is
+6.609 s — 1.000 short periods, *between* the vortex and the updraft — yet it lands at
+30.37° of pitch, far right of both. So duration does not order the three categories, and
+timescale is not "the whole discriminator" once the third one exists. It separates the two
+**weather** categories. The manoeuvre separates for a different reason: the elevator is
+moving, so pitch follows the stick rather than the air. That is precisely the distinction
+Wingrove & Bach's chart was drawn to make, and it is why `vortex_viz.fly` holds its
+controls fixed.
 
 ### The validated baseline — do not touch these tolerances
 
@@ -426,6 +443,46 @@ Three things must change before Dryden lands, none of them large but all of them
 Adding another *deterministic* field — mountain lee wave, microburst, wake vortex from a
 preceding aircraft — needs none of this. Write the field function, wrap it in
 `field_model`, done. That path is genuinely extensible today.
+
+### Extensibility: what the next encounter category will cost
+
+Session 7 added the first encounter that is **not** a wind field, and the shape of that
+change is the reusable part. There are now two ways to disturb the aircraft, and they are
+siblings rather than one general mechanism:
+
+| | `fly` | `manoeuvre` |
+|---|---|---|
+| Excitation | a wind field | an elevator schedule |
+| Controls | fixed, by design | time-varying, necessarily |
+| Wind | the field under test | zero |
+| Rollout | `integrate.rollout` | its own `lax.scan` |
+| Window from | north position | time |
+| Analysis | **`_measure`, shared** | **`_measure`, shared** |
+
+The last row is the load-bearing one. A category is a *mask plus a history*; everything
+downstream — air-relative α, load factor, the Fig. 8 coordinate — happens in one place.
+So a fourth category costs: excite the aircraft however it must be excited, build a
+boolean window from the rule below, hand both to `_measure`. Nothing in `fig8_point` or
+the figure needs to know which kind it is.
+
+**The window rule, which is what makes the categories comparable at all:** the window is
+the *disturbance's own extent*. The core for a vortex, the column for an updraft, the
+pulse for a manoeuvre. Stated in §8 with the measurements that forced it. Without it,
+categories are not commensurable and the discriminator means nothing — Δθ over a
+badly-chosen window moves by a factor of three.
+
+**Resist generalising `fly`.** A schedule that happens to be constant is a strictly larger
+surface than a constant, and `fly`'s fixed controls are a *physical* statement — the
+discriminator separates turbulence from manoeuvring by whether pitch correlates with
+elevator, so an autopilot or a moving stick in the turbulence cases would blur exactly the
+distinction being measured.
+
+**`elevator_for_load` is more general than its name.** It is an inverse solve — "what
+input produces this response?" — done as a bisection over a vmapped rollout, and it is why
+the manoeuvre's deflection is *derived* rather than chosen. Any future "fly to a stated
+condition" (a target roll rate, a target rate of descent) is the same three lines with a
+different scalar extracted from the history. That is the difference between a model that
+reaches a source's number and one that was handed it.
 
 ### Extensibility: what the next aircraft will cost
 
@@ -590,12 +647,25 @@ test and line counts had already drifted (256/4,300 against an actual 260/4,600)
 by hand and the claim in §10 narrowed to what is actually true. A generated document is
 only as undriftable as the fraction of it that is generated.
 
-**Deliberately not done:** the summary PDF's page 5 still tells the Fig. 8 story with **two**
-categories, vortex and updraft. It is not wrong — that is what the paper's clustering
-shows — but it is now less than the project has, and the third bar would fit its
-"how long does the encounter last" chart exactly (one pitch period, between the vortex's
-fifth and the updraft's three). Left alone because it is prose for a non-technical reader
-and a design choice, not a mechanical update. `_trace_stack` still hard-codes the elevator
+**The summary PDF now carries all three categories**, and building that page turned up a
+number that had been wrong since session 6. Its timing chart said the two weather events
+differ **seventeen-fold** in duration, and so did §4. **17× is Morton's ratio**, not
+Hannibal's: r₀ = 137.16 m gives a 1.163 s traverse and 20/1.163 = 17.2, while every run,
+figure and ledger row in this project uses Hannibal, whose r₀ = 182.88 m gives 1.550 s and
+**12.9**. Corrected in both, superseded rather than deleted in §4. Nothing downstream
+moves — the discriminator is an ordering claim and both ratios are the same order — but
+§8's new window table states these durations to four figures, and a reader would have
+found them contradicting §4's own sentence.
+
+Writing that page also forced a sharper statement of the mechanism than §4 had. **Timing is
+not "the whole discriminator" once the third category exists.** The pushdown's pulse is
+6.609 s, *between* the vortex's 1.550 and the updraft's 20.0, yet it lands furthest right
+of the three. So duration does not order the categories. It separates the two **weather**
+ones; the manoeuvre separates because the elevator is moving and pitch follows the stick
+rather than the air — which is the distinction Wingrove & Bach's chart was drawn to make,
+and the reason `fly` holds its controls fixed.
+
+**Deliberately not done:** `_trace_stack` still hard-codes the elevator
 trace to ±5°, which would clip if the manoeuvre were ever made the figure's *primary*
 encounter; it is not — `scripts/vortex.py` keeps the vortex primary — so this is flagged,
 not fixed. Dryden (§7 step 4) is untouched and still blocked on digitising MIL-F-8785C
