@@ -502,80 +502,84 @@ with PdfPages(OUT) as pdf:
     # ------------------------------------------------------ the fig-8 result
     fig = page(pdf, "The main finding, and why it works", "The result")
     y = 0.865
-    y = para(fig, y, "A second paper, from 1994, plotted many turbulence encounters as pitch change "
-                     "against g-load change, and found they fell into separate clusters depending "
-                     "on what caused them [S3]. Vortex encounters landed in one place; thunderstorm "
-                     "updrafts in another. The obvious question is why.")
-    y = para(fig, y, "This project's answer is that it is purely a matter of timing, and needs no "
-                     "exotic aerodynamics at all.")
+    y = para(fig, y, "A second paper, from 1994, plotted many flight-recorder events as pitch change "
+                     "against g-load change, and found they fell into three separate clusters "
+                     "depending on what caused them [S3]: vortex encounters in one place, "
+                     "thunderstorm updrafts in another, and deliberate pilot manoeuvres in a third. "
+                     "The obvious question is why.")
 
-    ax = fig.add_axes([0.08, 0.505, 0.84, 0.225]); ax.set_axis_off()
-    ax.set_xlim(0, 10); ax.set_ylim(0, 3.4)
-    ax.plot([0.7, 9.3], [2.55, 2.55], color=INK, lw=1.2)
-    ax.plot([0.7, 0.7], [2.45, 2.65], color=INK, lw=1.2)
-    ax.plot([9.3, 9.3], [2.45, 2.65], color=INK, lw=1.2)
-    ax.text(5.0, 2.80, "the aircraft's own natural pitch wobble takes 6.6 seconds",
+    # Anchored to the flowing y rather than to a fixed height, so editing the
+    # paragraph above cannot silently open a gap or push the page over its footer.
+    CHART_H = 0.245
+    ax = fig.add_axes([0.08, y - CHART_H - 0.008, 0.84, CHART_H]); ax.set_axis_off()
+    ax.set_xlim(0, 10); ax.set_ylim(0.12, 3.60)  # cropped to the drawn content
+    ax.plot([0.7, 9.3], [3.15, 3.15], color=INK, lw=1.2)
+    ax.plot([0.7, 0.7], [3.05, 3.25], color=INK, lw=1.2)
+    ax.plot([9.3, 9.3], [3.05, 3.25], color=INK, lw=1.2)
+    ax.text(5.0, 3.40, "the aircraft's own natural pitch wobble takes 6.6 seconds",
             ha="center", fontsize=9.2, color=INK, fontweight="bold")
-    # Bar length is the encounter duration to the same scale as the 6.6 s ruler
-    # above it, so the comparison is the picture rather than the caption.
+    # Bar length is the event duration to the same scale as the 6.6 s ruler above
+    # it, so the comparison is the picture rather than the caption. The caption is
+    # per bar because the three do not share a sentence shape.
     SCALE = 8.6 / 6.6  # units per second
     bars = [
-        (0.7, 1.5, RED, "Vortex", "a sharp jolt — the aircraft\nbarely has time to react"),
-        (0.7, 20.0, TEAL, "Updraft", "slow enough that the aircraft\nsimply rides up with the air"),
+        (1.550, RED, "Vortex", "weather — a sharp jolt the aircraft barely has time to react to",
+         "1.6 s to cross — a fifth of one pitch period"),
+        (6.609, AMBER, "Pushdown", "NOT weather — the pilot pushes the nose down and holds it",
+         "6.6 s of elevator — almost exactly one pitch period"),
+        (20.0, TEAL, "Updraft", "weather — slow enough that the aircraft rides up with the air",
+         "20 s to cross — about three pitch periods"),
     ]
-    for i, (x, seconds, colour, name, note) in enumerate(bars):
-        yy = 1.85 - i * 0.95
+    for i, (seconds, colour, name, note, caption) in enumerate(bars):
+        x, yy = 0.7, 2.45 - i * 0.72
         w = min(seconds * SCALE, 8.6)
-        ax.add_patch(FancyBboxPatch((x, yy), w, 0.34,
+        ax.add_patch(FancyBboxPatch((x, yy), w, 0.30,
                                     boxstyle="round,pad=0.02,rounding_size=0.05",
                                     facecolor=colour, edgecolor="none", alpha=0.9))
-        if seconds > 6.6:
-            # The bar runs off the scale, so the label goes inside it.
-            ax.text(x + 0.18, yy + 0.17, f"{seconds:.0f} s to cross — "
-                    f"about 3 pitch periods", va="center", fontsize=8.4,
+        if w > 6.5:  # the caption would run off the page, so it goes inside the bar
+            ax.text(x + 0.18, yy + 0.15, caption, va="center", fontsize=8.4,
                     color="white", fontweight="bold")
         else:
-            ax.text(x + w + 0.12, yy + 0.17, f"{seconds:.1f} s to cross — "
-                    f"a fifth of one pitch period", va="center", fontsize=8.4,
+            ax.text(x + w + 0.12, yy + 0.15, caption, va="center", fontsize=8.4,
                     color=colour, fontweight="bold")
-        ax.text(x, yy - 0.16, name, fontsize=9.6, color=colour, fontweight="bold")
-        ax.text(x + 1.15, yy - 0.16, note.replace("\n", "  "), fontsize=8.2,
-                color=MUTED, va="top")
-    ax.text(5.0, 0.28, "a seventeen-fold difference in how long the encounter lasts, "
-            "measured in pitch periods", ha="center", fontsize=9, color=INK,
+        ax.text(x, yy - 0.16, name, fontsize=9.4, color=colour, fontweight="bold")
+        ax.text(x + 1.30, yy - 0.16, note, fontsize=8.2, color=MUTED)
+    ax.text(5.0, 0.28, "the two weather events differ thirteen-fold in duration — "
+            "the pushdown sits between them", ha="center", fontsize=9, color=INK,
             fontweight="bold")
 
-    y = 0.480
-    y = callout(fig, y, "The finding, in one sentence",
-                "A vortex is crossed in about a fifth of the aircraft's natural pitch period and "
-                "hits it like an impulse; an updraft takes about three of them and the aircraft has "
-                "time to follow it. That seventeen-fold separation is the whole explanation, and it "
-                "is a rigid-body timing effect requiring no non-linear aerodynamics whatsoever.",
+    y = y - CHART_H - 0.030
+    y = callout(fig, y, "The finding, in two sentences",
+                "A vortex is crossed in a fifth of the aircraft's natural pitch period and hits it "
+                "like an impulse; an updraft takes about three of them and the aircraft has time to "
+                "follow it. That thirteen-fold gap separates the two WEATHER categories on timing "
+                "alone. The third separates for a quite different reason: the pilot is moving the "
+                "elevator, so the pitch follows the stick rather than the air.",
                 colour=BLUE, chars=92)
 
     rows = [
         ("Gap between gusts, Hannibal", "4.52 s", "paper says “about 5 s apart” [S2]"),
         ("Pitch change, first vortex core", "2.24 deg", "paper's figure shows about 1.4 deg [S3]"),
         ("Pitch change, updraft column", "4.37 deg", "paper states 5.2 deg [S3]"),
+        ("Pitch change, elevator pushdown", "30.37 deg", "paper's figure shows about 12 deg [S3]"),
         ("Peak g-load swing, vortex", "−1.23 g", "paper's band is −1.7 to −2.0 g [S3]"),
+        ("g-load swing, pushdown", "−1.90 g", "aimed AT that band, so an input not a result"),
     ]
     y = table(fig, y, rows, [0.34, 0.16, 0.34],
               header=("Measured in this model [M3]", "Value", "What the paper reports"),
-              size=8.7, rowh=0.0195)
+              size=8.7, rowh=0.0185)
 
-    y = para(fig, y - 0.002, "The model reproduces the pattern and the ordering, and lands in the "
-                             "right region without matching any single number exactly. That is the "
-                             "honest claim, and the project makes only that claim: the papers never "
-                             "say what aircraft type they measured, and the two vortex cases were "
-                             "DC-10s rather than 747s, so a like-for-like comparison is not "
-                             "available at all.", size=9.4)
+    y = para(fig, y - 0.002, "The three land in the paper's order, and no single number matches: the "
+                             "pushdown overshoots by a factor of two and a half. The ordering is the "
+                             "whole claim and the project makes only that one — the papers never say "
+                             "what aircraft they measured, and the vortex cases were DC-10s.",
+                             size=9.4)
     y = callout(fig, y, "One thing the model provably cannot do",
-                "Real encounters push harder downwards than upwards. Both papers put that down to "
-                "the wing stalling. This model's lift rises in a perfectly straight line with angle "
-                "of attack and never stalls, so an up-gust and an equal down-gust must give exactly "
-                "equal and opposite loads. Reproducing the asymmetry would need stall data for the "
-                "747 that no source held by the project contains. It is recorded as impossible "
-                "rather than pending.", colour=RED, chars=92)
+                "Real encounters push harder downwards than upwards, and both papers put that down "
+                "to the wing stalling. This model's lift rises in a dead straight line and never "
+                "stalls, so an up-gust and an equal down-gust give exactly equal and opposite "
+                "loads. That would need 747 stall data no source here holds: impossible, not "
+                "pending.", colour=RED, chars=92)
     emit(pdf, fig)
 
     # ------------------------------------------------------ the bug
@@ -704,8 +708,10 @@ with PdfPages(OUT) as pdf:
          "an assumed aerodynamic model, so a 1-degree error becomes 4.12 m/s of wind. Treat them "
          "as accurate to roughly a quarter."),
         ("Any encounter past about 10-12 degrees of angle of attack", "reports lift the sources say "
-         "is not there. The panel now marks that band in red so a run that leaves the valid range "
-         "says so."),
+         "is not there — in either direction, since the model's lift is a straight line and a "
+         "pushdown leaves it as surely as a pull-up. The panel marks the band green, amber and red "
+         "so a run that leaves the valid range says so. The pushdown on page 7 reaches 10.3 "
+         "degrees: inside the amber, and reported as such rather than quietly quoted."),
         ("The Cessna 172 is out of scope", "Its rudder data is missing from the source, so its "
          "turns are wrong. It flies and passes its tests, but no result may be quoted from it."),
     ]
