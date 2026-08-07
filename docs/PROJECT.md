@@ -573,6 +573,7 @@ root**; the scripts import `flightsim` from the editable install, not from `scri
 | `.venv/Scripts/python.exe scripts/fly.py --wind hannibal` | The same, hand-flown into the Parks vortex array. The panel counts the range down. |
 | `.venv/Scripts/python.exe scripts/vortex.py --case hannibal --png runs/v.png` | Flies the 747 through the Parks vortex array and the Wingrove updraft, draws the analysis figure. This is the turbulence path. |
 | `.venv/Scripts/python.exe scripts/analyse.py runs/a.npz` | Replays a saved `.npz`. Accepts several files; `--png DIR` writes instead of showing. |
+| `.venv/Scripts/python.exe scripts/summary.py docs/summary/flightsim-summary.pdf docs/summary/panel.png` | Rebuilds the plain-English summary PDF. It is generated rather than written by hand so it cannot drift from the code — the vortex figures on its page 6 are computed by calling `wind.vortex_wind`, and the aircraft table reads `CRUISE`. |
 
 Flags: `tune.py` takes `--aircraft` only. `fly.py` takes `--aircraft --autopilot --save
 --dt --fps --window --seed --wind --lead-in --sharpness`. `vortex.py` takes `--case
