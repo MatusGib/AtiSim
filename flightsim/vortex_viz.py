@@ -318,14 +318,23 @@ def elevator_for_load(
         grid = jnp.linspace(low, high, width)
         # Monotone decreasing in the step, so the first candidate at or below the
         # target brackets it with its predecessor.
-        below = np.asarray(excursion(grid)) <= target
+        reached = np.asarray(excursion(grid))
+        below = reached <= target
         if not below.any():
             raise ValueError(
-                f"load excursion {target} g is not reachable within "
-                f"{bracket} rad of elevator: deepest reached "
-                f"{float(np.asarray(excursion(grid)).min()):.4f} g"
+                f"load excursion {target} g is not reachable within {bracket} rad "
+                f"of elevator: deepest reached {float(reached.min()):.4f} g"
             )
-        index = max(1, int(np.argmax(below)))
+        if below[0]:
+            # Already past the target at the bracket's low end, so the root is
+            # below it and narrowing would converge on the endpoint and return a
+            # confidently wrong angle. The band this feeds is compared against a
+            # paper; silently wrong is the one outcome worth code to prevent.
+            raise ValueError(
+                f"load excursion {target} g is already exceeded at the low end of "
+                f"{bracket} rad ({float(reached[0]):.4f} g): widen the bracket"
+            )
+        index = int(np.argmax(below))
         low, high = float(grid[index - 1]), float(grid[index])
     return 0.5 * (low + high)
 
