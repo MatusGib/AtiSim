@@ -42,6 +42,84 @@ def encounter():
     return _encounter()
 
 
+# The manoeuvring limb. `hold` is DECLARED (PROJECT.md section 8): one 747 short
+# period, which puts the manoeuvre between the vortex's 0.235 and the updraft's
+# 3.026, so the third cluster's separation cannot be a duration effect.
+PUSHDOWN_HOLD = 6.609
+PUSHDOWN_LEAD = 2.0
+
+
+@pytest.fixture(scope="module")
+def updraft():
+    radius = 0.5 * wind.UPDRAFT_SECONDS * V
+    column = wind.UpdraftColumn(
+        north=jnp.array(0.0), east=jnp.array(0.0),
+        w0=jnp.array(wind.UPDRAFT_W0), radius=jnp.array(radius),
+        sharpness=jnp.array(6.0),
+    )
+    return vortex_viz.fly(
+        AC, lambda p: wind.updraft_wind(p, column), V, H,
+        label="updraft", start_north=-2.0 * radius,
+        seconds=4.0 * radius / V, dt=0.01,
+        window=(-radius, radius), window_name="column",
+    )
+
+
+@pytest.fixture(scope="module")
+def pushdown():
+    return vortex_viz.manoeuvre(
+        AC, V, H, label="manoeuvre",
+        elevator_step=jnp.deg2rad(8.926),
+        hold=PUSHDOWN_HOLD, lead_in=PUSHDOWN_LEAD,
+        seconds=PUSHDOWN_LEAD + 3.0 * PUSHDOWN_HOLD, dt=0.01,
+    )
+
+
+def test_the_manoeuvring_point_separates_from_both_turbulence_clusters(
+    encounter, updraft, pushdown
+):
+    """PROJECT.md section 7 step 5: the discriminator needs the paper's three.
+
+    Ordering only, never absolute agreement -- section 5 forbids the latter,
+    since Wingrove & Bach never identifies an aircraft type. The paper's own
+    ordering is vortex 1.4 < updraft 6.2 < manoeuvring 12.0 deg.
+    """
+    vortex_dtheta, vortex_dn = vortex_viz.fig8_point(encounter)
+    updraft_dtheta, updraft_dn = vortex_viz.fig8_point(updraft)
+    pushdown_dtheta, pushdown_dn = vortex_viz.fig8_point(pushdown)
+
+    assert vortex_dtheta < updraft_dtheta < pushdown_dtheta
+    # Separation, not merely ordering: the gap must be bigger than the gap
+    # between the two turbulence points, or there is no third CLUSTER.
+    assert pushdown_dtheta - updraft_dtheta > updraft_dtheta - vortex_dtheta
+    # And it is the most negative load of the three, which is what puts it in
+    # the Fig. 8 band at all.
+    assert pushdown_dn < vortex_dn < updraft_dn
+
+
+def test_the_pushdown_reaches_the_fig8_load_band_as_an_increment(pushdown):
+    """Decision A (PROJECT.md section 8): the band is read as an increment.
+
+    The elevator angle is not a chosen number -- it is bisected to land on the
+    band -- so this asserts the bisection's target was actually met.
+    """
+    _, dn = vortex_viz.fig8_point(pushdown)
+    assert dn == pytest.approx(vortex_viz.FIG8_LOAD_INCREMENT, abs=0.01)
+
+
+def test_the_pushdown_stays_inside_the_declared_alpha_band(pushdown):
+    """The ceiling in section 7, checked on the run rather than assumed.
+
+    |alpha|, not alpha: a pushdown drives incidence NEGATIVE, and aero.py is
+    odd-symmetric, so magnitude is what decides validity (section 6(e)).
+    Measured 10.31 deg -- marginal, inside the amber band, and the figure says
+    so. If this ever exceeds 12 the run proves nothing and must be reported as
+    such rather than quoted.
+    """
+    alpha = np.abs(pushdown.alpha_air[pushdown.window]) * RAD2DEG
+    assert alpha.max() < 12.0
+
+
 def test_air_relative_and_inertial_incidence_disagree_by_degrees(encounter):
     """The reason this module exists rather than reusing viz.derived.
 
