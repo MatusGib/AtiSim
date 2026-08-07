@@ -609,6 +609,8 @@ independently. What went with it: nothing else asserts `viz.derived`'s field wir
 altitude sign convention. That is a real if small loss, recorded here rather than left to
 be discovered.
 
+260 tests.
+
 ### Session 6 — the free-air flying interface
 `run_live` took no wind model at all. `LiveSim.advance` called `step(sim, controls, dt,
 ac)` and got the `zero_wind` default, so the Parks array and the Wingrove updraft — the
