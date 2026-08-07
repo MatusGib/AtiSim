@@ -4,8 +4,8 @@ A 6-DOF fixed-wing flight-dynamics core in JAX, built as a foundation for turbul
 modelling. This document is the standing record: what exists, what is validated, what is
 known-broken, and what happens next.
 
-**Last updated:** session 6 (the free-air flying interface: basic-T cockpit, wind in the
-live loop, ramped stick and trim).
+**Last updated:** session 7 (panel frame rate, the summary PDF, and the third Fig. 8
+cluster: the manoeuvring case).
 
 **To run any of it, see §10.**
 
@@ -198,6 +198,28 @@ mechanism changes, since both are orderings rather than values.
 The bit-identical row is the one that matters: it is the same statement §4 already
 makes about a zero-strength wind model, applied to the live loop, and it is what says
 the wind hook did not perturb the default path.
+
+### Panel frame rate (session 7)
+
+Medians of 120 runs, Agg backend, 12-core machine, 7 Aug 2026. The "before" column is
+the panel as session 6 shipped it; the "after" column is the same panel with `sense`
+and `accelerometers` jitted.
+
+| Item | Before | After |
+|---|---|---|
+| jitted RK4 step | 0.114 ms | — |
+| `sense` | 6.56 ms eager | 0.028 ms jitted |
+| `accelerometers` | 10.70 ms eager | ~0.03 ms jitted |
+| blit, 14 axes / 72 artists | 28.6 ms | 30.1 ms |
+| whole frame | 73.0 ms | 37.8 ms |
+| achieved rate | 13.7 fps | 26.4 fps |
+
+Session 6 shipped the re-laid-out panel **below** its own 20 fps target and did not
+know it, because the target is asserted nowhere and the only measurement on record
+(§10's 19.9 fps) predated the re-layout. The two sensing calls were the cost: both ran
+eagerly once per frame, and together they were 17.3 ms of a 73.0 ms frame. Blitting is
+now the floor — 30.1 ms of 37.8 — and it did not improve, which is the expected result
+of jitting something that was never the bottleneck's neighbour.
 
 ### Vortex and updraft encounters (747 at CR-2144 FC9)
 
@@ -407,11 +429,30 @@ protocol with a linear and a table implementation. That was the option not taken
   221 by session 5) have run in 53 s and 164 s on the same machine. Session 6 saw 126–207 s
   across runs of the same suite. Re-measure on a quiet machine before treating any timing
   as a baseline.
-- **Whether the panel still holds 20 fps.** The re-layout traded one 3D axes for a dozen 2D
-  ones, and blitting cost scales with the number of axes. §10's 19.9 fps measurement
-  predates it and has not been re-taken on an interactive backend.
+- **Whether the panel holds 20 fps on an interactive backend.** The headless half of this
+  is now answered and is in §4: the re-layout did **not** hold 20 fps — 13.7 fps on Agg —
+  and jitting `sense`/`accelerometers` took it to 26.4. What remains open is narrower.
+  Agg is not TkAgg, which has a window manager and a real compositor in the loop, so the
+  interactive rate has still not been re-taken since the re-layout.
 
 ## 9. Session log
+
+### Session 7 — frame rate, the summary PDF, and the third Fig. 8 cluster
+
+Two pieces of work landed *after* session 6's §9 entry was written, so the record was
+self-contradictory when this session opened: §8 asked whether the panel still held 20 fps,
+and the answer had already been measured. It had not. **13.7 fps on Agg**, against a 20 fps
+target the code sets and no test asserts. `sense` and `accelerometers` were running eagerly
+once per frame — 6.56 ms and 10.70 ms of a 73.0 ms frame. Jitting both took the frame to
+37.8 ms, **26.4 fps**. Full table in §4; §10's 19.9 fps is superseded, not deleted.
+
+The remaining cost is blitting, 30.1 ms of 37.8, and it did **not** improve — which is
+what should happen when you jit something that was never the bottleneck's neighbour. It is
+recorded rather than fixed: the panel is now comfortably above its target.
+
+`scripts/summary.py` generates the plain-English summary PDF rather than it being written
+by hand, so it cannot drift from the code — page 6's vortex figures call `wind.vortex_wind`
+and the aircraft table reads `CRUISE`.
 
 ### Session 6 — the free-air flying interface
 `run_live` took no wind model at all. `LiveSim.advance` called `step(sim, controls, dt,
@@ -626,9 +667,12 @@ a range and bearing for an updraft column, which is a point.
 
 Physics runs at a fixed 50 Hz regardless of frame rate; rendering targets 20 fps and
 measures itself to hold that (matplotlib's `interval` is the gap between frames, not the
-period). Measured on TkAgg: 19.9 fps, real-time ratio 0.9994, no drift over 15 s. That
-measurement predates the re-layout, which replaced a 3D axes with a dozen 2D ones — it
-should be re-taken before being quoted again.
+period). Current measurement is **26.4 fps headless on Agg** (§4, session 7).
+
+Superseded, kept per §4's rule: "Measured on TkAgg: 19.9 fps, real-time ratio 0.9994, no
+drift over 15 s" was taken **before** the session-6 re-layout replaced a 3D axes with a
+dozen 2D ones, and is no longer a statement about this panel. The interactive rate has
+not been re-taken since (§8).
 
 ### Which paths are trustworthy under wind
 
