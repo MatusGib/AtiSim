@@ -4,8 +4,7 @@ A 6-DOF fixed-wing flight-dynamics core in JAX, built as a foundation for turbul
 modelling. This document is the standing record: what exists, what is validated, what is
 known-broken, and what happens next.
 
-**Last updated:** session 7 (panel frame rate, the summary PDF, and the third Fig. 8
-cluster: the manoeuvring case).
+**Last updated:** session 8 (the mountain lee wave and the F-factor: §7 step 8).
 
 **To run any of it, see §10.**
 
@@ -59,8 +58,8 @@ without a core rewrite. Both have now been exercised and both held.
 | `state.py` | `State`/`Controls`, quaternion utilities | NED inertial, body x-fwd/y-right/z-down; quat is `[w,x,y,z]`, body→NED |
 | `atmosphere.py` | ISA to 20 km | two layers — the 747 cruise sits above the tropopause |
 | `aero.py` | coefficient build-up | **takes `vel_rel`/`omega_rel` only; never sees inertial velocity** |
-| `dynamics.py` | 6-DOF Newton-Euler, `load_factor` | wind enters here and nowhere else |
-| `wind.py` | wind fields and composition | vortex array, updraft column, `superpose`, `field_model` |
+| `dynamics.py` | 6-DOF Newton-Euler, `load_factor`, `f_factor`, `thrust_authority` | wind enters here and nowhere else |
+| `wind.py` | wind fields and composition | vortex array, updraft column, lee wave, `superpose`, `field_model`, `along_track_shear` |
 | `integrate.py` | RK4 `step`, `rollout`, batched rollout | wind sampled once per step, held across the four stages |
 | `aircraft.py` | three aircraft + `REGISTRY`/`CRUISE` | every derivative cites its source table; `FlightCondition` + `from_dimensional_*` do the conversions |
 | `sensors.py` | `AirData`, `sense(state, wind_ned)` | **the only supported way to ask what the aircraft is doing**; air-relative where a real sensor is |
@@ -107,6 +106,8 @@ Gust-rate signs, derived from the repo's own conventions:
 | Nelson / Etkin / McRuer | Navion per-radian derivatives | no extractable published mode table was found; tests assert ranges, not values |
 | **Parks, Wingrove, Bach & Mehta 1985**, J. Aircraft 22(2) 124–129 | **the vortex model** — Rankine core, array by superposition, and identified parameters | α is *inferred* from accelerometers through an assumed aero model — see §5 |
 | **Wingrove & Bach 1994**, J. Aircraft 31(4) 753–760 | updraft magnitudes/duration, g-load statistics, the Fig. 8 discriminator | never identifies an aircraft type; no updraft edge gradient; no lateral data |
+| **Doyle, Jiang, Smith & Grubišić 2011**, *Mon. Wea. Rev.* 139, 3–23, DOI 10.1175/2010MWR3466.1 | **the lee-wave amplitudes** — T-REX Gulfstream V over the Sierra Nevada, IOP 4 primary wave, 6 and 12 m/s crest-to-trough | gives a **tropospheric** wavelength band (20–35 km) and says stratospheric ones are shorter **without a number** — see §5 |
+| **Proctor, Hinton & Bowles 2000**, 9th Conf. Aviation Range & Aerospace Meteorology, paper 7.7, 482–487 | **the F-factor** — Eq. (3) `F = U̇ₓ/g − w/Vₐ`, Eq. (4) for the shear term, and the `F > (T−D)/W` thrust criterion | its 0.1 alerting threshold is **low-altitude only** (its §4.1 bounds the threat below 500 m), so it is not used here |
 | MIL-F-8785C | (not yet used) Dryden spectra | σ above 2000 ft is a **chart read**, not a formula — must be digitised |
 
 ### The vortex model, as cited
@@ -250,6 +251,7 @@ Zero wind. Elevator pulse of one short period, **declared**; the deflection is
 | Δθ, whole run vs in-pulse | 30.74 vs 30.37 deg | 1.2% — the window barely matters here |
 | Fig. 8 pitch ordering, model | 2.24 < 4.37 < 30.37 | paper 1.4 < 6.2 < 12.0 — **ordering holds** |
 | Suite | 260 tests, 104 s | was 256, 126 s on the same machine this session |
+| Suite (session 8) | 270 tests, 167 s | the lee wave added 10 |
 
 Two of those rows are the result and the rest are the guard. **The ordering holds**, which
 is the only claim §5 permits. **The absolute values do not agree** and are not meant to:
@@ -287,6 +289,33 @@ moving, so pitch follows the stick rather than the air. That is precisely the di
 Wingrove & Bach's chart was drawn to make, and it is why `vortex_viz.fly` holds its
 controls fixed.
 
+### Mountain lee wave and the F-factor (session 8)
+
+747 at CR-2144 FC9, fixed controls, three wavelengths flown. The thrust envelope is
+**recomputed**, not taken on trust from session 2 — it agrees.
+
+| Quantity | Measured | Reference |
+|---|---|---|
+| (T−D)/W, full throttle | **+0.0234** | session 2 recorded +0.023 — confirmed |
+| (T−D)/W, idle | **−0.0657** | session 2 recorded −0.066 — confirmed |
+| Peak F, north leg (w₀ 3.0 m/s) | **+0.01291** | **within** thrust authority |
+| Peak F, south leg (w₀ 6.0 m/s) | **+0.02623** | **exceeds** +0.0234 — unrecoverable by thrust |
+| Critical amplitude, F = full throttle | **w₀ = 5.51 m/s** | Doyle's two legs are 3.0 and 6.0 |
+| Shear term, `U̇ₓ/g` | **0.0 exactly** | zero by construction — see §5 |
+| Net altitude loss, south leg, 3 waves | −167 m | fixed controls, no pilot |
+
+**The result, and it is sharper than step 8 asked for.** §7 step 8 wanted "F exceeds the
+measured envelope". It does — but not for both of the *same paper's two flight legs*. The
+critical amplitude, 5.51 m/s, falls **between** Doyle et al.'s northern (3.0) and southern
+(6.0) primary-wave amplitudes, measured on one aircraft on one day 50 km apart. So the
+honest statement is not "a lee wave defeats a 747" but **"the threshold sits inside the
+observed range"**, which is a much more useful thing to know and was not knowable before
+the envelope and the field were in the same place.
+
+Note the peak F exceeds the naive `w₀/V` = 0.02543: flown, it reaches 0.02623, because the
+aircraft *slows* in the downdraft and F is inversely proportional to airspeed. The
+encounter makes itself slightly worse, and only flying it shows that.
+
 ### The validated baseline — do not touch these tolerances
 
 `test_conservation.py`, `test_cr2144_modes.py`, `test_drag_polar.py`, `test_navion.py`,
@@ -309,6 +338,28 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   characteristics"* — so there are two layers of modelling between the raw DFDR data and
   the identified r₀/V₀. A 1° α error maps to 4.12 m/s of wind, 27% of a 50 ft/s peak.
   Treat the identified parameters as order-of-magnitude with roughly ±25% bands.
+
+- **The lee wave carries no horizontal perturbation, so half the F-factor is missing.**
+  `wind.LeeWave` is purely vertical and constant in altitude. That is divergence-free, so
+  it is an admissible flow rather than a convenience — but a real lee wave also has a
+  horizontal velocity perturbation, in quadrature with the vertical one, with amplitude
+  ratio `m/k` (vertical to horizontal wavenumber). Building it needs a Brunt–Väisälä
+  frequency and an ambient cross-mountain wind speed at 12 km, and **Doyle et al. supplies
+  neither** — the paper gives wave amplitudes and a tropospheric wavelength band, not a
+  stratification profile. So `U̇ₓ/g` is exactly zero here and the reported F is the
+  vertical term alone.
+  Two things follow, and they point opposite ways. The omitted term is **in quadrature**,
+  so it peaks where the vertical term vanishes and vice versa — the *location* of peak F
+  would move but the peak *magnitude* would not simply double. Against that, an
+  order-of-magnitude estimate with a plausible `N` and ambient wind puts the shear term
+  **larger** than the vertical one, so the true hazard is probably understated. The
+  measured result is therefore a **lower bound**, and is quoted as one.
+- **The wavelength is declared, not sourced.** Doyle et al.'s 20–35 km is tropospheric and
+  the same paragraph warns "shorter wavelengths are apparent in the stratosphere" without
+  quantifying them. 25 km is the middle of the band the paper *does* give. It does not
+  move the F-factor peak at all — with no horizontal perturbation F is `−w/Vₐ`,
+  independent of wavelength — but it sets the encounter duration and the pitching gust
+  rate, so anything depending on those must say which value was used.
 
 **Structurally impossible — cannot be fixed from any source currently held:**
 
@@ -405,8 +456,11 @@ form needs at least one test that flies through a non-zero wind field —
                                                                    vortex's 2.24; ordering holds
 6. Fig. 8 with ensemble error bars                        -> verify: vortex/updraft/manoeuvre
    (vmap over keys; deterministic parts see the same field)        ordering holds across the ensemble
-8. Mountain lee wave + F-factor                           -> verify: F exceeds the measured
-                                                                    +0.023/−0.066 thrust envelope
+8. [DONE] Mountain lee wave + F-factor                     -> verify: DONE, and sharper than
+                                                                    asked: peak F +0.0262 on
+                                                                    Doyle's south leg exceeds
+                                                                    +0.0234, +0.0129 on the
+                                                                    north leg does not
 ```
 
 Step 5 is done, so **step 6 now waits only on step 4** (Dryden), which is where the
@@ -581,6 +635,61 @@ protocol with a linear and a table implementation. That was the option not taken
   interactive rate has still not been re-taken since the re-layout.
 
 ## 9. Session log
+
+### Session 8 — the mountain lee wave, and what a 747 can do about it
+
+§7 step 8, and it went the way session 3 went: **retrieve the source, then write the
+model**. Two were needed and they do different jobs — Doyle et al. 2011 for the *field*,
+Proctor/Hinton/Bowles 2000 for the *index*. Both are now in §3.
+
+Doyle et al. was chosen over any textbook lee-wave treatment for one reason: **altitude**.
+Its Gulfstream V flew legs at 11.3 and 13.1 km over the Sierra Nevada during T-REX, and
+this project's 747 cruises at 12.192 km, between them. Everything else in `wind.py` is
+DC-10-class data near the tropopause, so the whole module stays altitude-comparable rather
+than mixing a low-level wave model into high-altitude work.
+
+**The result is sharper than the step asked for.** §7 wanted "F exceeds the measured
++0.023/−0.066 envelope". It does — but not for both of the *same paper's two flight legs*,
+flown by one aircraft on one day 50 km apart. The critical amplitude is **w₀ = 5.51 m/s**,
+and Doyle's legs are 3.0 and 6.0. So the honest statement is not "a lee wave defeats a
+747" but **the hazard threshold sits inside the observed range** — which is the more
+useful claim and was not knowable until the envelope and the field were in one place.
+
+The envelope itself was **recomputed rather than trusted**: session 2 recorded
++0.023/−0.066 with no derivation on the record, and `dynamics.thrust_authority` now
+reproduces +0.0234/−0.0657 from the trim solution, with a test. In trimmed level flight
+T = D, so the drag *is* the trim thrust and the envelope is just how far the throttle can
+travel either way over the weight — which is why it needs a trim solve and not a drag
+model.
+
+Two things worth keeping:
+
+- **Flying it matters.** Peak F comes out at 0.02623 against a naive `w₀/V` of 0.02543,
+  because the aircraft *slows* in the downdraft and F goes as 1/Vₐ. The encounter makes
+  itself slightly worse, and only integrating it shows that.
+- **The FAA's 0.1 threshold is deliberately not used.** Proctor et al. §4.1 bounds the
+  windshear threat to below 500 m, since higher up an aircraft has potential energy to
+  trade. What transfers to 12 km is the *index* and the paper's own `F > (T−D)/W`
+  criterion, not a number calibrated for approach. Quoting 0.1 here would have been the
+  easy mistake and it is flagged in the code.
+
+**The honest gap, in §5:** the field is purely vertical, so `U̇ₓ/g` is exactly zero and
+only half of Eq. (3) is exercised. A real lee wave has a horizontal perturbation in
+quadrature with the vertical one, needing a stratification and an ambient wind speed
+Doyle et al. does not give. The omitted term peaks where the vertical one vanishes, so the
+peak *location* would move rather than the peak simply doubling — but an order-of-magnitude
+estimate puts it **larger** than the vertical term, so **the measured F is a lower bound
+and is quoted as one**. The wavelength is declared for the same reason: the paper's
+20–35 km is tropospheric and it says stratospheric wavelengths are shorter without saying
+how much.
+
+**Deliberately not done:** the lee wave is not on the Fig. 8 discriminator. It would cost
+almost nothing — it is a deterministic field, so `vortex_viz.fly` takes it directly — but
+Fig. 8 is a *pitch-and-load* clustering chart and the lee-wave result is an *energy* one,
+so putting it there would imply a comparison the paper does not make. The summary PDF is
+not updated either; step 8 is a new result, not a correction to an existing page.
+
+270 tests.
 
 ### Session 7 — frame rate, the summary PDF, and the third Fig. 8 cluster
 
@@ -834,12 +943,13 @@ root**; the scripts import `flightsim` from the editable install, not from `scri
 
 | Command | What it does |
 |---|---|
-| `.venv/Scripts/python.exe -m pytest flightsim/tests -q` | 260 tests. The first thing to run and the only complete statement of what works. |
+| `.venv/Scripts/python.exe -m pytest flightsim/tests -q` | 270 tests. The first thing to run and the only complete statement of what works. |
 | `.venv/Scripts/python.exe scripts/checkpoint.py` | 747 only, no flags. Trim residuals, 60 s fixed-control hold, longitudinal modes against CR-2144 Table IX-5. |
 | `.venv/Scripts/python.exe scripts/tune.py --aircraft cherokee` | Autopilot step responses for one aircraft. Exits non-zero on failure, so it is usable as a gate. |
 | `.venv/Scripts/python.exe scripts/fly.py --aircraft cherokee --save runs/a.npz` | Interactive flight, basic-T cockpit plus a flight-test overlay. |
 | `.venv/Scripts/python.exe scripts/fly.py --wind hannibal` | The same, hand-flown into the Parks vortex array. The panel counts the range down. |
 | `.venv/Scripts/python.exe scripts/vortex.py --case hannibal --png runs/v.png` | Flies the 747 through the Parks vortex array, the Wingrove updraft, and an elevator pushdown, and draws the analysis figure with all three Fig. 8 categories. This is the turbulence path. Prints each point's Δθ, Δn and peak \|α\| with its band, then whether the ordering holds. |
+| `.venv/Scripts/python.exe scripts/leewave.py --png runs/lw.png` | Flies the 747 through a Doyle et al. lee wave and compares the Bowles F-factor against the aircraft's own `(T−D)/W`. Prints both of the source's flight legs and which of them the engines can cover. |
 | `.venv/Scripts/python.exe scripts/analyse.py runs/a.npz` | Replays a saved `.npz`. Accepts several files; `--png DIR` writes instead of showing. |
 | `.venv/Scripts/python.exe scripts/summary.py docs/summary/flightsim-summary.pdf docs/summary/panel.png` | Rebuilds the plain-English summary PDF. The parts that are *computed* cannot drift from the code — the vortex figures on its page 6 call `wind.vortex_wind`, and the aircraft table reads `CRUISE`. **The prose and the summary statistics are literals and can**: the test and line counts were stale by session 7 and were corrected by hand. Re-run it after anything that changes those. |
 
@@ -847,7 +957,9 @@ Flags: `tune.py` takes `--aircraft` only. `fly.py` takes `--aircraft --autopilot
 --dt --fps --window --seed --wind --lead-in --sharpness`. `vortex.py` takes `--case
 {hannibal,morton} --aircraft --dt --lead-in --sharpness --pushdown-seconds --png`.
 `--lead-in` below ~12 core radii contaminates the first core (§9 session 3);
-`--sharpness` and `--pushdown-seconds` are declared modelling parameters, not source data
+`leewave.py` takes `--aircraft --dt --wavelength --waves --png`.
+`--sharpness`, `--pushdown-seconds` and `--wavelength` are declared modelling parameters,
+not source data
 — the papers fix the updraft's magnitude and duration but not its edge, and fix the load
 the pilot reached but not how long they held it. Both scripts read the case constants from
 `wind.PARKS_CASES`, so they cannot disagree about a sourced number. The manoeuvre's

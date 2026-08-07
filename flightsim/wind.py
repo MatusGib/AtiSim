@@ -231,6 +231,97 @@ def updraft_wind(pos_ned: Array, column: UpdraftColumn) -> Array:
 
 
 # ---------------------------------------------------------------------------
+# Mountain lee wave
+#
+# Source: J. D. Doyle, Q. Jiang, R. B. Smith, V. Grubisic, "Three-Dimensional
+# Characteristics of Stratospheric Mountain Waves during T-REX", Mon. Wea. Rev.
+# 139 (Jan 2011), 3-23, DOI 10.1175/2010MWR3466.1.
+#
+# Chosen over a textbook treatment because its measurements are at the right
+# ALTITUDE. The NSF/NCAR Gulfstream V flew legs at 11.3 km and 13.1 km over the
+# Sierra Nevada during T-REX (March-April 2006); this project's 747 cruises at
+# 12.192 km, between them. Everything else in this file is DC-10-class data near
+# the tropopause, so the altitudes stay comparable across the whole module.
+#
+# What the paper supplies, IOP 4 (14 March 2006), G-V at 13.1 km, quoted:
+#   "The wave amplitude (crest to trough) of the primary wave is 12 m s-1 to the
+#    south and 6 m s-1 to the north."
+#   "maximum vertical velocities in excess of 6 m s-1"
+#   "a tropospheric lee wave characterized by relatively long wavelengths
+#    (~20-35 km)"
+#
+# What it does NOT supply, and is therefore DECLARED below: a stratospheric
+# wavelength. The 20-35 km band is the paper's TROPOSPHERIC figure, and the same
+# paragraph warns "Shorter wavelengths are apparent in the stratosphere" without
+# giving a number. See LEE_WAVE_WAVELENGTH.
+# ---------------------------------------------------------------------------
+
+# m/s, zero-to-peak, i.e. half the paper's crest-to-trough figures. Two entries
+# because they are the two legs of ONE flight and they straddle the 747's thrust
+# authority -- which is the result, not a coincidence to be averaged away.
+LEE_WAVE_AMPLITUDE: dict[str, float] = {"north": 3.0, "south": 6.0}
+
+# m. DECLARED, not sourced: the paper's 20-35 km is tropospheric and it says
+# stratospheric wavelengths are shorter without quantifying them. 25 km is the
+# middle of the band the paper does give. It does not affect the F-factor peak
+# at all -- with no horizontal perturbation the index is -w/V, independent of
+# wavelength -- but it sets the encounter duration and the pitching gust rate,
+# so any result that depends on those must say which value was used.
+LEE_WAVE_WAVELENGTH = 25_000.0
+
+
+class LeeWave(NamedTuple):
+    """A horizontally periodic vertical-velocity field: the downstream train.
+
+        w_up(north) = -w0 * cos(2*pi*(north - north0) / wavelength)
+
+    `north` marks a TROUGH, because the downdraft is the half that costs an
+    aircraft energy and the whole point of this field is the F-factor.
+
+    DECLARED SIMPLIFICATION -- purely vertical, with no vertical variation over
+    the aircraft's altitude band. That is divergence-free, so it is an
+    admissible incompressible flow rather than a convenient fiction, and it is
+    the same shape as `UpdraftColumn`. What it omits is real: a lee wave also
+    has a HORIZONTAL perturbation, in quadrature with the vertical one, whose
+    amplitude ratio is the ratio of vertical to horizontal wavenumber. Building
+    it needs a stratification N and an ambient cross-mountain wind speed, and no
+    source held by this project supplies either at 12 km. The omission is
+    recorded in PROJECT.md section 5 rather than papered over with a guess.
+    """
+
+    w0: Array  # m/s, zero-to-peak vertical velocity
+    wavelength: Array  # m, crest to crest
+    north: Array  # m, NED north of a trough
+
+
+def lee_wave_wind(pos_ned: Array, wave: LeeWave) -> Array:
+    """Wind velocity (NED, m/s) of a lee wave train at a point."""
+    phase = 2.0 * jnp.pi * (pos_ned[0] - wave.north) / wave.wavelength
+    w_up = -wave.w0 * jnp.cos(phase)
+    return jnp.array([0.0, 0.0, -w_up])  # NED z is DOWN; an updraft is negative
+
+
+def along_track_shear(pos_ned: Array, vel_ned: Array, field) -> Array:
+    """dU_x/dt experienced by the aircraft. Proctor et al. Eq. (4), steady field.
+
+    `U_x` is the horizontal wind resolved along the ground track, POSITIVE FOR A
+    TAILWIND, which is the sign convention Eq. (3) requires. Eq. (4) splits the
+    rate into three terms -- along-track shear times ground speed, vertical
+    shear times ascent rate, and the local time derivative. The first two are
+    exactly the gradient of `U_x` contracted with the ground velocity, which is
+    what this computes; the third is zero for every field in this module,
+    because they are all steady in the earth frame.
+    """
+    track = vel_ned[:2]
+    heading = track / jnp.maximum(jnp.linalg.norm(track), 1e-9)
+
+    def u_x(p: Array) -> Array:
+        return jnp.dot(field(p)[:2], heading)
+
+    return jnp.dot(jax.grad(u_x)(pos_ned), vel_ned)
+
+
+# ---------------------------------------------------------------------------
 # Composition
 #
 # Every model here is a velocity field, and aero.py sees only vel_rel and
@@ -282,3 +373,8 @@ def vortex_model(array: VortexArray):
 def updraft_model(column: UpdraftColumn):
     """`wind_model` for an updraft column."""
     return field_model(lambda pos_ned: updraft_wind(pos_ned, column))
+
+
+def lee_wave_model(wave: LeeWave):
+    """`wind_model` for a mountain lee wave train."""
+    return field_model(lambda pos_ned: lee_wave_wind(pos_ned, wave))

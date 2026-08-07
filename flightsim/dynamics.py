@@ -14,7 +14,7 @@ from jax import Array
 
 from flightsim.aero import aero_forces_moments, thrust_force
 from flightsim.aircraft import Aircraft
-from flightsim.atmosphere import G0, density, speed_of_sound
+from flightsim.atmosphere import G0, RHO0, density, speed_of_sound
 from flightsim.state import Controls, State, quat_derivative, quat_to_dcm
 
 
@@ -105,3 +105,63 @@ def load_factor(
     factor, and nothing in the package produced it before.
     """
     return -specific_force(state, controls, ac, wind_ned, omega_gust)[2]
+
+
+# ---------------------------------------------------------------------------
+# Windshear hazard
+#
+# Source: F. H. Proctor, D. A. Hinton (NASA Langley) and R. L. Bowles (AeroTech),
+# "A Windshear Hazard Index", 9th Conf. on Aviation, Range and Aerospace
+# Meteorology, Orlando, 11-15 Sept 2000, paper 7.7, pp. 482-487. The index is
+# originally Bowles (1990a, 1990b); this paper is the one actually read here and
+# is where the equation numbers below come from.
+# ---------------------------------------------------------------------------
+
+
+def f_factor(shear_rate: Array, w_up: Array, airspeed: Array) -> Array:
+    """The Bowles F-factor. Proctor et al. Eq. (3): F = U_x_dot/g - w/V_a.
+
+    Non-dimensional rate at which the wind field is draining the aircraft's
+    total energy. POSITIVE IS HAZARDOUS, and the paper is explicit about both
+    signs: F is positive "for a descending air mass (w < 0) and a wind field
+    accelerating in the direction of the flight path".
+
+    `shear_rate` is `U_x_dot`, the rate of change of the along-track horizontal
+    wind (positive for a tailwind) experienced by the aircraft -- see
+    `wind.along_track_shear`. `w_up` is the airmass vertical velocity, positive
+    UP. Both in SI.
+
+    The paper develops this for low-level windshear and the FAA's 0.1 alerting
+    threshold is calibrated for takeoff and landing; §4.1 explicitly bounds the
+    threat to below 500 m, because higher up an aircraft has potential energy to
+    trade. None of that transfers to 12 km, so the threshold is NOT used here.
+    What transfers is the index itself and the paper's own thrust criterion --
+    see `thrust_authority`.
+    """
+    return shear_rate / G0 - w_up / airspeed
+
+
+def thrust_authority(
+    ac: Aircraft, trim_throttle: Array, altitude: Array
+) -> tuple[Array, Array]:
+    """The (T - D)/W envelope in level flight: (full throttle, idle).
+
+    The comparison the F-factor is FOR. Proctor et al., discussing their Eq. (5):
+    "For a strong shear that exceeds the thrust capability of the aircraft, i.e.
+    F > (T_r - D)/W, a pilot may either manage his flight so as to maintain
+    altitude while decelerating, maintain airspeed while descending, or some
+    compromise of the two."
+
+    In trimmed level flight T = D, so the drag is the trim thrust and the
+    envelope is just how far the throttle can travel either way, over the
+    weight. That is why this needs a trim solution and not a drag model.
+
+    For scale, the same paper gives 0.15 for a 4-engine jet at full thrust and
+    maximum takeoff weight. A 747 at 40,000 ft has far less, and that is the
+    physical point rather than a discrepancy: thrust available falls with
+    density while weight does not.
+    """
+    available = ac.max_thrust * (density(altitude) / RHO0) ** ac.thrust_lapse
+    drag = trim_throttle * available
+    weight = ac.mass * G0
+    return (available - drag) / weight, -drag / weight
