@@ -129,7 +129,12 @@ ALPHA_LINEAR_DEG = 10.0
 ALPHA_INVALID_DEG = 12.0
 ALPHA_SPAN_DEG = 15.0
 
-NZ_RANGE = (-1.0, 3.0)  # g, full scale of the load-factor gauge
+# g, full scale of the load-factor gauge. The low end is DECLARED to clear the
+# Fig. 8 load band under either reading of it (PROJECT.md section 8): read as an
+# increment the band's trough is about -1.01 g absolute, read as an absolute load
+# it is -2.01 g. A gauge that clips inside the band it exists to display would
+# read "off scale" for the whole manoeuvring case. Was (-1.0, 3.0).
+NZ_RANGE = (-2.5, 3.0)
 SLIP_SPAN = 0.30  # g of lateral specific force at full ball deflection
 WIND_SPAN = 40.0  # m/s at full arrow length
 GUST_SPAN = 0.15  # rad/s, full scale of the gust-rate bars
@@ -466,13 +471,17 @@ class AlphaGauge:
     """Air-relative alpha against the DECLARED linear-aero ceiling."""
 
     def __init__(self, ax):
-        ax.set_xlim(0.0, ALPHA_SPAN_DEG)
+        # Symmetric, because the band is a statement about |alpha|: aero.py is
+        # CL0 + CLa*alpha with no stall, exactly odd-symmetric, so a pushdown to
+        # -14 deg is as far outside the model as a pull-up to +14.
+        ax.set_xlim(-ALPHA_SPAN_DEG, ALPHA_SPAN_DEG)
         ax.set_ylim(0.0, 1.0)
         ax.set_yticks([])
         _style(ax, "alpha  air-relative")
-        ax.axvspan(0.0, ALPHA_LINEAR_DEG, color="#2f5f42")
-        ax.axvspan(ALPHA_LINEAR_DEG, ALPHA_INVALID_DEG, color="#6d5423")
-        ax.axvspan(ALPHA_INVALID_DEG, ALPHA_SPAN_DEG, color="#5f2a24")
+        ax.axvspan(-ALPHA_LINEAR_DEG, ALPHA_LINEAR_DEG, color="#2f5f42")
+        for sign in (-1.0, 1.0):
+            ax.axvspan(sign * ALPHA_LINEAR_DEG, sign * ALPHA_INVALID_DEG, color="#6d5423")
+            ax.axvspan(sign * ALPHA_INVALID_DEG, sign * ALPHA_SPAN_DEG, color="#5f2a24")
         (self.needle,) = ax.plot([], [], color="white", lw=2.4, animated=True)
         self.readout = ax.text(
             0.03, 0.88, "", transform=ax.transAxes, color=_SYMBOL,
@@ -486,15 +495,16 @@ class AlphaGauge:
 
     def state(self) -> str:
         """Which band the model is in. `invalid` means the run proves nothing."""
-        if self._deg >= ALPHA_INVALID_DEG:
+        magnitude = abs(self._deg)
+        if magnitude >= ALPHA_INVALID_DEG:
             return "invalid"
-        if self._deg >= ALPHA_LINEAR_DEG:
+        if magnitude >= ALPHA_LINEAR_DEG:
             return "marginal"
         return "linear"
 
     def update(self, r: Readout) -> None:
         self._deg = float(r.air.alpha) * RAD2DEG
-        x = float(np.clip(self._deg, 0.0, ALPHA_SPAN_DEG))
+        x = float(np.clip(self._deg, -ALPHA_SPAN_DEG, ALPHA_SPAN_DEG))
         self.needle.set_data([x, x], [0.0, 1.0])
         self.readout.set_text(f"{self._deg:+5.1f} deg  {self.state()}")
 
