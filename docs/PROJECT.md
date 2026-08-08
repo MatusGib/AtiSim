@@ -299,10 +299,18 @@ controls fixed.
 | (T−D)/W, full throttle | **+0.0234** | session 2 recorded +0.023 — confirmed |
 | (T−D)/W, idle | **−0.0657** | session 2 recorded −0.066 — confirmed |
 | Peak F, north leg (w₀ 3.0 m/s) | **+0.01291** | **within** thrust authority |
-| Peak F, south leg (w₀ 6.0 m/s) | **+0.02623** | **exceeds** +0.0234 — unrecoverable by thrust |
+| Peak F, south leg (w₀ 6.0 m/s) | **+0.02621** | **exceeds** +0.0234 — unrecoverable by thrust |
 | Critical amplitude, F = full throttle | **w₀ = 5.51 m/s** | Doyle's two legs are 3.0 and 6.0 |
 | Shear term, `U̇ₓ/g` | **0.0 exactly** | zero by construction — see §5 |
-| Net altitude loss, south leg, 3 waves | −167 m | fixed controls, no pilot |
+| Minimum airspeed, south leg | 226.9 m/s | from 235.9 — this is why F beats `w₀/V` |
+
+Superseded, same session: the south leg first read **+0.02623**, from a run that opened on
+a wave **crest** rather than a zero crossing — 6 m/s of updraft, about 1.5° of α out of
+equilibrium before the first sample. Corrected to a zero-crossing start. The defect moved
+the answer by 8e-5 and changed no conclusion, but it is the same shape as the too-short
+vortex lead-in in §9 session 3 and is recorded rather than quietly repaired. Peak F also
+drifts about 3% across six wavelengths, because with fixed controls the aircraft never
+reaches a periodic steady state; the quoted figure is the run maximum.
 
 **The result, and it is sharper than step 8 asked for.** §7 step 8 wanted "F exceeds the
 measured envelope". It does — but not for both of the *same paper's two flight legs*. The
@@ -655,6 +663,15 @@ and Doyle's legs are 3.0 and 6.0. So the honest statement is not "a lee wave def
 747" but **the hazard threshold sits inside the observed range** — which is the more
 useful claim and was not knowable until the envelope and the field were in one place.
 
+**A defect found in this session's own work, by auditing it rather than by a test.** The
+first version of `leewave.py` started the run on a wave **crest** while its own comment
+claimed it opened "in undisturbed-mean air": 6 m/s of updraft, about 1.5° of α out of trim
+before the first sample. That is exactly the §9 session-3 vortex lead-in defect wearing a
+different hat, and a periodic field makes it easy to walk into because there *is* no
+undisturbed region to lead in through — the nearest equivalent is a zero crossing, which
+is what it now uses. It moved peak F by 8e-5 and changed nothing, which is precisely why
+it would have survived: the number it produced was not wrong enough to look wrong.
+
 The envelope itself was **recomputed rather than trusted**: session 2 recorded
 +0.023/−0.066 with no derivation on the record, and `dynamics.thrust_authority` now
 reproduces +0.0234/−0.0657 from the trim solution, with a test. In trimmed level flight
@@ -683,11 +700,26 @@ and is quoted as one**. The wavelength is declared for the same reason: the pape
 20–35 km is tropospheric and it says stratospheric wavelengths are shorter without saying
 how much.
 
+**The summary PDF gained a page**, "A second result: when the engines are not enough",
+drawing the thrust-authority band to scale with both legs' F on it. Writing it turned up
+a second class of defect, and this one had been there for sessions: **four of the five
+page cross-references in the PDF were wrong.** "The reason is on page 7" pointed at the
+panel page, "the cluster diagram discussed on page 6" pointed at the vortex page, and so
+on. They were typed-in prose numbers in a *generated* document, and inserting the lee-wave
+page shifted one of them from off-by-one to off-by-two.
+
+Fixed structurally rather than by retyping: `PAGE_ORDER` names the pages, `pageno()` looks
+them up, every reference is now an f-string, and `check_pagination()` aborts the build if
+the emitted count and the declared order disagree. Verified by deleting a name and
+watching it fail. This is the same lesson as session 7's stale test counts, one level up:
+**a generated document is only as undriftable as the fraction of it that is generated**,
+and prose numbers referring to the document's own structure are the most fragile kind
+because nothing renders an error.
+
 **Deliberately not done:** the lee wave is not on the Fig. 8 discriminator. It would cost
 almost nothing — it is a deterministic field, so `vortex_viz.fly` takes it directly — but
 Fig. 8 is a *pitch-and-load* clustering chart and the lee-wave result is an *energy* one,
-so putting it there would imply a comparison the paper does not make. The summary PDF is
-not updated either; step 8 is a new result, not a correction to an existing page.
+so putting it there would imply a comparison the paper does not make.
 
 270 tests.
 
@@ -951,7 +983,7 @@ root**; the scripts import `flightsim` from the editable install, not from `scri
 | `.venv/Scripts/python.exe scripts/vortex.py --case hannibal --png runs/v.png` | Flies the 747 through the Parks vortex array, the Wingrove updraft, and an elevator pushdown, and draws the analysis figure with all three Fig. 8 categories. This is the turbulence path. Prints each point's Δθ, Δn and peak \|α\| with its band, then whether the ordering holds. |
 | `.venv/Scripts/python.exe scripts/leewave.py --png runs/lw.png` | Flies the 747 through a Doyle et al. lee wave and compares the Bowles F-factor against the aircraft's own `(T−D)/W`. Prints both of the source's flight legs and which of them the engines can cover. |
 | `.venv/Scripts/python.exe scripts/analyse.py runs/a.npz` | Replays a saved `.npz`. Accepts several files; `--png DIR` writes instead of showing. |
-| `.venv/Scripts/python.exe scripts/summary.py docs/summary/flightsim-summary.pdf docs/summary/panel.png` | Rebuilds the plain-English summary PDF. The parts that are *computed* cannot drift from the code — the vortex figures on its page 6 call `wind.vortex_wind`, and the aircraft table reads `CRUISE`. **The prose and the summary statistics are literals and can**: the test and line counts were stale by session 7 and were corrected by hand. Re-run it after anything that changes those. |
+| `.venv/Scripts/python.exe scripts/summary.py docs/summary/flightsim-summary.pdf docs/summary/panel.png` | Rebuilds the plain-English summary PDF (14 pages). The parts that are *computed* cannot drift from the code — the vortex figures call `wind.vortex_wind`, and the aircraft table reads `CRUISE`. **The prose and the summary statistics are literals and can**: the test and line counts were stale by session 7, and four page cross-references were wrong by session 8. The page numbers are now generated from `PAGE_ORDER` with a build-time count check; the statistics are still literals. Re-run it after anything that changes those. |
 
 Flags: `tune.py` takes `--aircraft` only. `fly.py` takes `--aircraft --autopilot --save
 --dt --fps --window --seed --wind --lead-in --sharpness`. `vortex.py` takes `--case
