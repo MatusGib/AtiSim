@@ -17,7 +17,9 @@ import jax.numpy as jnp
 from jax import Array
 
 from flightsim.atmosphere import G0
-from flightsim.units import DEG2RAD, FT2M, HP2W, LB2KG, LBF2N, SLUG_FT2_TO_KG_M2
+from flightsim.units import (
+    DEG2RAD, FT2M, HP2W, KT2MS, LB2KG, LBF2N, SLUG_FT2_TO_KG_M2,
+)
 
 
 class Aircraft(NamedTuple):
@@ -351,6 +353,142 @@ def _boeing_747() -> Aircraft:
 
 
 # ---------------------------------------------------------------------------
+# Boeing 747-100, POWER APPROACH configuration
+#
+# Source: the same NASA CR-2144 Section IX. Table IX-2 "Power Approach
+# Configuration Non-Dimensional Derivatives", h = sea level, VTo = 165 KTAS,
+# alpha0 = 5.7 deg, stabiliser -2.1 deg; mass and inertia from Figure IX-1's
+# Power Approach block: max landing weight, 20 deg flaps, GEAR UP, 1.4 Vs.
+#
+# This exists because the cruise set could not be used below 500 ft. The
+# microburst work (section 4) needs an airliner at approach speed near the
+# ground, and flying Mach 0.8 / 40,000 ft derivatives there would have been the
+# largest extrapolation in the project -- and an invisible one, because the
+# numbers would still have looked reasonable. Section 5 recorded that as a gap;
+# this closes it.
+#
+# It is a far simpler transcription than the cruise set. Table IX-2 is ALREADY
+# NON-DIMENSIONAL, so there is no dimensional conversion chain, no primed-to-
+# unprimed lateral algebra, and no re-derivation of anything. The numbers below
+# are the table, verbatim.
+#
+# The check that mass and aerodynamics belong to the same condition: the table
+# states CL = 1.11, and W/qS at 165 KTAS sea level with Figure IX-1's 564,000 lb
+# gives 1.1126. Those are independent entries on different pages, so agreeing to
+# 0.2% says they were transcribed from the same flight condition. Asserted in
+# tests/test_aircraft.py.
+# ---------------------------------------------------------------------------
+
+
+def _boeing_747_approach() -> Aircraft:
+    # -- Table IX-3 geometry: the same airframe as the cruise set --
+    S, b, c = 5500.0, 195.68, 27.31  # ft^2, ft, ft
+
+    # -- Table IX-3, flight condition 2 (the power-approach column) --
+    #
+    # SOURCE CONFLICT, and IX-3 wins. Figure IX-1's Power Approach block gives
+    # W = 564,000 lb with Ix/Iy/Iz/Ixz = 13.7/30.5/43.1/0.825 x 10^6 slug-ft^2.
+    # Table IX-3 column 2 gives 564,032 lb with 14.2/32.3/45.4/0.870 x 10^6 --
+    # the same weight to rounding, but inertias up to 6% larger. Table IX-3 is
+    # taken because it is the table the derivatives were COMPUTED at: its
+    # Q = 92.2 psf, VTO = 165 KTAS and ALPHA = 5.70 deg all match Table IX-2's
+    # header exactly, and the project's cruise set already reads flight
+    # condition 9 from this same table. For CRUISE the two agree (both 18.2e6,
+    # 970056), so the disagreement is specific to the approach configuration.
+    W = 564032.0  # lb
+    Ix, Iy, Iz, Ixz = 0.142e8, 0.323e8, 0.454e8, 870050.0  # slug-ft^2, body axis
+
+    # -- Table IX-2 header --
+    V0 = 165.0 * KT2MS / FT2M  # ft/s, from 165 KTAS
+    alpha0 = 5.7 * DEG2RAD
+
+    # -- Table IX-2, longitudinal. Verbatim, per radian. --
+    CL_trim, CD_trim = 1.11, 0.102
+    CLa, CDa, Cma = 5.70, 0.66, -1.26
+    CLq, Cmq = 5.4, -20.8
+    CLde, Cmde = 0.338, -1.34
+    # (CL_alphadot -6.7, Cm_alphadot -3.2, CL_M -0.81, Cm_M 0.27 are also
+    #  tabulated. All four are outside this model's alpha/q/de form, exactly as
+    #  the cruise set excludes its own speed and alpha-dot derivatives. Their
+    #  omission is why section 5's phugoid and short-period offsets exist.)
+
+    # -- Table IX-2, lateral-directional. Verbatim, per radian. --
+    CYb, Clb, Cnb = -0.96, -0.221, 0.150
+    Clp, Cnp = -0.45, -0.121
+    Clr, Cnr = 0.101, -0.30
+    Clda, Cnda = 0.0461, 0.0064
+    CYdr, Cldr, Cndr = 0.175, 0.007, -0.109
+
+    AR = b * b / S
+
+    # Referenced to the trimmed condition, as for the cruise set: the stabiliser
+    # at -2.1 deg carries the trim, so elevator is zero at alpha0.
+    CL0 = CL_trim - CLa * alpha0
+    Cm0 = -Cma * alpha0
+
+    # Drag split. At 165 KTAS sea level the Mach number is 0.25, so the Korn wave
+    # term is identically zero and the polar is the plain parabolic one:
+    #   CD = CD0 + CL^2/(pi e AR),  dCD/dalpha = 2 CL CLa/(pi e AR) = CDa
+    # Two equations, two unknowns, no reading off a chart -- which is why this
+    # set carries none of the cruise set's +-0.003 CD0 uncertainty.
+    pi_e_AR = 2.0 * CL_trim * CLa / CDa
+    e = pi_e_AR / (math.pi * AR)
+    CD0 = CD_trim - CL_trim**2 / pi_e_AR
+
+    inertia = inertia_tensor(
+        *(v * SLUG_FT2_TO_KG_M2 for v in (Ix, Iy, Iz, Ixz))
+    )
+    return Aircraft(
+        mass=jnp.array(W * LB2KG),
+        inertia=inertia,
+        inertia_inv=jnp.linalg.inv(inertia),
+        S=jnp.array(S * FT2M**2),
+        b=jnp.array(b * FT2M),
+        c=jnp.array(c * FT2M),
+        CD0=jnp.array(CD0),
+        e=jnp.array(e),
+        AR=jnp.array(AR),
+        # Same wing as the cruise set. Inert here -- the wave-drag term is zero
+        # below the critical Mach -- but carried so the aircraft is still right
+        # if it is ever flown faster.
+        sweep=jnp.array(37.5 * DEG2RAD),
+        t_over_c=jnp.array(0.09),
+        kappa_airfoil=jnp.array(0.87),
+        CL0=jnp.array(CL0),
+        CLa=jnp.array(CLa),
+        CLq=jnp.array(CLq),
+        CLde=jnp.array(CLde),
+        Cm0=jnp.array(Cm0),
+        Cma=jnp.array(Cma),
+        Cmq=jnp.array(Cmq),
+        Cmde=jnp.array(Cmde),
+        CYb=jnp.array(CYb),
+        # Not tabulated for the 747 in ANY configuration, cruise included.
+        CYp=jnp.array(0.0),
+        CYr=jnp.array(0.0),
+        CYdr=jnp.array(CYdr),
+        Clb=jnp.array(Clb),
+        Clp=jnp.array(Clp),
+        Clr=jnp.array(Clr),
+        # Table IX-2's footnote: "delta_a = total deflection of right inboard
+        # aileron plus left inboard aileron with the effect of outboard ailerons
+        # included". Taken as given, like every other number here.
+        Clda=jnp.array(Clda),
+        Cldr=jnp.array(Cldr),
+        Cnb=jnp.array(Cnb),
+        Cnp=jnp.array(Cnp),
+        Cnr=jnp.array(Cnr),
+        Cnda=jnp.array(Cnda),
+        Cndr=jnp.array(Cndr),
+        max_thrust=jnp.array(4 * 43500.0 * LBF2N),
+        thrust_lapse=jnp.array(0.8),
+        elevator_limit=jnp.array(25.0 * DEG2RAD),
+        aileron_limit=jnp.array(20.0 * DEG2RAD),
+        rudder_limit=jnp.array(25.0 * DEG2RAD),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Piper PA-28-180 Cherokee
 #
 # Source: McCormick, "Aerodynamics, Aeronautics, and Flight Mechanics", worked
@@ -644,6 +782,7 @@ def _cessna_172() -> Aircraft:
 
 REGISTRY: dict[str, Aircraft] = {
     "boeing747": _boeing_747(),
+    "boeing747_approach": _boeing_747_approach(),
     "cherokee": _cherokee_pa28_180(),
     "cessna172": _cessna_172(),
 }
@@ -651,6 +790,9 @@ REGISTRY: dict[str, Aircraft] = {
 # Reference trim conditions, for the trim solver and for tests. SI.
 CRUISE: dict[str, dict[str, float]] = {
     "boeing747": {"altitude": 40000.0 * FT2M, "airspeed": 774.0 * FT2M},
+    # Table IX-2 is AT sea level. Flown a little above it for the microburst
+    # work, which is a 3% density extrapolation rather than the 40,000 ft one.
+    "boeing747_approach": {"altitude": 0.0, "airspeed": 165.0 * KT2MS},
     "cherokee": {"altitude": 4920.0 * FT2M, "airspeed": 50.0},
     "cessna172": {"altitude": 5000.0 * FT2M, "airspeed": 60.0},
 }

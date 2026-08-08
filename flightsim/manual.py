@@ -305,8 +305,19 @@ CESSNA172_MANUAL = ManualGains(
     trim_rate=jnp.array(0.5 * DEG2RAD),
 )
 
+# Power-approach 747: the cruise gearing at half the dynamic pressure, so the
+# authorities are roughly doubled to give the same response per key press.
+# UNTUNED -- nobody has flown it, and section 9 records that hand-tuning needs a
+# human at the keyboard.
+BOEING747_APPROACH_MANUAL = BOEING747_MANUAL._replace(
+    elevator_authority=jnp.array(0.50),
+    aileron_authority=jnp.array(1.60),
+    rudder_authority=jnp.array(0.30),
+)
+
 MANUAL_GAINS: dict[str, ManualGains] = {
     "boeing747": BOEING747_MANUAL,
+    "boeing747_approach": BOEING747_APPROACH_MANUAL,
     "cherokee": CHEROKEE_MANUAL,
     "cessna172": CESSNA172_MANUAL,
 }
