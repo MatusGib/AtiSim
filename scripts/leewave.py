@@ -98,16 +98,24 @@ legs = {name: fly(w0) for name, w0 in sorted(wind.LEE_WAVE_AMPLITUDE.items())}
 
 print(f"{args.aircraft}  CR-2144 FC9  {H:.0f} m  {V:.2f} m/s")
 print(f"thrust authority (T-D)/W: full throttle {full:+.4f}   idle {idle:+.4f}\n")
-print(f"{'leg':>7} {'w0':>6} {'peak F':>9} {'shear':>9} {'Va min':>8} {'dh':>7}  verdict")
+print(f"{'leg':>7} {'w0':>6} {'peak F':>9} {'1km avg':>9} {'shear':>9} {'Va min':>8}  verdict")
 for name, r in legs.items():
-    dh = r["altitude"][-1] - r["altitude"][0]  # net, over whole wavelengths
+    # Proctor et al. eq. (7): the hazard metric is the 1 km AVERAGE, not the
+    # instantaneous peak. It barely bites here -- the window is 1 km and the wave
+    # is 25 km, so the average retains 99.7% of the peak -- but reporting the
+    # instantaneous value would have been reporting the wrong quantity, and on a
+    # shorter-scale field (a microburst) the difference is large.
+    avg, ok = (np.asarray(v) for v in dynamics.average_f_factor(
+        jnp.asarray(r["f"]), jnp.asarray(r["north"]), 1000.0))
+    peak_avg = float(avg[ok].max())
+    r["peak_avg"] = peak_avg
     verdict = (
         "EXCEEDS full thrust -- unrecoverable"
-        if r["f"].max() > full else "within thrust authority"
+        if peak_avg > full else "within thrust authority"
     )
-    print(f"{name:>7} {r['w0']:5.1f}  {r['f'].max():+9.5f} "
-          f"{np.abs(r['shear_term']).max():9.2e} {r['airspeed'].min():8.1f} "
-          f"{dh:+6.0f} m  {verdict}")
+    print(f"{name:>7} {r['w0']:5.1f}  {r['f'].max():+9.5f} {peak_avg:+9.5f} "
+          f"{np.abs(r['shear_term']).max():9.2e} {r['airspeed'].min():8.1f}"
+          f"  {verdict}")
 
 critical = full * V
 print(f"\ncritical amplitude, F = {full:+.4f}: w0 = {critical:.2f} m/s")

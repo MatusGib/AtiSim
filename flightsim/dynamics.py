@@ -141,6 +141,39 @@ def f_factor(shear_rate: Array, w_up: Array, airspeed: Array) -> Array:
     return shear_rate / G0 - w_up / airspeed
 
 
+def average_f_factor(
+    f: Array, distance: Array, length: float = 1000.0
+) -> tuple[Array, Array]:
+    """Running forward mean of F over `length` m of track. Proctor et al. Eq. (7).
+
+    **This, not the instantaneous value, is the hazard metric.** The paper is
+    blunt about why: "Peaks of F are over small length scales and are quickly
+    followed by negative values. Such oscillations of F-factor result in
+    perceived turbulence, with airspeed oscillations and little net trajectory
+    change." A spike the aircraft flies through before it can respond is not the
+    same threat as a sustained loss, and only the average distinguishes them.
+
+    The FAA adopted the **1 km** average as its metric for windshear detection on
+    jet transports, hazardous above 0.1 with a must-alert threshold at 0.13. The
+    same paper records that this was never established for piston aircraft: "The
+    minimum averaging scale and hazard threshold are yet to be determined for
+    these types of aircraft."
+
+    Returns `(average, valid)`. `valid` is False where the window would run off
+    the end of the run, because `jnp.interp` clamps there rather than extending
+    and those entries would understate a rising hazard. Never take a peak
+    without masking.
+    """
+    f = jnp.asarray(f)
+    distance = jnp.asarray(distance)
+    integral = jnp.concatenate([
+        jnp.zeros(1),
+        jnp.cumsum(jnp.diff(distance) * 0.5 * (f[1:] + f[:-1])),
+    ])
+    ahead = jnp.interp(distance + length, distance, integral)
+    return (ahead - integral) / length, (distance + length) <= distance[-1]
+
+
 def thrust_authority(
     ac: Aircraft, trim_throttle: Array, altitude: Array
 ) -> tuple[Array, Array]:
