@@ -120,6 +120,44 @@ def test_an_accelerating_tailwind_gives_a_positive_f_factor():
     assert float(f) == pytest.approx(0.5 / 9.80665)
 
 
+# --- the averaged index, Proctor et al. Eq. (7) ------------------------------
+
+
+def test_a_constant_f_averages_to_itself():
+    distance = jnp.linspace(0.0, 5000.0, 501)
+    f = jnp.full(501, 0.08)
+    average, valid = dynamics.average_f_factor(f, distance)
+    assert float(jnp.max(jnp.abs(average[valid] - 0.08))) < 1e-9
+
+
+def test_averaging_flattens_a_spike_the_aircraft_flies_straight_through():
+    """The paper's own reason for averaging, asserted.
+
+    A 100 m spike of F = 0.5 is a tenth of the 1 km window, so it must average
+    to about 0.05 -- below the jet-transport hazard threshold -- while the
+    instantaneous peak is five times over it. Reporting the instantaneous value
+    would call a bump an accident.
+    """
+    distance = jnp.linspace(0.0, 6000.0, 6001)
+    f = jnp.where((distance >= 2000.0) & (distance < 2100.0), 0.5, 0.0)
+    average, valid = dynamics.average_f_factor(f, distance)
+    assert float(jnp.max(f)) == 0.5
+    assert float(jnp.max(average[valid])) == pytest.approx(0.05, abs=0.002)
+
+
+def test_a_long_wavelength_survives_the_average_almost_intact():
+    """Why the lee-wave result is unchanged by using the correct metric.
+
+    The window is 1 km and the wave is 25 km, so the average over the trough is
+    sin(x)/x with x = pi/25 -- 99.7% of the peak. The averaging that guts a
+    spike barely touches a wave the aircraft is inside for half a minute.
+    """
+    distance = jnp.linspace(0.0, 100_000.0, 20_001)
+    f = 0.026 * jnp.cos(2.0 * jnp.pi * distance / wind.LEE_WAVE_WAVELENGTH)
+    average, valid = dynamics.average_f_factor(f, distance)
+    assert float(jnp.max(average[valid])) == pytest.approx(0.026 * 0.9974, rel=0.002)
+
+
 # --- the result section 7 step 8 asks for ------------------------------------
 
 

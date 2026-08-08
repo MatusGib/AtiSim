@@ -4,7 +4,7 @@ A 6-DOF fixed-wing flight-dynamics core in JAX, built as a foundation for turbul
 modelling. This document is the standing record: what exists, what is validated, what is
 known-broken, and what happens next.
 
-**Last updated:** session 8 (the mountain lee wave and the F-factor: §7 step 8).
+**Last updated:** session 9 (the microburst, and the 1 km averaged F-factor).
 
 **To run any of it, see §10.**
 
@@ -58,8 +58,8 @@ without a core rewrite. Both have now been exercised and both held.
 | `state.py` | `State`/`Controls`, quaternion utilities | NED inertial, body x-fwd/y-right/z-down; quat is `[w,x,y,z]`, body→NED |
 | `atmosphere.py` | ISA to 20 km | two layers — the 747 cruise sits above the tropopause |
 | `aero.py` | coefficient build-up | **takes `vel_rel`/`omega_rel` only; never sees inertial velocity** |
-| `dynamics.py` | 6-DOF Newton-Euler, `load_factor`, `f_factor`, `thrust_authority` | wind enters here and nowhere else |
-| `wind.py` | wind fields and composition | vortex array, updraft column, lee wave, `superpose`, `field_model`, `along_track_shear` |
+| `dynamics.py` | 6-DOF Newton-Euler, `load_factor`, `f_factor`, `average_f_factor`, `thrust_authority` | wind enters here and nowhere else |
+| `wind.py` | wind fields and composition | vortex array, updraft column, lee wave, microburst, `superpose`, `field_model`, `along_track_shear` |
 | `integrate.py` | RK4 `step`, `rollout`, batched rollout | wind sampled once per step, held across the four stages |
 | `aircraft.py` | three aircraft + `REGISTRY`/`CRUISE` | every derivative cites its source table; `FlightCondition` + `from_dimensional_*` do the conversions |
 | `sensors.py` | `AirData`, `sense(state, wind_ned)` | **the only supported way to ask what the aircraft is doing**; air-relative where a real sensor is |
@@ -107,7 +107,8 @@ Gust-rate signs, derived from the repo's own conventions:
 | **Parks, Wingrove, Bach & Mehta 1985**, J. Aircraft 22(2) 124–129 | **the vortex model** — Rankine core, array by superposition, and identified parameters | α is *inferred* from accelerometers through an assumed aero model — see §5 |
 | **Wingrove & Bach 1994**, J. Aircraft 31(4) 753–760 | updraft magnitudes/duration, g-load statistics, the Fig. 8 discriminator | never identifies an aircraft type; no updraft edge gradient; no lateral data |
 | **Doyle, Jiang, Smith & Grubišić 2011**, *Mon. Wea. Rev.* 139, 3–23, DOI 10.1175/2010MWR3466.1 | **the lee-wave amplitudes** — T-REX Gulfstream V over the Sierra Nevada, IOP 4 primary wave, 6 and 12 m/s crest-to-trough | gives a **tropospheric** wavelength band (20–35 km) and says stratospheric ones are shorter **without a number** — see §5 |
-| **Proctor, Hinton & Bowles 2000**, 9th Conf. Aviation Range & Aerospace Meteorology, paper 7.7, 482–487 | **the F-factor** — Eq. (3) `F = U̇ₓ/g − w/Vₐ`, Eq. (4) for the shear term, and the `F > (T−D)/W` thrust criterion | its 0.1 alerting threshold is **low-altitude only** (its §4.1 bounds the threat below 500 m), so it is not used here |
+| **Proctor, Hinton & Bowles 2000**, 9th Conf. Aviation Range & Aerospace Meteorology, paper 7.7, 482–487 | **the F-factor** — Eq. (3) `F = U̇ₓ/g − w/Vₐ`, Eq. (4) for the shear term, Eq. (7) for the **1 km average**, the `F > (T−D)/W` thrust criterion, the 0.1/0.13 thresholds, and F = 0.2–0.36 in real accidents | its thresholds are **low-altitude** (§4.1 bounds the threat below 500 m) **and jet-transport only** — it states the scale and threshold "are yet to be determined" for piston aircraft |
+| **Oseguera & Bowles 1988**, NASA TM-100632 | **the microburst** — Eqs. (5)–(6), an axisymmetric stagnation flow satisfying continuity, with four stated constants (r/R = 1.1212, z_m/z* = 0.22, z*/ε = 12.5, u_max = 0.2357λR) | the example's `R` is legible only in a scanned figure, so the downdraft radius is declared inside the 1–4 km band Wilson et al. use to define a microburst |
 | MIL-F-8785C | (not yet used) Dryden spectra | σ above 2000 ft is a **chart read**, not a formula — must be digitised |
 
 ### The vortex model, as cited
@@ -252,6 +253,7 @@ Zero wind. Elevator pulse of one short period, **declared**; the deflection is
 | Fig. 8 pitch ordering, model | 2.24 < 4.37 < 30.37 | paper 1.4 < 6.2 < 12.0 — **ordering holds** |
 | Suite | 260 tests, 104 s | was 256, 126 s on the same machine this session |
 | Suite (session 8) | 270 tests, 167 s | the lee wave added 10 |
+| Suite (session 9) | 284 tests, 272 s | the microburst added 11, the averaged index 3 |
 
 Two of those rows are the result and the rest are the guard. **The ordering holds**, which
 is the only claim §5 permits. **The absolute values do not agree** and are not meant to:
@@ -324,6 +326,42 @@ Note the peak F exceeds the naive `w₀/V` = 0.02543: flown, it reaches 0.02623,
 aircraft *slows* in the downdraft and F is inversely proportional to airspeed. The
 encounter makes itself slightly worse, and only flying it shows that.
 
+### Microburst penetration (session 9)
+
+Cherokee, 50 m/s, **300 m AGL**, fixed controls, straight through the axis. Oseguera &
+Bowles field at the paper's own 37 kt peak outflow. **The hazard metric is the 1 km
+average F (Eq. 7), not the instantaneous value** — that is the FAA's metric and the one
+this project should have been using all along.
+
+| Quantity | Measured | Reference |
+|---|---|---|
+| Peak instantaneous F | +0.2326 | not the metric — see below |
+| **Peak 1 km average F** | **+0.1929** | the metric that counts |
+| …its shear term `U̇ₓ/g` | +0.1342 | **the lee wave's was exactly zero** |
+| …its vertical term `−w/Vₐ` | +0.1456 | the two are comparable here |
+| Cherokee thrust authority at 300 m | +0.0784 | **exceeded 2.5×** |
+| FAA jet-transport hazard / must-alert | 0.10 / 0.13 | 1.9× hazardous — *for scale only* |
+| F in real accidents | 0.2 – 0.36 | this run sits just below that band |
+| Outflow strength that first beats the Cherokee | u_max = 7.73 m/s (15 kt) | far below anything called a microburst |
+| Ground contact | t = 95.5 s, +383 m past the axis | entered 300 m up, never reached the far side |
+
+**Why this one matters more than the lee wave.** The lee-wave field is purely vertical, so
+`U̇ₓ` was identically zero and only half of Eq. (3) was ever exercised. A microburst has a
+horizontal outflow, and here the shear term (+0.134) is the same size as the vertical one
+(+0.146). The index is now tested on both its legs rather than one.
+
+**The instantaneous/average distinction is not cosmetic.** Peak instantaneous F is +0.2326
+against an averaged +0.1929 — 21% higher. The paper is blunt about why the average is the
+right quantity: peaks "over small length scales... are quickly followed by negative values",
+which an aircraft experiences as turbulence rather than as a trajectory loss. A 100 m spike
+of F = 0.5 averages to 0.05 over a kilometre, and a test asserts exactly that.
+
+**The Cherokee cannot survive any microburst worth the name.** F scales linearly with the
+field, so its +0.0784 of authority is first exceeded at 7.73 m/s of peak outflow — well
+below the 10 m/s of divergence Wilson et al. require before an outflow is even *called* a
+microburst. Unlike the lee wave, where the threshold fell inside the observed range, here
+it falls below the bottom of it.
+
 ### The validated baseline — do not touch these tolerances
 
 `test_conservation.py`, `test_cr2144_modes.py`, `test_drag_polar.py`, `test_navion.py`,
@@ -368,6 +406,27 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   move the F-factor peak at all — with no horizontal perturbation F is `−w/Vₐ`,
   independent of wavelength — but it sets the encounter duration and the pitching gust
   rate, so anything depending on those must say which value was used.
+
+- **The 747 cannot be flown into a microburst, and no source held here changes that.**
+  Its only derivative set is CR-2144 flight condition 9 — Mach 0.8 at 40,000 ft. A
+  microburst is a sub-500 m phenomenon met at approach speed in a landing configuration.
+  Using cruise derivatives there would be a larger extrapolation than anything else in
+  this project, and it would be invisible in the output: the numbers would look
+  reasonable. So the microburst work flies the **Cherokee**, whose 50 m/s cruise is a
+  modest extrapolation to 300 m, and the cost of that choice is stated in the next entry.
+  CR-2144 does contain other flight conditions; adding an approach set for the 747 is the
+  fix, and it is a data-entry job rather than a modelling one.
+- **The FAA windshear thresholds do not apply to the aircraft this project can fly there.**
+  Proctor et al. state plainly that the 0.1 hazard and 0.13 must-alert figures, and the
+  1 km averaging scale itself, were established for jet transports and "are yet to be
+  determined" for piston aircraft. The Cherokee is piston. So those numbers are printed
+  for scale and the **verdict is always `F > (T−D)/W`**, which is that paper's own
+  criterion and needs nobody's certification basis. Note this is a *different* reason from
+  the lee wave's, where the thresholds failed on altitude rather than aircraft class.
+- **There is no ground.** No terrain, no landing gear, no ground effect, no stall. A
+  microburst run therefore ends when the aircraft descends within one wingspan of the
+  surface, because below that the integration is arithmetic rather than physics — left to
+  itself the model bounces and climbs away, which reads as a survival and is not one.
 
 **Structurally impossible — cannot be fixed from any source currently held:**
 
@@ -464,6 +523,10 @@ form needs at least one test that flies through a non-zero wind field —
                                                                    vortex's 2.24; ordering holds
 6. Fig. 8 with ensemble error bars                        -> verify: vortex/updraft/manoeuvre
    (vmap over keys; deterministic parts see the same field)        ordering holds across the ensemble
+9. [DONE] Microburst + averaged F-factor                   -> verify: DONE, 1 km average F
+   (not in the original plan; the lee wave                          +0.193 against the Cherokee's
+    left half of the F-factor untested)                             +0.078 of thrust, and the
+                                                                    shear term is no longer zero
 8. [DONE] Mountain lee wave + F-factor                     -> verify: DONE, and sharper than
                                                                     asked: peak F +0.0262 on
                                                                     Doyle's south leg exceeds
@@ -643,6 +706,64 @@ protocol with a linear and a table implementation. That was the option not taken
   interactive rate has still not been re-taken since the re-layout.
 
 ## 9. Session log
+
+### Session 9 — the microburst, and the metric session 8 got wrong
+
+Chosen as the next field because of what it would *test*, not because it was next on a
+list. The lee wave is purely vertical, so `U̇ₓ` was identically zero and **half of the
+F-factor had never been exercised**. A microburst has a horizontal outflow, and in the
+flown result the shear term (+0.134) comes out the same size as the vertical one (+0.146).
+
+The field is Oseguera & Bowles 1988 (NASA TM-100632), the standard analytic microburst —
+and Bowles also wrote the F-factor, so the field and the index it is measured with come
+from the same group. **The 1988 scan OCRs badly**, so the equations were reconstructed and
+then checked against four constants the paper states independently: peak outflow at
+r/R = 1.1212 solves `exp(−x²)(2x²+1) = 1`; z_m/z* = 0.22 is `ln(12.5)/11.5 = 0.2196`;
+u_max = 0.2357λR is the product of those two; and the paper's `w_max = λz*(e^(−z_h/z*) −
+0.92)` is the vertical equation with `ε = z*/12.5` substituted, which is where 0.92 comes
+from — `1 − 1/12.5`. Four different consequences of the same two shaping functions, so a
+mis-transcription could not have satisfied all of them. That is what makes the
+reconstruction trustworthy rather than merely plausible.
+
+**Session 8 measured the wrong quantity, and this session's source says so explicitly.**
+The F-factor's hazard metric is the **1 km average** (Proctor et al. Eq. 7), not the
+instantaneous value: peaks "over small length scales... are quickly followed by negative
+values", felt as turbulence rather than as a loss of flight path. `average_f_factor` now
+implements it, and a test asserts that a 100 m spike of F = 0.5 averages to 0.05. The lee
+wave was re-reported with it and **barely moved** — +0.02621 to +0.02614, because a 25 km
+wave and a 1 km window is `sin(x)/x` at 99.7% — so session 8's conclusion stands. It was
+still the wrong quantity, and on this session's field the gap is 21%.
+
+**Two defects found in this session's own work, both by auditing rather than by tests:**
+
+- The microburst's outflow was written as the paper writes it, `(λR²/2r)[1 − e^(−(r/R)²)]`,
+  which is 0/0 on the axis. Guarding the radius made the **value** right and the
+  **gradient** wrong — and `field_model` differentiates the field to get `omega_gust`, so
+  anything flying through the core would have been handed a silently wrong rotational
+  gust. Fixed by factoring the direction cosine back in, leaving a function of r² with a
+  removable singularity. Caught only because the continuity test evaluates *on the axis*.
+- With fixed controls the aeroplane descends, reaches 6 m, and **climbs away again**.
+  There is no terrain, no gear and no ground effect in this model, so that is arithmetic,
+  not a survival. Runs now stop at one wingspan.
+
+**The result.** Cherokee at 300 m, 1 km average F = **+0.1929** against **+0.0784** of
+thrust authority — exceeded 2.5×, 1.9× the FAA jet-transport hazard threshold, and just
+below the 0.2–0.36 band the paper reports for real accidents. Ground contact 95.5 s in,
+383 m past the axis; it never reaches the far side. Scaling linearly, the Cherokee's
+authority is first beaten at 7.73 m/s of peak outflow — **below the 10 m/s of divergence
+Wilson et al. require before an outflow is called a microburst at all.** Where the lee
+wave's threshold fell *inside* the observed range, this one falls below the bottom of it.
+
+**The aircraft choice is a finding, not a convenience.** The 747 could not be flown here:
+its only derivative set is Mach 0.8 at 40,000 ft and a microburst is met below 500 m at
+approach speed. §5 records that, and that the FAA thresholds are jet-transport-only so the
+verdict is always the aircraft's own `(T−D)/W`.
+
+**Deliberately not done:** no approach-configuration 747 (CR-2144 has other flight
+conditions; adding one is data entry, and it would let this be re-flown on the aircraft
+class the thresholds were written for). No ground model. The summary PDF is unchanged.
+
+284 tests.
 
 ### Session 8 — the mountain lee wave, and what a 747 can do about it
 
@@ -975,12 +1096,13 @@ root**; the scripts import `flightsim` from the editable install, not from `scri
 
 | Command | What it does |
 |---|---|
-| `.venv/Scripts/python.exe -m pytest flightsim/tests -q` | 270 tests. The first thing to run and the only complete statement of what works. |
+| `.venv/Scripts/python.exe -m pytest flightsim/tests -q` | 284 tests. The first thing to run and the only complete statement of what works. |
 | `.venv/Scripts/python.exe scripts/checkpoint.py` | 747 only, no flags. Trim residuals, 60 s fixed-control hold, longitudinal modes against CR-2144 Table IX-5. |
 | `.venv/Scripts/python.exe scripts/tune.py --aircraft cherokee` | Autopilot step responses for one aircraft. Exits non-zero on failure, so it is usable as a gate. |
 | `.venv/Scripts/python.exe scripts/fly.py --aircraft cherokee --save runs/a.npz` | Interactive flight, basic-T cockpit plus a flight-test overlay. |
 | `.venv/Scripts/python.exe scripts/fly.py --wind hannibal` | The same, hand-flown into the Parks vortex array. The panel counts the range down. |
 | `.venv/Scripts/python.exe scripts/vortex.py --case hannibal --png runs/v.png` | Flies the 747 through the Parks vortex array, the Wingrove updraft, and an elevator pushdown, and draws the analysis figure with all three Fig. 8 categories. This is the turbulence path. Prints each point's Δθ, Δn and peak \|α\| with its band, then whether the ordering holds. |
+| `.venv/Scripts/python.exe scripts/microburst.py --png runs/mb.png` | Flies the Cherokee through an Oseguera & Bowles microburst at 300 m and reports the 1 km average F against its thrust authority. Cuts the run at one wingspan above the ground and says so. |
 | `.venv/Scripts/python.exe scripts/leewave.py --png runs/lw.png` | Flies the 747 through a Doyle et al. lee wave and compares the Bowles F-factor against the aircraft's own `(T−D)/W`. Prints both of the source's flight legs and which of them the engines can cover. |
 | `.venv/Scripts/python.exe scripts/analyse.py runs/a.npz` | Replays a saved `.npz`. Accepts several files; `--png DIR` writes instead of showing. |
 | `.venv/Scripts/python.exe scripts/summary.py docs/summary/flightsim-summary.pdf docs/summary/panel.png` | Rebuilds the plain-English summary PDF (14 pages). The parts that are *computed* cannot drift from the code — the vortex figures call `wind.vortex_wind`, and the aircraft table reads `CRUISE`. **The prose and the summary statistics are literals and can**: the test and line counts were stale by session 7, and four page cross-references were wrong by session 8. The page numbers are now generated from `PAGE_ORDER` with a build-time count check; the statistics are still literals. Re-run it after anything that changes those. |
@@ -989,7 +1111,8 @@ Flags: `tune.py` takes `--aircraft` only. `fly.py` takes `--aircraft --autopilot
 --dt --fps --window --seed --wind --lead-in --sharpness`. `vortex.py` takes `--case
 {hannibal,morton} --aircraft --dt --lead-in --sharpness --pushdown-seconds --png`.
 `--lead-in` below ~12 core radii contaminates the first core (§9 session 3);
-`leewave.py` takes `--aircraft --dt --wavelength --waves --png`.
+`leewave.py` takes `--aircraft --dt --wavelength --waves --png`. `microburst.py` takes
+`--aircraft --altitude --dt --u-max --radius --z-m --png`.
 `--sharpness`, `--pushdown-seconds` and `--wavelength` are declared modelling parameters,
 not source data
 — the papers fix the updraft's magnitude and duration but not its edge, and fix the load

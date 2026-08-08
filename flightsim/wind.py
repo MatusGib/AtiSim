@@ -322,6 +322,121 @@ def along_track_shear(pos_ned: Array, vel_ned: Array, field) -> Array:
 
 
 # ---------------------------------------------------------------------------
+# Microburst
+#
+# Source: R. M. Oseguera and R. L. Bowles, "A Simple, Analytic 3-Dimensional
+# Downburst Model Based on Boundary Layer Stagnation Flow", NASA TM-100632, July
+# 1988. Velocity profiles taken from the TASS numerical model, itself built on
+# the Joint Airport Weather Studies (JAWS) field data. Bowles is also the author
+# of the F-factor in dynamics.py, so the field and the index it is measured with
+# come from the same group.
+#
+# An axisymmetric stagnation-point flow: air descends on the axis, turns, and
+# runs out radially. Both components go to zero AT THE GROUND, which the paper's
+# introduction singles out as the thing earlier analytic models got wrong.
+#
+# Two shaping functions (paper's eqs. 5 and 6), with r the radius from the axis
+# and z the height above ground:
+#
+#   u(r,z) = (lambda R^2 / 2r) [1 - exp(-(r/R)^2)] [exp(-z/z*) - exp(-z/eps)]
+#   w(r,z) = -lambda exp(-(r/R)^2) [z*(1 - exp(-z/z*)) - eps(1 - exp(-z/eps))]
+#
+# These satisfy mass continuity exactly, which is asserted in the tests rather
+# than taken on trust. The paper states four constants derived from them by
+# iteration, and they are what pins the transcription:
+#
+#   peak outflow at r/R = 1.1212, z_m/z* = 0.22, z*/eps = 12.5,
+#   u_max = 0.2357 * lambda * R
+#
+# All four are re-derivable from the equations above -- 1.1212 solves
+# exp(-x^2)(2x^2+1) = 1, and 0.22 is ln(12.5)/11.5 -- so they are a genuine
+# cross-check rather than four restatements of one number.
+# ---------------------------------------------------------------------------
+
+# Oseguera & Bowles, from iteration on their own equations.
+MICROBURST_PEAK_RADIUS_RATIO = 1.1212  # r/R at maximum outflow
+MICROBURST_ZM_OVER_ZSTAR = 0.22  # altitude of maximum outflow, over z*
+MICROBURST_ZSTAR_OVER_EPS = 12.5  # out-of-boundary-layer over in-boundary-layer
+MICROBURST_UMAX_COEFF = 0.2357  # u_max = 0.2357 * lambda * R
+
+
+class Microburst(NamedTuple):
+    """An axisymmetric downburst. `z` is height above ground, so the ground is
+    the NED plane z = 0 and this field is the only one here that has one."""
+
+    north: Array  # m, NED north of the axis
+    east: Array  # m, NED east of the axis
+    lam: Array  # 1/s, the paper's scaling factor lambda
+    radius: Array  # m, R, radius of the downdraft shaft
+    z_star: Array  # m, characteristic height, out of boundary layer
+    epsilon: Array  # m, characteristic height, in boundary layer
+
+
+def microburst(
+    *, u_max: float, radius: float, z_m: float, north: float = 0.0, east: float = 0.0
+) -> Microburst:
+    """Build a `Microburst` from the three quantities a source actually reports.
+
+    A paper measures peak outflow, downdraft size and the height the outflow
+    peaks at; it does not report `lambda`, `z*` or `epsilon`. Those are internal
+    to the model and are recovered here through the paper's own three relations,
+    so a caller states cited quantities and never has to invent a scale factor.
+    """
+    z_star = z_m / MICROBURST_ZM_OVER_ZSTAR
+    return Microburst(
+        north=jnp.array(north),
+        east=jnp.array(east),
+        lam=jnp.array(u_max / (MICROBURST_UMAX_COEFF * radius)),
+        radius=jnp.array(radius),
+        z_star=jnp.array(z_star),
+        epsilon=jnp.array(z_star / MICROBURST_ZSTAR_OVER_EPS),
+    )
+
+
+def microburst_wind(pos_ned: Array, burst: Microburst) -> Array:
+    """Wind velocity (NED, m/s) of a microburst at a point."""
+    north = pos_ned[0] - burst.north
+    east = pos_ned[1] - burst.east
+    # Clamped at the ground. The shaping function contains exp(-z/epsilon) with
+    # epsilon of order 50 m, so a few hundred metres of negative altitude
+    # overflows to infinity -- and an aircraft flown into a microburst on fixed
+    # controls DOES reach the ground, which is the result rather than an edge
+    # case. Holding the ground value keeps such a run finite so the analysis can
+    # find the impact point instead of returning NaN for the whole flight.
+    altitude = jnp.maximum(-pos_ned[2], 0.0)
+    # Squared radius first, then a floored sqrt: hypot's derivative is singular
+    # at the axis and conftest turns a NaN into a failure. The floor never bites
+    # on the value, because the bracket below vanishes like r^2 there.
+    radius_sq = north * north + east * east
+    scaled = radius_sq / burst.radius**2
+    decay = jnp.exp(-scaled)
+    shape = jnp.exp(-altitude / burst.z_star) - jnp.exp(-altitude / burst.epsilon)
+
+    # The paper writes the outflow as (lam R^2 / 2r)[1 - exp(-(r/R)^2)], which
+    # is 0/0 on the axis. Factoring the direction cosine n/r back in leaves a
+    # function of r^2 alone with a REMOVABLE singularity, and that form has a
+    # correct derivative on the axis where the literal one does not. This is not
+    # cosmetic: `field_model` differentiates the field to get `omega_gust`, so a
+    # value that is right while its gradient is wrong would give a silently
+    # wrong rotational gust to anything flying through the core.
+    safe = jnp.where(scaled > 1e-8, scaled, 1.0)  # keeps the unused branch finite
+    ratio = jnp.where(
+        scaled > 1e-8,
+        -jnp.expm1(-safe) / safe,
+        1.0 - 0.5 * scaled,  # the same function's series, to O(scaled^2)
+    )
+    horizontal = 0.5 * burst.lam * ratio * shape
+
+    w_up = -burst.lam * decay * (
+        burst.z_star * (1.0 - jnp.exp(-altitude / burst.z_star))
+        - burst.epsilon * (1.0 - jnp.exp(-altitude / burst.epsilon))
+    )
+    return jnp.array(
+        [horizontal * north, horizontal * east, -w_up]
+    )  # NED z is DOWN
+
+
+# ---------------------------------------------------------------------------
 # Composition
 #
 # Every model here is a velocity field, and aero.py sees only vel_rel and
@@ -378,3 +493,8 @@ def updraft_model(column: UpdraftColumn):
 def lee_wave_model(wave: LeeWave):
     """`wind_model` for a mountain lee wave train."""
     return field_model(lambda pos_ned: lee_wave_wind(pos_ned, wave))
+
+
+def microburst_model(burst: Microburst):
+    """`wind_model` for a microburst."""
+    return field_model(lambda pos_ned: microburst_wind(pos_ned, burst))
