@@ -341,8 +341,25 @@ CESSNA172_GAINS = Gains(
     throttle_rate=jnp.array(0.5),
 )
 
+# Power-approach 747. Started from the cruise set and re-scaled for dynamic
+# pressure: 4.4 kPa at 165 KTAS sea level against 8.4 kPa at the cruise point, so
+# every surface is about half as effective per degree. See the note in
+# tests/test_aircraft.py about V_md -- this condition sits BELOW minimum-drag
+# speed, which is what an approach is, so the speed loop is working against the
+# back side of the drag curve and no gain set fixes that.
+BOEING747_APPROACH_GAINS = BOEING747_GAINS._replace(
+    theta_p=jnp.array(4.0),
+    theta_i=jnp.array(0.80),
+    q_d=jnp.array(5.0),
+    phi_p=jnp.array(1.8),
+    p_d=jnp.array(1.2),
+    spd_p=jnp.array(0.10),
+    spd_i=jnp.array(0.02),
+)
+
 GAINS: dict[str, Gains] = {
     "boeing747": BOEING747_GAINS,
+    "boeing747_approach": BOEING747_APPROACH_GAINS,
     "cherokee": CHEROKEE_GAINS,
     "cessna172": CESSNA172_GAINS,
 }

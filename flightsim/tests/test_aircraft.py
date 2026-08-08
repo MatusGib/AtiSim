@@ -7,6 +7,8 @@ thing standing between a transcription error and a simulator that flies
 confidently and wrongly.
 """
 
+import math
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -160,6 +162,70 @@ def test_trim_converges_and_leaves_throttle_in_range(named):
     assert abs(elevator) < float(ac.elevator_limit), name
 
 
+def test_the_approach_747_mass_and_aerodynamics_are_the_same_condition():
+    """Two entries on different pages of CR-2144, checked against each other.
+
+    Table IX-2 states CL = 1.11 for the power-approach point. Table IX-3's
+    flight condition 2 states the mass, 564,032 lb, on a different page and in a
+    different form. Neither was derived from the other, so W/qS reproducing 1.11
+    is what says the mass and the aerodynamics belong to the SAME flight
+    condition -- the failure this catches is pairing the approach derivative set
+    with the CRUISE weight, which would otherwise trim happily and be 13% wrong.
+    """
+    from flightsim.atmosphere import RHO0
+
+    ac = REGISTRY["boeing747_approach"]
+    V = CRUISE["boeing747_approach"]["airspeed"]
+    qS = 0.5 * float(RHO0) * V * V * float(ac.S)
+    CL = float(ac.mass) * 9.80665 / qS
+    assert CL == pytest.approx(1.11, rel=0.005)  # table value; measured 1.1126
+
+
+def test_the_approach_747_reproduces_table_ix_2_where_it_is_stated_directly():
+    """Table IX-2 is already non-dimensional, so most of it is stored verbatim.
+
+    The two that are NOT stored verbatim are the drag split: CD0 and e are solved
+    from the table's CD = 0.102 and CDa = 0.66, so they are the only place a
+    slip could hide. Both are recovered here from the stored values and compared
+    back against the table.
+    """
+    ac = REGISTRY["boeing747_approach"]
+    alpha0 = 5.7 * math.pi / 180.0
+
+    for name, stored, table in [
+        ("CLa", float(ac.CLa), 5.70),
+        ("Cma", float(ac.Cma), -1.26),
+        ("Cmq", float(ac.Cmq), -20.8),
+        ("Cmde", float(ac.Cmde), -1.34),
+        ("CLde", float(ac.CLde), 0.338),
+        ("Clb", float(ac.Clb), -0.221),
+        ("Cnb", float(ac.Cnb), 0.150),
+        ("Cnr", float(ac.Cnr), -0.30),
+    ]:
+        assert stored == pytest.approx(table), name
+
+    # CL and CD rebuilt at the tabulated alpha0 must return the table's values.
+    pi_e_AR = math.pi * float(ac.e) * float(ac.AR)
+    CL = float(ac.CL0) + float(ac.CLa) * alpha0
+    assert CL == pytest.approx(1.11, rel=1e-6)
+    assert float(ac.CD0) + CL**2 / pi_e_AR == pytest.approx(0.102, rel=1e-6)
+    assert 2.0 * CL * float(ac.CLa) / pi_e_AR == pytest.approx(0.66, rel=1e-6)
+    # Trim moment is zero at alpha0 with no elevator: the stabiliser carries it.
+    assert float(ac.Cm0) + float(ac.Cma) * alpha0 == pytest.approx(0.0, abs=1e-12)
+
+
+def test_the_approach_747_is_a_lighter_aeroplane_than_the_cruise_one():
+    """Max landing weight against max-zero-fuel: it must not be the same set."""
+    approach, cruise = REGISTRY["boeing747_approach"], REGISTRY["boeing747"]
+    assert float(approach.mass) < float(cruise.mass)
+    assert float(approach.mass) / float(cruise.mass) == pytest.approx(
+        564032.0 / 636636.0, rel=1e-6
+    )
+    # Same airframe, so the geometry must be identical, not merely close.
+    for field in ("S", "b", "c", "AR"):
+        assert float(getattr(approach, field)) == float(getattr(cruise, field)), field
+
+
 def test_the_light_aircraft_trim_below_their_linear_range_limit():
     """The Cessna table is only linear to about 10 deg, and the Cherokee has no
     stall data at all. Cruise must sit well inside that.
@@ -176,10 +242,39 @@ def test_cruise_is_above_the_minimum_drag_speed(named):
     """Below V_md the throttle-to-speed, elevator-to-altitude pairing inverts.
     The Cherokee has only 2.7 m/s of margin, which is why its speed loop
     degrades on a large deceleration -- that is the airframe, not the gains.
+
+    The power-approach 747 is excluded because it is not a cruise condition and
+    is BELOW V_md on purpose -- see the next test, which asserts that rather than
+    leaving it as a silent exemption.
     """
     name, ac, V, H = named
+    if name == "boeing747_approach":
+        pytest.skip("approach condition; asserted below instead")
     V_md = float(trim.minimum_drag_speed(ac, jnp.array(H)))
     assert V > V_md, name
+
+
+def test_the_approach_condition_is_below_the_minimum_drag_speed():
+    """The back side of the drag curve, and it is meant to be there.
+
+    CR-2144's power-approach point is 1.4 Vs at max landing weight with 20 deg
+    of flap, and 165 KTAS comes out 12 m/s BELOW this aeroplane's minimum-drag
+    speed. That is not a transcription error, it is what an approach is: an
+    airliner on final is flown on the back side, which is exactly why speed
+    control there is a thrust job and why a windshear encounter is dangerous at
+    approach speed and merely uncomfortable at cruise.
+
+    The consequence is recorded rather than worked around: the autopilot's
+    throttle-to-speed / elevator-to-altitude pairing is inverted for this entry,
+    so it holds trim but should not be trusted through a large speed excursion.
+    The microburst work flies it open loop, which sidesteps the question.
+    """
+    ac = REGISTRY["boeing747_approach"]
+    V = CRUISE["boeing747_approach"]["airspeed"]
+    H = CRUISE["boeing747_approach"]["altitude"]
+    V_md = float(trim.minimum_drag_speed(ac, jnp.array(H)))
+    assert V < V_md
+    assert V_md - V == pytest.approx(12.2, abs=0.5)  # measured 12.18 m/s
 
 
 def test_wave_drag_is_inactive_for_the_light_aircraft():

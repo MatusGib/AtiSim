@@ -141,7 +141,9 @@ GUST_SPAN = 0.15  # rad/s, full scale of the gust-rate bars
 
 # Vertical-speed full scale. Per aircraft, because the 747 at cruise trades
 # altitude for speed an order faster than a light aircraft does.
-VSI_SPAN: dict[str, float] = {"boeing747": 20.0, "cherokee": 10.0, "cessna172": 10.0}
+VSI_SPAN: dict[str, float] = {
+    "boeing747": 20.0, "boeing747_approach": 10.0, "cherokee": 10.0, "cessna172": 10.0,
+}
 
 # Tape scales: (full span either side of the value, gap between labelled ticks).
 TAPE_AIRSPEED = (40.0, 10.0)

@@ -38,6 +38,12 @@ FAA_HAZARD = 0.10
 FAA_MUST_ALERT = 0.13
 AVERAGING_LENGTH = 1000.0
 
+# Whether those thresholds APPLY is a property of the aircraft, so it is decided
+# here rather than assumed either way. Lewis et al. derived them for conventional
+# jet transports; the 747 in its CR-2144 power-approach configuration is exactly
+# that class, and the Cherokee is exactly what the paper says was never covered.
+JET_TRANSPORTS = {"boeing747", "boeing747_approach"}
+
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--aircraft", default="cherokee", choices=sorted(REGISTRY))
 parser.add_argument(
@@ -136,11 +142,20 @@ print(f"  its shear term          {float(shear_term.max()):+.4f}   "
 print(f"  its vertical term       {float(vertical_term.max()):+.4f}")
 print(f"aircraft thrust authority {full:+.4f}")
 print(f"  exceeded by             {peak_avg / full:.1f}x")
-print(f"\nFor scale, from the same paper (NOT verdicts for a piston aircraft):")
-print(f"  FAA jet-transport hazard {FAA_HAZARD}, must-alert {FAA_MUST_ALERT}"
-      f"  -> this is {peak_avg / FAA_HAZARD:.1f}x hazardous")
-print(f"  F in real microburst accidents: 0.2 to 0.36  -> this run sits just "
-      f"below that band")
+jet = args.aircraft in JET_TRANSPORTS
+print(f"\nFAA 1 km average thresholds: hazardous {FAA_HAZARD}, "
+      f"must-alert {FAA_MUST_ALERT}")
+if jet:
+    print("  THEY APPLY -- this is a jet transport, the class they were derived for.")
+    print(f"  {peak_avg / FAA_HAZARD:.1f}x hazardous, "
+          f"{peak_avg / FAA_MUST_ALERT:.1f}x must-alert.")
+else:
+    print("  THEY DO NOT APPLY: the same paper states the scale and threshold "
+          "'are yet to be")
+    print(f"  determined' for piston aircraft. For scale only, "
+          f"{peak_avg / FAA_HAZARD:.1f}x.")
+inside = "INSIDE" if 0.2 <= peak_avg <= 0.36 else "outside"
+print(f"F in real microburst accidents is 0.2 to 0.36 -- this run is {inside} it.")
 
 if impact < len(altitude):
     print(f"\nGROUND CONTACT at t = {t[impact]:.1f} s, {north[impact]:+.0f} m "
@@ -185,7 +200,7 @@ axes[1].annotate(
 )
 axes[1].axhline(FAA_HAZARD, color="0.45", lw=1.0, ls=":")
 axes[1].annotate(
-    "FAA jet-transport hazard 0.10 (not a piston criterion)",
+    "FAA hazard 0.10" if jet else "FAA hazard 0.10 (jet figure, not a piston one)",
     (0.01, FAA_HAZARD), xycoords=("axes fraction", "data"),
     textcoords="offset points", xytext=(0, 4), fontsize=7.5, color="0.4",
 )
@@ -223,8 +238,10 @@ figure.text(
     f"index: Proctor, Hinton & Bowles 2000 eq. (3), averaged over "
     f"{AVERAGING_LENGTH:.0f} m by its eq. (7). Verdict is F > (T-D)/W, that "
     f"paper's own criterion.\n"
-    "The FAA 0.1/0.13 thresholds are drawn for scale only: the same paper states "
-    "they were never established for piston aircraft.",
+    + ("The FAA 0.1/0.13 thresholds APPLY here: this is the jet-transport class "
+       "they were derived for." if jet else
+       "The FAA 0.1/0.13 thresholds are drawn for scale only: the same paper "
+       "states they were never established for piston aircraft."),
     fontsize=6.5, family="monospace", color="0.35",
 )
 

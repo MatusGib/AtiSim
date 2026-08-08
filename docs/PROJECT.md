@@ -4,7 +4,7 @@ A 6-DOF fixed-wing flight-dynamics core in JAX, built as a foundation for turbul
 modelling. This document is the standing record: what exists, what is validated, what is
 known-broken, and what happens next.
 
-**Last updated:** session 9 (the microburst, and the 1 km averaged F-factor).
+**Last updated:** session 10 (the 747 power-approach set from CR-2144 Table IX-2).
 
 **To run any of it, see §10.**
 
@@ -100,7 +100,7 @@ Gust-rate signs, derived from the repo's own conventions:
 
 | Source | Supplied | Known gap |
 |---|---|---|
-| NASA CR-2144 (Heffley & Jewell 1972), §IX | 747 geometry, inertia, dimensional derivatives, transfer-function factors, drag figure | no non-dimensional cruise set; **no buffet-onset data at all** |
+| NASA CR-2144 (Heffley & Jewell 1972), §IX | 747 geometry, inertia, dimensional derivatives, transfer-function factors, drag figure; **and Table IX-2, a complete non-dimensional POWER-APPROACH set** | no non-dimensional *cruise* set; **no buffet-onset data at all**; Figure IX-1 and Table IX-3 disagree on the approach inertias by up to 6% (§4) |
 | McCormick (via a worked example) | Cherokee PA-28-180 dimensional derivatives | no second source for the lateral set; `Izz < Iyy` flagged by its own author |
 | Roskam / USAF DATCOM via PyFME | Cessna 172 non-dimensional tables | rudder derivatives omitted and inconsistent — the whole rudder set is zeroed |
 | Nelson / Etkin / McRuer | Navion per-radian derivatives | no extractable published mode table was found; tests assert ranges, not values |
@@ -254,6 +254,7 @@ Zero wind. Elevator pulse of one short period, **declared**; the deflection is
 | Suite | 260 tests, 104 s | was 256, 126 s on the same machine this session |
 | Suite (session 8) | 270 tests, 167 s | the lee wave added 10 |
 | Suite (session 9) | 284 tests, 272 s | the microburst added 11, the averaged index 3 |
+| Suite (session 10) | 296 tests + 1 skipped, 193 s | the approach 747 added 12 |
 
 Two of those rows are the result and the rest are the guard. **The ordering holds**, which
 is the only claim §5 permits. **The absolute values do not agree** and are not meant to:
@@ -362,6 +363,69 @@ below the 10 m/s of divergence Wilson et al. require before an outflow is even *
 microburst. Unlike the lee wave, where the threshold fell inside the observed range, here
 it falls below the bottom of it.
 
+### The 747 power-approach set (session 10)
+
+CR-2144 Table IX-2, sea level, 165 KTAS, α₀ = 5.7°, 20° flaps, gear up, 1.4 Vs; mass and
+inertia from Table IX-3 flight condition 2. **The table is already non-dimensional**, so
+this set involves no conversion chain at all — unlike the cruise set, which is recovered
+from dimensional derivatives.
+
+| Check | Measured | Source |
+|---|---|---|
+| Trim residual at the tabulated condition | 6.5e-20 | — |
+| Trim α | 5.62° | Table IX-3 F/C 2 states 5.70° |
+| W/qS at 165 KTAS sea level | 1.1123 | Table IX-2 states **CL = 1.11** |
+| CD rebuilt at α₀ | 0.102 | Table IX-2, exact by construction |
+| dCD/dα rebuilt at α₀ | 0.66 | Table IX-2, exact by construction |
+| CD0 / e (solved, not read) | 0.0377 / 0.877 | cruise CD0 carries ±0.003 from a chart read; this does not |
+| Minimum-drag speed | 97.06 m/s | **12.2 m/s above the 84.88 m/s approach speed** |
+
+**Two source conflicts, both recorded rather than smoothed over.**
+
+1. **Figure IX-1 and Table IX-3 disagree on the approach inertias.** The figure's Power
+   Approach block gives 13.7/30.5/43.1/0.825 ×10⁶ slug-ft²; Table IX-3 column 2 gives
+   14.2/32.3/45.4/0.870 — up to **6%** larger. **Table IX-3 is used**, because it is the
+   table the derivatives were computed at: its Q = 92.2 psf, VTO = 165 KTAS and
+   ALPHA = 5.70° all match Table IX-2's header exactly, and the cruise set already reads
+   flight condition 9 from it. For *cruise* the two sources agree exactly (18.2e6,
+   970056), so the disagreement is specific to the approach configuration.
+2. **The weights differ in the last two digits** the same way: Figure IX-1 rounds to
+   564,000 and 636,600 lb, Table IX-3 gives 564,032 and 636,636. The existing cruise set's
+   636,636 was checked against this and is **correct**, not a transcription slip.
+
+**The approach point sits below minimum-drag speed, and that is not an error.** 1.4 Vs at
+max landing weight comes out 12.2 m/s below V_md — the back side of the drag curve, which
+is where an airliner on final actually is. It is also the reason a windshear encounter is
+lethal on approach and merely uncomfortable at cruise. The consequence is recorded: the
+autopilot's throttle-to-speed / elevator-to-altitude pairing is inverted for this entry,
+so it holds trim but is not to be trusted through a large speed excursion. All microburst
+work flies it **open loop**, which sidesteps the question entirely.
+
+### Microburst on the aircraft class the thresholds were written for (session 10)
+
+The same Oseguera & Bowles field, now flown by the 747 in power-approach configuration.
+
+| Quantity | 747 approach | Cherokee | Note |
+|---|---|---|---|
+| Thrust authority (T−D)/W | **+0.2094** | +0.0784 | Proctor et al. quote ~0.15 for a 4-engine jet at max **takeoff** weight; this is max **landing** weight, hence more |
+| Peak 1 km average F | **+0.2835** | +0.1929 | |
+| …shear term | +0.2430 | +0.1342 | scales with airspeed, as Eq. (4) says it must |
+| …vertical term | +0.1453 | +0.1456 | |
+| Exceeded by | **1.4×** | 2.5× | |
+| FAA hazard / must-alert | **2.8× / 2.2×** | *not applicable* | **the thresholds apply to the jet and not to the piston aircraft** |
+| Real-accident band 0.2–0.36 | **inside it** | below it | |
+| Ground contact | 51.5 s, +441 m | 95.5 s, +383 m | neither reaches the far side |
+
+**This is what adding the approach set bought.** The Cherokee result could only ever be
+compared against the aircraft's own `(T−D)/W`, because Proctor et al. state the FAA scale
+and threshold "are yet to be determined" for piston aircraft. The 747 in power-approach
+configuration *is* the class Lewis et al. studied, so the same run now carries a
+certification-grade verdict as well as a physical one — and it lands **inside** the band
+the paper reports for real microburst accidents.
+
+Note the jet has **2.7× the thrust authority** of the light aircraft and is still beaten,
+by 1.4×. More engine does not buy immunity; it buys a smaller multiple.
+
 ### The validated baseline — do not touch these tolerances
 
 `test_conservation.py`, `test_cr2144_modes.py`, `test_drag_polar.py`, `test_navion.py`,
@@ -407,22 +471,24 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   independent of wavelength — but it sets the encounter duration and the pitching gust
   rate, so anything depending on those must say which value was used.
 
-- **The 747 cannot be flown into a microburst, and no source held here changes that.**
-  Its only derivative set is CR-2144 flight condition 9 — Mach 0.8 at 40,000 ft. A
-  microburst is a sub-500 m phenomenon met at approach speed in a landing configuration.
-  Using cruise derivatives there would be a larger extrapolation than anything else in
-  this project, and it would be invisible in the output: the numbers would look
-  reasonable. So the microburst work flies the **Cherokee**, whose 50 m/s cruise is a
-  modest extrapolation to 300 m, and the cost of that choice is stated in the next entry.
-  CR-2144 does contain other flight conditions; adding an approach set for the 747 is the
-  fix, and it is a data-entry job rather than a modelling one.
-- **The FAA windshear thresholds do not apply to the aircraft this project can fly there.**
+- ~~**The 747 cannot be flown into a microburst.**~~ **CLOSED, session 10.** It was true
+  while the only derivative set was flight condition 9, Mach 0.8 at 40,000 ft. CR-2144
+  Table IX-2 turned out to hold a complete **non-dimensional power-approach set** —
+  the module's own header had said so since session 1 without anyone acting on it — so
+  `boeing747_approach` now exists and the microburst runs on the aircraft class the
+  thresholds were written for. §4 has the numbers.
+- **The FAA windshear thresholds apply to the jet and not to the light aircraft.**
   Proctor et al. state plainly that the 0.1 hazard and 0.13 must-alert figures, and the
   1 km averaging scale itself, were established for jet transports and "are yet to be
-  determined" for piston aircraft. The Cherokee is piston. So those numbers are printed
-  for scale and the **verdict is always `F > (T−D)/W`**, which is that paper's own
+  determined" for piston aircraft. So `scripts/microburst.py` decides per aircraft:
+  the 747 gets a verdict against them, the Cherokee gets them printed for scale only. In
+  both cases the **physical verdict is `F > (T−D)/W`**, which is that paper's own
   criterion and needs nobody's certification basis. Note this is a *different* reason from
   the lee wave's, where the thresholds failed on altitude rather than aircraft class.
+- **The approach 747 flies below its minimum-drag speed**, by 12.2 m/s, because 1.4 Vs at
+  max landing weight is on the back side of the drag curve — which is where an airliner on
+  final is. The autopilot's loop pairing is therefore inverted for that entry. It holds
+  trim, but no gain set repairs the pairing, so it is flown open loop for all analysis.
 - **There is no ground.** No terrain, no landing gear, no ground effect, no stall. A
   microburst run therefore ends when the aircraft descends within one wingspan of the
   surface, because below that the integration is arithmetic rather than physics — left to
@@ -706,6 +772,56 @@ protocol with a linear and a table implementation. That was the option not taken
   interactive rate has still not been re-taken since the re-layout.
 
 ## 9. Session log
+
+### Session 10 — the 747 power-approach set, and what it was hiding
+
+§5 said the 747 could not be flown into a microburst because its only derivative set was
+Mach 0.8 at 40,000 ft, and that adding an approach set would be "data entry rather than
+modelling". Both halves turned out to be true, and the data was closer to hand than that
+implies: **`aircraft.py`'s own header had said since session 1 that CR-2144 tabulates
+non-dimensional derivatives for the landing and power-approach configurations.** It was
+written down as a *reason the cruise set needed converting* and never read as an
+opportunity. Table IX-2 is a complete, already-non-dimensional set — no conversion chain,
+no primed-to-unprimed lateral algebra, no chart read.
+
+**Two source conflicts came out of cross-checking it, and one nearly shipped.**
+
+- **Figure IX-1 and Table IX-3 disagree on the approach inertias by up to 6%.** The figure
+  says 13.7/30.5/43.1/0.825 ×10⁶ slug-ft²; Table IX-3's flight condition 2 says
+  14.2/32.3/45.4/0.870. Figure IX-1 was transcribed first and would have gone in unnoticed.
+  Table IX-3 is used, because it is the table the derivatives were *computed* at — its
+  Q = 92.2 psf, VTO = 165 KTAS and ALPHA = 5.70° all match Table IX-2's header exactly.
+  For **cruise** the two agree exactly, so this is specific to the approach configuration.
+- The weights differ in the last two digits the same way (564,000 vs 564,032; 636,600 vs
+  636,636). This let the **existing cruise weight be checked**: 636,636 is Table IX-3's
+  value and is correct, not the transcription slip it briefly looked like.
+
+**A finding that is physics rather than bookkeeping:** the approach point sits **12.2 m/s
+below minimum-drag speed**. `test_cruise_is_above_the_minimum_drag_speed` had asserted the
+opposite for every registry entry — correctly, while every entry was a cruise point. Rather
+than weaken it, it now skips the approach entry and a second test asserts the *inverse*
+with the reason: 1.4 Vs at max landing weight is the back side of the drag curve, which is
+where an airliner on final actually is, and is why windshear is lethal on approach and
+merely uncomfortable at cruise. The autopilot's loop pairing is inverted there; all
+analysis flies it open loop.
+
+**What it bought.** The microburst re-flown as a jet transport: 1 km average F = **+0.2835**
+against **+0.2094** of thrust authority — beaten by 1.4×, **2.8× the FAA hazard threshold
+that now legitimately applies**, and **inside** the 0.2–0.36 band the paper reports for
+real accidents. The Cherokee's answer could only ever be measured against its own thrust,
+because Proctor et al. say the FAA scale was never established for piston aircraft;
+`scripts/microburst.py` now decides that per aircraft instead of disclaiming it globally.
+
+The jet has **2.7× the light aircraft's thrust authority and is still beaten**. More engine
+does not buy immunity, it buys a smaller multiple.
+
+**Deliberately not done:** the landing configuration (Table IX-1, 131 KTAS, 30° flaps,
+gear down) is not added — it is the same job again and nothing yet needs it. The approach
+gains are re-scaled from cruise by dynamic pressure and pass the engage-and-hold test, but
+they are **not hand-tuned** and §9 session 6's point stands: that needs a human flying it.
+The summary PDF is unchanged.
+
+296 tests.
 
 ### Session 9 — the microburst, and the metric session 8 got wrong
 
@@ -1096,7 +1212,7 @@ root**; the scripts import `flightsim` from the editable install, not from `scri
 
 | Command | What it does |
 |---|---|
-| `.venv/Scripts/python.exe -m pytest flightsim/tests -q` | 284 tests. The first thing to run and the only complete statement of what works. |
+| `.venv/Scripts/python.exe -m pytest flightsim/tests -q` | 296 tests. The first thing to run and the only complete statement of what works. |
 | `.venv/Scripts/python.exe scripts/checkpoint.py` | 747 only, no flags. Trim residuals, 60 s fixed-control hold, longitudinal modes against CR-2144 Table IX-5. |
 | `.venv/Scripts/python.exe scripts/tune.py --aircraft cherokee` | Autopilot step responses for one aircraft. Exits non-zero on failure, so it is usable as a gate. |
 | `.venv/Scripts/python.exe scripts/fly.py --aircraft cherokee --save runs/a.npz` | Interactive flight, basic-T cockpit plus a flight-test overlay. |
@@ -1194,8 +1310,11 @@ Ask for state through `sensors.sense(state, wind_ned)`. Reaching into `state.vel
 
 ### Aircraft
 
-`--aircraft` accepts `boeing747`, `cherokee`, `cessna172`. The 747 is the only one with
-modes validated against a source (§4) and the only one used for turbulence work. The
+`--aircraft` accepts `boeing747`, `boeing747_approach`, `cherokee`, `cessna172`. The 747 is the only one with
+modes validated against a source (§4) and the only one used for turbulence work.
+`boeing747_approach` is the same airframe at CR-2144's power-approach point (sea level,
+165 KTAS, 20° flaps, gear up) and exists for low-altitude windshear work; it sits below
+V_md, so fly it **open loop** (§4, §5). The
 Cherokee is the validated light aircraft. **The Cessna is out of scope** (§5): its rudder
 set is zeroed because the source omits it, so its turns are uncoordinated. It trims, flies
 and passes its tests, but no result should be quoted from it.
