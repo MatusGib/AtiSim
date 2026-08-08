@@ -129,12 +129,37 @@ def footer(fig, n):
 
 PAGES = []
 
+# Page numbers cited in the body text come from here, never typed in. They were
+# typed in until session 8, and FOUR of the five were wrong: a page inserted
+# anywhere renumbers everything after it, the numbers are prose rather than
+# code, and nothing renders an error. check_pagination() is the guard --
+# add a page without naming it here and the build fails instead of quietly
+# shifting every cross-reference by one.
+PAGE_ORDER = [
+    "cover", "idea", "physics", "structure", "data", "science", "result",
+    "leewave", "bug", "panel", "honesty", "practicalities", "sources",
+    "measurements",
+]
+
+
+def pageno(name: str) -> int:
+    return PAGE_ORDER.index(name) + 1
+
 
 def emit(pdf, fig):
     PAGES.append(fig)
     footer(fig, len(PAGES))
     pdf.savefig(fig)
     plt.close(fig)
+
+
+def check_pagination() -> None:
+    if len(PAGES) != len(PAGE_ORDER):
+        raise SystemExit(
+            f"pagination: emitted {len(PAGES)} pages but PAGE_ORDER names "
+            f"{len(PAGE_ORDER)}. Every cross-reference written with pageno() is "
+            f"now wrong. Update PAGE_ORDER to match the emission order."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -384,7 +409,7 @@ with PdfPages(OUT) as pdf:
               rowh=0.0182, mono_cols=(0,))
     y = callout(fig, y - 0.004, "The one rule worth knowing",
                 "Ask what the aircraft is doing through sensors.py, never by reaching into the "
-                "state directly. The reason is on page 7.", colour=RED, chars=92)
+                f"state directly. The reason is on page {pageno('bug')}.", colour=RED, chars=92)
     emit(pdf, fig)
 
     # ------------------------------------------------------- the aircraft
@@ -582,6 +607,72 @@ with PdfPages(OUT) as pdf:
                 "pending.", colour=RED, chars=92)
     emit(pdf, fig)
 
+    # --------------------------------------------- lee wave / thrust authority
+    fig = page(pdf, "A second result: when the engines are not enough", "The result")
+    y = 0.865
+    y = para(fig, y, "The cluster diagram asks what KIND of event an aircraft flew through. A "
+                     "different and blunter question is whether it could do anything about it, "
+                     "and there is a standard number for that. The F-factor [S10] measures how "
+                     "fast the moving air is draining the aircraft's energy. It is positive when "
+                     "the aircraft is losing, and the rule that goes with it is simple: if the "
+                     "F-factor is larger than the spare thrust the engines have, the aircraft "
+                     "cannot fly its way out. It can trade height for speed or speed for height, "
+                     "and that is all.")
+    y = callout(fig, y, "How little spare thrust an airliner has at 40,000 feet",
+                "Measured from this model, not assumed: at its cruise condition the 747 has "
+                "spare thrust worth 2.3% of its weight at full throttle, and 6.6% of braking "
+                "if it closes them. That is the entire budget. The same source quotes about 15% "
+                "for a four-engine jet at takeoff — thrust falls away with air density and "
+                "weight does not.", colour=AMBER, chars=92)
+
+    CHART_H = 0.185
+    ax = fig.add_axes([0.08, y - CHART_H - 0.010, 0.84, CHART_H]); ax.set_axis_off()
+    ax.set_xlim(-0.072, 0.031); ax.set_ylim(0, 3.05)
+    # The band is drawn to scale, and the point of drawing it is that it is
+    # wildly lopsided: the aircraft can shed energy three times faster than it
+    # can add it, which is why the hazard is always the DOWNdraft.
+    ax.add_patch(FancyBboxPatch(
+        (-0.0657, 0.62), 0.0657 + 0.0234, 1.86,
+        boxstyle="round,pad=0.0005,rounding_size=0.002",
+        facecolor=WASH, edgecolor="#b8c4d0", lw=1.0))
+    ax.text(-0.021, 2.72, "what the engines can cover", ha="center", fontsize=9.4,
+            color=INK, fontweight="bold")
+    ax.plot([0.0234, 0.0234], [0.42, 2.52], color=RED, lw=1.6, ls="--")
+    ax.text(0.0234, 0.24, "full thrust\n+0.023", ha="center", va="top", fontsize=8.2,
+            color=RED, fontweight="bold")
+    ax.plot([-0.0657, -0.0657], [0.42, 2.52], color=MUTED, lw=1.2, ls="--")
+    ax.text(-0.0657, 0.24, "idle\n−0.066", ha="center", va="top", fontsize=8.2, color=MUTED)
+    ax.plot([0.0, 0.0], [0.42, 2.52], color="0.55", lw=0.9)
+    ax.text(0.0, 0.24, "no effect\n0", ha="center", va="top", fontsize=8.2, color="0.45")
+    for value, colour, name, verdict, yy in (
+        (0.01291, TEAL, "northern leg", "engines cover it", 1.92),
+        (0.02621, RED, "southern leg", "they do not", 1.06),
+    ):
+        ax.plot([0.0, value], [yy, yy], color=colour, lw=6.0, solid_capstyle="butt",
+                alpha=0.85)
+        ax.plot(value, yy, "o", color=colour, ms=7)
+        # Left-aligned into the empty negative half. The bars live in the right
+        # third of the scale, so a label trailing off their ends runs off the page.
+        ax.text(-0.0619, yy + 0.16, f"{name}   F = +{value:.4f}   —   {verdict}",
+                ha="left", va="bottom", fontsize=8.8, color=colour, fontweight="bold")
+
+    y = y - CHART_H - 0.030
+    y = para(fig, y, "Those two bars are the same aircraft on the same day, 50 km apart: the two "
+                     "legs of one research flight over the Sierra Nevada [S9]. Flown into this "
+                     "model, the weaker wave is something a 747 can hold against, and the "
+                     "stronger one is not. The threshold falls between them — a wave amplitude "
+                     "of 5.5 m/s — which is a more useful thing to know than either “safe” or "
+                     "“dangerous” would have been.", size=9.6)
+    y = callout(fig, y, "What this result is NOT",
+                "It is a LOWER BOUND. A real mountain wave also pushes the air along the "
+                "aircraft's track, and that adds to the F-factor; this model has only the "
+                "up-and-down part, because computing the other half needs atmospheric data the "
+                "source paper does not contain. So the real hazard is at least this bad and "
+                "probably worse. The 0.1 threshold used in airline windshear alerting is also "
+                "deliberately absent here: it is calibrated for takeoff and landing, where an "
+                "aircraft has no height to trade.", colour=RED, chars=92)
+    emit(pdf, fig)
+
     # ------------------------------------------------------ the bug
     fig = page(pdf, "The mistake that hid in plain sight", "A cautionary tale")
     y = 0.865
@@ -661,7 +752,7 @@ with PdfPages(OUT) as pdf:
         ("Attitude", "Artificial horizon, with the aircraft symbol fixed and the\nworld moving behind it."),
         ("Slip ball", "Shows sideways force, not sideslip angle — a real ball is a\npendulum, and the two are different quantities."),
         ("Vertical speed", "Rate of climb or descent. Without it you cannot hold a\nheight by hand; you end up chasing the altimeter."),
-        ("Load factor", "The g-load. This is the vertical axis of the comparison on\npage 6, and it holds the peak of any excursion."),
+        ("Load factor", f"The g-load. This is the vertical axis of the comparison on\npage {pageno('result')}, and it holds the peak of any excursion."),
         ("Angle of attack", "With a coloured band marking where this model's straight-\nline aerodynamics stop being trustworthy."),
         ("Wind and gust rate", "The gust rotation is labelled SIM TRUTH, because no real\ninstrument can measure it."),
     ]
@@ -710,7 +801,7 @@ with PdfPages(OUT) as pdf:
         ("Any encounter past about 10-12 degrees of angle of attack", "reports lift the sources say "
          "is not there — in either direction, since the model's lift is a straight line and a "
          "pushdown leaves it as surely as a pull-up. The panel marks the band green, amber and red "
-         "so a run that leaves the valid range says so. The pushdown on page 7 reaches 10.3 "
+         f"so a run that leaves the valid range says so. The pushdown on page {pageno('result')} reaches 10.3 "
          "degrees: inside the amber, and reported as such rather than quietly quoted."),
         ("The Cessna 172 is out of scope", "Its rudder data is missing from the source, so its "
          "turns are wrong. It flies and passes its tests, but no result may be quoted from it."),
@@ -788,8 +879,8 @@ with PdfPages(OUT) as pdf:
     srcs = [
         ("[S1]", "Heffley, R. K. and Jewell, W. F. (1972). Aircraft Handling Qualities Data. "
                  "NASA CR-2144, section IX. Supplies the Boeing 747 geometry, mass, inertia and "
-                 "aerodynamic coefficients, and the reference oscillation table on page 5. "
-                 "Contains no stall data, which is why page 6's asymmetry is out of reach."),
+                 f"aerodynamic coefficients, and the reference oscillation table on page {pageno('data')}. "
+                 f"Contains no stall data, which is why page {pageno('result')}'s asymmetry is out of reach."),
         ("[S2]", "Parks, E. K., Wingrove, R. C., Bach, R. E. and Mehta, R. S. (1985). "
                  "Identification of Vortex-Induced Clear Air Turbulence Using Airline Flight "
                  "Records. Journal of Aircraft, volume 22, number 2, pages 124-129. Supplies the "
@@ -797,7 +888,7 @@ with PdfPages(OUT) as pdf:
         ("[S3]", "Wingrove, R. C. and Bach, R. E. (1994). Severe Turbulence and Maneuvering from "
                  "Airline Flight Records. Journal of Aircraft, volume 31, number 4, pages 753-760. "
                  "Supplies the updraft magnitudes and duration, the g-load statistics, and the "
-                 "cluster diagram discussed on page 6."),
+                 f"cluster diagram discussed on page {pageno('result')}."),
         ("[S4]", "McCormick, B. W., via a worked example. Supplies the Piper PA-28-180 Cherokee "
                  "coefficients. No second source was found for its lateral set."),
         ("[S5]", "Roskam, J. / USAF DATCOM, via the PyFME project. Supplies the Cessna 172 "
@@ -813,6 +904,17 @@ with PdfPages(OUT) as pdf:
                  "Royal Air Force in 1937 and used on essentially every aircraft since; and the "
                  "modern primary flight display layout that preserves it. General aviation "
                  "practice rather than a single document."),
+        ("[S9]", "Doyle, J. D., Jiang, Q., Smith, R. B. and Grubisic, V. (2011). "
+                 "Three-Dimensional Characteristics of Stratospheric Mountain Waves during "
+                 "T-REX. Monthly Weather Review, volume 139, pages 3-23. Supplies the lee-wave "
+                 f"amplitudes on page {pageno('leewave')}. Chosen over a textbook because its research aircraft "
+                 "flew at 11.3 and 13.1 km and this project's 747 cruises between them. Its "
+                 "wavelength figure is tropospheric, so the wavelength used here is declared."),
+        ("[S10]", "Proctor, F. H., Hinton, D. A. and Bowles, R. L. (2000). A Windshear Hazard "
+                  "Index. 9th Conference on Aviation, Range and Aerospace Meteorology, paper "
+                  "7.7, pages 482-487. Supplies the F-factor and the rule that a shear beating "
+                  "an aircraft's spare thrust cannot be flown out of. Its 0.1 alerting "
+                  "threshold is for takeoff and landing and is deliberately not used here."),
     ]
     for tag, text in srcs:
         lines = wrap(text, 88)
@@ -821,9 +923,17 @@ with PdfPages(OUT) as pdf:
         fig.text(0.145, y, lines, color=INK, fontsize=8.5, va="top", linespacing=1.5)
         y -= 0.0155 * (lines.count("\n") + 1) + 0.011
 
-    y -= 0.008
-    fig.text(0.08, y, "Measurements", color=BLUE, fontsize=10, fontweight="bold", va="top")
-    y -= 0.026
+    # Measurements get their own page: the source list outgrew one page when the
+    # lee-wave sources landed, and cramming both would have meant shrinking the
+    # citations, which are the part a reader is most likely to need to read.
+    emit(pdf, fig)
+
+    fig = page(pdf, "Measurements", "Citations")
+    y = 0.865
+    y = para(fig, y, "Each tag below is a figure this project measured itself. They are "
+                     "reproducible: the script or test named against each one produces it, and "
+                     "the evidence ledger in PROJECT.md section 4 records it with the tolerance "
+                     "its test enforces.", size=9.6)
     meas = [
         ("[M1]", "Integrator and rigid-body conservation checks. PROJECT.md section 4, "
                  "“Integrator and rigid body”; tests in test_conservation.py."),
@@ -836,6 +946,9 @@ with PdfPages(OUT) as pdf:
         ("[M5]", "Air-relative sensing tolerances. PROJECT.md section 4, “Air-relative "
                  "sensing”."),
         ("[M6]", "Live-loop timing, 7 August 2026, 12-core machine, medians of 120 runs."),
+        ("[M7]", "Lee wave, F-factor and thrust authority. PROJECT.md section 4, “Mountain lee "
+                 "wave and the F-factor”; produced by scripts/leewave.py, tests in "
+                 "test_lee_wave.py."),
     ]
     for tag, text in meas:
         lines = wrap(text, 88)
@@ -849,6 +962,8 @@ with PdfPages(OUT) as pdf:
                               "session-by-session history.",
              color=MUTED, fontsize=8.5, va="top", linespacing=1.5)
     emit(pdf, fig)
+
+    check_pagination()
 
     info = pdf.infodict()
     info["Title"] = "JAX Flight Simulator - project summary"

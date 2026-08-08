@@ -59,11 +59,14 @@ def fly(w0):
     )
     field = lambda p: wind.lee_wave_wind(p, wave)  # noqa: E731
     state = trim.trimmed_state(jnp.array(alpha), jnp.array(V), jnp.array(H))
-    # Start half a wavelength upstream of the first trough, so the run opens in
-    # undisturbed-mean air rather than already sinking.
-    state = state._replace(
-        pos_ned=jnp.array([-0.5 * args.waves * wavelength, 0.0, -H])
-    )
+    # Open on a ZERO CROSSING, a quarter wavelength upstream of the trough at
+    # north = 0, so the aircraft starts in air that is not moving vertically and
+    # descends into the first trough from trim. A periodic field has no
+    # undisturbed region to lead in through, so this is the nearest equivalent
+    # of the vortex run's 40 core radii -- and the first version of this script
+    # started on a CREST, in a 6 m/s updraft, which is 1.5 deg of alpha out of
+    # equilibrium before the run begins. Same defect as section 9, session 3.
+    state = state._replace(pos_ned=jnp.array([-0.25 * wavelength, 0.0, -H]))
     n = int(round((args.waves * wavelength / V) / args.dt))
     _, hist = integrate.rollout(
         integrate.init_sim(state, jax.random.PRNGKey(0)),
@@ -85,7 +88,6 @@ def fly(w0):
     )
     return dict(
         w0=w0,
-        t=np.arange(1, n + 1) * args.dt,
         north=np.asarray(hist.pos_ned)[:, 0],
         altitude=-np.asarray(hist.pos_ned)[:, 2],
         f=rows[:, 0], shear_term=rows[:, 1], w_up=rows[:, 2], airspeed=rows[:, 3],
@@ -96,22 +98,28 @@ legs = {name: fly(w0) for name, w0 in sorted(wind.LEE_WAVE_AMPLITUDE.items())}
 
 print(f"{args.aircraft}  CR-2144 FC9  {H:.0f} m  {V:.2f} m/s")
 print(f"thrust authority (T-D)/W: full throttle {full:+.4f}   idle {idle:+.4f}\n")
-print(f"{'leg':>7} {'w0':>6} {'peak F':>9} {'shear':>9} {'sink':>8}  verdict")
+print(f"{'leg':>7} {'w0':>6} {'peak F':>9} {'shear':>9} {'Va min':>8} {'dh':>7}  verdict")
 for name, r in legs.items():
-    sink = r["altitude"][-1] - r["altitude"][0]
+    dh = r["altitude"][-1] - r["altitude"][0]  # net, over whole wavelengths
     verdict = (
         "EXCEEDS full thrust -- unrecoverable"
         if r["f"].max() > full else "within thrust authority"
     )
     print(f"{name:>7} {r['w0']:5.1f}  {r['f'].max():+9.5f} "
-          f"{np.abs(r['shear_term']).max():9.2e} {sink:7.0f} m  {verdict}")
+          f"{np.abs(r['shear_term']).max():9.2e} {r['airspeed'].min():8.1f} "
+          f"{dh:+6.0f} m  {verdict}")
 
 critical = full * V
 print(f"\ncritical amplitude, F = {full:+.4f}: w0 = {critical:.2f} m/s")
 print(f"Doyle et al. 2011 IOP 4 primary wave: 6 m/s crest-to-trough north, 12 south")
 print("-> the hazard threshold sits INSIDE the observed range, not outside it.")
 print("The shear term is zero BY CONSTRUCTION: this field carries no horizontal")
-print("perturbation (PROJECT.md section 5). F here is the vertical term alone.")
+print("perturbation (PROJECT.md section 5). F here is the vertical term alone,")
+print("and is therefore a LOWER BOUND on the real hazard.")
+print(f"\nF exceeds w0/V = {wind.LEE_WAVE_AMPLITUDE['south']/V:.5f} because the aircraft")
+print("SLOWS in the downdraft and F goes as 1/Va. Peak F drifts a few percent")
+print("across the run: with fixed controls the aircraft sinks and never reaches a")
+print("periodic steady state, so the figure quoted is the run maximum.")
 
 # --- the figure --------------------------------------------------------------
 figure, axes = plt.subplots(2, 1, figsize=(11.0, 7.6), sharex=True)
