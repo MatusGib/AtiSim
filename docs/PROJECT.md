@@ -4,7 +4,7 @@ A 6-DOF fixed-wing flight-dynamics core in JAX, built as a foundation for turbul
 modelling. This document is the standing record: what exists, what is validated, what is
 known-broken, and what happens next.
 
-**Last updated:** session 10 (the 747 power-approach set from CR-2144 Table IX-2).
+**Last updated:** session 11 (verifying the solver, and correcting what §5 claimed).
 
 **To run any of it, see §10.**
 
@@ -55,6 +55,8 @@ without a core rewrite. Both have now been exercised and both held.
 | Module | Responsibility | Notes |
 |---|---|---|
 | `units.py` | conversion constants only | no logic; factors are never inlined elsewhere |
+| `verification.py` | **tier 0** — `fitted_order`, `oscillator_refinement`, `fixed_control_refinement`, `newton_residual_history`, `torque_free_omega` | takes **no aircraft data as a reference**; a failure here is a defect in the core |
+| `validation.py` | **tiers 1–2** — `longitudinal_matrix`, `to_stability_axes`, `to_imperial_matrix`, `longitudinal_modes`, `lateral_modes`, `Reference`/`REFERENCES`, `CAUGHEY_A`, `sweep`, `affine_fit` | the linearisation lives here, not in `tests/modes.py`, which is now a re-export. Every reference number carries its citation as a `Reference.source` field, enforced by a test |
 | `state.py` | `State`/`Controls`, quaternion utilities | NED inertial, body x-fwd/y-right/z-down; quat is `[w,x,y,z]`, body→NED |
 | `atmosphere.py` | ISA to 20 km | two layers — the 747 cruise sits above the tropopause |
 | `aero.py` | coefficient build-up | **takes `vel_rel`/`omega_rel` only; never sees inertial velocity** |
@@ -110,6 +112,7 @@ Gust-rate signs, derived from the repo's own conventions:
 | **Proctor, Hinton & Bowles 2000**, 9th Conf. Aviation Range & Aerospace Meteorology, paper 7.7, 482–487 | **the F-factor** — Eq. (3) `F = U̇ₓ/g − w/Vₐ`, Eq. (4) for the shear term, Eq. (7) for the **1 km average**, the `F > (T−D)/W` thrust criterion, the 0.1/0.13 thresholds, and F = 0.2–0.36 in real accidents | its thresholds are **low-altitude** (§4.1 bounds the threat below 500 m) **and jet-transport only** — it states the scale and threshold "are yet to be determined" for piston aircraft |
 | **Oseguera & Bowles 1988**, NASA TM-100632 | **the microburst** — Eqs. (5)–(6), an axisymmetric stagnation flow satisfying continuity, with four stated constants (r/R = 1.1212, z_m/z* = 0.22, z*/ε = 12.5, u_max = 0.2357λR) | the example's `R` is legible only in a scanned figure, so the downdraft radius is declared inside the 1–4 km band Wilson et al. use to define a microburst |
 | MIL-F-8785C | (not yet used) Dryden spectra | σ above 2000 ft is a **chart read**, not a formula — must be digitised |
+| **Caughey, *Introduction to Aircraft Stability and Control*, Cornell MAE 5070 notes, Ch. 5** | an **independent implementation** of CR-2144's 747 power-approach case: dimensional derivatives Eq. (5.51), plant matrix Eq. (5.52), characteristic polynomial (5.53), roots (5.54) | **not an independent dataset** — its Eq. (5.48)–(5.50) cite CR-2144, the same document §IX comes from. Same inputs, different code. Also states V = 279.1 ft/s (M 0.25 at sea level) where Table IX-2's header says 165 KTAS = 278.49 ft/s, a 0.2% difference |
 
 ### The vortex model, as cited
 
@@ -426,6 +429,106 @@ the paper reports for real microburst accidents.
 Note the jet has **2.7× the thrust authority** of the light aircraft and is still beaten,
 by 1.4×. More engine does not buy immunity; it buys a smaller multiple.
 
+### Verification — is the arithmetic right? (session 11)
+
+Every row here takes **no aircraft data as a reference**. §4 was almost entirely
+validation before this: a measured quantity against a published one for one aircraft.
+Conservation drift was the only entry of the other kind, and drift measures a symmetry
+rather than an order — a scheme can conserve angular momentum to 5.7e-13 and still be
+second order when it claims to be fourth.
+
+| Check | Measured | Tolerance |
+|---|---|---|
+| RK4 observed order, harmonic oscillator (exact solution known) | **3.99982** | 4.00 ± 0.05 |
+| RK4 observed order, real 6-DOF vs fine-step reference | **3.98913** | 4.00 ± 0.05 |
+| Galilean invariance, uniform horizontal wind: quaternion and rates | exact | atol 1e-11 |
+| …and position differs by exactly W·t | exact | atol 1e-6 |
+| Trim Newton convergence ratio (log-residual exponent) | > 1.6, i.e. quadratic | > 1.6 |
+| Torque-free asymmetric body vs Jacobi elliptic closed form, 1500 steps | agrees | atol 1e-8 |
+| …the closed form itself vs Euler's equations | 8.3e-8 | atol 1e-6 |
+| `rk4_step` extraction from `step` | **bit-identical**, sha256 pinned | equality |
+
+**The 6-DOF error floor is round-off, and it bites earlier than expected.** The first
+fitted window read **3.82** and the cause was the measurement, not the integrator. The
+747 cruises at 40,000 ft, so `pos_ned` is about [944, 0, −12184] and float64 resolves it
+to 2.7e-12 m. Measured pairwise orders across a wide sweep:
+
+| dt | 1/4→1/8 | 1/8→1/16 | 1/16→1/32 | 1/32→1/64 | 1/64→1/128 | 1/128→1/256 |
+|---|---|---|---|---|---|---|
+| order | 3.973 | 3.993 | 4.008 | 4.167 | 3.420 | **−0.685** |
+
+so the error bottoms out near **7e-11 m at dt = 1/128** and refining past it makes the
+answer *worse*. The fitted window stops at 1/32, 203× above the floor. Anything
+measuring a difference of trajectories at 40,000 ft has this ceiling.
+
+### Coefficient sensitivity — known change, known result (session 11)
+
+747 power approach, re-trimmed at every sample. **Every one of these is affine with a
+non-zero intercept, and the intercept is the term the textbook approximation drops.**
+Three of the four laws originally planned were the wrong functional form.
+
+| Sweep | Law that holds | Slope | Intercept | Worst residual |
+|---|---|---|---|---|
+| CD0 → ζ_phugoid | linear in CD0 | 0.76994 | −0.0162 | **0.31%** |
+| Cmα → ωn_sp² | affine in Cmα | −0.42251 | +0.27366 | **1.68%** |
+| \|Clp\| → 1/τ_roll | affine in \|Clp\| | 2.06872 | +0.30240 | **1.73%** |
+| Cnβ → ωn_dr² | affine in Cnβ | 2.10545 | +0.26626 | **0.56%** |
+
+- ζ_phugoid's slope against the textbook `1/(√2·CL)` = 0.637 is **1.21×**: the *form*
+  holds tightly, the *coefficient* is 21% high.
+- ωn_sp² does **not** vanish at the neutral point. The intercept is `Zα·Mq/u₀`, which
+  survives there. A test asserting ωn → 0 at Cmα = 0 was written first and was wrong
+  physics; the model was right.
+- 1/τ_roll's intercept is Ixz roll–yaw coupling — §2 already says Ixz "is not negligible
+  for the 747", so the roll root is not the pure −L_p of the two-term approximation.
+- ωn_dr's intercept is the Yβ/u₀ term. ωn/√Cnβ is **not** flat: 2.385 → 1.597 over 8×.
+
+**The neutral point is exact.** Largest real root **0.00000** at Cmα = 0, −ve inside,
+**+0.0475** at Cmα = +0.1. Nothing was tuned to put it there.
+
+### The 747 approach against an independent implementation (session 11)
+
+Caughey (§3) works CR-2144's own power-approach data and publishes every intermediate.
+Comparison requires a **stability-axis rotation**: he states Θ₀ = 0, true only there,
+while the model linearises in body axes where θ₀ = α₀ = 5.57° and w₀ ≠ 0. A rotation by
+α₀ is a similarity transform — asserted to move every element and no eigenvalue (1e-8).
+
+| Element | Body axes | Stability axes | Caughey Eq. (5.52) | rel |
+|---|---|---|---|---|
+| A[0,0] Xu | −0.00883 | **−0.02094** | −0.02120 | 1.2% |
+| A[0,1] Xw | 0.10434 | **0.04632** | 0.04660 | 0.6% |
+| A[1,0] Zu | −0.17049 | **−0.22851** | −0.22290 | 2.5% |
+| A[0,3] −g cos Θ₀ | −32.022 | **−32.174** | −32.174 | **0.000%** |
+| A[1,3] −g sin Θ₀ | −0.952 | **0.00000** | 0.0 | **exact** |
+
+**The elements that disagree are reconstructed, not merely attributed.** Caughey's Z row
+carries a factor `1/(1 − Zẇ)` with Zẇ = −0.0341 from the CLα̇ = 6.7 this model excludes:
+
+| Reconstruction | Result | Caughey | rel |
+|---|---|---|---|
+| A[1,1] / (1 − Zẇ) | 0.58374 | 0.58390 | **0.03%** |
+| A[1,2] / (1 − Zẇ) | 262.48 | 262.472 | **0.003%** |
+| A[2,2] (raw) vs his Eq. (5.51) Mq | −0.4381 | −0.4381 | **exact** |
+| A[2,2] + (u₀+Zq)·Mẇ | −0.4906 | −0.5015 | 2.2% ‡ |
+
+‡ Mẇ is published to one significant figure (−0.0002), which bounds this independently
+of anything the model does.
+
+| Mode | Model | Caughey Eq. (5.54) | Error |
+|---|---|---|---|
+| Phugoid ωn | 0.1334 | 0.13391 | **0.4%** |
+| Phugoid ζ | 0.01289 | 0.01329 | 3.0% |
+| Short-period ωn | 0.8961 | 0.88178 | 1.6% |
+| Short-period ζ | 0.5911 | 0.62546 | 5.5% |
+
+Trim residual 1.8e-15. **Against the cruise column's 17.8% and 11.5% for the same two
+modes with the same omissions, this is 45× better from changing nothing but the flight
+condition** — see §5, which this corrects.
+
+Both Lanchester approximations reproduce the *size* of their own published error:
+ωn 0.163028 vs 0.13391 is 1.217× against Caughey's stated "about 20 per cent", and
+ζ 0.0651 vs 0.01329 is 4.9× against his "a factor of almost 5".
+
 ### The validated baseline — do not touch these tolerances
 
 `test_conservation.py`, `test_cr2144_modes.py`, `test_drag_polar.py`, `test_navion.py`,
@@ -436,9 +539,40 @@ of them stale. If one moves, the derivative chain or the integrator changed.
 
 **Attributed — understood, documented, not bugs:**
 
-- **Phugoid and short-period offsets.** The sim's aero form is α/q/δe only; CR-2144 Table
-  IX-4's `Xu, Zu, Mu, Żw, Ṁw` are deliberately excluded. A second linear model built for
-  mode extraction only, restoring them, closes both to ~1% of the reference.
+- **Phugoid and short-period offsets.** ~~The sim's aero form is α/q/δe only; CR-2144
+  Table IX-4's `Xu, Zu, Mu, Żw, Ṁw` are deliberately excluded.~~ **That wording was wrong
+  and session 11 has the measurement to fix it.** The model **has** Xu and Zu: they fall
+  out of dynamic-pressure variation, since lift and drag both go as V², and the
+  stability-axis A[0,0] lands within **1.2%** of Caughey's Xu with no Xu entered anywhere
+  in `aircraft.py`. `Mu` genuinely is ≈ 0, since Cm = 0 at trim and there is no Cm_M term
+  — consistent with Caughey's A[2,0] = 0.0001 being his `Ṁw·Zu`, not an Mu.
+
+  What is excluded is the **Mach content** of those derivatives (CXu, CZu, from CL_M and
+  CD_M), plus **Żw and Ṁw** which are genuinely absent. That distinction is the
+  explanation, because it predicts what §4 measures: **the offsets are
+  condition-dependent.** Phugoid ωn is off by 17.8% at M 0.80 / 40,000 ft and **0.4%** at
+  M 0.25 / sea level, same code, same omissions. Compressibility is what drives the
+  missing terms, and there is none at M 0.25.
+
+  Żw and Ṁw are now **reconstructed rather than attributed** — restoring Caughey's own
+  CLα̇ = 6.7 recovers his published A[1,1] to 0.03% (§4). A second linear model built for
+  mode extraction only, restoring all of them, closes both modes to ~1% of the reference.
+
+- **CR-2144's 747 derivatives are the FLEXIBLE airframe.** Section IX's derivative plots
+  are labelled "Flexible" — they carry aeroelastic corrections — and `dynamics.py`
+  integrates a rigid body. This is a genuine model/data mismatch and it is larger in
+  consequence than the document's 1972 date, which threatens nothing that is only ever
+  compared against the document's own arithmetic (§3, and the design spec's
+  "Source qualification"). Not quantified: doing so needs a rigid derivative set the
+  project does not hold.
+
+- **`trim.trim` converges to physically absurd roots for degenerate coefficients.** At
+  CLa = 0.1 it returns α = **−633°** with a residual of 1.6e-15, because
+  `CL = CL0 + CLa·α` is linear and a huge α compensates a small CLa. Convergence and
+  sense are different questions. Found by a sweep guard failing to fire; `validation.sweep`
+  now bounds |α| by §7's linear-aero ceiling as well as checking the residual. Nothing in
+  the project's own results is affected — every real aircraft trims at 5–6° — but any
+  future parameter study must check the angle, not just the residual.
 - **Drag polar away from its fitted point.** `CD0` and `e` were back-solved from a single
   reading. Residuals are within 0.004 near the fit, up to 0.014 below M 0.75 (parabolic
   polar misses the induced rise) and 0.006 above M 0.88 (Korn law extrapolating past its
@@ -599,6 +733,25 @@ form needs at least one test that flies through a non-zero wind field —
                                                                     +0.0234, +0.0129 on the
                                                                     north leg does not
 ```
+
+Step 10 (session 11, not in the original plan): **verify the solver before adding layers.**
+DONE — §4's three new subsections. Prompted by external review, which asked for validity to
+be established first and for an interface where a known coefficient change gives a known
+result. What it did **not** cover, deliberately:
+
+- **No new aircraft.** CR-2144 documents **ten** — NT-33A, F-104A, F-4C, X-15, HL-10,
+  **Jetstar**, **CV-880M**, B-747, **C-5A**, XB-70A — each with derivatives,
+  transfer-function factors and handling-qualities parameters under the same Appendix
+  A/B/C conventions this code already implements. The cheapest next two are the
+  **Jetstar** (Table VII-1, power approach, non-dimensional, **body axis**) and the
+  **C-5A** (Table X-1, same form, **stability axis**, so `stability_to_body` applies) —
+  both in the identical form to Table IX-2, which session 10 noted "involves no conversion
+  chain at all".
+- **No further 747 flight conditions.** CR-2144 pp. 229–236 are scanned line-printer
+  output whose text layer OCRs to noise, and the cruise non-dimensional derivatives are
+  published as **plots against Mach**, not tables — which is why session 1 had to recover
+  them from the dimensional set. Reading more is the same error-prone eye-work as adding a
+  new aircraft.
 
 Step 5 is done, so **step 6 now waits only on step 4** (Dryden), which is where the
 ensemble spread would come from — the three deterministic points have no spread by
@@ -761,6 +914,19 @@ protocol with a linear and a table implementation. That was the option not taken
   is what makes the third cluster's separation attributable to the elevator rather than to
   timescale. Δθ is 25° at the shortest defensible hold and 30° at this one, so the choice
   moves the number without moving the conclusion.
+- **The `−m·dW/dt` gust error is still untested.** §2 names two classic gust-modelling
+  mistakes: substituting `vel_rel` into the Coriolis term, and adding an explicit
+  `−m·dW/dt`. Session 11's Galilean-invariance test catches the first. It **cannot** catch
+  the second, because a steady uniform wind has zero material derivative — the spurious
+  term is identically zero in that test. Detecting it needs a **time-varying** field and
+  an assertion other than invariance, and no such test exists. Recorded so §4's
+  verification block is not read as covering both.
+- **Whether Etkin & Reid publishes an independent CRUISE worked example.** Caughey covers
+  the M 0.25 approach point, where the model's error is 0.4%. The interesting condition is
+  M 0.80 / 40,000 ft, where it is 17.8%, and there the only reference is CR-2144's own
+  transfer-function factors. Etkin & Reid (3rd ed., 1996) is Caughey's reference [1] and
+  may carry a worked cruise case; **not verified**, needs the physical book. It would give
+  a second implementation exactly where the gap is largest.
 - **Suite runtime is not currently measurable.** The same untouched tests (187 at the time,
   221 by session 5) have run in 53 s and 164 s on the same machine. Session 6 saw 126–207 s
   across runs of the same suite. Re-measure on a quiet machine before treating any timing
@@ -772,6 +938,57 @@ protocol with a linear and a table implementation. That was the option not taken
   interactive rate has still not been re-taken since the re-layout.
 
 ## 9. Session log
+
+### Session 11 — verifying the solver, and correcting what §5 claimed
+
+External review asked for the solver's validity to be established **before** more layers,
+and for an interface where a known coefficient change gives a known result. The project
+could not meet that: §4 was almost entirely validation rows, with next to nothing saying
+the arithmetic is right independent of any aircraft's data.
+
+Review also asked whether a 1972 source is itself a source of error. The answer is that it
+is not, for what is actually being checked — if CR-2144's derivatives were 10% from the
+real aeroplane, this model must **still** reproduce CR-2144's own transfer-function factors
+from CR-2144's own derivatives. The real risks are different and are now recorded: the data
+is the **flexible** airframe against a rigid-body model (§5, new), the scan, and the
+small-perturbation range. The design spec ranks every check by how much it depends on any
+source at all.
+
+**Three things were found, and none of them was the failure being looked for.**
+
+1. **`aero.py`'s exclusions were misdescribed, and had been since session 1.** §5 said
+   `Xu, Zu, Mu, Żw, Ṁw` are excluded. The model **has** Xu and Zu — they fall out of
+   dynamic-pressure variation, and A[0,0] lands within 1.2% of Caughey's Xu with no Xu
+   entered anywhere. What is missing is their **Mach content**, which is why the offsets
+   are **condition-dependent**: 17.8% at M 0.80 and **0.4%** at M 0.25, same code.
+2. **The 6-DOF order-of-accuracy fit read 3.82, and the measurement was at fault.** At
+   40,000 ft `pos_ned` carries a 12,184 m altitude that float64 resolves to 2.7e-12 m, so
+   the error floors near 7e-11 m and past dt = 1/128 refining makes it *worse* — pairwise
+   order **−0.685** at 1/256. Fitted in the asymptotic range it is **3.98913**.
+3. **`trim.trim` converges to absurd roots.** CLa = 0.1 gives α = −633° at a residual of
+   1.6e-15. A residual check detects non-convergence and cannot detect nonsense.
+
+**Three of the four coefficient sweeps were the wrong functional form, and the model was
+right each time.** Every relation turned out affine with a non-zero intercept, and the
+intercept is the term the textbook approximation drops — `Zα·Mq/u₀` for the short period,
+`Yβ/u₀` for Dutch roll, Ixz coupling for roll. A test asserting ωn_sp → 0 at the neutral
+point was written first; that is wrong physics. What *is* exact is the neutral point
+itself: largest real root **0.00000** at Cmα = 0, and nothing was tuned to put it there.
+
+**What the tier-2 comparison bought.** Caughey's Cornell notes work CR-2144's own approach
+data and publish every intermediate, so this is an independent *implementation* rather than
+an independent dataset — same inputs, different code. It needed a stability-axis rotation
+(he states Θ₀ = 0, true only there) which is asserted to be a similarity transform first.
+After it, every element the model contains matches, and the two that do not are
+**reconstructed** from his own α̇ derivatives to 0.03%. §5's attribution stops being an
+attribution.
+
+**Deliberately not done:** no new aircraft, and no further 747 flight conditions — §7 says
+why, and records that CR-2144 holds nine more airframes including the Jetstar and C-5A.
+The notebook is a thin front end over tested code; it holds no arithmetic, so nothing it
+displays can drift from the suite.
+
+318 tests, was 296. Nothing in the validated baseline moved.
 
 ### Session 10 — the 747 power-approach set, and what it was hiding
 
@@ -1212,7 +1429,8 @@ root**; the scripts import `flightsim` from the editable install, not from `scri
 
 | Command | What it does |
 |---|---|
-| `.venv/Scripts/python.exe -m pytest flightsim/tests -q` | 296 tests. The first thing to run and the only complete statement of what works. |
+| `.venv/Scripts/python.exe -m pytest -q` | 318 tests. The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `flightsim/tests`. |
+| `.venv/Scripts/python.exe -m pytest --nbval-lax notebooks/ -q` | **The second gate.** Executes `notebooks/solver-validation.ipynb` so it cannot rot. Needs the `dev` extra (`jupyter`, `nbval`). Deliberately *not* in `testpaths` and `--nbval-lax` is deliberately *not* in `addopts`: that would make every `pytest` run fail with "unrecognized arguments" wherever nbval is absent. **Run it from a worktree with an ABSOLUTE `PYTHONPATH`** — nbval starts the kernel with its cwd in `notebooks/`, so a relative `PYTHONPATH=.` resolves to the wrong directory and `flightsim` silently loads from the main checkout. |
 | `.venv/Scripts/python.exe scripts/checkpoint.py` | 747 only, no flags. Trim residuals, 60 s fixed-control hold, longitudinal modes against CR-2144 Table IX-5. |
 | `.venv/Scripts/python.exe scripts/tune.py --aircraft cherokee` | Autopilot step responses for one aircraft. Exits non-zero on failure, so it is usable as a gate. |
 | `.venv/Scripts/python.exe scripts/fly.py --aircraft cherokee --save runs/a.npz` | Interactive flight, basic-T cockpit plus a flight-test overlay. |
