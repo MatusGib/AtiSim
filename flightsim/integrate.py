@@ -59,6 +59,26 @@ def _axpy(x, y, a):
     return jax.tree.map(lambda xi, yi: xi + a * yi, x, y)
 
 
+def rk4_step(f, x, dt):
+    """One classical RK4 stage set on a pytree state.
+
+    Split out of `step` so the stage weights can be verified against a problem
+    with a closed-form solution -- `step` is welded to `derivatives`, and
+    conservation drift cannot distinguish a fourth-order scheme from a
+    second-order one. `_axpy` maps over a pytree and an array is a leaf, so this
+    also runs unchanged on a plain array right-hand side, which is what
+    flightsim/verification.py uses.
+    """
+    k1 = f(x)
+    k2 = f(_axpy(x, k1, dt / 2))
+    k3 = f(_axpy(x, k2, dt / 2))
+    k4 = f(_axpy(x, k3, dt))
+    increment = jax.tree.map(
+        lambda a, b, c, d: (a + 2.0 * b + 2.0 * c + d) / 6.0, k1, k2, k3, k4
+    )
+    return _axpy(x, increment, dt)
+
+
 @partial(jax.jit, static_argnames=("wind_model",))
 def step(
     sim: SimState,
@@ -73,16 +93,7 @@ def step(
     def f(s: State) -> State:
         return derivatives(s, controls, ac, wind_ned, omega_gust)
 
-    x = sim.state
-    k1 = f(x)
-    k2 = f(_axpy(x, k1, dt / 2))
-    k3 = f(_axpy(x, k2, dt / 2))
-    k4 = f(_axpy(x, k3, dt))
-
-    increment = jax.tree.map(
-        lambda a, b, c, d: (a + 2.0 * b + 2.0 * c + d) / 6.0, k1, k2, k3, k4
-    )
-    new_state = _axpy(x, increment, dt)
+    new_state = rk4_step(f, sim.state, dt)
     new_state = new_state._replace(quat=quat_normalize(new_state.quat))
 
     return SimState(
