@@ -31,6 +31,69 @@ def fitted_order(dts, errors):
     return float(slope)
 
 
+def oscillator_refinement(dts, t_end=2.0):
+    """Refine a harmonic oscillator through the real RK4 and return (errors, order).
+
+    xdot = [[0, 1], [-1, 0]] x, whose exact solution is a rotation. Drives
+    `integrate.rk4_step` DIRECTLY rather than a copy of it, which is the point of
+    that function being split out of `step`.
+
+    Lives here rather than inline in the test so the notebook runs the same
+    experiment instead of a second version of it that could drift.
+    """
+    from flightsim.integrate import rk4_step
+
+    def f(x):
+        return jnp.array([x[1], -x[0]])
+
+    x0 = jnp.array([1.0, 0.0])
+    exact = np.array([np.cos(t_end), -np.sin(t_end)])
+
+    errors = []
+    for dt in np.asarray(dts, dtype=float):
+        x = x0
+        for _ in range(int(round(t_end / dt))):
+            x = rk4_step(f, x, dt)
+        errors.append(float(np.linalg.norm(np.asarray(x) - exact)))
+    errors = np.array(errors)
+    return errors, fitted_order(dts, errors)
+
+
+def fixed_control_refinement(ac, airspeed, altitude, dts, dt_ref, t_end=4.0,
+                             d_elevator=0.02):
+    """Refine the real 6-DOF rollout against a fine-step reference.
+
+    The manufactured case isolates the stage weights; this one can also see a
+    wind sample or control update applied at the wrong RK4 stage.
+
+    `dts` must stay in the asymptotic range. Round-off puts a floor under the
+    error -- for the 747 at 40,000 ft that floor is about 7e-11 m, because
+    pos_ned carries a 12,184 m altitude that float64 resolves to 2.7e-12 m -- and
+    a sequence crossing it fits partly to round-off. See the test for the
+    measured pairwise orders either side of the floor.
+    """
+    import jax
+
+    from flightsim.integrate import init_sim, rollout
+    from flightsim.trim import trim, trimmed_controls, trimmed_state
+
+    x, _ = trim(jnp.array(airspeed), jnp.array(altitude), ac)
+    state = trimmed_state(x[0], jnp.array(airspeed), jnp.array(altitude))
+    controls = trimmed_controls(x[1] + d_elevator, x[2])
+
+    def final_pos(dt):
+        sim = init_sim(state, jax.random.PRNGKey(0))
+        _, traj = rollout(sim, controls, jnp.array(dt), ac, int(round(t_end / dt)))
+        return np.asarray(traj.pos_ned[-1])
+
+    reference = final_pos(dt_ref)
+    errors = np.array([
+        float(np.linalg.norm(final_pos(float(dt)) - reference))
+        for dt in np.asarray(dts, dtype=float)
+    ])
+    return errors, fitted_order(dts, errors)
+
+
 def newton_residual_history(airspeed, altitude, ac, iterations=6):
     """Residual norm after each Newton iteration, from trim.py's own start point.
 
