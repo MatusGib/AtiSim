@@ -220,8 +220,16 @@ aircraft data to be true of the real world.
    to ≤3.4%, and every element it does not is recovered to <1% by restoring the source's own
    tabulated α̇ derivatives". The eigenvalue invariance under the transform is itself a free tier-0
    check.
-2. **Turn §5's attributed gap into a measurement.** Build the plant matrix twice, with and without
-   Xu, Zu, Mu, Zẇ, Mẇ, at **both** 747 points. Measured before writing this spec:
+2. **Turn §5's attributed gap into a measurement — and correct its wording.** §5 currently says
+   "CR-2144 Table IX-4's `Xu, Zu, Mu, Żw, Ṁw` are deliberately excluded". **That is imprecise, and
+   the element table above disproves it.** The model *has* Xu and Zu: they fall out of
+   dynamic-pressure variation, since lift and drag both go as V², and A[0,0] lands within 1.2% of
+   Caughey's Xu without any Xu having been entered anywhere. What is excluded is their **Mach
+   content** (CXu, CZu, from CL_M and CD_M) — which is precisely why the gap opens at M 0.8 and
+   closes at M 0.25. Mu genuinely is ≈ 0, since Cm = 0 at trim and there is no Cm_M term, matching
+   Caughey's A[2,0] = 0.0001 being his Mẇ·Zu rather than an Mu. Only **Zẇ and Mẇ** are truly absent.
+
+   Measured before writing this spec, at **both** 747 points:
 
    | Mode | Model as shipped | Caughey Eq. (5.54) | Error |
    |---|---|---|---|
@@ -231,11 +239,10 @@ aircraft data to be true of the real world.
    | Short-period ζ | 0.5911 | 0.6255 | 5.5% |
 
    Trim residual 1.8e-15. Against §4's cruise figures of 17.8% and 11.5% for the same two modes and
-   the same omitted derivatives, this is a 45× improvement from changing nothing but the flight
-   condition. §5 attributes the cruise gap to those omissions; this is the first evidence for that
-   attribution from outside the project, and it sharpens the claim to a **condition-dependent** one
-   — the omitted terms bite at M 0.8 / 40,000 ft, where compressibility drives Mu, and barely bite
-   at M 0.25 / sea level.
+   the same omissions, this is a 45× improvement from changing nothing but the flight condition. §5
+   attributes the cruise gap to those omissions; this is the first evidence for that attribution
+   from outside the project, and it sharpens the claim to a **condition-dependent** one — the
+   missing Mach content bites at M 0.8 / 40,000 ft and barely bites at M 0.25 / sea level.
 3. **Existing mode tests fold in unchanged** as the third row: `test_cr2144_modes.py`,
    `test_navion.py`.
 
