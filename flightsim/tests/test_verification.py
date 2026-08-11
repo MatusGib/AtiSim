@@ -10,11 +10,13 @@ solution goes through SciPy and asserts its own domain instead.
 
 import hashlib
 import itertools
+from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from jax import Array
 
 import flightsim  # noqa: F401  -- enables x64 before any array is made
 from flightsim import integrate, trim, verification
@@ -163,6 +165,192 @@ def test_a_uniform_horizontal_wind_only_translates_the_trajectory():
     t = np.arange(1, n + 1) * float(dt)
     expected = np.asarray(still.pos_ned) + t[:, None] * np.asarray(W)
     np.testing.assert_allclose(np.asarray(blown.pos_ned), expected, atol=1e-6)
+
+
+# --- the other gust error PROJECT.md section 2 names ---
+#
+# The Galilean test above catches the first (vel_rel in the Coriolis term) and
+# says in its own docstring that it CANNOT catch the second, because a steady
+# wind's material derivative is zero. These two close that seam.
+#
+# Note what the correct claim is NOT. It is tempting to fly a time-varying wind
+# from a start state offset by W(0) and demand the rates match still air, as the
+# steady test does. That is FALSE PHYSICS. Writing v~_b = v_b - C^T W(t) for the
+# air-relative body velocity and differentiating,
+#
+#     v~_b_dot = F(v~_b, omega)/m + g_b - omega x v~_b - C^T Wdot
+#
+# so the air-relative state obeys the still-air equation PLUS a -C^T Wdot term.
+# The two trajectories must diverge, and by a lot -- a 30 m/s wind swing on a
+# 236 m/s cruise is a 13% airspeed excursion. That term is precisely what makes
+# a time-varying wind something other than a change of inertial frame, and an
+# invariance assertion is therefore the wrong instrument for it.
+#
+# The right instrument is a case with a closed-form answer, which is the first
+# test, plus a structural check on the one place the bug could actually be
+# written, which is the second.
+#
+# BOTH WERE CHECKED BY INJECTING THE BUG, because a test that can only pass
+# demonstrates nothing. Adding
+#
+#     d.vel_body -= C^T (wind_ned - sim.wind_ned) / dt
+#
+# to `step`'s right-hand side fails both tests by many orders of magnitude. It
+# also fails the Galilean test above -- but ONLY through a first-step transient,
+# because `init_sim` seeds the wind cache to zeros while the model immediately
+# returns W. Seed that cache to W, which is the one line anyone would write on
+# seeing a spurious impulse at t = 0, and the Galilean test passes with the bug
+# still in: 2.7e-15 on quat and 6.9e-16 on omega, against its own 1e-11
+# tolerances. So the blindness its docstring claims is real, and measured.
+
+
+class _Clock(NamedTuple):
+    """A wind state that carries time.
+
+    The `wind_state` slot exists so a model can keep whatever it needs between
+    steps -- see wind.py's module docstring, and `FilterState` in
+    test_integrate.py, which stands in for a Dryden shaping filter the same way.
+    A time-varying field needs a clock and nothing else, so it brings one here
+    rather than `wind.WindState` growing a field for a model that does not exist
+    yet. Recorded in PROJECT.md section 7: Dryden's time dependence costs no
+    signature change.
+    """
+
+    t: Array
+
+
+# Big and fast on purpose. |W0| is 30.5 m/s and OMEGA is 3 rad/s, so the peak
+# |dW/dt| is 91 m/s^2 -- 9.3 g of spurious specific force if such a term exists.
+_SWING_W0 = jnp.array([18.0, -20.0, 12.0])
+_SWING_OMEGA = 3.0
+
+
+def _swinging_wind(wind_state, state, key, dt):
+    """Uniform in SPACE, violently varying in TIME. Sampled before the clock ticks."""
+    del state
+    gust = _SWING_W0 * jnp.sin(_SWING_OMEGA * wind_state.t)
+    return gust, jnp.zeros(3), _Clock(t=wind_state.t + dt), key
+
+
+def test_a_time_varying_uniform_wind_adds_no_body_force():
+    """The second error section 2 names, against an exact solution.
+
+    An air mass that accelerates does not push on the aeroplane. It only changes
+    the flow the wings see, so the wind may enter through `vel_rel` and nowhere
+    else; an explicit -m*dW/dt term double-counts.
+
+    The experiment zeroes every aerodynamic coefficient and the thrust. That is
+    the ISOLATION, not a weakness: with no aerodynamic force the wind has no
+    legitimate route into the equations at all, so any dependence of the
+    trajectory on it is the spurious term and nothing else. The signal is
+    unmissable -- a -m*dW/dt term integrates to -(W(t) - W(0)), up to 30 m/s of
+    velocity error against the tolerance below.
+
+    The reference is a closed form rather than another simulation. The body
+    starts with zero angular rate and there are no moments, so omega stays zero,
+    the quaternion is constant, and vdot_body = g_body is constant. RK4 on a
+    constant derivative is exact, so free fall is reproduced to round-off:
+
+        pos_ned(t) = pos0 + v_ned(0)*t + [0, 0, g]*t^2/2
+
+    The attitude is deliberately NOT level. A spurious term rotated through the
+    wrong DCM would survive a level test and fail this one.
+
+    Speeds stay below M 0.64, where `wave_drag`'s max() is on its flat side, so
+    CD is exactly zero rather than nearly so -- see aero.drag_divergence_mach.
+    """
+    from flightsim.atmosphere import G0
+    from flightsim.state import State, euler_to_quat, quat_to_dcm
+    from flightsim.tests.conftest import make_test_aircraft
+
+    # The inertia is left alone -- omega is zero for the whole run, so it never
+    # enters. Throttle is 0.5 against max_thrust = 0, which is what makes "no
+    # thrust" a property of the airframe rather than of the control input.
+    zeroed = dict(
+        CL0=0.0, CLa=0.0, CLq=0.0, CLde=0.0, Cm0=0.0, Cma=0.0, Cmq=0.0, Cmde=0.0,
+        CD0=0.0, CYb=0.0, CYp=0.0, CYr=0.0, CYdr=0.0, Clb=0.0, Clp=0.0, Clr=0.0,
+        Clda=0.0, Cldr=0.0, Cnb=0.0, Cnp=0.0, Cnr=0.0, Cnda=0.0, Cndr=0.0,
+        max_thrust=0.0,
+    )
+    ac = make_test_aircraft()._replace(**{k: jnp.array(v) for k, v in zeroed.items()})
+    quat = euler_to_quat(jnp.array(0.3), jnp.array(-0.2), jnp.array(0.7))
+    state = State(
+        pos_ned=jnp.array([0.0, 0.0, -3000.0]),
+        vel_body=jnp.array([80.0, 0.0, 0.0]),
+        quat=quat,
+        omega=jnp.zeros(3),
+    )
+    controls = trim.trimmed_controls(jnp.array(0.0), jnp.array(0.5))
+
+    dt, n = 0.02, 300
+    sim = integrate.SimState(
+        state=state,
+        wind=_Clock(t=jnp.array(0.0)),
+        key=jax.random.PRNGKey(0),
+        wind_ned=jnp.zeros(3),
+        omega_gust=jnp.zeros(3),
+    )
+    final, traj = integrate.rollout(
+        sim, controls, jnp.array(dt), ac, n, wind_model=_swinging_wind
+    )
+
+    # The wind really did swing, rather than the model quietly returning zeros.
+    assert float(final.wind.t) == pytest.approx(n * dt)
+    assert np.abs(np.asarray(final.wind_ned)).max() > 5.0
+
+    t = np.arange(1, n + 1) * dt
+    v_ned0 = np.asarray(quat_to_dcm(quat) @ state.vel_body)
+    gravity = np.array([0.0, 0.0, float(G0)])
+    exact = (
+        np.asarray(state.pos_ned)
+        + t[:, None] * v_ned0
+        + 0.5 * (t**2)[:, None] * gravity
+    )
+    np.testing.assert_allclose(np.asarray(traj.pos_ned), exact, atol=1e-9)
+
+
+def test_a_step_ignores_the_wind_the_previous_step_applied():
+    """The same claim structurally, with the real aerodynamics left in.
+
+    `SimState` caches `wind_ned` from the previous step so a controller can sense
+    the air without re-evaluating the model. That cache is exactly the ingredient
+    a -m*dW/dt term would be built from: differencing it against the current
+    sample is the obvious way to get a dW/dt, and it is one line.
+
+    So: take one step twice from the same rigid-body state with the same wind
+    model, varying ONLY the cached previous wind. `derivatives` takes an
+    instantaneous wind value and no rate, so the two must agree bit for bit.
+    Anything that differences the cache makes them differ by dt*(difference),
+    which at these values is metres per second.
+
+    Bit-identity rather than a tolerance, for the reason given at
+    PRE_REFACTOR_VEL_HASH: the claim is that the cache is not read at all, and
+    any tolerance admits a small amount of reading it.
+    """
+    held = jnp.array([11.0, -6.0, 2.0])
+
+    def steady(wind_state, state, key, dt):
+        del state, dt
+        return held, jnp.zeros(3), wind_state, key
+
+    ac = REGISTRY["boeing747"]
+    V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
+    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
+    state = trim.trimmed_state(x[0], jnp.array(V), jnp.array(H))
+    controls = trim.trimmed_controls(x[1] + 0.01, x[2])
+    base = integrate.init_sim(state, jax.random.PRNGKey(0))
+
+    def one_step(cached):
+        after = integrate.step(
+            base._replace(wind_ned=cached), controls, jnp.array(0.02), ac,
+            wind_model=steady,
+        )
+        return jax.tree.map(lambda leaf: np.asarray(leaf).tobytes(), after.state)
+
+    # Second cache is the negative of the wind actually applied, so a difference
+    # quotient would see 2*held/dt -- around 1100 m/s^2 -- rather than zero.
+    assert one_step(held) == one_step(-held)
+    assert one_step(held) == one_step(jnp.zeros(3))
 
 
 def test_the_trim_solve_converges_quadratically():

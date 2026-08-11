@@ -311,14 +311,34 @@ true for Dryden**, which is a stochastic process in time — see §7's extensibi
 **Where:** `integrate.step`, documented in its module docstring as the standard treatment
 for Dryden and von Kármán.
 
-**Bound: this is the one seam session 11's verification did NOT cover**, and it is worth
-being precise about why. The order-of-accuracy test flies at fixed controls in still air,
-so it cannot see a wind term evaluated at the wrong stage. The Galilean test uses a
-*steady* wind, whose material derivative is zero, so it cannot see a spurious `−m·dW/dt`
-term either — the other error `PROJECT.md` §2 explicitly warns about.
+**Why it was the one seam session 11's verification did NOT cover.** The order-of-accuracy
+test flies at fixed controls in still air, so it cannot see a wind term evaluated at the
+wrong stage. The Galilean test uses a *steady* wind, whose material derivative is zero, so
+it could not see a spurious `−m·dW/dt` term either — the other error `PROJECT.md` §2
+explicitly warns about.
 
-**Verdict: unverified, and it is the first thing the next session should close** — see the
-fix plan. It matters because it is exactly the seam Dryden will load.
+**Bound, measured session 12: no spurious body force, to 1e-9 m against an exact solution.**
+Two tests, in `test_verification.py`:
+
+| Test | Instrument | Result |
+|---|---|---|
+| `..._time_varying_uniform_wind_adds_no_body_force` | every aerodynamic coefficient and the thrust zeroed, so free fall is the **closed form** and the wind has no legitimate route into the equations at all; flown through a uniform wind swinging at 3 rad/s with peak \|dW/dt\| = 91 m/s² | position matches `p₀ + v₀t + ½gt²` to **1e-9 m** over 300 steps |
+| `..._step_ignores_the_wind_the_previous_step_applied` | full 747 aerodynamics; one step taken twice, varying **only** `SimState.wind_ned` — the cached previous wind, which is the ingredient such a term would be differenced from | **bit-identical** |
+
+**An invariance assertion is the wrong instrument here, and that is worth recording.**
+Writing `ṽ_b = v_b − Cᵀ W(t)` for the air-relative body velocity and differentiating gives
+`ṽ̇_b = F(ṽ_b,ω)/m + g_b − ω×ṽ_b − Cᵀ Ẇ`: the air-relative state obeys the still-air
+equation **plus** a `−Cᵀ Ẇ` term. So a time-varying wind is *not* a change of inertial
+frame, and two runs offset by `W(0)` genuinely must diverge. The seam needs a closed form,
+not an invariance.
+
+**The falsification was run, since a test that can only pass demonstrates nothing.** With
+the bug injected into `step`, both tests fail by many orders of magnitude — and the
+Galilean test **passes with the bug still in** (2.7e-15 on quaternion, 6.9e-16 on `ω`,
+against its own 1e-11 tolerances) once the wind cache is seeded consistently. Its blindness
+is therefore measured rather than argued.
+
+**Verdict: closed.** The seam Dryden will load is the one now covered.
 
 ---
 
@@ -361,7 +381,7 @@ believing its own slope.
 
 | | Assumption | Status | Action |
 |---|---|---|---|
-| 1 | **E4** wind held across RK4 stages | **unverified** | test the `−m·dW/dt` seam with a time-varying field |
+| 1 | **E4** wind held across RK4 stages | **CLOSED, session 12** | no spurious body force, to 1e-9 m against a closed form |
 | 2 | **B1** rigid airframe vs flexible data | **unquantifiable** | cap claims; do not assert structural fidelity |
 | 3 | **C3** derivatives frozen across the envelope | **unbounded** | state the excursion with every result away from trim |
 | 4 | **E2** point-aircraft gusts, vortex at 2.3–3.1 spans | **newly bounded** | record in §5; keep vortex claims as orderings |
@@ -369,8 +389,8 @@ believing its own slope.
 | 6 | **C5** no thrust moment, no spool | sound for now | required before any powered-recovery result |
 | 7 | **B4** accelerometer at CG vs DFDR | caveat | keep Fig. 8 claims as orderings |
 
-Items 1 and 5 are new and actionable. Items 2 and 3 are honest limits rather than bugs, and
-the correct response to both is to stop short of claims they cannot support.
+Item 1 is closed. Item 5 remains the actionable one. Items 2 and 3 are honest limits rather
+than bugs, and the correct response to both is to stop short of claims they cannot support.
 
 ---
 
