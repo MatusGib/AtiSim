@@ -464,6 +464,39 @@ so the error bottoms out near **7e-11 m at dt = 1/128** and refining past it mak
 answer *worse*. The fitted window stops at 1/32, 203× above the floor. Anything
 measuring a difference of trajectories at 40,000 ft has this ceiling.
 
+### What constant gravity costs, and why it stays (session 12)
+
+`ASSUMPTIONS.md` §A2 records that `G0 = 9.80665` is **+0.383% high** at the 747's cruise
+altitude. Session 11 reasoned from Lanchester that this threatened every sub-0.5% claim.
+This is the measurement that was made instead of the change: `flightsim.dynamics.G0`
+replaced by `g(h) = g₀(R/(R+h))²`, the aircraft **re-trimmed**, and all five modes
+recomputed. Tolerances are the ones each mode is actually asserted to in
+`test_cr2144_modes.py`.
+
+| Mode, 747 at cruise | g = 9.80665 | g(h) = 9.76922 | Movement | Tolerance | Consumed |
+|---|---|---|---|---|---|
+| phugoid ωn | 0.055319 | 0.055109 | **−0.3798%** | 5% | 7.6% |
+| phugoid ζ | 0.055956 | 0.055654 | −0.5385% | 10% | 5.4% |
+| short period ωn | 0.950773 | 0.950775 | **+0.0002%** | 3% | 0.01% |
+| short period ζ | 0.342526 | 0.342510 | −0.0046% | 5% | 0.1% |
+| Dutch roll ωn | 0.943202 | 0.942458 | −0.0788% | 2% | 3.9% |
+| Dutch roll ζ | 0.036085 | 0.035931 | −0.4288% | 10% | 4.3% |
+| roll τ | 1.795366 | 1.794285 | −0.0602% | 5% | 1.2% |
+| spiral τ | 138.0424 | 138.1187 | +0.0552% | 2% | 2.8% |
+| trim α | 4.6362° | 4.6059° | −0.6535% | — | — |
+
+**The control is the approach 747 at sea level, where every quantity moves by exactly
+0.0000%** — `g(0) = g₀` identically, so the experiment is measuring altitude and nothing
+else. `aircraft.py`'s two `G0` uses are deliberately not patched: they are in the Navion and
+Cessna transcription paths, where the conversion must use the g the *source* used, and
+neither 747 is built through them.
+
+**Decision: `g(h)` is not modelled.** The worst movement consumes 7.6% of its tolerance,
+`G0` is imported by four modules, and every result the project quotes is at one altitude
+per aircraft — so a constant g is *exactly* right per run and the bias exists only for
+comparisons across altitudes, which the project does not make. Revisit if that changes.
+§5 carries what the measurement corrected in the reasoning.
+
 ### Coefficient sensitivity — known change, known result (session 11)
 
 747 power approach, re-trimmed at every sample. **Every one of these is affine with a
@@ -567,14 +600,22 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   this section already required for a different reason.
 
 - **Gravity is constant at 9.80665 m/s², which is +0.383% high at the 747's cruise
-  altitude.** True `g(h) = g₀(R/(R+h))²` is 9.76922 at 12,192 m. Lanchester's
-  `ωn_phugoid = √2·g/u₀` maps that **1:1** into phugoid frequency, so the cruise 747 carries
-  a +0.383% systematic bias in a mode this document compares against CR-2144. It is
-  invisible inside that mode's 17.8% gap — but it is **the same order as the tightest
-  agreements in §4** (Dutch roll ωn 0.4%, spiral τ 0.8%, roll τ 0.9%). Those are lateral
-  modes that g barely touches, so they are not biased; the point is the scale. **No claim of
-  agreement below ~0.5% at altitude is safe until `g(h)` is modelled.** At sea level — the
-  approach 747 — the error is exactly zero.
+  altitude.** True `g(h) = g₀(R/(R+h))²` is 9.76922 at 12,192 m. **Session 12 measured what
+  that costs and decided not to model it**; §4 carries the table and `ASSUMPTIONS.md` §A2
+  the reasoning. Lanchester's `ωn_phugoid = √2·g/u₀` predicts a **1:1** mapping and the
+  measurement confirms it to three figures — phugoid ωn moves −0.3798% against a −0.3816%
+  change in g.
+
+  ~~It is the same order as the tightest agreements in §4, so no claim below ~0.5% at
+  altitude is safe until `g(h)` is modelled.~~ **That was session 11's reasoning and the
+  measurement contradicts it.** The 1:1 mapping is the phugoid's alone: the short period is
+  immune (+0.0002%) and the lateral modes — which are where §4's tightest agreements are —
+  move only **0.055–0.079%**, five to fifteen times smaller than the agreements they were
+  feared to threaten. Their sensitivity is indirect, through a trim α that falls 0.65%, not
+  through a gravity term in the lateral equations. The corrected rule: **a sub-0.5% claim
+  at altitude is unsafe for the phugoid and safe for the other four modes.** At sea level —
+  the approach 747 — the error is exactly zero, and the measured movement there is exactly
+  0.0000%, which is the control on the whole experiment.
 
 - **Phugoid and short-period offsets.** ~~The sim's aero form is α/q/δe only; CR-2144
   Table IX-4's `Xu, Zu, Mu, Żw, Ṁw` are deliberately excluded.~~ **That wording was wrong
@@ -1016,6 +1057,50 @@ protocol with a linear and a table implementation. That was the option not taken
   interactive rate has still not been re-taken since the re-layout.
 
 ## 9. Session log
+
+### Session 12 — closing the two actionable assumptions, and what measuring changed
+
+Session 11's register ended with two entries marked new and actionable: **E4**, the
+untested `−m·dW/dt` gust seam, and **A2**, constant gravity. Both are now closed, and in
+**both cases the measurement contradicted the reasoning that raised them**. That is the
+theme worth carrying forward.
+
+**E4 — the gust seam.** The plan proposed catching a spurious `−m·dW/dt` term by offsetting
+the start state by `W(0)` and demanding the rates match still air. That asserts false
+physics: the air-relative velocity obeys the still-air equation *plus* `−CᵀẆ`, so the two
+runs must diverge, and no tolerance could have been chosen honestly. The instrument that
+works is a **closed form** — zero the aerodynamics and the thrust and free fall is the exact
+answer, while the wind has no legitimate route into the equations at all, so any dependence
+on it is the spurious term. Matches `p₀ + v₀t + ½gt²` to 1e-9 m through a wind swinging at
+peak `|dW/dt|` = 91 m/s². A second test keeps the full 747 aero and varies only the cached
+previous wind: bit-identical. Both were falsified by injecting the bug; the Galilean test
+**passes with the bug still in**, so its documented blindness is now measured.
+
+**A2 — constant gravity.** Session 11 reasoned from Lanchester that a 0.383% gravity error
+threatened every agreement below 0.5%. Measured, the 1:1 mapping is the **phugoid's alone**
+(−0.3798%, confirming Lanchester to three figures); the short period is immune (+0.0002%)
+and the lateral modes — where §4's tightest agreements actually are — move 0.055–0.079%,
+five to fifteen times smaller than feared. Their sensitivity is *indirect*, through a trim α
+that falls 0.65%. Worst tolerance consumption is 7.6%, so **`g(h)` is not modelled** and the
+entry closes on the bound. Sea level moves exactly 0.0000%, which is the control.
+
+**Two wrong numbers found in §5 while writing a test.** The absurd-trim example attributed
+−633° to `CLa = 0.1`; it is `CLa = 1e-4`, and 0.1 gives −272.7°. "Every real aircraft trims
+at 5–6°" is wrong the other way — the registry spans 0.01° to 5.62°. Worse, the angle is
+**not reproducible at all**: same aircraft and CLa, 85.0 m/s gives −632.1° and 84.9 m/s
+gives −4232.1°. Nothing asserts an angle now, only converged-and-absurd.
+
+`trim.is_physical` moved the |α| bound out of `validation.sweep`, where session 11 put it,
+into the module whose function actually has the defect. **`WindState` did not need a time
+field** — `step` threads the wind state opaquely, so a model brings its own type, and adding
+`t` would have broken `test_integrate.py`'s `FilterState`. §7 records that Dryden therefore
+costs no signature change; the blocker is `init_sim` seeding, not `WindState` carrying.
+
+**322 tests + 1 skipped and the 12-cell notebook, both green.** Four new tests: two on the
+gust seam, two on `is_physical` (one of which is the positive control, without which
+`is_physical` could simply return `False` always). Nothing in the validated baseline moved.
+Note the preceding commit's message says 320 — that count was taken from a background run
+that predated the two trim tests in the same commit; the correct figure there is 322.
 
 ### Session 11 — verifying the solver, and correcting what §5 claimed
 

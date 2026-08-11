@@ -28,7 +28,10 @@ flight-envelope simulator, or anything asserting agreement below about 0.5%.
 
 An assumption that fails (2) is the dangerous kind, because it is invisible: the model
 agrees with a source to 0.4% while carrying a 0.4% systematic error, and the agreement is
-partly luck. **Two entries below fail (2), and they are new findings.**
+partly luck. Session 11 flagged **two** entries as failing (2). Session 12 measured both,
+and **A2 turned out to pass** — the 0.383% gravity error reaches the phugoid 1:1 but the
+lateral modes only at 0.06–0.08%, so it does not threaten the agreements it appeared to.
+**E2, the vortex span ratio, still fails (2)** and is the one to respect.
 
 ---
 
@@ -71,15 +74,54 @@ about ten minutes. 6.88 m per 20 s grows as t².
 | 747 approach | 0 m | 9.80665 | exactly right |
 | Cherokee | 1,500 m | 9.80204 | +0.047% high |
 
-**This one fails question (2), and that is the finding.** Lanchester gives
-`ωn_phugoid = √2·g/u₀`, so a gravity error maps **1:1** into phugoid frequency: the cruise
-747 carries a **+0.383% systematic bias** in the mode the project compares against
-CR-2144. That is buried inside the cruise phugoid's 17.8% gap and changes nothing there.
+Lanchester gives `ωn_phugoid = √2·g/u₀`, so a gravity error should map **1:1** into phugoid
+frequency. Session 11 reasoned from that to a warning covering every mode. **Session 12
+measured it instead, and the warning was too strong.**
 
-But it is **the same order as the project's tightest agreements** — Dutch roll ωn 0.4%,
-spiral τ 0.8%, roll τ 0.9%. Those are lateral modes where g enters only weakly, so they are
-not directly biased; the point is the scale. **Any future claim of agreement below ~0.5%
-at altitude must model g(h) first, or it is claiming precision the model does not have.**
+**Bound, measured session 12** — `flightsim.dynamics.G0` replaced by `g(h)`, re-trimmed,
+all five modes recomputed. §4's tolerance is the one each mode is actually asserted to:
+
+| Mode at 747 cruise | g = 9.80665 | g(h) = 9.76922 | Movement | §4 tolerance | Consumed |
+|---|---|---|---|---|---|
+| phugoid ωn | 0.055319 | 0.055109 | **−0.3798%** | 5% | 7.6% |
+| phugoid ζ | 0.055956 | 0.055654 | −0.5385% | 10% | 5.4% |
+| short period ωn | 0.950773 | 0.950775 | **+0.0002%** | 3% | 0.01% |
+| short period ζ | 0.342526 | 0.342510 | −0.0046% | 5% | 0.1% |
+| Dutch roll ωn | 0.943202 | 0.942458 | −0.0788% | 2% | 3.9% |
+| Dutch roll ζ | 0.036085 | 0.035931 | −0.4288% | 10% | 4.3% |
+| roll τ | 1.795366 | 1.794285 | −0.0602% | 5% | 1.2% |
+| spiral τ | 138.0424 | 138.1187 | +0.0552% | 2% | 2.8% |
+| *trim α* | *4.6362°* | *4.6059°* | *−0.6535%* | — | — |
+
+**Control: the same sweep on the sea-level approach 747 moves every quantity by exactly
+0.0000%**, since `g(0) = g₀` identically. The effect is altitude and nothing else.
+
+**Three things the measurement says that the reasoning did not:**
+
+1. **Lanchester holds, to three figures.** Phugoid ωn moves −0.3798% against a gravity
+   change of −0.3816%. The 1:1 claim is now measured rather than asserted.
+2. **The 1:1 mapping is the phugoid's alone.** Short period is *immune* (+0.0002%), and the
+   lateral modes move 0.055–0.079% — **five to fifteen times smaller** than the agreements
+   session 11 feared for them (Dutch roll ωn 0.4%, spiral τ 0.8%, roll τ 0.9%). So the
+   blanket "no sub-0.5% claim at altitude is safe" was wrong: it applied the phugoid's
+   sensitivity to modes that do not have it.
+3. **The lateral modes' sensitivity is indirect.** There is no gravity term dominating the
+   lateral equations. g moves the **trim point** — α falls 0.65%, because less weight needs
+   less lift — and the derivatives are then read at a different α. That is why the lateral
+   movement is an order of magnitude below the phugoid's.
+
+**Decision, session 12: `g(h)` is NOT modelled, and this bound closes the entry.** Every
+movement is comfortably inside the tolerance of the check it would affect — the worst
+consumes 7.6% of its band. Against that, `G0` is imported by `dynamics`, `trim`, `aircraft`
+and `vortex_viz`, and changing it would move §4 baselines that are off-limits to feature
+work. And every result the project quotes is at **one altitude per aircraft**, so a constant
+g is *exactly* right per run; the bias only exists for comparisons across altitudes, which
+the project does not make.
+
+**What replaces the old warning:** a sub-0.5% claim at altitude is unsafe **for the
+phugoid**, which carries the full 0.38%. It is safe for the lateral modes (0.06–0.08%) and
+for the short period (~0). Revisit if the project ever compares one aircraft across two
+altitudes, which is the case a constant g genuinely cannot serve.
 
 ### A3. Altitude is geopotential, not geometric
 
@@ -385,12 +427,14 @@ believing its own slope.
 | 2 | **B1** rigid airframe vs flexible data | **unquantifiable** | cap claims; do not assert structural fidelity |
 | 3 | **C3** derivatives frozen across the envelope | **unbounded** | state the excursion with every result away from trim |
 | 4 | **E2** point-aircraft gusts, vortex at 2.3–3.1 spans | **newly bounded** | record in §5; keep vortex claims as orderings |
-| 5 | **A2** constant g, +0.383% at cruise | **newly bounded** | floor on any sub-0.5% agreement claim at altitude |
+| 5 | **A2** constant g, +0.383% at cruise | **CLOSED, session 12** | not modelled: worst mode movement is 7.6% of its tolerance. Phugoid only carries the full 0.38% |
 | 6 | **C5** no thrust moment, no spool | sound for now | required before any powered-recovery result |
 | 7 | **B4** accelerometer at CG vs DFDR | caveat | keep Fig. 8 claims as orderings |
 
-Item 1 is closed. Item 5 remains the actionable one. Items 2 and 3 are honest limits rather
-than bugs, and the correct response to both is to stop short of claims they cannot support.
+Items 1 and 5 — the two session 11 flagged as new and actionable — are both closed by
+measurement, and in both cases the measurement changed the answer the reasoning had given.
+Items 2 and 3 are honest limits rather than bugs, and the correct response to both is to
+stop short of claims they cannot support.
 
 ---
 
