@@ -60,26 +60,12 @@ def test_rk4_is_fourth_order_on_a_problem_with_a_closed_form():
     taken at a larger step.
 
     Harmonic oscillator, xdot = [[0, 1], [-1, 0]] x, exact solution a rotation.
-    Calls integrate.rk4_step DIRECTLY -- not a copy of it -- which is the entire
+    Drives integrate.rk4_step DIRECTLY -- not a copy of it -- which is the entire
     point of extracting it.
     """
-    def f(x):
-        return jnp.array([x[1], -x[0]])
-
-    x0 = jnp.array([1.0, 0.0])
-    t_end = 2.0
-
-    def final(dt):
-        x = x0
-        for _ in range(int(round(t_end / dt))):
-            x = integrate.rk4_step(f, x, dt)
-        return np.asarray(x)
-
-    exact = np.array([np.cos(t_end), -np.sin(t_end)])
     dts = np.array([0.2, 0.1, 0.05, 0.025])
-    errors = np.array([np.linalg.norm(final(dt) - exact) for dt in dts])
-    slope = verification.fitted_order(dts, errors)
-    assert slope == pytest.approx(4.0, abs=0.05), f"observed order {slope}"
+    errors, slope = verification.oscillator_refinement(dts)
+    assert slope == pytest.approx(4.0, abs=0.05), f"observed order {slope}, {errors}"
 
 
 def test_the_six_dof_rollout_is_fourth_order():
@@ -113,18 +99,12 @@ def test_the_six_dof_rollout_is_fourth_order():
     smallest fitted error 203x above the floor, and the asymptotic range is what
     an order-of-accuracy check is defined on.
     """
-    t_end = 4.0
-    dt_ref = 1.0 / 1024.0
-    _, ref = _fixed_control_rollout(dt_ref, int(round(t_end / dt_ref)))
-    ref_end = np.asarray(ref.pos_ned[-1])
-
+    ac = REGISTRY["boeing747"]
+    V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
     dts = np.array([1.0 / 4, 1.0 / 8, 1.0 / 16, 1.0 / 32])
-    errors = []
-    for dt in dts:
-        _, traj = _fixed_control_rollout(float(dt), int(round(t_end / dt)))
-        errors.append(np.linalg.norm(np.asarray(traj.pos_ned[-1]) - ref_end))
-
-    slope = verification.fitted_order(dts, np.array(errors))
+    errors, slope = verification.fixed_control_refinement(
+        ac, V, H, dts, dt_ref=1.0 / 1024.0
+    )
     assert slope == pytest.approx(4.0, abs=0.05), f"observed order {slope}, errors {errors}"
 
 
