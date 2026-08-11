@@ -444,6 +444,8 @@ second order when it claims to be fourth.
 | RK4 observed order, real 6-DOF vs fine-step reference | **3.98913** | 4.00 ± 0.05 |
 | Galilean invariance, uniform horizontal wind: quaternion and rates | exact | atol 1e-11 |
 | …and position differs by exactly W·t | exact | atol 1e-6 |
+| **No `−m·dW/dt` body force** (session 12): zero-aero free fall through a wind swinging at peak \|dW/dt\| = 91 m/s², vs `p₀ + v₀t + ½gt²` | **exact**, 300 steps | atol 1e-9 |
+| …and one step is independent of the cached previous wind, full 747 aero | **bit-identical** | equality |
 | Trim Newton convergence ratio (log-residual exponent) | > 1.6, i.e. quadratic | > 1.6 |
 | Torque-free asymmetric body vs Jacobi elliptic closed form, 1500 steps | agrees | atol 1e-8 |
 | …the closed form itself vs Euler's equations | 8.3e-8 | atol 1e-6 |
@@ -601,13 +603,30 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   "Source qualification"). Not quantified: doing so needs a rigid derivative set the
   project does not hold.
 
-- **`trim.trim` converges to physically absurd roots for degenerate coefficients.** At
-  CLa = 0.1 it returns α = **−633°** with a residual of 1.6e-15, because
-  `CL = CL0 + CLa·α` is linear and a huge α compensates a small CLa. Convergence and
-  sense are different questions. Found by a sweep guard failing to fire; `validation.sweep`
-  now bounds |α| by §7's linear-aero ceiling as well as checking the residual. Nothing in
-  the project's own results is affected — every real aircraft trims at 5–6° — but any
-  future parameter study must check the angle, not just the residual.
+- **`trim.trim` converges to physically absurd roots for degenerate coefficients.**
+  `CL = CL0 + CLa·α` is linear, so a huge α compensates a small CLa and Newton reaches a
+  root that satisfies the residual to machine precision and is not a flight condition.
+  Convergence and sense are different questions. Found by a sweep guard failing to fire.
+
+  **Two numbers in the session-11 wording were wrong, corrected session 12.** The −633°
+  was attributed to CLa = 0.1; it is **CLa = 1e-4**. Measured, `boeing747_approach` at
+  85 m/s and sea level: CLa = 0.1 gives **−272.7°** at residual 2.3e-15, CLa = 1e-4 gives
+  **−632.1°** at 5.7e-15. And "every real aircraft trims at 5–6°" was wrong in the other
+  direction — the registry spans **0.01° (Cherokee) to 5.62°** at its own cruise
+  conditions, which is what makes the 15° bound non-binding on legitimate data.
+
+  **The angle itself is not reproducible, and only the phenomenon is.** The far root is
+  chaotically sensitive to the start conditions: same aircraft, same CLa = 1e-4, sea level,
+  **85.0 m/s gives −632.1° and 84.9 m/s gives −4232.1°**. So no specific angle is asserted
+  anywhere — the test asserts converged-and-absurd, which is the stable fact. This is why
+  quoting one in §5 produced two wrong numbers in the first place.
+
+  The bound now lives in **`trim.is_physical`** rather than in `validation.sweep`, which is
+  where session 11 put it. The defect is in `trim.trim` — it returns the absurd root and
+  says nothing — so every other caller was equally exposed. It is not folded into `trim`
+  itself because `trim` is jitted and vmapped (`minimum_drag_speed`) and therefore cannot
+  raise. Nothing in the project's own results is affected; any future parameter study must
+  check the angle, not just the residual.
 - **Drag polar away from its fitted point.** `CD0` and `e` were back-solved from a single
   reading. Residuals are within 0.004 near the fit, up to 0.014 below M 0.75 (parabolic
   polar misses the induced rise) and 0.006 above M 0.88 (Korn law extrapolating past its
@@ -808,9 +827,19 @@ that, and the gap is where the work is.
 
 Three things must change before Dryden lands, none of them large but all of them structural:
 
-1. **`WindState` has to carry filter states**, and `init_sim`/`batch_sim` must be
-   parameterised to seed them. Today they hard-code `zero_wind_state()`, so a stateful
-   model cannot be initialised at all. This is the actual blocker.
+1. **`init_sim`/`batch_sim` must be parameterised to seed a filter state.** Today they
+   hard-code `zero_wind_state()`, so a stateful model cannot be initialised **through them**.
+   This is the actual blocker, and session 12 narrowed it: it is the *seeding* that is
+   missing, not the *carrying*.
+
+   `step` threads `wind_state` opaquely and never interprets it, so a model already brings
+   its own state type — `test_integrate.py`'s `FilterState` has done so since session 2, and
+   session 12's `_Clock` carries a time field the same way. **So `wind.WindState` does not
+   need to grow fields, and the wind-model signature does not change.** Constructing the
+   `SimState` directly is the workaround until `init_sim` takes a seed; that is a two-line
+   change to one function rather than a structural one. Growing `WindState` a `t` field
+   *now* would also break `FilterState`, since `step` would have to `_replace` a field that
+   a bring-your-own state does not have.
 2. **`omega_gust` needs its own filter.** `field_model`'s analytic-gradient trick has no
    equivalent for a stochastic field; MIL-F-8785C gives separate rate spectra, and reusing
    the translational filter would be wrong.
@@ -949,13 +978,27 @@ protocol with a linear and a table implementation. That was the option not taken
   is what makes the third cluster's separation attributable to the elevator rather than to
   timescale. Δθ is 25° at the shortest defensible hold and 30° at this one, so the choice
   moves the number without moving the conclusion.
-- **The `−m·dW/dt` gust error is still untested.** §2 names two classic gust-modelling
-  mistakes: substituting `vel_rel` into the Coriolis term, and adding an explicit
-  `−m·dW/dt`. Session 11's Galilean-invariance test catches the first. It **cannot** catch
-  the second, because a steady uniform wind has zero material derivative — the spurious
-  term is identically zero in that test. Detecting it needs a **time-varying** field and
-  an assertion other than invariance, and no such test exists. Recorded so §4's
-  verification block is not read as covering both.
+- ~~**The `−m·dW/dt` gust error is still untested.**~~ **CLOSED, session 12.** §2 names two
+  classic gust-modelling mistakes: substituting `vel_rel` into the Coriolis term, and
+  adding an explicit `−m·dW/dt`. Session 11's Galilean test catches the first and, as it
+  said, could not catch the second. §4 now carries both new rows.
+
+  What forced the design is worth keeping, because the obvious test is wrong. Offsetting
+  the start state by `W(0)` and demanding the rates match still air — the steady test's own
+  instrument — asserts **false physics**. With `ṽ_b = v_b − CᵀW(t)` the air-relative body
+  velocity, `ṽ̇_b = F(ṽ_b,ω)/m + g_b − ω×ṽ_b − Cᵀ Ẇ`: the air-relative state obeys the
+  still-air equation **plus** `−Cᵀ Ẇ`. That term is exactly what makes a time-varying wind
+  something other than a change of inertial frame, so the two runs must diverge and an
+  invariance assertion cannot be the instrument. What works is a **closed form** — zero the
+  aerodynamics and the thrust, and free fall is the exact answer while the wind has no
+  legitimate route into the equations at all, so any dependence on it is the spurious term
+  and nothing else.
+
+  Both tests were checked by **injecting the bug**, per §3's rule that a check which can
+  only pass shows nothing. Both fail on it by orders of magnitude; the Galilean test
+  *passes* with the bug still in (2.7e-15 on quaternion against its 1e-11 tolerance) once
+  the wind cache is seeded consistently, so its blindness is measured and not merely
+  argued. `docs/ASSUMPTIONS.md` §E4 carries the detail.
 - **Whether Etkin & Reid publishes an independent CRUISE worked example.** Caughey covers
   the M 0.25 approach point, where the model's error is 0.4%. The interesting condition is
   M 0.80 / 40,000 ft, where it is 17.8%, and there the only reference is CR-2144's own
