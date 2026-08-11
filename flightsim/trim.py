@@ -85,6 +85,12 @@ def minimum_drag_speed(
     return speeds[jnp.argmin(jax.vmap(drag)(speeds))]
 
 
+# The Newton start point. A module constant rather than a literal inside `trim`
+# so that verification.py measures the convergence of the actual solver instead
+# of a hand-copied guess that could drift away from it.
+INITIAL_GUESS = jnp.array([0.05, 0.0, 0.5])
+
+
 @partial(jax.jit, static_argnames=("iterations",))
 def trim(
     airspeed: Array,
@@ -94,7 +100,7 @@ def trim(
     iterations: int = 40,
 ) -> tuple[Array, Array]:
     """Solve for [alpha, elevator, throttle]. Returns (solution, final residual)."""
-    x0 = jnp.array([0.05, 0.0, 0.5]) if guess is None else guess
+    x0 = INITIAL_GUESS if guess is None else guess
 
     def step(x, _):
         r = residual(x, airspeed, altitude, ac)

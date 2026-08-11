@@ -6,7 +6,7 @@ requires-python = ">=3.10"
 dependencies = ["jax", "numpy", "scipy", "matplotlib"]
 
 [project.optional-dependencies]
-dev = ["pytest", "pymupdf"]
+dev = ["pytest", "pymupdf", "jupyter", "nbval"]
 
 [build-system]
 requires = ["setuptools"]
@@ -14,3 +14,10 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["flightsim*"]
+
+[tool.pytest.ini_options]
+# notebooks/ is deliberately NOT here. It needs --nbval-lax, and putting that in
+# addopts would make every pytest run fail with "unrecognized arguments" wherever
+# nbval is not installed -- including any install without the dev extra. The
+# notebook is a separate gate command; see PROJECT.md section 10.
+testpaths = ["flightsim/tests"]
