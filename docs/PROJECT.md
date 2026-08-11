@@ -57,6 +57,7 @@ without a core rewrite. Both have now been exercised and both held.
 | `units.py` | conversion constants only | no logic; factors are never inlined elsewhere |
 | `verification.py` | **tier 0** — `fitted_order`, `oscillator_refinement`, `fixed_control_refinement`, `newton_residual_history`, `torque_free_omega` | takes **no aircraft data as a reference**; a failure here is a defect in the core |
 | `validation.py` | **tiers 1–2** — `longitudinal_matrix`, `to_stability_axes`, `to_imperial_matrix`, `longitudinal_modes`, `lateral_modes`, `Reference`/`REFERENCES`, `CAUGHEY_A`, `sweep`, `affine_fit` | the linearisation lives here, not in `tests/modes.py`, which is now a re-export. Every reference number carries its citation as a `Reference.source` field, enforced by a test |
+| **`docs/ASSUMPTIONS.md`** | not code — the **assumption register**: what the model assumes, why, and a measured bound on each | this document records what has been *measured*; that one records what has been *assumed*. Read it before quoting any result to better than ~0.5%, before flying far from a trim point, and before adding a wind field whose scale approaches a wingspan |
 | `state.py` | `State`/`Controls`, quaternion utilities | NED inertial, body x-fwd/y-right/z-down; quat is `[w,x,y,z]`, body→NED |
 | `atmosphere.py` | ISA to 20 km | two layers — the 747 cruise sits above the tropopause |
 | `aero.py` | coefficient build-up | **takes `vel_rel`/`omega_rel` only; never sees inertial velocity** |
@@ -537,7 +538,41 @@ of them stale. If one moves, the derivative chain or the integrator changed.
 
 ## 5. Attributed gaps and structural impossibilities
 
+> **`docs/ASSUMPTIONS.md` is the companion to this section.** §5 lists gaps found by
+> comparing against sources; that file lists what the model *assumes* before any comparison
+> happens, with a measured bound on each. Two of its entries are load-bearing enough to be
+> repeated here.
+
 **Attributed — understood, documented, not bugs:**
+
+- **The Parks vortex core is 2.3–3.1 wingspans, and the gust field is sampled at a point.**
+  The wind is evaluated at `pos_ned` and `field_model` derives `omega_gust` from the
+  analytic gradient — a **first-order** correction for variation across the airframe. That
+  is comfortable for every field in the project except the one the headline result uses:
+
+  | Field | Scale | In 747 spans (59.64 m) |
+  |---|---|---|
+  | Parks Hannibal core radius | 182.9 m | **3.07** |
+  | Parks Morton core radius | 137.2 m | **2.30** |
+  | Wingrove updraft radius | 2359 m | 39.6 |
+  | Doyle lee wave, quarter wavelength | 6250 m | 104.8 |
+  | Oseguera microburst radius | 1000 m | 109.8 (Cherokee spans) |
+
+  At 2–3 spans the linear-gradient correction is doing real work rather than tidying up,
+  and second-order variation across the span is not represented at all. This compounds with
+  the ±25% parameter band below and with §2's note that the rotational gust already exceeds
+  the 747's full aileron authority by ~1.5×. **Vortex conclusions stay orderings** — which
+  this section already required for a different reason.
+
+- **Gravity is constant at 9.80665 m/s², which is +0.383% high at the 747's cruise
+  altitude.** True `g(h) = g₀(R/(R+h))²` is 9.76922 at 12,192 m. Lanchester's
+  `ωn_phugoid = √2·g/u₀` maps that **1:1** into phugoid frequency, so the cruise 747 carries
+  a +0.383% systematic bias in a mode this document compares against CR-2144. It is
+  invisible inside that mode's 17.8% gap — but it is **the same order as the tightest
+  agreements in §4** (Dutch roll ωn 0.4%, spiral τ 0.8%, roll τ 0.9%). Those are lateral
+  modes that g barely touches, so they are not biased; the point is the scale. **No claim of
+  agreement below ~0.5% at altitude is safe until `g(h)` is modelled.** At sea level — the
+  approach 747 — the error is exactly zero.
 
 - **Phugoid and short-period offsets.** ~~The sim's aero form is α/q/δe only; CR-2144
   Table IX-4's `Xu, Zu, Mu, Żw, Ṁw` are deliberately excluded.~~ **That wording was wrong
@@ -1440,6 +1475,15 @@ root**; the scripts import `flightsim` from the editable install, not from `scri
 | `.venv/Scripts/python.exe scripts/leewave.py --png runs/lw.png` | Flies the 747 through a Doyle et al. lee wave and compares the Bowles F-factor against the aircraft's own `(T−D)/W`. Prints both of the source's flight legs and which of them the engines can cover. |
 | `.venv/Scripts/python.exe scripts/analyse.py runs/a.npz` | Replays a saved `.npz`. Accepts several files; `--png DIR` writes instead of showing. |
 | `.venv/Scripts/python.exe scripts/summary.py docs/summary/flightsim-summary.pdf docs/summary/panel.png` | Rebuilds the plain-English summary PDF (14 pages). The parts that are *computed* cannot drift from the code — the vortex figures call `wind.vortex_wind`, and the aircraft table reads `CRUISE`. **The prose and the summary statistics are literals and can**: the test and line counts were stale by session 7, and four page cross-references were wrong by session 8. The page numbers are now generated from `PAGE_ORDER` with a build-time count check; the statistics are still literals. Re-run it after anything that changes those. |
+
+### The documents, and which question each answers
+
+| Document | Answers |
+|---|---|
+| **`docs/PROJECT.md`** (this file) | what exists, what is **measured**, what is known-broken, what happens next |
+| **`docs/ASSUMPTIONS.md`** | what is **assumed** before any measurement, with a bound on each. Read before quoting a result to better than ~0.5%, before flying far from a trim point, or before adding a wind field whose scale approaches a wingspan. Its closing section explains what the notebook does and does not demonstrate |
+| `docs/superpowers/plans/2026-08-11-close-the-verification-gaps.md` | the current plan, plus a full handover of session 11 for a session that was not there |
+| `docs/superpowers/specs/2026-08-11-solver-validation-design.md` | why the verification/validation split, and the source-qualification tiers that answer "is a 1972 document a source of error" |
 
 Flags: `tune.py` takes `--aircraft` only. `fly.py` takes `--aircraft --autopilot --save
 --dt --fps --window --seed --wind --lead-in --sharpness`. `vortex.py` takes `--case
