@@ -84,3 +84,40 @@ def test_slower_flight_needs_more_alpha():
     slow, _ = trim.trim(jnp.array(200.0), jnp.array(H), AC)
     fast, _ = trim.trim(jnp.array(250.0), jnp.array(H), AC)
     assert float(slow[0]) > float(fast[0])
+
+
+def test_trim_converges_to_a_physically_absurd_solution():
+    """Convergence and sense are different questions.
+
+    `CL = CL0 + CLa*alpha` is linear, so a huge alpha compensates a tiny CLa and
+    Newton lands on a root that satisfies the residual perfectly and is not a
+    flight condition. A residual check detects non-convergence; it cannot detect
+    nonsense. Until session 11 nothing in the project asked the second question,
+    and the bound then went into `validation.sweep` -- which is where it was
+    needed, but not where the defect is. Every other caller of `trim` was equally
+    exposed, hence `trim.is_physical`.
+
+    NO SPECIFIC ANGLE IS ASSERTED, and that is a finding rather than laziness.
+    The far root Newton reaches is chaotically sensitive to the start conditions:
+    at CLa = 1e-4, sea level, the same aircraft gives -632.1 deg at 85.0 m/s and
+    -4232.1 deg at 84.9 m/s. The reproducible fact is the property -- converged,
+    and absurd -- so that is what is asserted.
+    """
+    ac = REGISTRY["boeing747_approach"]._replace(CLa=jnp.array(0.1))
+    x, res = trim.trim(jnp.array(85.0), jnp.array(0.0), ac)
+    assert float(jnp.linalg.norm(res)) < 1e-12, "this case converges; that is the point"
+    assert not trim.is_physical(x), f"alpha {float(x[0]) * RAD2DEG:.1f} deg passed"
+
+
+def test_every_real_aircraft_trims_to_a_physical_solution():
+    """The positive control, without which `is_physical` could just return False.
+
+    Sweeps the whole registry at its own cruise condition. All four trim at 3-6
+    deg, so the 15 deg bound is nowhere near binding on legitimate data -- which
+    is the property that lets it be applied unconditionally.
+    """
+    for name, ac in REGISTRY.items():
+        x, _ = trim.trim(
+            jnp.array(CRUISE[name]["airspeed"]), jnp.array(CRUISE[name]["altitude"]), ac
+        )
+        assert trim.is_physical(x), f"{name}: alpha {float(x[0]) * RAD2DEG:.2f} deg"

@@ -222,17 +222,10 @@ CAUGHEY_A = np.array([
 
 TRIM_RESIDUAL_LIMIT = 1e-9
 
-# A trim outside this is not a flight condition. PROJECT.md section 7 puts the
-# linear-aero ceiling at |alpha| ~ 10-12 deg and says a run that leaves it "is not
-# evidence of anything"; 15 deg is a little beyond the amber band so a legitimate
-# sweep is never clipped.
-#
-# This bound is NOT redundant with the residual check, and finding that out is
-# what put it here. `trim.trim` converges happily to physically absurd roots: at
-# CLa = 1e-4 it returns alpha = -3872 deg with a residual of 3e-14, because
-# CL = CL0 + CLa*alpha is linear and a huge alpha compensates a tiny CLa. A
-# residual check detects non-convergence; it cannot detect nonsense.
-ALPHA_LIMIT = np.radians(15.0)
+# The |alpha| bound is `trim.is_physical`, and it lives there rather than here.
+# Session 11 put it in this module because this is where it was needed; the
+# defect is in `trim.trim`, which returns an absurd root and says nothing, so
+# every other caller was equally exposed. One bound, one place.
 
 
 def sweep(ac: Aircraft, field: str, values, quantity, V: float, H: float):
@@ -244,10 +237,12 @@ def sweep(ac: Aircraft, field: str, values, quantity, V: float, H: float):
     The aircraft is RE-TRIMMED at every sample, because changing a derivative
     moves the trim point and comparing modes across different trims would
     confound the two. Both the residual AND the resulting angle of attack are
-    checked, for the reason given at ALPHA_LIMIT.
+    checked, the latter through `trim.is_physical` -- convergence and sense are
+    different questions and only the first is what a residual measures.
 
     `quantity` takes (aircraft, alpha, elevator, throttle) and returns a float.
     """
+    from flightsim.trim import is_physical
     from flightsim.trim import trim as solve_trim
 
     out = []
@@ -258,7 +253,7 @@ def sweep(ac: Aircraft, field: str, values, quantity, V: float, H: float):
         if residual_norm > TRIM_RESIDUAL_LIMIT:
             raise RuntimeError(f"{field}={v} did not trim: residual {residual_norm:.3e}")
         alpha = float(x[0])
-        if abs(alpha) > ALPHA_LIMIT:
+        if not is_physical(x):
             raise RuntimeError(
                 f"{field}={v} did not trim: alpha {np.degrees(alpha):.1f} deg is "
                 f"outside the linear-aero range (PROJECT.md section 7)"

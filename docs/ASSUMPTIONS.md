@@ -28,7 +28,10 @@ flight-envelope simulator, or anything asserting agreement below about 0.5%.
 
 An assumption that fails (2) is the dangerous kind, because it is invisible: the model
 agrees with a source to 0.4% while carrying a 0.4% systematic error, and the agreement is
-partly luck. **Two entries below fail (2), and they are new findings.**
+partly luck. Session 11 flagged **two** entries as failing (2). Session 12 measured both,
+and **A2 turned out to pass** — the 0.383% gravity error reaches the phugoid 1:1 but the
+lateral modes only at 0.06–0.08%, so it does not threaten the agreements it appeared to.
+**E2, the vortex span ratio, still fails (2)** and is the one to respect.
 
 ---
 
@@ -71,15 +74,54 @@ about ten minutes. 6.88 m per 20 s grows as t².
 | 747 approach | 0 m | 9.80665 | exactly right |
 | Cherokee | 1,500 m | 9.80204 | +0.047% high |
 
-**This one fails question (2), and that is the finding.** Lanchester gives
-`ωn_phugoid = √2·g/u₀`, so a gravity error maps **1:1** into phugoid frequency: the cruise
-747 carries a **+0.383% systematic bias** in the mode the project compares against
-CR-2144. That is buried inside the cruise phugoid's 17.8% gap and changes nothing there.
+Lanchester gives `ωn_phugoid = √2·g/u₀`, so a gravity error should map **1:1** into phugoid
+frequency. Session 11 reasoned from that to a warning covering every mode. **Session 12
+measured it instead, and the warning was too strong.**
 
-But it is **the same order as the project's tightest agreements** — Dutch roll ωn 0.4%,
-spiral τ 0.8%, roll τ 0.9%. Those are lateral modes where g enters only weakly, so they are
-not directly biased; the point is the scale. **Any future claim of agreement below ~0.5%
-at altitude must model g(h) first, or it is claiming precision the model does not have.**
+**Bound, measured session 12** — `flightsim.dynamics.G0` replaced by `g(h)`, re-trimmed,
+all five modes recomputed. §4's tolerance is the one each mode is actually asserted to:
+
+| Mode at 747 cruise | g = 9.80665 | g(h) = 9.76922 | Movement | §4 tolerance | Consumed |
+|---|---|---|---|---|---|
+| phugoid ωn | 0.055319 | 0.055109 | **−0.3798%** | 5% | 7.6% |
+| phugoid ζ | 0.055956 | 0.055654 | −0.5385% | 10% | 5.4% |
+| short period ωn | 0.950773 | 0.950775 | **+0.0002%** | 3% | 0.01% |
+| short period ζ | 0.342526 | 0.342510 | −0.0046% | 5% | 0.1% |
+| Dutch roll ωn | 0.943202 | 0.942458 | −0.0788% | 2% | 3.9% |
+| Dutch roll ζ | 0.036085 | 0.035931 | −0.4288% | 10% | 4.3% |
+| roll τ | 1.795366 | 1.794285 | −0.0602% | 5% | 1.2% |
+| spiral τ | 138.0424 | 138.1187 | +0.0552% | 2% | 2.8% |
+| *trim α* | *4.6362°* | *4.6059°* | *−0.6535%* | — | — |
+
+**Control: the same sweep on the sea-level approach 747 moves every quantity by exactly
+0.0000%**, since `g(0) = g₀` identically. The effect is altitude and nothing else.
+
+**Three things the measurement says that the reasoning did not:**
+
+1. **Lanchester holds, to three figures.** Phugoid ωn moves −0.3798% against a gravity
+   change of −0.3816%. The 1:1 claim is now measured rather than asserted.
+2. **The 1:1 mapping is the phugoid's alone.** Short period is *immune* (+0.0002%), and the
+   lateral modes move 0.055–0.079% — **five to fifteen times smaller** than the agreements
+   session 11 feared for them (Dutch roll ωn 0.4%, spiral τ 0.8%, roll τ 0.9%). So the
+   blanket "no sub-0.5% claim at altitude is safe" was wrong: it applied the phugoid's
+   sensitivity to modes that do not have it.
+3. **The lateral modes' sensitivity is indirect.** There is no gravity term dominating the
+   lateral equations. g moves the **trim point** — α falls 0.65%, because less weight needs
+   less lift — and the derivatives are then read at a different α. That is why the lateral
+   movement is an order of magnitude below the phugoid's.
+
+**Decision, session 12: `g(h)` is NOT modelled, and this bound closes the entry.** Every
+movement is comfortably inside the tolerance of the check it would affect — the worst
+consumes 7.6% of its band. Against that, `G0` is imported by `dynamics`, `trim`, `aircraft`
+and `vortex_viz`, and changing it would move §4 baselines that are off-limits to feature
+work. And every result the project quotes is at **one altitude per aircraft**, so a constant
+g is *exactly* right per run; the bias only exists for comparisons across altitudes, which
+the project does not make.
+
+**What replaces the old warning:** a sub-0.5% claim at altitude is unsafe **for the
+phugoid**, which carries the full 0.38%. It is safe for the lateral modes (0.06–0.08%) and
+for the short period (~0). Revisit if the project ever compares one aircraft across two
+altitudes, which is the case a constant g genuinely cannot serve.
 
 ### A3. Altitude is geopotential, not geometric
 
@@ -311,14 +353,34 @@ true for Dryden**, which is a stochastic process in time — see §7's extensibi
 **Where:** `integrate.step`, documented in its module docstring as the standard treatment
 for Dryden and von Kármán.
 
-**Bound: this is the one seam session 11's verification did NOT cover**, and it is worth
-being precise about why. The order-of-accuracy test flies at fixed controls in still air,
-so it cannot see a wind term evaluated at the wrong stage. The Galilean test uses a
-*steady* wind, whose material derivative is zero, so it cannot see a spurious `−m·dW/dt`
-term either — the other error `PROJECT.md` §2 explicitly warns about.
+**Why it was the one seam session 11's verification did NOT cover.** The order-of-accuracy
+test flies at fixed controls in still air, so it cannot see a wind term evaluated at the
+wrong stage. The Galilean test uses a *steady* wind, whose material derivative is zero, so
+it could not see a spurious `−m·dW/dt` term either — the other error `PROJECT.md` §2
+explicitly warns about.
 
-**Verdict: unverified, and it is the first thing the next session should close** — see the
-fix plan. It matters because it is exactly the seam Dryden will load.
+**Bound, measured session 12: no spurious body force, to 1e-9 m against an exact solution.**
+Two tests, in `test_verification.py`:
+
+| Test | Instrument | Result |
+|---|---|---|
+| `..._time_varying_uniform_wind_adds_no_body_force` | every aerodynamic coefficient and the thrust zeroed, so free fall is the **closed form** and the wind has no legitimate route into the equations at all; flown through a uniform wind swinging at 3 rad/s with peak \|dW/dt\| = 91 m/s² | position matches `p₀ + v₀t + ½gt²` to **1e-9 m** over 300 steps |
+| `..._step_ignores_the_wind_the_previous_step_applied` | full 747 aerodynamics; one step taken twice, varying **only** `SimState.wind_ned` — the cached previous wind, which is the ingredient such a term would be differenced from | **bit-identical** |
+
+**An invariance assertion is the wrong instrument here, and that is worth recording.**
+Writing `ṽ_b = v_b − Cᵀ W(t)` for the air-relative body velocity and differentiating gives
+`ṽ̇_b = F(ṽ_b,ω)/m + g_b − ω×ṽ_b − Cᵀ Ẇ`: the air-relative state obeys the still-air
+equation **plus** a `−Cᵀ Ẇ` term. So a time-varying wind is *not* a change of inertial
+frame, and two runs offset by `W(0)` genuinely must diverge. The seam needs a closed form,
+not an invariance.
+
+**The falsification was run, since a test that can only pass demonstrates nothing.** With
+the bug injected into `step`, both tests fail by many orders of magnitude — and the
+Galilean test **passes with the bug still in** (2.7e-15 on quaternion, 6.9e-16 on `ω`,
+against its own 1e-11 tolerances) once the wind cache is seeded consistently. Its blindness
+is therefore measured rather than argued.
+
+**Verdict: closed.** The seam Dryden will load is the one now covered.
 
 ---
 
@@ -361,16 +423,18 @@ believing its own slope.
 
 | | Assumption | Status | Action |
 |---|---|---|---|
-| 1 | **E4** wind held across RK4 stages | **unverified** | test the `−m·dW/dt` seam with a time-varying field |
+| 1 | **E4** wind held across RK4 stages | **CLOSED, session 12** | no spurious body force, to 1e-9 m against a closed form |
 | 2 | **B1** rigid airframe vs flexible data | **unquantifiable** | cap claims; do not assert structural fidelity |
 | 3 | **C3** derivatives frozen across the envelope | **unbounded** | state the excursion with every result away from trim |
 | 4 | **E2** point-aircraft gusts, vortex at 2.3–3.1 spans | **newly bounded** | record in §5; keep vortex claims as orderings |
-| 5 | **A2** constant g, +0.383% at cruise | **newly bounded** | floor on any sub-0.5% agreement claim at altitude |
+| 5 | **A2** constant g, +0.383% at cruise | **CLOSED, session 12** | not modelled: worst mode movement is 7.6% of its tolerance. Phugoid only carries the full 0.38% |
 | 6 | **C5** no thrust moment, no spool | sound for now | required before any powered-recovery result |
 | 7 | **B4** accelerometer at CG vs DFDR | caveat | keep Fig. 8 claims as orderings |
 
-Items 1 and 5 are new and actionable. Items 2 and 3 are honest limits rather than bugs, and
-the correct response to both is to stop short of claims they cannot support.
+Items 1 and 5 — the two session 11 flagged as new and actionable — are both closed by
+measurement, and in both cases the measurement changed the answer the reasoning had given.
+Items 2 and 3 are honest limits rather than bugs, and the correct response to both is to
+stop short of claims they cannot support.
 
 ---
 

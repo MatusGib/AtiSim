@@ -11,6 +11,7 @@ untrimmed start accelerates or climbs away for no reason and makes autopilot
 tuning meaningless.
 """
 
+import math
 from functools import partial
 
 import jax
@@ -109,3 +110,27 @@ def trim(
 
     x, _ = jax.lax.scan(step, x0, None, length=iterations)
     return x, residual(x, airspeed, altitude, ac)
+
+
+# PROJECT.md section 7 puts the linear-aero ceiling at |alpha| ~ 10-12 deg and says
+# a run outside it "is not evidence of anything". 15 deg is a little beyond the
+# amber band, so a legitimate trim is never rejected -- every aircraft in the
+# registry trims at 3-6 deg at its own cruise condition, which test_trim.py
+# asserts as the positive control.
+ALPHA_LIMIT = math.radians(15.0)
+
+
+def is_physical(x: Array) -> bool:
+    """Is a trim solution a flight condition, as opposed to merely converged?
+
+    `CL = CL0 + CLa*alpha` is linear, so a large alpha compensates a small CLa
+    and `trim` reaches roots that satisfy the residual to machine precision at
+    hundreds of degrees of incidence. A residual check detects non-convergence;
+    it cannot detect nonsense, and the two are different questions.
+
+    NOT folded into `trim` itself, deliberately. `trim` is jitted and vmapped
+    (see `minimum_drag_speed`), so it cannot raise, and returning a flag would
+    churn every call site for a case that has never arisen with real aircraft
+    data. This is a separate question, asked by the callers that sweep.
+    """
+    return bool(abs(float(x[0])) <= ALPHA_LIMIT)
