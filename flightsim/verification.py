@@ -12,9 +12,12 @@ of the value. Tiers 1 and 2 -- analytic laws and published worked examples -- ar
 flightsim/validation.py.
 """
 
+from typing import NamedTuple
+
 import jax
 import jax.numpy as jnp
 import numpy as np
+from jax import Array
 
 
 def fitted_order(dts, errors):
@@ -113,6 +116,149 @@ def newton_residual_history(airspeed, altitude, ac, iterations=6):
         x = x - jnp.linalg.solve(jacobian, r)
         history.append(float(jnp.linalg.norm(residual(x, airspeed, altitude, ac))))
     return np.array(history)
+
+
+class WindClock(NamedTuple):
+    """A wind state that carries time, for a field that varies with it.
+
+    `integrate.step` threads `wind_state` opaquely and never interprets it, so a
+    model brings whatever state it needs -- see wind.py's module docstring, and
+    `FilterState` in test_integrate.py, which stands in for a Dryden shaping
+    filter the same way. A time-varying uniform field needs a clock and nothing
+    else, so it brings one here rather than `wind.WindState` growing a field for
+    a model that does not exist yet. PROJECT.md section 7 records the
+    consequence: Dryden's time dependence costs no signature change.
+    """
+
+    t: Array
+
+
+# Big and fast on purpose. |W0| is sqrt(18^2 + 20^2 + 12^2) = 29.4618 m/s and
+# OMEGA is 3 rad/s, so the peak |dW/dt| is 88.3855 m/s^2 -- 9.01 g of spurious
+# specific force if such a term exists.
+#
+# Session 12 wrote 30.5 m/s and 91 m/s^2 (9.3 g) here from an arithmetic slip,
+# and it reached ASSUMPTIONS.md E4 and PROJECT.md section 9 before session 13
+# extracted this experiment and had `FreeFallResult` report the figure instead of
+# a comment asserting it. That is the whole argument for computing a number where
+# a test can see it.
+SWING_W0 = jnp.array([18.0, -20.0, 12.0])
+SWING_OMEGA = 3.0
+
+
+def _swinging_wind(wind_state, state, key, dt):
+    """Uniform in SPACE, violently varying in TIME. Sampled before the clock ticks."""
+    del state
+    gust = SWING_W0 * jnp.sin(SWING_OMEGA * wind_state.t)
+    return gust, jnp.zeros(3), WindClock(t=wind_state.t + dt), key
+
+
+def without_aerodynamics(ac):
+    """Every aerodynamic coefficient and the thrust zeroed.
+
+    This is the ISOLATION the free-fall experiment needs, not a weakness of it:
+    with no aerodynamic force the wind has no legitimate route into the equations
+    at all, so any dependence of the trajectory on it is a spurious term and
+    nothing else. Inertia is left alone -- the experiment holds omega at zero for
+    its whole run, so it never enters.
+    """
+    zeroed = dict(
+        CL0=0.0, CLa=0.0, CLq=0.0, CLde=0.0, Cm0=0.0, Cma=0.0, Cmq=0.0, Cmde=0.0,
+        CD0=0.0, CYb=0.0, CYp=0.0, CYr=0.0, CYdr=0.0, Clb=0.0, Clp=0.0, Clr=0.0,
+        Clda=0.0, Cldr=0.0, Cnb=0.0, Cnp=0.0, Cnr=0.0, Cnda=0.0, Cndr=0.0,
+        max_thrust=0.0,
+    )
+    return ac._replace(**{k: jnp.array(v) for k, v in zeroed.items()})
+
+
+class FreeFallResult(NamedTuple):
+    """What `free_fall_through_a_swinging_wind` measured."""
+
+    max_position_error: float  # m, against the closed form
+    peak_wind: float  # m/s, largest |W| the aircraft actually flew through
+    peak_dwdt: float  # m/s^2, largest |dW/dt| the field carried
+    elapsed: float  # s, the clock the wind model advanced itself
+
+
+def free_fall_through_a_swinging_wind(ac, dt=0.02, n=300):
+    """Fly a de-aerodynamicised body through a violently time-varying uniform wind.
+
+    The second of the two gust-modelling errors PROJECT.md section 2 names. An
+    air mass that accelerates does not push on the aeroplane: it only changes the
+    flow the wings see, so the wind may enter through `vel_rel` and nowhere else,
+    and an explicit -m*dW/dt term double-counts.
+
+    The reference is a CLOSED FORM rather than another simulation. With every
+    coefficient zeroed there are no moments, so omega stays zero, the quaternion
+    is constant, and vdot_body = g_body is constant. RK4 on a constant derivative
+    is exact, so free fall is reproduced to round-off:
+
+        pos_ned(t) = pos0 + v_ned(0)*t + [0, 0, g]*t^2/2
+
+    An invariance assertion is the WRONG instrument here and that is worth
+    recording. Writing v~_b = v_b - C^T W(t) for the air-relative body velocity
+    and differentiating gives
+
+        v~_b_dot = F(v~_b, omega)/m + g_b - omega x v~_b - C^T Wdot
+
+    so the air-relative state obeys the still-air equation PLUS a -C^T Wdot term.
+    A time-varying wind is therefore not a change of inertial frame, and two runs
+    offset by W(0) genuinely must diverge. The seam needs a closed form.
+
+    The attitude is deliberately NOT level: a spurious term rotated through the
+    wrong DCM would survive a level test and fail this one. Speeds stay low
+    enough that `wave_drag`'s max() is on its flat side, so CD is exactly zero
+    rather than nearly so.
+
+    `ac` should be a real registry airframe put through `without_aerodynamics`.
+    Free fall is independent of mass and airframe, so the choice cannot flatter
+    the result -- which is what lets the notebook and the test run the same code
+    on the same aircraft.
+    """
+    from flightsim.atmosphere import G0
+    from flightsim.integrate import SimState, rollout
+    from flightsim.state import State, euler_to_quat, quat_to_dcm
+    from flightsim.trim import trimmed_controls
+
+    quat = euler_to_quat(jnp.array(0.3), jnp.array(-0.2), jnp.array(0.7))
+    state = State(
+        pos_ned=jnp.array([0.0, 0.0, -3000.0]),
+        vel_body=jnp.array([80.0, 0.0, 0.0]),
+        quat=quat,
+        omega=jnp.zeros(3),
+    )
+    # Throttle 0.5 against max_thrust = 0, so "no thrust" is a property of the
+    # airframe rather than of the control input.
+    controls = trimmed_controls(jnp.array(0.0), jnp.array(0.5))
+
+    sim = SimState(
+        state=state,
+        wind=WindClock(t=jnp.array(0.0)),
+        key=jax.random.PRNGKey(0),
+        wind_ned=jnp.zeros(3),
+        omega_gust=jnp.zeros(3),
+    )
+    final, traj = rollout(sim, controls, jnp.array(dt), ac, n, wind_model=_swinging_wind)
+
+    t = np.arange(1, n + 1) * dt
+    v_ned0 = np.asarray(quat_to_dcm(quat) @ state.vel_body)
+    gravity = np.array([0.0, 0.0, float(G0)])
+    exact = (
+        np.asarray(state.pos_ned)
+        + t[:, None] * v_ned0
+        + 0.5 * (t**2)[:, None] * gravity
+    )
+    error = float(np.abs(np.asarray(traj.pos_ned) - exact).max())
+
+    # Reported so a caller can assert the wind really swung, rather than the
+    # model quietly returning zeros and the experiment passing for that reason.
+    sampled = np.asarray(SWING_W0) * np.sin(SWING_OMEGA * np.arange(n) * dt)[:, None]
+    return FreeFallResult(
+        max_position_error=error,
+        peak_wind=float(np.linalg.norm(sampled, axis=1).max()),
+        peak_dwdt=float(np.linalg.norm(np.asarray(SWING_W0)) * SWING_OMEGA),
+        elapsed=float(final.wind.t),
+    )
 
 
 def torque_free_omega(I1, I2, I3, omega0, t):

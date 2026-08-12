@@ -55,7 +55,7 @@ without a core rewrite. Both have now been exercised and both held.
 | Module | Responsibility | Notes |
 |---|---|---|
 | `units.py` | conversion constants only | no logic; factors are never inlined elsewhere |
-| `verification.py` | **tier 0** — `fitted_order`, `oscillator_refinement`, `fixed_control_refinement`, `newton_residual_history`, `torque_free_omega` | takes **no aircraft data as a reference**; a failure here is a defect in the core |
+| `verification.py` | **tier 0** — `fitted_order`, `oscillator_refinement`, `fixed_control_refinement`, `newton_residual_history`, `torque_free_omega`, `without_aerodynamics`, `free_fall_through_a_swinging_wind` | takes **no aircraft data as a reference**; a failure here is a defect in the core. Every check lives here rather than inside its test, so the notebook runs the same code the suite asserts on |
 | `validation.py` | **tiers 1–2** — `longitudinal_matrix`, `to_stability_axes`, `to_imperial_matrix`, `longitudinal_modes`, `lateral_modes`, `Reference`/`REFERENCES`, `CAUGHEY_A`, `sweep`, `affine_fit` | the linearisation lives here, not in `tests/modes.py`, which is now a re-export. Every reference number carries its citation as a `Reference.source` field, enforced by a test |
 | **`docs/ASSUMPTIONS.md`** | not code — the **assumption register**: what the model assumes, why, and a measured bound on each | this document records what has been *measured*; that one records what has been *assumed*. Read it before quoting any result to better than ~0.5%, before flying far from a trim point, and before adding a wind field whose scale approaches a wingspan |
 | `state.py` | `State`/`Controls`, quaternion utilities | NED inertial, body x-fwd/y-right/z-down; quat is `[w,x,y,z]`, body→NED |
@@ -444,7 +444,8 @@ second order when it claims to be fourth.
 | RK4 observed order, real 6-DOF vs fine-step reference | **3.98913** | 4.00 ± 0.05 |
 | Galilean invariance, uniform horizontal wind: quaternion and rates | exact | atol 1e-11 |
 | …and position differs by exactly W·t | exact | atol 1e-6 |
-| **No `−m·dW/dt` body force** (session 12): zero-aero free fall through a wind swinging at peak \|dW/dt\| = 91 m/s², vs `p₀ + v₀t + ½gt²` | **exact**, 300 steps | atol 1e-9 |
+| **No `−m·dW/dt` body force** (session 12): zero-aero free fall through a wind swinging to 29.46 m/s, peak \|dW/dt\| = **88.39 m/s² (9.01 g)**, vs `p₀ + v₀t + ½gt²` | **3.98e-12 m**, 300 steps | atol 1e-9 |
+| …and the same experiment with a `−m·dW/dt` term injected into `step` (session 13) | **13.33 m** — falsified | must fail |
 | …and one step is independent of the cached previous wind, full 747 aero | **bit-identical** | equality |
 | Trim Newton convergence ratio (log-residual exponent) | > 1.6, i.e. quadratic | > 1.6 |
 | Torque-free asymmetric body vs Jacobi elliptic closed form, 1500 steps | agrees | atol 1e-8 |
@@ -1058,6 +1059,38 @@ protocol with a linear and a table implementation. That was the option not taken
 
 ## 9. Session log
 
+### Session 13 — putting session 12's work where the notebook can see it
+
+Session 12 closed E4 but left its two checks **inside the test file**, unlike every other
+tier-0 check, which is a `verification.py` function driven by a thin test. The consequence
+was not cosmetic. `ASSUMPTIONS.md` states the protocol — *add the computation to
+`verification.py`, assert it in a test, then add a notebook cell* — and session 12 did only
+the middle step, so **the notebook still told a reader the `−m·dW/dt` term could not be
+detected.** The review deliverable was misstating the project's status.
+
+Extracted `without_aerodynamics` and `free_fall_through_a_swinging_wind` into
+`verification.py`, returning a `FreeFallResult` the test asserts on and the notebook prints.
+The notebook is now 13 cells; its summary moves the seam from "known gaps" to "established"
+and picks up the g(h) decision.
+
+**Having the experiment report its own numbers immediately found a wrong one.** The comment
+claimed `|W0|` = 30.5 m/s and peak `|dW/dt|` = 91 m/s² (9.3 g). It is
+`√(18²+20²+12²)` = **29.4618 m/s** and **88.3855 m/s² (9.01 g)**. The slip had reached
+§4, §9 and `ASSUMPTIONS.md` E4. All corrected, and the test now asserts both figures rather
+than trusting a comment — which is the entire argument for computing a number where a test
+can see it.
+
+Two other numbers are now sharper. The free-fall agreement is **3.98e-12 m**, not merely
+"under 1e-9". And the falsification is quantified: with the spurious term injected,
+the same figure is **13.33 m**, ten orders of magnitude above the bound.
+
+The experiment now runs on the **747** rather than `conftest.make_test_aircraft`, whose own
+docstring says it is synthetic and "must never be used for results" — which a notebook is.
+Free fall is independent of mass and airframe, so the choice cannot flatter the result.
+
+322 tests + 1 skipped and the 13-cell notebook, both green. No test count change: the
+existing test was rewritten as a driver, not duplicated.
+
 ### Session 12 — closing the two actionable assumptions, and what measuring changed
 
 Session 11's register ended with two entries marked new and actionable: **E4**, the
@@ -1071,10 +1104,12 @@ physics: the air-relative velocity obeys the still-air equation *plus* `−Cᵀ�
 runs must diverge, and no tolerance could have been chosen honestly. The instrument that
 works is a **closed form** — zero the aerodynamics and the thrust and free fall is the exact
 answer, while the wind has no legitimate route into the equations at all, so any dependence
-on it is the spurious term. Matches `p₀ + v₀t + ½gt²` to 1e-9 m through a wind swinging at
-peak `|dW/dt|` = 91 m/s². A second test keeps the full 747 aero and varies only the cached
-previous wind: bit-identical. Both were falsified by injecting the bug; the Galilean test
-**passes with the bug still in**, so its documented blindness is now measured.
+on it is the spurious term. Matches `p₀ + v₀t + ½gt²` to 3.98e-12 m through a wind swinging
+to 29.46 m/s at peak `|dW/dt|` = 88.39 m/s². A second test keeps the full 747 aero and
+varies only the cached previous wind: bit-identical. Both were falsified by injecting the
+bug; the Galilean test **passes with the bug still in**, so its documented blindness is now
+measured. (Session 12 recorded 91 m/s² here from an arithmetic slip; session 13 corrected
+it by having the experiment report the figure rather than a comment assert it.)
 
 **A2 — constant gravity.** Session 11 reasoned from Lanchester that a 0.383% gravity error
 threatened every agreement below 0.5%. Measured, the 1:1 mapping is the **phugoid's alone**

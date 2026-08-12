@@ -364,7 +364,7 @@ Two tests, in `test_verification.py`:
 
 | Test | Instrument | Result |
 |---|---|---|
-| `..._time_varying_uniform_wind_adds_no_body_force` | every aerodynamic coefficient and the thrust zeroed, so free fall is the **closed form** and the wind has no legitimate route into the equations at all; flown through a uniform wind swinging at 3 rad/s with peak \|dW/dt\| = 91 m/s² | position matches `p₀ + v₀t + ½gt²` to **1e-9 m** over 300 steps |
+| `..._time_varying_uniform_wind_adds_no_body_force` | every aerodynamic coefficient and the thrust zeroed, so free fall is the **closed form** and the wind has no legitimate route into the equations at all; flown through a uniform wind swinging at 3 rad/s to 29.46 m/s, peak \|dW/dt\| = **88.39 m/s² (9.01 g)** | position matches `p₀ + v₀t + ½gt²` to **3.98e-12 m** over 300 steps, against a 1e-9 m bound |
 | `..._step_ignores_the_wind_the_previous_step_applied` | full 747 aerodynamics; one step taken twice, varying **only** `SimState.wind_ned` — the cached previous wind, which is the ingredient such a term would be differenced from | **bit-identical** |
 
 **An invariance assertion is the wrong instrument here, and that is worth recording.**
@@ -375,7 +375,9 @@ frame, and two runs offset by `W(0)` genuinely must diverge. The seam needs a cl
 not an invariance.
 
 **The falsification was run, since a test that can only pass demonstrates nothing.** With
-the bug injected into `step`, both tests fail by many orders of magnitude — and the
+the bug injected into `step` — differencing the cached previous wind against the current
+sample, the one line anyone would write — the free-fall figure becomes **13.33 m**, ten
+orders of magnitude above the 1e-9 m bound. Both tests fail on it, and the
 Galilean test **passes with the bug still in** (2.7e-15 on quaternion, 6.9e-16 on `ω`,
 against its own 1e-11 tolerances) once the wind cache is seeded consistently. Its blindness
 is therefore measured rather than argued.
