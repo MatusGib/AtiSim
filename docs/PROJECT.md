@@ -444,6 +444,8 @@ second order when it claims to be fourth.
 | RK4 observed order, real 6-DOF vs fine-step reference | **3.98913** | 4.00 ± 0.05 |
 | Galilean invariance, uniform horizontal wind: quaternion and rates | exact | atol 1e-11 |
 | …and position differs by exactly W·t | exact | atol 1e-6 |
+| **No `−m·dW/dt` body force** (session 12): zero-aero free fall through a wind swinging at peak \|dW/dt\| = 91 m/s², vs `p₀ + v₀t + ½gt²` | **exact**, 300 steps | atol 1e-9 |
+| …and one step is independent of the cached previous wind, full 747 aero | **bit-identical** | equality |
 | Trim Newton convergence ratio (log-residual exponent) | > 1.6, i.e. quadratic | > 1.6 |
 | Torque-free asymmetric body vs Jacobi elliptic closed form, 1500 steps | agrees | atol 1e-8 |
 | …the closed form itself vs Euler's equations | 8.3e-8 | atol 1e-6 |
@@ -461,6 +463,39 @@ to 2.7e-12 m. Measured pairwise orders across a wide sweep:
 so the error bottoms out near **7e-11 m at dt = 1/128** and refining past it makes the
 answer *worse*. The fitted window stops at 1/32, 203× above the floor. Anything
 measuring a difference of trajectories at 40,000 ft has this ceiling.
+
+### What constant gravity costs, and why it stays (session 12)
+
+`ASSUMPTIONS.md` §A2 records that `G0 = 9.80665` is **+0.383% high** at the 747's cruise
+altitude. Session 11 reasoned from Lanchester that this threatened every sub-0.5% claim.
+This is the measurement that was made instead of the change: `flightsim.dynamics.G0`
+replaced by `g(h) = g₀(R/(R+h))²`, the aircraft **re-trimmed**, and all five modes
+recomputed. Tolerances are the ones each mode is actually asserted to in
+`test_cr2144_modes.py`.
+
+| Mode, 747 at cruise | g = 9.80665 | g(h) = 9.76922 | Movement | Tolerance | Consumed |
+|---|---|---|---|---|---|
+| phugoid ωn | 0.055319 | 0.055109 | **−0.3798%** | 5% | 7.6% |
+| phugoid ζ | 0.055956 | 0.055654 | −0.5385% | 10% | 5.4% |
+| short period ωn | 0.950773 | 0.950775 | **+0.0002%** | 3% | 0.01% |
+| short period ζ | 0.342526 | 0.342510 | −0.0046% | 5% | 0.1% |
+| Dutch roll ωn | 0.943202 | 0.942458 | −0.0788% | 2% | 3.9% |
+| Dutch roll ζ | 0.036085 | 0.035931 | −0.4288% | 10% | 4.3% |
+| roll τ | 1.795366 | 1.794285 | −0.0602% | 5% | 1.2% |
+| spiral τ | 138.0424 | 138.1187 | +0.0552% | 2% | 2.8% |
+| trim α | 4.6362° | 4.6059° | −0.6535% | — | — |
+
+**The control is the approach 747 at sea level, where every quantity moves by exactly
+0.0000%** — `g(0) = g₀` identically, so the experiment is measuring altitude and nothing
+else. `aircraft.py`'s two `G0` uses are deliberately not patched: they are in the Navion and
+Cessna transcription paths, where the conversion must use the g the *source* used, and
+neither 747 is built through them.
+
+**Decision: `g(h)` is not modelled.** The worst movement consumes 7.6% of its tolerance,
+`G0` is imported by four modules, and every result the project quotes is at one altitude
+per aircraft — so a constant g is *exactly* right per run and the bias exists only for
+comparisons across altitudes, which the project does not make. Revisit if that changes.
+§5 carries what the measurement corrected in the reasoning.
 
 ### Coefficient sensitivity — known change, known result (session 11)
 
@@ -565,14 +600,22 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   this section already required for a different reason.
 
 - **Gravity is constant at 9.80665 m/s², which is +0.383% high at the 747's cruise
-  altitude.** True `g(h) = g₀(R/(R+h))²` is 9.76922 at 12,192 m. Lanchester's
-  `ωn_phugoid = √2·g/u₀` maps that **1:1** into phugoid frequency, so the cruise 747 carries
-  a +0.383% systematic bias in a mode this document compares against CR-2144. It is
-  invisible inside that mode's 17.8% gap — but it is **the same order as the tightest
-  agreements in §4** (Dutch roll ωn 0.4%, spiral τ 0.8%, roll τ 0.9%). Those are lateral
-  modes that g barely touches, so they are not biased; the point is the scale. **No claim of
-  agreement below ~0.5% at altitude is safe until `g(h)` is modelled.** At sea level — the
-  approach 747 — the error is exactly zero.
+  altitude.** True `g(h) = g₀(R/(R+h))²` is 9.76922 at 12,192 m. **Session 12 measured what
+  that costs and decided not to model it**; §4 carries the table and `ASSUMPTIONS.md` §A2
+  the reasoning. Lanchester's `ωn_phugoid = √2·g/u₀` predicts a **1:1** mapping and the
+  measurement confirms it to three figures — phugoid ωn moves −0.3798% against a −0.3816%
+  change in g.
+
+  ~~It is the same order as the tightest agreements in §4, so no claim below ~0.5% at
+  altitude is safe until `g(h)` is modelled.~~ **That was session 11's reasoning and the
+  measurement contradicts it.** The 1:1 mapping is the phugoid's alone: the short period is
+  immune (+0.0002%) and the lateral modes — which are where §4's tightest agreements are —
+  move only **0.055–0.079%**, five to fifteen times smaller than the agreements they were
+  feared to threaten. Their sensitivity is indirect, through a trim α that falls 0.65%, not
+  through a gravity term in the lateral equations. The corrected rule: **a sub-0.5% claim
+  at altitude is unsafe for the phugoid and safe for the other four modes.** At sea level —
+  the approach 747 — the error is exactly zero, and the measured movement there is exactly
+  0.0000%, which is the control on the whole experiment.
 
 - **Phugoid and short-period offsets.** ~~The sim's aero form is α/q/δe only; CR-2144
   Table IX-4's `Xu, Zu, Mu, Żw, Ṁw` are deliberately excluded.~~ **That wording was wrong
@@ -601,13 +644,30 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   "Source qualification"). Not quantified: doing so needs a rigid derivative set the
   project does not hold.
 
-- **`trim.trim` converges to physically absurd roots for degenerate coefficients.** At
-  CLa = 0.1 it returns α = **−633°** with a residual of 1.6e-15, because
-  `CL = CL0 + CLa·α` is linear and a huge α compensates a small CLa. Convergence and
-  sense are different questions. Found by a sweep guard failing to fire; `validation.sweep`
-  now bounds |α| by §7's linear-aero ceiling as well as checking the residual. Nothing in
-  the project's own results is affected — every real aircraft trims at 5–6° — but any
-  future parameter study must check the angle, not just the residual.
+- **`trim.trim` converges to physically absurd roots for degenerate coefficients.**
+  `CL = CL0 + CLa·α` is linear, so a huge α compensates a small CLa and Newton reaches a
+  root that satisfies the residual to machine precision and is not a flight condition.
+  Convergence and sense are different questions. Found by a sweep guard failing to fire.
+
+  **Two numbers in the session-11 wording were wrong, corrected session 12.** The −633°
+  was attributed to CLa = 0.1; it is **CLa = 1e-4**. Measured, `boeing747_approach` at
+  85 m/s and sea level: CLa = 0.1 gives **−272.7°** at residual 2.3e-15, CLa = 1e-4 gives
+  **−632.1°** at 5.7e-15. And "every real aircraft trims at 5–6°" was wrong in the other
+  direction — the registry spans **0.01° (Cherokee) to 5.62°** at its own cruise
+  conditions, which is what makes the 15° bound non-binding on legitimate data.
+
+  **The angle itself is not reproducible, and only the phenomenon is.** The far root is
+  chaotically sensitive to the start conditions: same aircraft, same CLa = 1e-4, sea level,
+  **85.0 m/s gives −632.1° and 84.9 m/s gives −4232.1°**. So no specific angle is asserted
+  anywhere — the test asserts converged-and-absurd, which is the stable fact. This is why
+  quoting one in §5 produced two wrong numbers in the first place.
+
+  The bound now lives in **`trim.is_physical`** rather than in `validation.sweep`, which is
+  where session 11 put it. The defect is in `trim.trim` — it returns the absurd root and
+  says nothing — so every other caller was equally exposed. It is not folded into `trim`
+  itself because `trim` is jitted and vmapped (`minimum_drag_speed`) and therefore cannot
+  raise. Nothing in the project's own results is affected; any future parameter study must
+  check the angle, not just the residual.
 - **Drag polar away from its fitted point.** `CD0` and `e` were back-solved from a single
   reading. Residuals are within 0.004 near the fit, up to 0.014 below M 0.75 (parabolic
   polar misses the induced rise) and 0.006 above M 0.88 (Korn law extrapolating past its
@@ -808,9 +868,19 @@ that, and the gap is where the work is.
 
 Three things must change before Dryden lands, none of them large but all of them structural:
 
-1. **`WindState` has to carry filter states**, and `init_sim`/`batch_sim` must be
-   parameterised to seed them. Today they hard-code `zero_wind_state()`, so a stateful
-   model cannot be initialised at all. This is the actual blocker.
+1. **`init_sim`/`batch_sim` must be parameterised to seed a filter state.** Today they
+   hard-code `zero_wind_state()`, so a stateful model cannot be initialised **through them**.
+   This is the actual blocker, and session 12 narrowed it: it is the *seeding* that is
+   missing, not the *carrying*.
+
+   `step` threads `wind_state` opaquely and never interprets it, so a model already brings
+   its own state type — `test_integrate.py`'s `FilterState` has done so since session 2, and
+   session 12's `_Clock` carries a time field the same way. **So `wind.WindState` does not
+   need to grow fields, and the wind-model signature does not change.** Constructing the
+   `SimState` directly is the workaround until `init_sim` takes a seed; that is a two-line
+   change to one function rather than a structural one. Growing `WindState` a `t` field
+   *now* would also break `FilterState`, since `step` would have to `_replace` a field that
+   a bring-your-own state does not have.
 2. **`omega_gust` needs its own filter.** `field_model`'s analytic-gradient trick has no
    equivalent for a stochastic field; MIL-F-8785C gives separate rate spectra, and reusing
    the translational filter would be wrong.
@@ -949,13 +1019,27 @@ protocol with a linear and a table implementation. That was the option not taken
   is what makes the third cluster's separation attributable to the elevator rather than to
   timescale. Δθ is 25° at the shortest defensible hold and 30° at this one, so the choice
   moves the number without moving the conclusion.
-- **The `−m·dW/dt` gust error is still untested.** §2 names two classic gust-modelling
-  mistakes: substituting `vel_rel` into the Coriolis term, and adding an explicit
-  `−m·dW/dt`. Session 11's Galilean-invariance test catches the first. It **cannot** catch
-  the second, because a steady uniform wind has zero material derivative — the spurious
-  term is identically zero in that test. Detecting it needs a **time-varying** field and
-  an assertion other than invariance, and no such test exists. Recorded so §4's
-  verification block is not read as covering both.
+- ~~**The `−m·dW/dt` gust error is still untested.**~~ **CLOSED, session 12.** §2 names two
+  classic gust-modelling mistakes: substituting `vel_rel` into the Coriolis term, and
+  adding an explicit `−m·dW/dt`. Session 11's Galilean test catches the first and, as it
+  said, could not catch the second. §4 now carries both new rows.
+
+  What forced the design is worth keeping, because the obvious test is wrong. Offsetting
+  the start state by `W(0)` and demanding the rates match still air — the steady test's own
+  instrument — asserts **false physics**. With `ṽ_b = v_b − CᵀW(t)` the air-relative body
+  velocity, `ṽ̇_b = F(ṽ_b,ω)/m + g_b − ω×ṽ_b − Cᵀ Ẇ`: the air-relative state obeys the
+  still-air equation **plus** `−Cᵀ Ẇ`. That term is exactly what makes a time-varying wind
+  something other than a change of inertial frame, so the two runs must diverge and an
+  invariance assertion cannot be the instrument. What works is a **closed form** — zero the
+  aerodynamics and the thrust, and free fall is the exact answer while the wind has no
+  legitimate route into the equations at all, so any dependence on it is the spurious term
+  and nothing else.
+
+  Both tests were checked by **injecting the bug**, per §3's rule that a check which can
+  only pass shows nothing. Both fail on it by orders of magnitude; the Galilean test
+  *passes* with the bug still in (2.7e-15 on quaternion against its 1e-11 tolerance) once
+  the wind cache is seeded consistently, so its blindness is measured and not merely
+  argued. `docs/ASSUMPTIONS.md` §E4 carries the detail.
 - **Whether Etkin & Reid publishes an independent CRUISE worked example.** Caughey covers
   the M 0.25 approach point, where the model's error is 0.4%. The interesting condition is
   M 0.80 / 40,000 ft, where it is 17.8%, and there the only reference is CR-2144's own
@@ -973,6 +1057,50 @@ protocol with a linear and a table implementation. That was the option not taken
   interactive rate has still not been re-taken since the re-layout.
 
 ## 9. Session log
+
+### Session 12 — closing the two actionable assumptions, and what measuring changed
+
+Session 11's register ended with two entries marked new and actionable: **E4**, the
+untested `−m·dW/dt` gust seam, and **A2**, constant gravity. Both are now closed, and in
+**both cases the measurement contradicted the reasoning that raised them**. That is the
+theme worth carrying forward.
+
+**E4 — the gust seam.** The plan proposed catching a spurious `−m·dW/dt` term by offsetting
+the start state by `W(0)` and demanding the rates match still air. That asserts false
+physics: the air-relative velocity obeys the still-air equation *plus* `−CᵀẆ`, so the two
+runs must diverge, and no tolerance could have been chosen honestly. The instrument that
+works is a **closed form** — zero the aerodynamics and the thrust and free fall is the exact
+answer, while the wind has no legitimate route into the equations at all, so any dependence
+on it is the spurious term. Matches `p₀ + v₀t + ½gt²` to 1e-9 m through a wind swinging at
+peak `|dW/dt|` = 91 m/s². A second test keeps the full 747 aero and varies only the cached
+previous wind: bit-identical. Both were falsified by injecting the bug; the Galilean test
+**passes with the bug still in**, so its documented blindness is now measured.
+
+**A2 — constant gravity.** Session 11 reasoned from Lanchester that a 0.383% gravity error
+threatened every agreement below 0.5%. Measured, the 1:1 mapping is the **phugoid's alone**
+(−0.3798%, confirming Lanchester to three figures); the short period is immune (+0.0002%)
+and the lateral modes — where §4's tightest agreements actually are — move 0.055–0.079%,
+five to fifteen times smaller than feared. Their sensitivity is *indirect*, through a trim α
+that falls 0.65%. Worst tolerance consumption is 7.6%, so **`g(h)` is not modelled** and the
+entry closes on the bound. Sea level moves exactly 0.0000%, which is the control.
+
+**Two wrong numbers found in §5 while writing a test.** The absurd-trim example attributed
+−633° to `CLa = 0.1`; it is `CLa = 1e-4`, and 0.1 gives −272.7°. "Every real aircraft trims
+at 5–6°" is wrong the other way — the registry spans 0.01° to 5.62°. Worse, the angle is
+**not reproducible at all**: same aircraft and CLa, 85.0 m/s gives −632.1° and 84.9 m/s
+gives −4232.1°. Nothing asserts an angle now, only converged-and-absurd.
+
+`trim.is_physical` moved the |α| bound out of `validation.sweep`, where session 11 put it,
+into the module whose function actually has the defect. **`WindState` did not need a time
+field** — `step` threads the wind state opaquely, so a model brings its own type, and adding
+`t` would have broken `test_integrate.py`'s `FilterState`. §7 records that Dryden therefore
+costs no signature change; the blocker is `init_sim` seeding, not `WindState` carrying.
+
+**322 tests + 1 skipped and the 12-cell notebook, both green.** Four new tests: two on the
+gust seam, two on `is_physical` (one of which is the positive control, without which
+`is_physical` could simply return `False` always). Nothing in the validated baseline moved.
+Note the preceding commit's message says 320 — that count was taken from a background run
+that predated the two trim tests in the same commit; the correct figure there is 322.
 
 ### Session 11 — verifying the solver, and correcting what §5 claimed
 
