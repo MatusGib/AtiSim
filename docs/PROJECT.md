@@ -1623,11 +1623,15 @@ What was deliberately not done.
 Python 3.10.11, `.venv` in the project root. All commands are run **from the project
 root**; the scripts import `flightsim` from the editable install, not from `scripts/`.
 
-### The five entry points
+### The entry points
+
+The count is deliberately out of this heading: it read "five" over an eleven-row table for
+several sessions, which is the drift §4's rules exist to prevent.
 
 | Command | What it does |
 |---|---|
-| `.venv/Scripts/python.exe -m pytest -q` | 318 tests. The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `flightsim/tests`. |
+| `.venv/Scripts/python.exe -m pytest -q` | 322 tests, 1 skipped. The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `flightsim/tests`. |
+| `.venv/Scripts/python.exe scripts/sanity.py` | **The ladder, for a reader who does not yet trust the model.** Twelve cases from degenerate inputs upward — zero the wind, zero a coefficient so a motion becomes impossible, then signs, then hand-computable numbers, then structural properties. Every expected value is derived by hand in the source and printed beside the model's answer, so it is read rather than trusted. Ends with the item 08 convention probe, which is a measurement rather than a pass/fail. |
 | `.venv/Scripts/python.exe -m pytest --nbval-lax notebooks/ -q` | **The second gate.** Executes `notebooks/solver-validation.ipynb` so it cannot rot. Needs the `dev` extra (`jupyter`, `nbval`). Deliberately *not* in `testpaths` and `--nbval-lax` is deliberately *not* in `addopts`: that would make every `pytest` run fail with "unrecognized arguments" wherever nbval is absent. **Run it from a worktree with an ABSOLUTE `PYTHONPATH`** — nbval starts the kernel with its cwd in `notebooks/`, so a relative `PYTHONPATH=.` resolves to the wrong directory and `flightsim` silently loads from the main checkout. |
 | `.venv/Scripts/python.exe scripts/checkpoint.py` | 747 only, no flags. Trim residuals, 60 s fixed-control hold, longitudinal modes against CR-2144 Table IX-5. |
 | `.venv/Scripts/python.exe scripts/tune.py --aircraft cherokee` | Autopilot step responses for one aircraft. Exits non-zero on failure, so it is usable as a gate. |
