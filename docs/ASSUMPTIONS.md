@@ -257,7 +257,7 @@ Documented in `PROJECT.md` §5 with measured residuals: within 0.004 near the fi
 
 **Where:** `aero.thrust_force` — `throttle × max_thrust × (ρ/ρ₀)^lapse`.
 
-**Three separate assumptions bundled together, and they are not equally safe:**
+**Four separate assumptions bundled together, and they are not equally safe:**
 
 - **No spool dynamics.** A high-bypass turbofan takes several seconds from idle to full
   thrust. Every result in the project is either fixed-throttle or trimmed, so nothing
@@ -265,12 +265,76 @@ Documented in `PROJECT.md` §5 with measured residuals: within 0.004 near the fi
   *thrust authority*, which is a statement about what the engines could do. If a recovery
   manoeuvre is ever flown, spool time is the first thing that must be added.
 - **No thrust moment.** The 747's engines hang below the CG, so real thrust produces a
-  nose-up pitching moment that changes with throttle. Unmodelled, and unquantified —
-  CR-2144 does not tabulate a thrust-line offset.
+  nose-up pitching moment that changes with throttle. Still unmodelled, but **no longer
+  unquantified** — the bound is below.
+- **Thrust parallel to body x.** The real thrust line is inclined **2.5° up** from the
+  fuselage reference line, with each engine canted **2° inward** (CR-114494 p. 1.3-3, cited
+  below, which writes those as T_z = −0.0436·T_x and T_y = 0.0349·(T₁+T₂−T₃−T₄) — exactly
+  tan 2.5° and tan 2°). At FC9 trim the inclination is 8.1 kN of vertical force, **0.286%
+  of weight**, and it makes the thrust magnitude only 0.095% larger than its x component.
 - **No Mach dependence of thrust.** Only a density lapse.
 
-**Verdict: sound for the fixed-throttle encounters flown so far; the first thing to fix
-before any powered-recovery result.**
+**Bound, measured — and the source for it is not CR-2144.** CR-2144 does not tabulate a
+thrust-line offset, which is why this entry read "unquantified". The document it draws its
+747 data from does: **NASA CR-114494 / Boeing D6-30643 Vol. II, Hanke & Nordwall, *The
+Simulation of a Jumbo Jet Transport Aircraft, Volume II: Modeling Data*, Boeing Wichita,
+September 1970** (NTRS 19730001300, public domain). It is the same airframe — its wing
+area, MAC and span, 5500 ft², 27.31 ft and 195.68 ft, are the numbers `aircraft.py`
+already carries from CR-2144 Table IX-3, digit for digit.
+
+Its "Summary of Areas and Dimensions" tabulates effective engine **pitching** arms Z_EI
+and Z_EO (the 39.6 ft and 69.4 ft usually quoted are Y_EI and Y_EO, the *yawing* arms, and
+are not the ones that matter here). Page 1.3-3 gives the equation they enter:
+
+> M_T = (T₁ + T₄)·Z_EO + (T₂ + T₃)·Z_EI
+
+— engines 1 and 4 outboard, 2 and 3 inboard — so with four equal engines the effective
+single arm is the **mean** of the two. The table appears twice in the report, and the two
+printings disagree:
+
+| Effective pitching arm, in-flight ("air") values | Z_EI | Z_EO | mean arm |
+|---|---|---|---|
+| p. 1.1-3, as issued | 14.6 ft | 5.4 ft | 10.00 ft = 3.048 m |
+| **p. 19.0-2, Appendix E, "Revised Simulation Data"** | **8.3 ft** | **3.1 ft** | **5.70 ft = 1.737 m** |
+
+Page 1.1-3 is stamped "SEE SECTION 19 FOR REVISED DATA" and p. 19.0-2 is headed
+"REF: P. 1.1-3", so **the revised pair is the operative one**; the as-issued pair is kept
+below as the pessimistic case. (Both printings also give larger "ground" values switched by
+main-gear oleo compression, which never applies in this project — every 747 run is at
+altitude.) The scan has no usable text layer, so all four numbers were read off the page
+images; each is confirmed by the note's own arithmetic, which states ΔZ_EO and ΔZ_EI as the
+ground-minus-air differences and closes exactly in both printings.
+
+**At FC9 — 40,000 ft, M 0.800, trim thrust 186.0 kN from the model's own trim solve:**
+
+| | revised arms | as-issued arms |
+|---|---|---|
+| Thrust pitching moment, nose-up | **323 kN·m** | 567 kN·m |
+| As a moment coefficient ΔCm | **+0.00906** | +0.0159 |
+| Elevator that cancels it, moment held fixed | 0.359° | 0.630° |
+| …and after re-solving the trim | **0.379°** | 0.664° |
+| That re-trimmed figure, as a fraction of the ±25° elevator authority | **1.5%** | 2.7% |
+| …and of the 8.926° manoeuvring deflection | **4.2%** | 7.4% |
+
+**Re-trimmed with the moment folded in as a constant Cm offset**, trim α moves −0.0276°
+(−0.596%) and trim elevator +0.379°; throttle does not move. The five modes move by at
+most **−0.93%** (Dutch roll ζ), and the worst §4 tolerance consumption is **spiral τ at
+10.7%** of its 2% band, with Dutch roll ζ next at 9.3%. Short period does not move at all.
+That is the same indirect mechanism A2 found: the moment shifts the *trim point*, and with
+derivatives frozen (C3) the modes only feel it through the α it is read at.
+
+**The throttle dependence is the part worth remembering, and it is small.** Across the
+whole throttle range at this condition — idle to full, 0 to 252 kN — the thrust moment
+spans **0 to 0.487° of equivalent elevator** (measured the fixed-moment way, since full
+throttle at cruise is not a trim condition to re-solve). Under half a degree, end to end,
+against ±25° of authority.
+
+**Verdict: sound for the fixed-throttle encounters flown so far, and now bounded rather
+than asserted.** Modelling it would move §4 baselines that are off-limits to this work, and
+it buys at most 10.7% of one tolerance band. It remains the first thing to fix before any
+powered-recovery result — not because the steady moment is large, but because a recovery
+*changes throttle*, and the 0.49° swing is then a transient the model would not produce at
+all.
 
 ### C6. Control surfaces move instantly, with no rate limit or actuator lag
 
@@ -430,7 +494,7 @@ believing its own slope.
 | 3 | **C3** derivatives frozen across the envelope | **unbounded** | state the excursion with every result away from trim |
 | 4 | **E2** point-aircraft gusts, vortex at 2.3–3.1 spans | **newly bounded** | record in §5; keep vortex claims as orderings |
 | 5 | **A2** constant g, +0.383% at cruise | **CLOSED, session 12** | not modelled: worst mode movement is 7.6% of its tolerance. Phugoid only carries the full 0.38% |
-| 6 | **C5** no thrust moment, no spool | sound for now | required before any powered-recovery result |
+| 6 | **C5** no thrust moment, no spool | **thrust moment newly bounded** | 0.38° of equivalent elevator at cruise trim, 1.5% of pitch authority, from CR-114494 p. 19.0-2. Spool is still required before any powered-recovery result |
 | 7 | **B4** accelerometer at CG vs DFDR | caveat | keep Fig. 8 claims as orderings |
 
 Items 1 and 5 — the two session 11 flagged as new and actionable — are both closed by
