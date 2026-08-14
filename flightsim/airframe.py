@@ -15,6 +15,8 @@ Provenance for every constant here is in flightsim/provenance.py, and a test
 asserts the two agree.
 """
 
+from typing import NamedTuple
+
 import jax.numpy as jnp
 from jax import Array
 
@@ -57,3 +59,39 @@ def tail_arm_is_plausible(ac: Aircraft) -> bool:
     """
     low, high = TAIL_ARM_BAND
     return bool(low <= float(effective_tail_arm(ac)) <= high)
+
+
+# Sample counts. DECLARED -- see provenance.LEDGER["strip.n_stations"]. Odd, so
+# a station sits exactly on the centreline and the symmetric pair cancels
+# exactly rather than to round-off.
+N_SPAN = 9
+N_LON = 9
+
+
+class Stations(NamedTuple):
+    """Body-axis offsets from the CG at which the wind field is evaluated.
+
+    Two one-dimensional sets rather than one cloud of points, because the three
+    gradients the aero model consumes are each a slope along a single axis:
+    roll from vertical gust varying across the span, pitch and yaw from gusts
+    varying along the fuselage. Sampling a full grid would cost N^2 field
+    evaluations to produce the same three numbers.
+    """
+
+    span: Array  # (N,) m, body y, positive right
+    longitudinal: Array  # (M,) m, body x, positive forward
+
+
+def stations(ac: Aircraft, n_span: int = N_SPAN, n_lon: int = N_LON) -> Stations:
+    """Sample stations for an aircraft.
+
+    Lateral extent is the span, which is SOURCED. Longitudinal extent is the
+    derived tail arm, running aft from the CG -- negative x, since body x is
+    positive forward.
+    """
+    half_span = ac.b / 2.0
+    arm = effective_tail_arm(ac) * ac.c
+    return Stations(
+        span=jnp.linspace(-half_span, half_span, n_span),
+        longitudinal=jnp.linspace(-arm, 0.0, n_lon),
+    )
