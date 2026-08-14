@@ -173,6 +173,55 @@ def gust_rates(pos_ned: Array, quat: Array, field) -> Array:
     return jnp.array([grad_body[2, 1], -grad_body[2, 0], grad_body[1, 0]])
 
 
+def _slope(coords: Array, values: Array) -> Array:
+    """Least-squares slope of `values` against `coords`.
+
+    Exact for a linear profile, which is what makes `sampled_rates` reduce to
+    `gust_rates` whenever the field has no curvature across the airframe. The
+    denominator cannot vanish for a station set with more than one distinct
+    coordinate, which `airframe.stations` guarantees by construction.
+    """
+    centred = coords - coords.mean()
+    return (centred * (values - values.mean())).sum() / (centred * centred).sum()
+
+
+def sampled_rates(pos_ned: Array, quat: Array, field, stations) -> Array:
+    """Body-axis (p, q, r) gust rates from a fit across the airframe.
+
+    Same three quantities as `gust_rates` and the same sign convention -- this
+    is a better ESTIMATOR of them, not a different quantity. `gust_rates` takes
+    the tangent at the CG; this takes the secant across the extent the
+    aerodynamics actually integrate over. For a field that is linear across the
+    aircraft the two are identical, and `test_wind.py` asserts it.
+
+    Deliberately does NOT add the three equivalences Stengel lists that the
+    model omits (his eqs. 3.4-49, 3.4-51, 3.4-53). Combining each pair into one
+    effective rate needs a weighting that his eq. 3.4-55 gets wrong -- it fails
+    its own rigid-rotation self-check by a factor of -2 -- and that question is
+    left to the strip integration, which never forms an equivalent rate at all.
+    See the design document, section 2.
+    """
+    dcm = quat_to_dcm(quat)  # body -> NED
+
+    def gust_body(offset_body: Array) -> Array:
+        """Gust in BODY axes at a body-frame offset from the CG."""
+        return dcm.T @ field(pos_ned + dcm @ offset_body)
+
+    span_gusts = jax.vmap(
+        lambda y: gust_body(jnp.array([0.0, y, 0.0]))
+    )(stations.span)
+    lon_gusts = jax.vmap(
+        lambda x: gust_body(jnp.array([x, 0.0, 0.0]))
+    )(stations.longitudinal)
+
+    # Same three components, same signs, as gust_rates:
+    #   p = +d(w_g)/dy    q = -d(w_g)/dx    r = +d(v_g)/dx
+    p_gust = _slope(stations.span, span_gusts[:, 2])
+    q_gust = -_slope(stations.longitudinal, lon_gusts[:, 2])
+    r_gust = _slope(stations.longitudinal, lon_gusts[:, 1])
+    return jnp.array([p_gust, q_gust, r_gust])
+
+
 # ---------------------------------------------------------------------------
 # Thunderstorm updraft column
 #
