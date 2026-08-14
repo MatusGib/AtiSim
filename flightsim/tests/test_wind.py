@@ -509,3 +509,103 @@ def test_parks_case_1_reproduces_the_gust_spacing_and_pitch_signature():
     # phugoid, which is the windowing trap this test exists to pin down
     whole = (theta.max() - theta.min()) * RAD2DEG
     assert whole > 3.0 * dtheta  # measured 8.33 vs 2.20
+
+
+# --- A1: sampled gradients ---------------------------------------------------
+
+
+def _level_state(north=0.0, altitude=11278.0, u=236.0):
+    """Wings-level, heading north, at altitude."""
+    from flightsim.state import State, euler_to_quat
+
+    return State(
+        pos_ned=jnp.array([north, 0.0, -altitude]),
+        vel_body=jnp.array([u, 0.0, 0.0]),
+        quat=euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
+        omega=jnp.zeros(3),
+    )
+
+
+def test_a_uniform_field_produces_exactly_zero_sampled_rates():
+    """Reduction property 1. A uniform field has no gradient, and a symmetric
+    station set must return exactly zero rather than a small residual -- a
+    residual here would be a spurious rolling input in still-ish air."""
+    from flightsim import airframe
+    from flightsim.aircraft import REGISTRY
+
+    ac = REGISTRY["boeing747"]
+    st = airframe.stations(ac)
+    field = lambda p: jnp.array([3.0, -2.0, 1.5])  # noqa: E731
+    s = _level_state()
+
+    rates = wind.sampled_rates(s.pos_ned, s.quat, field, st)
+    assert np.array_equal(np.asarray(rates), np.zeros(3))
+
+
+def test_a_linear_field_reproduces_the_analytic_gradient_exactly():
+    """Reduction property 2, and the one that makes A1 safe to adopt: a
+    least-squares slope through samples of a linear function IS its exact
+    slope, so for any field the current model handles correctly, A1 returns
+    the identical answer. Every existing result is therefore unmoved."""
+    from flightsim import airframe
+    from flightsim.aircraft import REGISTRY
+
+    ac = REGISTRY["boeing747"]
+    st = airframe.stations(ac)
+    # Linear in every component and every direction, with no curvature at all.
+    field = lambda p: jnp.array(  # noqa: E731
+        [0.01 * p[0] + 0.02 * p[1], 0.03 * p[0] - 0.01 * p[2], -0.02 * p[0] + 0.04 * p[1]]
+    )
+    s = _level_state()
+
+    sampled = wind.sampled_rates(s.pos_ned, s.quat, field, st)
+    analytic = wind.gust_rates(s.pos_ned, s.quat, field)
+    assert np.allclose(np.asarray(sampled), np.asarray(analytic), rtol=1e-9, atol=1e-12)
+
+
+def test_the_vortex_core_gives_the_same_pitch_rate_as_the_tangent():
+    """Inside a Rankine core the vertical gust is LINEAR along track, so the
+    secant and the tangent must agree exactly. This is the strength of this
+    field/model pairing that ASSUMPTIONS.md section E2 records: while the whole
+    airframe is inside the core, a point sample plus a gradient is not an
+    approximation at all."""
+    from flightsim import airframe
+    from flightsim.aircraft import REGISTRY
+
+    ac = REGISTRY["boeing747"]
+    st = airframe.stations(ac)
+    array = single(r0=8000.0)  # core far larger than the airframe, so it stays inside
+    field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
+    s = _level_state(north=0.25 * 8000.0)
+
+    sampled = wind.sampled_rates(s.pos_ned, s.quat, field, st)
+    analytic = wind.gust_rates(s.pos_ned, s.quat, field)
+    assert float(sampled[1]) == pytest.approx(float(analytic[1]), rel=1e-9)
+
+
+def test_a_curved_field_makes_the_secant_differ_from_the_tangent():
+    """The test that gives A1 a reason to exist. A quadratic gust profile has a
+    centreline slope that is not the slope the wing integrates, and the two
+    must therefore disagree. If this passes trivially, the fit is not being
+    taken across the airframe at all."""
+    from flightsim import airframe
+    from flightsim.aircraft import REGISTRY
+
+    ac = REGISTRY["boeing747"]
+    st = airframe.stations(ac)
+    # Vertical gust quadratic across the span: zero slope at the centreline,
+    # non-zero average slope across it.
+    field = lambda p: jnp.array([0.0, 0.0, 1e-4 * p[1] ** 2])  # noqa: E731
+    s = _level_state()
+
+    sampled = wind.sampled_rates(s.pos_ned, s.quat, field, st)
+    analytic = wind.gust_rates(s.pos_ned, s.quat, field)
+    assert float(analytic[0]) == pytest.approx(0.0, abs=1e-12)
+    assert abs(float(sampled[0])) < 1e-12, "a symmetric quadratic still has zero net slope"
+
+    # Now break the symmetry: a cubic has a genuinely different secant.
+    field3 = lambda p: jnp.array([0.0, 0.0, 1e-7 * p[1] ** 3])  # noqa: E731
+    sampled3 = wind.sampled_rates(s.pos_ned, s.quat, field3, st)
+    analytic3 = wind.gust_rates(s.pos_ned, s.quat, field3)
+    assert float(analytic3[0]) == pytest.approx(0.0, abs=1e-12)
+    assert abs(float(sampled3[0])) > 1e-9, "the cubic's secant must differ from its tangent"
