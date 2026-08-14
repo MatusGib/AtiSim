@@ -49,15 +49,23 @@ def test_derived_and_calibrated_entries_name_inputs_that_exist():
 
 def test_the_dependency_graph_has_no_cycles():
     """A cycle would let two numbers justify each other with nothing underneath.
-    Every chain must bottom out in SOURCED or DECLARED entries."""
+    Every chain must bottom out in SOURCED or DECLARED entries.
+
+    A node reached twice by two DIFFERENT paths is a diamond, not a cycle, and
+    is legal: one SOURCED number can feed several DERIVED ones, which happens
+    as soon as a reference length appears under more than one coefficient. What
+    is illegal is a node appearing twice on the SAME path, because that is the
+    chain closing on itself. So the walk carries the path it took rather than a
+    set of everything it has ever seen -- the latter cannot tell the two apart
+    and rejects the diamond.
+    """
     for name in LEDGER:
-        seen = set()
-        stack = [name]
+        stack = [(name, (name,))]
         while stack:
-            current = stack.pop()
-            assert current not in seen, f"{name} has a cyclic dependency via {current}"
-            seen.add(current)
-            stack.extend(LEDGER[current].inputs)
+            current, path = stack.pop()
+            for dep in LEDGER[current].inputs:
+                assert dep not in path, f"{name} has a cyclic dependency via {dep}"
+                stack.append((dep, path + (dep,)))
 
 
 def test_an_entry_with_an_unknown_category_is_rejected():
