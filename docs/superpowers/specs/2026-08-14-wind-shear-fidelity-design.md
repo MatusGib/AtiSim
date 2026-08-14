@@ -281,6 +281,50 @@ meaningfully stronger evidence than the log-axis curve reads `PROJECT.md` §7 de
 recorded as an available option, not adopted.** If taken, it is CALIBRATED or DECLARED with a
 stated reading uncertainty — never SOURCED.
 
+### 3f. The primary source, and why the lineage cannot supply tail geometry
+
+Rather than measure the drawing, the document CR-2144 names as its own 747 source was retrieved
+and read: **C. R. Hanke and D. R. Nordwall, "The Simulation of a Jumbo Jet Transport Aircraft,
+Volume II: Modeling Data", Boeing D6-30643-VOL-2 / NASA CR-114494, Boeing Wichita, September
+1970** (NTRS `19730001300`, public domain). CR-2144 §IX p. 211 states the 747 data was obtained
+solely from this document.
+
+Its geometry table, *Summary of Areas and Dimensions* (p. 1.1-3), tabulates:
+
+| Item | Value |
+|---|---|
+| Wing area `S` | 5500 ft² |
+| Wing mean aerodynamic chord | 27.31 ft |
+| Wing span `b` | 195.68 ft |
+| Wheel base / wheel tread | wing and body gear |
+| **Effective engine moment arms** | inboard 39.6 ft, outboard 69.4 ft, with separate air and ground vertical offsets |
+
+**No tail areas. No tail arms. No taper ratio. No sweep.**
+
+**This is a definitive negative, not a failed search.** Both documents in the project's 747
+lineage model the *whole aircraft* — CR-2144 tabulates whole-aircraft dimensional derivatives,
+and D6-30643 supplies the data behind them. Neither performs a component build-up, so neither
+needs component geometry. No further digging in this lineage will produce tail dimensions.
+
+**Taper ratio is not merely absent — it is not recoverable from the sourced geometry.** For a
+straight-tapered wing, `MAC/(S/b) = (4/3)·g(λ)` with `g(λ) = (1+λ+λ²)/(1+λ)²`. The 747's
+tabulated values require `g = 0.72873`, but `g` has a **global minimum of 0.75** at `λ = 1`
+(substituting `t = 1/(1+λ)` gives `g = 1 − t + t²`). **No real λ satisfies it.** The three
+reference quantities are mutually inconsistent with any straight taper, which is expected: the
+747 planform is cranked, with an inboard trailing-edge extension. Recorded so the derivation is
+not attempted again.
+
+**Consequence for this design: none.** A1 requires only `b` (SOURCED) and `l_eff` (DERIVED, §3d).
+A2 requires only the calibration to `Clp`. Taper ratio and tail geometry are wanted solely for
+(i) an alternative shape in the §3c sensitivity sweep and (ii) Stengel eq. 3.4-40 as an
+independent cross-check. Both are desirable, neither is load-bearing.
+
+**If they are wanted, they must come from a different lineage** — an airframe-description source
+rather than a simulation-data one. The canonical citable reference for gross wing, horizontal
+tail and vertical tail areas is **Jane's All the World's Aircraft**, contemporaneous 747 entry.
+It is not freely available online; Imperial's library holds it. That is a deliberate
+recommendation over measuring Figure IX-2, and it keeps such entries SOURCED.
+
 **Cross-check that validates the pilot-station reading.** Figure IX-2 marks the CG at F.S. 1339.9
 and the forward station at F.S. 307.9. The difference is 1032 in = **86.0 ft**, exactly Table
 IX-3's `LXP`. Two independent places in the document agree, which is what makes this SOURCED
@@ -467,7 +511,18 @@ but it is now a scheduling decision rather than a blocked one.
    refinement study showing the answer has stopped moving.
 3. Decide whether A2's wider contract replaces the current one or runs beside it. The plan
    should treat this as a reviewed decision point once A1's numbers are in.
-4. **New, from §3e:** decide whether to measure tail area and arm off Figure IX-2. It would make
-   Stengel's per-surface split (eqs. 3.4-54/3.4-56, roll and yaw only — 3.4-55 remains unusable)
-   reachable as a CALIBRATED entry with a stated reading uncertainty. Not required by A1 or A2;
-   worth a decision rather than silent omission.
+4. **New, from §3e/§3f — decide the route to tail geometry, if it is wanted at all.** It is not
+   required by A1 or A2. The options, in preference order:
+   **(a)** do without — the design is complete without it;
+   **(b)** Jane's All the World's Aircraft, contemporaneous 747 entry, via the Imperial library —
+   keeps the entry SOURCED, and is the recommended route if the data is wanted;
+   **(c)** measure Figure IX-2's dimensioned 3-view — CALIBRATED with a stated reading
+   uncertainty, never SOURCED.
+   It would make Stengel's per-surface split reachable for **roll and yaw only**; eq. 3.4-55
+   remains unusable regardless, so pitch would not benefit.
+5. **Out of scope but found in passing:** D6-30643 tabulates **effective engine moment arms**
+   (inboard 39.6 ft, outboard 69.4 ft, with distinct air and ground vertical offsets).
+   `ASSUMPTIONS.md` §C5 currently records the 747 thrust-line offset as "unmodelled, and
+   unquantified — CR-2144 does not tabulate a thrust-line offset". That is true of CR-2144 but
+   **not of its source document.** §C5 is quantifiable whenever someone wants to close it. The
+   OCR of the vertical offsets is unreliable and would need reading off the page image.
