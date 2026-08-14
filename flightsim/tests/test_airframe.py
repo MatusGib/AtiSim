@@ -79,3 +79,36 @@ def test_the_derived_arms_take_their_recorded_values():
         assert float(airframe.effective_tail_arm(REGISTRY[name])) == pytest.approx(
             arm, rel=1e-3
         ), f"{name} derived arm moved"
+
+
+def test_span_stations_cover_the_whole_span_symmetrically():
+    """The lateral extent is the span, which is sourced. Symmetry matters: an
+    asymmetric station set would give a non-zero fitted roll gradient in a
+    uniform field, which is the first reduction property Task 5 asserts."""
+    ac = REGISTRY["boeing747"]
+    st = airframe.stations(ac)
+    span = np.asarray(st.span)
+    assert span.min() == pytest.approx(-float(ac.b) / 2.0)
+    assert span.max() == pytest.approx(float(ac.b) / 2.0)
+    assert np.allclose(span, -span[::-1]), "span stations must be symmetric about the centreline"
+
+
+def test_longitudinal_stations_run_from_the_tail_to_the_cg():
+    """Body x is positive forward, so the tail is at NEGATIVE x. Pitch damping
+    comes overwhelmingly from the tail, so the fit is taken over the CG-to-tail
+    interval rather than symmetrically about the CG -- that is the interval the
+    aerodynamics actually integrate over."""
+    ac = REGISTRY["boeing747"]
+    st = airframe.stations(ac)
+    lon = np.asarray(st.longitudinal)
+    arm = float(airframe.effective_tail_arm(ac) * ac.c)
+    assert lon.min() == pytest.approx(-arm)
+    assert lon.max() == pytest.approx(0.0)
+
+
+def test_station_counts_are_configurable_for_the_convergence_study():
+    """The count is DECLARED and needs a refinement study, so it must be a knob."""
+    ac = REGISTRY["boeing747"]
+    st = airframe.stations(ac, n_span=21, n_lon=15)
+    assert np.asarray(st.span).shape == (21,)
+    assert np.asarray(st.longitudinal).shape == (15,)
