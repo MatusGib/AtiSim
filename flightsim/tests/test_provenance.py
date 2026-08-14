@@ -73,3 +73,34 @@ def test_an_entry_with_an_unknown_category_is_rejected():
     nothing -- PROJECT.md's falsification rule applied to this file."""
     bad = Entry(category="PROBABLY_FINE", detail="x" * 30)
     assert bad.category not in provenance.CATEGORIES
+
+
+def test_the_747_reference_geometry_is_sourced_from_cr2144():
+    """These three are the foundation everything else in this work rests on.
+    If they are ever reclassified, the chain above them is no longer sourced."""
+    for name in ("b747.S", "b747.b", "b747.c"):
+        assert LEDGER[name].category == "SOURCED"
+        assert "IX-3" in LEDGER[name].detail, f"{name} must cite its table"
+
+
+def test_the_effective_tail_arm_is_derived_and_never_sourced():
+    """It is a ratio of two tabulated derivatives, not a measured dimension.
+    Quoting it as 747 geometry would be a category error -- design section 7d."""
+    entry = LEDGER["b747.l_eff"]
+    assert entry.category == "DERIVED"
+    assert set(entry.inputs) == {"b747.Cmq", "b747.CLq", "b747.c"}
+
+
+def test_the_loading_shape_is_declared_and_carries_its_sensitivity():
+    """Taper ratio is not in CR-2144 and is not recoverable from S, b and cbar
+    (design section 3f), so the shape is a choice and must be reported as one."""
+    entry = LEDGER["strip.loading_shape"]
+    assert entry.category == "DECLARED"
+    assert "sensitivit" in entry.detail.lower()
+
+
+def test_the_calibrated_lift_slope_names_the_number_it_is_pinned_to():
+    """A calibrated value with no stated target is just a number."""
+    entry = LEDGER["strip.lift_slope"]
+    assert entry.category == "CALIBRATED"
+    assert "b747.Clp" in entry.inputs
