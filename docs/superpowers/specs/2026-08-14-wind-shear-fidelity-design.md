@@ -235,9 +235,61 @@ and must fall back to the current point model, with the exclusion recorded.
 
 **Stated assumption.** The relation attributes both derivatives to the tail. Stengel eq. 3.4-19
 notes explicitly that `Cmq` also carries wing and fuselage contributions, and eqs. 3.4-13/3.4-14
-give the wing's own share as a function of CG chordwise position `h_cm`. `h_cm` is not in the
-model, so the residual is bounded by sweeping `h_cm` across a defensible range and reporting the
-movement. Classified **DERIVED (under a stated assumption)** in §5, never as sourced.
+give the wing's own share as a function of CG chordwise position `h_cm`.
+
+**`h_cm` turns out to be sourced — but the correction it would enable does not work.** The
+source audit (§3e) found `h_cm = 0.25 c̄`, tabulated for every flight condition. Substituting it
+into eq. 3.4-13 gives a wing contribution of `+CL_α ≈ 4.94` against a total `CL_q̂` of 5.945 —
+i.e. the wing would account for **83%** of `CL_q̂`, leaving a tail contribution that implies a
+23-chord tail arm. That is not credible. The reason is that eqs. 3.4-13/3.4-14 are Etkin's
+**two-dimensional, infinite-aspect-ratio** result, which Stengel is explicit about (p. 208), and
+it does not transfer to a finite swept wing with a tail.
+
+**Independent confirmation that the tail-dominated reading is the right one:** the standard tail
+volume estimate `CL_q̂ ≈ 2·CL_α,ht·η·V_H` with representative 747 values (`V_H ≈ 0.95`,
+`CL_α,ht ≈ 3.5`, `η ≈ 0.9`) gives ≈ 6.0 against the tabulated 5.945 — the tail alone accounts for
+essentially all of it, with no room for an 83% wing share.
+
+**Decision: the eq. 3.4-13/3.4-14 correction is examined and rejected**, and `l_eff` stands on
+its own plausibility check. Classified **DERIVED (under a stated assumption)** in §5, never as
+sourced. Recorded here so the correction is not re-attempted.
+
+### 3e. Source audit of CR-2144 — §9 item 1, resolved
+
+The design originally deferred the question of what CR-2144 actually contains. It has now been
+answered by reading the document itself: NASA CR-2144 was retrieved from NTRS
+(`ntrs.nasa.gov/citations/19730003312`, public domain), and Section IX examined page by page.
+The scan carries no text layer, so pages were decoded from their CCITT Group 4 streams and read
+as images.
+
+**Findings, and their effect on this design:**
+
+| Quantity | In CR-2144? | Where | Effect |
+|---|---|---|---|
+| `S`, `b`, `c̄` | ✅ **SOURCED** | Table IX-3 header; repeated on Figure IX-2 | Already used |
+| **CG chordwise position `h_cm`** | ✅ **SOURCED = 0.25 c̄** | Table IX-3 row `C.G.(MGC)`, all 10 flight conditions; Figure IX-1; Figure IX-2 as F.S. 1339.9 | §3d — but the correction it enables fails; see above |
+| **MGC spanwise station** | ✅ **SOURCED = B.L. 491** | Figure IX-2 | Available for strip-station geometry |
+| **Pilot station offset** | ✅ **SOURCED = LXP 86.0 ft, LZP −10.0 ft** | Table IX-3 | **Resolves 7i** — see below |
+| **Taper ratio** | ❌ **NOT TABULATED** | Planform drawn on Figure IX-2 only | 7c stands: loading shape stays DECLARED |
+| **Tail area, tail arm, fin geometry** | ❌ **NOT TABULATED** | Drawn on Figure IX-2 only | §3a's rejection of the per-surface split stands |
+| Sweep angle | ❌ NOT TABULATED | — | Existing model value keeps whatever provenance it already had |
+
+**On the drawing.** Figure IX-2 (*B-747 General Arrangement*, printed p. 213) is a dimensioned
+3-view: a 0–100 ft scale bar, fuselage stations, butt lines and water lines in inches. Tail area
+and tail arm are therefore *measurable*, and a measurement off a dimensioned drawing is
+meaningfully stronger evidence than the log-axis curve reads `PROJECT.md` §7 declines. **This is
+recorded as an available option, not adopted.** If taken, it is CALIBRATED or DECLARED with a
+stated reading uncertainty — never SOURCED.
+
+**Cross-check that validates the pilot-station reading.** Figure IX-2 marks the CG at F.S. 1339.9
+and the forward station at F.S. 307.9. The difference is 1032 in = **86.0 ft**, exactly Table
+IX-3's `LXP`. Two independent places in the document agree, which is what makes this SOURCED
+rather than inferred.
+
+**Transcription verification, obtained for free.** Tables IX-3, IX-4 and IX-8 were compared
+element by element against `aircraft.py`. **Every value matches**, including `Mq = −0.339` (the
+value a previous session corrected from −0.330) and all ten lateral primed derivatives. The
+existing transcription is confirmed against the source.
 
 ---
 
@@ -350,9 +402,13 @@ guarantees the *integral* is right for a rigid roll rate. It does not guarantee 
 right, and a curved gust field weights the span differently from a linear one. This is why
 §3c makes the sensitivity sweep mandatory rather than optional.
 
-**7d. `l_eff` folds wing and fuselage pitch damping into a tail arm.** §3d states the
-assumption and bounds it, but the bound relies on sweeping an unsourced `h_cm`. The number is
-DERIVED, never SOURCED, and should not be quoted as 747 geometry.
+**7d. `l_eff` folds wing and fuselage pitch damping into a tail arm.** §3d states the assumption.
+`h_cm` is sourced (§3e), but the textbook correction it would enable is a 2-D result that does
+not transfer to this configuration and was rejected, so the assumption is **justified
+empirically rather than bounded analytically**: by the derived arm landing inside the real
+aircraft's 100–110 ft, and by an independent tail-volume estimate accounting for essentially all
+of `CL_q̂`. That is weaker than a computed error bar. The number is DERIVED, never SOURCED, and
+must not be quoted as 747 geometry.
 
 **7e. Quasi-steady aerodynamics are unchanged.** `ASSUMPTIONS.md` §C2 stands. Stengel
 eq. 3.4-58 gives the unsteady contribution of a time-varying vertical gust through the `α̇`
@@ -374,10 +430,18 @@ that wind shear has persistent effect on aeroelastic modes. Sampling a stiffer g
 the span makes the rigid assumption *more* strained, not less, because the loads this design
 newly resolves are exactly the ones that would flex a real wing.
 
-**7i. Accelerometer still at the CG.** `ASSUMPTIONS.md` §B4 stands. Stengel eq. 3.2-119 gives
-the exact lever-arm correction and it is verified (§2a), but implementing it needs a sensor
-offset the project does not hold. Out of scope here; noted because the theory is now checked
-and ready.
+**7i. Accelerometer still at the CG — but this is now unblocked.** `ASSUMPTIONS.md` §B4 stands
+*as an unimplemented correction rather than an impossible one*. This entry originally said the
+lever arm needed a sensor offset the project does not hold. **That was wrong:** the source audit
+(§3e) found `LXP = 86.0 ft`, `LZP = −10.0 ft` in Table IX-3, the pilot station relative to the
+CG, cross-checked against Figure IX-2's fuselage stations. With Stengel eq. 3.2-119 already
+verified (§2a), the correction is implementable entirely on sourced data.
+
+The residual limitation is one of *interpretation*, not data: the pilot station is not the DFDR
+accelerometer station, so this would give pilot-station normal acceleration — a standard
+handling-qualities quantity, and the one Stengel notes (p. 195) governs what the crew actually
+feels — rather than closing the Fig. 8 comparison exactly. Still out of scope for this design,
+but it is now a scheduling decision rather than a blocked one.
 
 ---
 
@@ -394,10 +458,16 @@ and ready.
 
 ## 9. Open items for the plan
 
-1. Confirm whether CR-2144 Table IX-3 supplies **taper ratio** and tail geometry. If it does,
-   §3c's loading shape moves from DECLARED to SOURCED and 7c weakens substantially. This is
-   the first ledger item and it materially affects the strength of the result.
+1. ~~Confirm whether CR-2144 supplies taper ratio and tail geometry.~~ **RESOLVED — see §3e.**
+   Neither is tabulated; both are only measurable off the Figure IX-2 3-view. §3c's loading
+   shape therefore stays **DECLARED** and 7c stands as written. The audit did, however, return
+   three quantities the design had assumed unavailable: `h_cm`, the MGC spanwise station, and
+   the pilot-station offset.
 2. Choose the strip count by convergence, not by taste. It is a DECLARED parameter and needs a
    refinement study showing the answer has stopped moving.
 3. Decide whether A2's wider contract replaces the current one or runs beside it. The plan
    should treat this as a reviewed decision point once A1's numbers are in.
+4. **New, from §3e:** decide whether to measure tail area and arm off Figure IX-2. It would make
+   Stengel's per-surface split (eqs. 3.4-54/3.4-56, roll and yaw only — 3.4-55 remains unusable)
+   reachable as a CALIBRATED entry with a stated reading uncertainty. Not required by A1 or A2;
+   worth a decision rather than silent omission.
