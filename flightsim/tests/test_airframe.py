@@ -112,3 +112,46 @@ def test_station_counts_are_configurable_for_the_convergence_study():
     st = airframe.stations(ac, n_span=21, n_lon=15)
     assert np.asarray(st.span).shape == (21,)
     assert np.asarray(st.longitudinal).shape == (15,)
+
+
+def test_the_default_station_count_has_converged():
+    """N_SPAN and N_LON are DECLARED, and the ledger says they are chosen by
+    convergence rather than taste. This is that study, run as an assertion so
+    the claim cannot rot.
+
+    The field is the Parks Hannibal core, which is the smallest-scale field the
+    project holds and therefore the hardest case. Doubling the station count
+    must move the fitted rates by less than 0.1%.
+    """
+    from flightsim import wind
+    from flightsim.state import State, euler_to_quat
+
+    ac = REGISTRY["boeing747"]
+    array = wind.VortexArray(
+        north=jnp.array([0.0]),
+        down=jnp.array([-11278.0]),
+        r0=jnp.array(600.0 * FT2M),
+        v0=jnp.array(85.0 * FT2M),
+    )
+    field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
+    # Half a core radius downstream and half a radius above: inside the core but
+    # off-centre, so every gradient component is non-zero.
+    state = State(
+        pos_ned=jnp.array([0.5 * 600.0 * FT2M, 0.0, -(11278.0 + 300.0 * FT2M)]),
+        vel_body=jnp.array([236.0, 0.0, 0.0]),
+        quat=euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
+        omega=jnp.zeros(3),
+    )
+
+    coarse = wind.sampled_rates(
+        state.pos_ned, state.quat, field, airframe.stations(ac, 9, 9)
+    )
+    fine = wind.sampled_rates(
+        state.pos_ned, state.quat, field, airframe.stations(ac, 18, 18)
+    )
+    q_coarse, q_fine = float(coarse[1]), float(fine[1])
+    movement = abs(q_fine - q_coarse) / abs(q_fine)
+    assert movement < 1e-3, (
+        f"pitch rate moves {movement:.2%} between 9 and 18 stations; "
+        "the default count has not converged"
+    )
