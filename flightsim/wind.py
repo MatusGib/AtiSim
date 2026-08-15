@@ -529,6 +529,30 @@ def field_model(field):
     return model
 
 
+def sampled_field_model(field, stations):
+    """`field_model`, but with the gust rates fitted across the airframe.
+
+    Identical contract to `field_model` -- same signature, same returned tuple,
+    key untouched -- so it is a drop-in wherever a wind model is accepted. The
+    only difference is which estimator produces `omega_gust`.
+
+    `wind_ned` is still the CG sample. Averaging the translational gust over
+    the airframe is a separate change with its own weighting question, and it
+    belongs to the strip integration rather than here: this stage changes the
+    estimator for quantities already in use and introduces no new constants.
+    """
+
+    def model(
+        wind_state: WindState, state: State, key: Array, dt: float
+    ) -> tuple[Array, Array, WindState, Array]:
+        del dt
+        wind_ned = field(state.pos_ned)
+        omega_gust = sampled_rates(state.pos_ned, state.quat, field, stations)
+        return wind_ned, omega_gust, wind_state, key
+
+    return model
+
+
 def vortex_model(array: VortexArray):
     """`wind_model` for a vortex array."""
     return field_model(lambda pos_ned: vortex_wind(pos_ned, array))

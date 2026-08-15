@@ -609,3 +609,122 @@ def test_a_curved_field_makes_the_secant_differ_from_the_tangent():
     analytic3 = wind.gust_rates(s.pos_ned, s.quat, field3)
     assert float(analytic3[0]) == pytest.approx(0.0, abs=1e-12)
     assert abs(float(sampled3[0])) > 1e-9, "the cubic's secant must differ from its tangent"
+
+
+def test_the_sampled_wind_model_matches_the_contract():
+    """Same signature as zero_wind and field_model, so it drops into
+    integrate.step, autopilot and panel with no change to any of them."""
+    from flightsim import airframe
+    from flightsim.aircraft import REGISTRY
+
+    ac = REGISTRY["boeing747"]
+    array = single()
+    model = wind.sampled_field_model(
+        lambda p: wind.vortex_wind(p, array), airframe.stations(ac)
+    )
+    s = _level_state()
+    key = jax.random.PRNGKey(0)
+    wind_ned, omega_gust, wind_state, out_key = model(
+        wind.zero_wind_state(), s, key, jnp.array(0.02)
+    )
+    assert wind_ned.shape == (3,)
+    assert omega_gust.shape == (3,)
+    assert np.array_equal(np.asarray(out_key), np.asarray(key))
+
+
+def _pitch_rates_at(frac_of_r0, array, stations):
+    """(tangent, secant) pitch gust rate at a station along the track, in core radii."""
+    from flightsim import airframe  # noqa: F401  -- stations already built
+
+    field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
+    state = _level_state(north=frac_of_r0 * float(array.r0))
+    tangent = float(wind.gust_rates(state.pos_ned, state.quat, field)[1])
+    secant = float(wind.sampled_rates(state.pos_ned, state.quat, field, stations)[1])
+    return tangent, secant
+
+
+def test_the_rankine_gradient_is_discontinuous_at_the_core_edge():
+    """A property of the source's own model, and the reason the point method is
+    at its worst on exactly this field.
+
+    Parks' Rankine vortex is continuous in VELOCITY at r = r0 -- the two branches
+    agree there, which test_the_two_forms_agree_at_the_core_edge already asserts
+    -- but its DERIVATIVE is not. Inside, the vertical gust grows linearly along
+    track, so d(w)/dx = +V0/r0. Outside it falls as 1/r, and at r = r0 the same
+    derivative is -V0/r0. The two one-sided derivatives differ by 2*V0/r0.
+
+    So AT the core boundary the tangent is not merely inaccurate, it is
+    AMBIGUOUS: either one-sided value is defensible and they have opposite
+    signs. `vortex_wind` resolves the tie with a strict `<`, which picks the
+    outside branch. The secant has no such ambiguity -- it reports what the
+    airframe actually spans, and at the boundary the airframe is almost entirely
+    inside the core.
+    """
+    from flightsim import airframe
+    from flightsim.aircraft import REGISTRY
+
+    array = single()  # Parks Hannibal, r0 = 182.9 m
+    st = airframe.stations(REGISTRY["boeing747"])
+    characteristic = float(array.v0 / array.r0)  # V0/r0, the in-core rate
+
+    just_inside, _ = _pitch_rates_at(0.99, array, st)
+    at_edge, secant_at_edge = _pitch_rates_at(1.0, array, st)
+
+    # The jump is exactly 2*V0/r0, and it is a SIGN reversal.
+    assert just_inside == pytest.approx(-characteristic, rel=1e-6)
+    assert at_edge == pytest.approx(+characteristic, rel=1e-6)
+    assert abs(at_edge - just_inside) == pytest.approx(2.0 * characteristic, rel=1e-6)
+
+    # The secant does not jump: the airframe is still inside the core.
+    assert secant_at_edge == pytest.approx(-characteristic, rel=1e-6)
+
+
+def test_the_curvature_correction_across_the_parks_core_is_measured():
+    """ASSUMPTIONS.md section E2 carries a scale ratio -- the Parks core is
+    2.30-3.07 wingspans -- but has never carried a measured CONSEQUENCE. This
+    is that measurement, swept along the traverse.
+
+    NORMALISED BY V0/r0, the core's own characteristic pitch-rate input, NOT by
+    the local tangent. Normalising by the tangent is unstable precisely where
+    the answer matters: the tangent reverses sign at the core edge (asserted
+    above), so a relative measure against it diverges there for reasons that
+    say nothing about the airframe. V0/r0 is a fixed property of the vortex and
+    makes the correction comparable across stations.
+
+    The measured profile is the E2 bound, and its shape is the result:
+
+        inside the core   exactly 0     the Rankine profile is linear, so a
+                                        point sample plus a gradient is not an
+                                        approximation at all
+        at r = r0         2.0           the full sign reversal
+        1.25 r0           ~0.11
+        2.0 r0            ~0.03
+    """
+    from flightsim import airframe
+    from flightsim.aircraft import REGISTRY
+
+    array = single()
+    st = airframe.stations(REGISTRY["boeing747"])
+    characteristic = float(array.v0 / array.r0)
+
+    profile = {}
+    for frac in (0.5, 0.99, 1.0, 1.1, 1.25, 1.5, 2.0, 3.0):
+        tangent, secant = _pitch_rates_at(frac, array, st)
+        profile[frac] = abs(secant - tangent) / characteristic
+
+    print("\nE2 curvature correction, in units of V0/r0:")
+    for frac, value in profile.items():
+        print(f"  {frac:5.2f} r0   {value:8.4f}")
+
+    # Inside the core the two estimators agree to machine precision. This is the
+    # half of the result that explains why the existing vortex numbers survived.
+    assert profile[0.5] < 1e-12
+    assert profile[0.99] < 1e-12
+
+    # At the boundary the correction is the full sign reversal.
+    assert profile[1.0] == pytest.approx(2.0, rel=1e-6)
+
+    # And it decays quickly once clear of the corner.
+    assert profile[1.25] < 0.2
+    assert profile[2.0] < 0.05
+    assert profile[3.0] < profile[2.0], "the correction must keep decaying outward"
