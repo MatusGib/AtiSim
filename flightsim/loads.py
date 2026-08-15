@@ -95,3 +95,26 @@ def strip_increment(state: State, field, ac: Aircraft, stations) -> CoeffIncreme
         state.pos_ned, state.quat, field, ac, stations, airspeed
     )
     return zero_increment()._replace(Cl=roll)
+
+
+def strip_model(field, ac: Aircraft, stations=None):
+    """Build a `load_model` for `integrate.step` from a wind field.
+
+    Raises if the aircraft fails the tail-arm plausibility gate. That check
+    exists because the sample stations are built from a DERIVED tail arm, and
+    for two of the four aircraft in the registry that derivation returns a value
+    the airframe plainly does not have. Failing at construction is deliberate:
+    a run that quietly used a 0.856-chord tail arm would produce numbers that
+    look ordinary and are not.
+    """
+    from flightsim import airframe
+
+    if not airframe.tail_arm_is_plausible(ac):
+        raise ValueError(
+            f"tail arm {float(airframe.effective_tail_arm(ac)):.4f} chords is outside "
+            f"{airframe.TAIL_ARM_BAND} -- this aircraft's CLq and Cmq disagree about "
+            f"what airframe they describe, so the strip path must not be used for it. "
+            f"Use the point model instead."
+        )
+    st = airframe.stations(ac) if stations is None else stations
+    return lambda state: strip_increment(state, field, ac, st)

@@ -123,3 +123,29 @@ def test_the_strip_increment_uses_air_relative_speed_not_ground_speed():
         base, lambda p: jnp.array([0.0, 0.0, 1e-7 * p[1] ** 3]), ac, st
     )
     assert abs(float(inc.Cl)) > abs(float(still.Cl))
+
+
+# --- the convenience wrapper, and the gate it enforces ---------------------
+
+
+def test_the_strip_model_refuses_an_aircraft_that_fails_the_tail_arm_gate():
+    """The gate exists to stop the strip path being used where its key input is
+    not trustworthy. It must fire at construction, loudly, rather than silently
+    producing numbers -- a run that quietly used a 0.856-chord tail arm would be
+    very hard to spot afterwards."""
+    from flightsim import airframe
+    from flightsim.aircraft import REGISTRY
+
+    for name in ("cessna172", "cherokee"):
+        ac = REGISTRY[name]
+        assert not airframe.tail_arm_is_plausible(ac)
+        with pytest.raises(ValueError, match="tail arm"):
+            loads.strip_model(lambda p: p * 0.0, ac)
+
+
+def test_the_strip_model_accepts_both_747_configurations():
+    from flightsim.aircraft import REGISTRY
+
+    for name in ("boeing747", "boeing747_approach"):
+        model = loads.strip_model(lambda p: p * 0.0, REGISTRY[name])
+        assert callable(model)
