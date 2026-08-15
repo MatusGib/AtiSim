@@ -15,6 +15,7 @@ from jax import Array
 from flightsim.aero import aero_forces_moments, thrust_force
 from flightsim.aircraft import Aircraft
 from flightsim.atmosphere import G0, RHO0, density, speed_of_sound
+from flightsim.loads import CoeffIncrement
 from flightsim.state import Controls, State, quat_derivative, quat_to_dcm
 
 
@@ -30,8 +31,33 @@ def derivatives(
     ac: Aircraft,
     wind_ned: Array,
     omega_gust: Array,
+    increment: CoeffIncrement | None = None,
 ) -> State:
-    """State derivative. Returns a State whose fields are time derivatives."""
+    """State derivative. Returns a State whose fields are time derivatives.
+
+    `increment` carries aerodynamic coefficients computed from the wind field
+    ACROSS the airframe -- strip-integrated loads -- which `aero.py` cannot
+    produce because its standing rule is that it never sees the field. It is
+    summed into the coefficients here, at the same seam where wind already
+    enters and nowhere else.
+
+    None is passed straight through rather than being replaced by an explicit
+    zero, so an omitted increment performs NO arithmetic at all and is therefore
+    bit-identical to the pre-increment model by construction, not merely by the
+    identity property of adding 0.0. That also keeps the two paths genuinely
+    distinct, which is what gives
+    `test_a_zero_increment_is_bit_identical_to_not_passing_one` something to
+    test -- defaulting to `zero_increment()` here would make both branches run
+    the same code and assert nothing.
+
+    NOT threaded into `specific_force` or `load_factor`. Those invert this
+    function's own sum, so a LIFT increment would reach them automatically; but
+    they call `derivatives` without one, so today they see the point-model
+    coefficients. That is currently exact -- `loads.strip_increment` populates
+    only `Cl`, and a rolling moment does not enter specific force -- and it
+    stops being exact the moment the `CL` channel is filled. See
+    `docs/ASSUMPTIONS.md` E2.
+    """
     dcm = quat_to_dcm(state.quat)
 
     vel_rel = relative_velocity(state.vel_body, state.quat, wind_ned)
@@ -40,7 +66,8 @@ def derivatives(
     altitude = -state.pos_ned[2]
     rho = density(altitude)
     force, moment = aero_forces_moments(
-        vel_rel, omega_rel, controls, ac, rho, speed_of_sound(altitude)
+        vel_rel, omega_rel, controls, ac, rho, speed_of_sound(altitude),
+        increment=increment,
     )
     force = force + thrust_force(controls, ac, rho)
 

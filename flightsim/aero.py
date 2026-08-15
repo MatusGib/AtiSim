@@ -122,11 +122,29 @@ def aero_forces_moments(
     ac: Aircraft,
     rho: Array,
     a_sound: Array,
+    increment=None,
 ) -> tuple[Array, Array]:
-    """Body-axis aerodynamic force (N) and moment (N.m)."""
+    """Body-axis aerodynamic force (N) and moment (N.m).
+
+    `increment` is a `loads.CoeffIncrement`: an additive set of coefficients
+    computed OUTSIDE this module, from the wind field across the airframe. This
+    module still never sees the field itself -- it receives four numbers and
+    adds them after the build-up, which is what preserves the rule that a
+    zero-strength wind is bit-identical to still air.
+
+    Deliberately unannotated. Annotating it would need `from flightsim.loads
+    import CoeffIncrement`, and `loads` imports `air_data` from here, so a
+    module-level import either way closes a cycle. The type is documented
+    instead, which costs a checker and buys a one-directional dependency.
+    """
     V, alpha, beta = air_data(vel_rel)
     qbar = 0.5 * rho * V**2
     CL, CD, CY, Cl, Cm, Cn = coefficients(vel_rel, omega_rel, controls, ac, a_sound)
+    if increment is not None:
+        CL = CL + increment.CL
+        Cl = Cl + increment.Cl
+        Cm = Cm + increment.Cm
+        Cn = Cn + increment.Cn
 
     lift = qbar * ac.S * CL
     drag = qbar * ac.S * CD
