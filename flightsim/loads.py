@@ -26,6 +26,10 @@ from typing import NamedTuple
 import jax.numpy as jnp
 from jax import Array
 
+from flightsim.aero import air_data
+from flightsim.aircraft import Aircraft
+from flightsim.state import State
+
 
 class CoeffIncrement(NamedTuple):
     """Additions to the aerodynamic coefficients, body/wind axes as `aero.py`."""
@@ -54,3 +58,40 @@ def add(a: CoeffIncrement, b: CoeffIncrement) -> CoeffIncrement:
     return CoeffIncrement(
         CL=a.CL + b.CL, Cl=a.Cl + b.Cl, Cm=a.Cm + b.Cm, Cn=a.Cn + b.Cn
     )
+
+
+def strip_increment(state: State, field, ac: Aircraft, stations) -> CoeffIncrement:
+    """Coefficient increment from integrating a wind field across the airframe.
+
+    ROLL ONLY. `wind.strip_roll_moment` is the one strip integral this project
+    has validated -- against the tabulated Clp for a rigid roll rate, against
+    Stengel eq. 3.4-40's closed form for a rectangular wing, and against the
+    equivalent-rate treatment for a linear gradient. There is no validated
+    pitch or yaw integral, so those channels stay at exact zero rather than
+    being filled with something plausible. Shipping an unvalidated pitch
+    integral would be worse than shipping none, because it would look like
+    increased fidelity.
+
+    Airspeed is AIR-RELATIVE, taken through the same `relative_velocity` the
+    rest of the model uses. Using ground speed would reintroduce precisely the
+    error the air-relative design exists to prevent, and it would only reveal
+    itself in a wind with a significant along-track component.
+
+    Both imports below are local, and for two different reasons. `dynamics`
+    imports `CoeffIncrement` from this module, so importing it back at module
+    level closes a cycle -- and it closes it in the unrecoverable direction,
+    because `relative_velocity` is defined AFTER that import in `dynamics.py`.
+    `wind` imports `airframe`, which imports `aircraft`; that chain is
+    currently acyclic but only by accident, and keeping it local costs nothing.
+    """
+    from flightsim import wind
+    from flightsim.dynamics import relative_velocity
+
+    wind_at_cg = field(state.pos_ned)
+    vel_rel = relative_velocity(state.vel_body, state.quat, wind_at_cg)
+    airspeed, _, _ = air_data(vel_rel)
+
+    roll = wind.strip_roll_moment(
+        state.pos_ned, state.quat, field, ac, stations, airspeed
+    )
+    return zero_increment()._replace(Cl=roll)
