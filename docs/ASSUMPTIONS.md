@@ -379,6 +379,45 @@ across the span — a profile that bends rather than ramps — is carried only b
 physically defensible shapes agree to **2.6%**; including a uniform distribution as a bracket
 widens that to **49.7%**. See `flightsim/provenance.py`, `strip.loading_shape`.
 
+**Session 14: the strip path is now flyable.** The correction measured above is no longer
+only a diagnostic — `loads.strip_model` feeds strip-integrated rolling moments into the
+equations of motion through `integrate.step`. Any strip result **must be quoted with the
+loading-shape sensitivity beside it** (2.6% across defensible shapes, 49.7% including a
+uniform bracket), because that sensitivity is the dominant remaining uncertainty in it.
+
+**And it moved nothing.** Measured, not assumed: flying the Parks Hannibal vortex both ways
+gives a position difference of **0.000000 m**, and the Fig. 8 point is unchanged at
+d(θ) 2.240°, d(n) −1.235 g. The updraft column is likewise unchanged. Both zeros have one
+cause, and it is a property of the fields rather than a defect in the seam — the vortex has
+no east variation, and the updraft is axisymmetric about an axis the aircraft flies straight
+through, so in both cases every strip sees the same vertical gust and the antisymmetric roll
+integral cancels. On a field that does vary across the span (a cubic in east) the same code
+moves the aircraft 0.187 m, which is the only evidence that the seam works at all.
+
+**Only the rolling moment is strip-integrated.** Pitch and yaw still come from the
+point-plus-gradient treatment. The vortex's dominant input is *pitch*, so the headline Fig. 8
+number is still produced entirely by the old path. **Do not read the strip path as having
+fixed the vortex result** — it did not touch it. What it improves is the lateral response to
+fields with genuine spanwise structure, which is what flying small-scale fields requires and
+which none of this project's four source fields happens to have.
+
+**Where a pitch integral would earn its keep, if one existed.** The rigid-rotation-structure
+diagnostic (`PROJECT.md` §4) measures how far each field departs from the shear structure the
+point model implicitly assumes. Inside the Parks core it is **+1.0000** — exactly
+rotation-like, so the point treatment is exact there, which is the same fact the zero
+curvature correction above records. Outside the core it is **−1.0000**: the field is
+irrotational and the assumption is not approximately violated but *inverted*. That is the
+regime a strip pitch integral would address, and it would need its own validation against
+`Cmq` before it could be trusted, exactly as the roll integral needed against `Clp`.
+
+**One gap this leaves, stated so it is not discovered later.** `dynamics.specific_force` and
+`dynamics.load_factor` call `derivatives` **without** an increment, so they report the point
+model's coefficients even on a strip run. That is currently exact rather than approximate,
+because `strip_increment` populates only `Cl` and a rolling moment does not enter specific
+force. It stops being exact the moment the `CL` channel is filled, and `vortex_viz._measure`
+builds every Fig. 8 `n_z` through `load_factor` — so filling that channel without also
+threading the increment through these two would silently understate every load result.
+
 ### E3. The field is frozen — wind depends on position, not time
 
 **Where:** `field_model(field)` wraps `pos_ned -> wind_ned`.
@@ -470,7 +509,7 @@ believing its own slope.
 | 1 | **E4** wind held across RK4 stages | **CLOSED, session 12** | no spurious body force, to 1e-9 m against a closed form |
 | 2 | **B1** rigid airframe vs flexible data | **unquantifiable** | cap claims; do not assert structural fidelity |
 | 3 | **C3** derivatives frozen across the envelope | **unbounded** | state the excursion with every result away from trim |
-| 4 | **E2** point-aircraft gusts, vortex at 2.3–3.1 spans | **CLOSED for the linear fit, session 13** | correction is exactly 0 inside the core and 2.0·`V₀/r₀` at the boundary, where the gradient is discontinuous. Curvature beyond the linear fit rests on a DECLARED loading shape: 2.6% across defensible shapes, 49.7% including a uniform bracket |
+| 4 | **E2** point-aircraft gusts, vortex at 2.3–3.1 spans | **CLOSED for the linear fit, session 13; strip path flyable and measured, session 14** | correction is exactly 0 inside the core and 2.0·`V₀/r₀` at the boundary, where the gradient is discontinuous. Curvature beyond the linear fit rests on a DECLARED loading shape: 2.6% across defensible shapes, 49.7% including a uniform bracket. Flying the strip path moves the vortex result by **0.000000 m** — the field has no spanwise variation — so the headline number is still the point model's. **Roll only**; a pitch integral is the open work |
 | 5 | **A2** constant g, +0.383% at cruise | **CLOSED, session 12** | not modelled: worst mode movement is 7.6% of its tolerance. Phugoid only carries the full 0.38% |
 | 6 | **C5** no thrust moment, no spool | sound for now | required before any powered-recovery result |
 | 7 | **B4** accelerometer at CG vs DFDR | caveat | keep Fig. 8 claims as orderings |

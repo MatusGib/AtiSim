@@ -203,6 +203,45 @@ Every figure below is measured, with the tolerance the test asserts.
 
 Suite: **358 passed, 1 skipped**, up from 342 with nothing broken.
 
+### Strip loads in the 6-DOF (session 14)
+
+| Check | Measured | Tolerance |
+|---|---|---|
+| Zero increment vs omitting it, `derivatives` | **bit-identical** | `np.array_equal` |
+| Omitting `load_model`, 100-step rollout | **bit-identical** | `np.array_equal` |
+| Strip increment vs `wind.strip_roll_moment` | agrees | rel 1e-9 |
+| Strip increment under a 50 m/s tailwind | uses air-relative speed, not ground speed | strict inequality |
+| Tail-arm gate at construction | raises for both light aircraft | `pytest.raises` |
+| Parks core traverse, point vs strip position | **0.000000 m** (`Cl` = 1.8e-19) | reported |
+| Cubic spanwise gust, point vs strip position | **0.187463 m** (`Cl` = 1.335e-05) | must be > 0 |
+| Fig. 8 vortex point, point vs strip | **unchanged: d(θ) 2.240°, d(n) −1.235 g** | reported |
+| Fig. 8 updraft point, point vs strip | **unchanged: d(θ) 4.366°, d(n) −0.114 g** | reported |
+| Ordering vortex < updraft < manoeuvre | **HOLDS on both paths** | exact |
+| Rigid-rotation structure, inside the Parks core | **q-pair +1.0000**, p-pair n/a | reported |
+| …outside the core | **q-pair −1.0000**, p-pair n/a | reported |
+
+Suite: **373 passed, 1 skipped**, up from 358 with nothing broken.
+
+**Read the two zeros together, because they have one cause.** The strip path
+changes neither turbulence encounter, and that is a property of the two fields
+rather than a defect in the seam. The Parks vortex has no east variation and
+the updraft column is axisymmetric about an axis the aircraft flies straight
+through, so in both cases every strip on the span sees the same vertical gust
+and the antisymmetric roll integral cancels. The diagnostic reports the same
+fact from the other side: `p-pair n/a` means `∂w/∂y` is identically zero.
+
+The `q-pair` numbers are the informative ones. Inside the core the flow is
+exactly rigid rotation, which is what the point model implicitly assumes, so
+the point treatment is exact there. Outside it the ratio is **−1**, the
+maximally non-rotation-like case — the field is irrotational, and the point
+model's assumption is not approximately violated but inverted. That is where a
+strip *pitch* integral would earn its keep, and there is not one yet.
+
+The 0.187 m cubic case is the positive control. It is the only evidence here
+that the seam reaches the equations of motion at all; without it every number
+in this table would be satisfied by a `load_model` that was computed and
+discarded.
+
 ### 747 modes vs CR-2144
 
 | Mode | Model | Reference | Error |

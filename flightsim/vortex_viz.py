@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Circle
 
-from flightsim import dynamics, integrate, trim, wind
+from flightsim import dynamics, integrate, loads, trim, wind
 from flightsim.aero import air_data
 from flightsim.aircraft import Aircraft
 from flightsim.atmosphere import density
@@ -78,6 +78,7 @@ def fly(
     dt: float = 0.01,
     window: tuple[float, float],
     window_name: str,
+    strip: bool = False,
 ) -> Encounter:
     """Fly the trimmed aircraft through `field` with fixed controls.
 
@@ -89,11 +90,18 @@ def fly(
     `window` is (north_min, north_max) in metres and is a DECLARED choice: the
     same run yields different Fig. 8 coordinates depending on it, so it is a
     named argument rather than a default buried here.
+
+    `strip` swaps the point-plus-gradient load path for strip-integrated loads.
+    It builds the load model from the field this function already holds, so it
+    is a flag rather than an argument. ROLL ONLY -- see `loads.strip_increment`
+    -- so it changes nothing for a field without spanwise structure, which the
+    Parks vortex is. `strip=False` is byte-for-byte the run this did before.
     """
     x, _ = trim.trim(jnp.array(airspeed), jnp.array(altitude), ac)
     alpha_trim = jnp.array(float(x[0]))
     controls = trim.trimmed_controls(x[1], x[2])
     model = wind.field_model(field)
+    load_model = loads.strip_model(field, ac) if strip else None
 
     state = trim.trimmed_state(alpha_trim, jnp.array(airspeed), jnp.array(altitude))
     state = state._replace(pos_ned=jnp.array([start_north, 0.0, -altitude]))
@@ -101,7 +109,7 @@ def fly(
     n = int(round(seconds / dt))
     _, hist = integrate.rollout(
         integrate.init_sim(state, jax.random.PRNGKey(0)),
-        controls, jnp.array(dt), ac, n, wind_model=model,
+        controls, jnp.array(dt), ac, n, wind_model=model, load_model=load_model,
     )
     north = np.asarray(hist.pos_ned)[:, 0]
     return _measure(

@@ -48,6 +48,12 @@ parser.add_argument(
          "the manoeuvre between the vortex's 0.235 and the updraft's 3.026 short "
          "periods -- so the third cluster's separation is not a duration effect.",
 )
+parser.add_argument(
+    "--strip", action="store_true",
+    help="fly the vortex with strip-integrated loads instead of a point sample "
+         "plus gradient. Changes the answer; that change is the result and must "
+         "be reported with the loading-shape sensitivity beside it.",
+)
 parser.add_argument("--png", type=Path, help="save here instead of showing")
 args = parser.parse_args()
 
@@ -79,6 +85,7 @@ vortex = vortex_viz.fly(
     dt=args.dt,
     window=(-r0, r0),
     window_name="first core",
+    strip=args.strip,
 )
 
 # --- the updraft column: the long-encounter limb of the discriminator -------
@@ -96,6 +103,7 @@ updraft = vortex_viz.fly(
     dt=args.dt,
     window=(-radius, radius),
     window_name="column",
+    strip=args.strip,
 )
 
 # --- the manoeuvre: the third category, and the only one at ZERO wind -------
@@ -116,6 +124,10 @@ pushdown = vortex_viz.manoeuvre(
     hold=hold, seconds=pushdown_seconds, lead_in=pushdown_lead, dt=args.dt,
 )
 
+load_path = (
+    "STRIP-INTEGRATED (roll only; pitch and yaw still point-plus-gradient)"
+    if args.strip else "point sample plus analytic gradient"
+)
 provenance = (
     f"{args.aircraft}  CR-2144 FC9  {H:.0f} m  {V:.2f} m/s  "
     f"trim alpha {alpha * RAD2DEG:.3f} deg  elev {elevator * RAD2DEG:.3f} deg  "
@@ -129,6 +141,9 @@ provenance = (
     f"{elevator_step * RAD2DEG:.3f} deg from trim BISECTED to reach "
     f"d(n) = {vortex_viz.FIG8_LOAD_INCREMENT:+.1f} g, the Fig. 8 band read as an "
     f"INCREMENT; the absolute reading is out of the linear range (PROJECT.md 5, 8)\n"
+    f"loads: {load_path}. "
+    "Strip results must be quoted with the loading-shape sensitivity beside them: "
+    "2.6% across defensible shapes, 49.7% including the uniform bracket.\n"
     "Window rule: the disturbance's own extent -- first core, column, elevator pulse.\n"
     "Both papers' records are DC-10 class at 33-39 kft; this is a 747 at 40 kft. "
     "Load comparisons are order-of-magnitude and ordering only, never values."
