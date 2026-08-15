@@ -1044,10 +1044,26 @@ def sampled_field_model(field, stations):
 - [ ] **Step 4: Run the tests to verify they pass**
 
 ```bash
-$PY -m pytest flightsim/tests/test_wind.py -v -s -k "sampled_wind_model or curvature_correction"
+$PY -m pytest flightsim/tests/test_wind.py -v -s -k "sampled_wind_model or curvature_correction or rankine_gradient"
 ```
 
-Expected: 2 passed, and the printed E2 figure visible thanks to `-s`. **Record that printed percentage — Task 13 writes it into `ASSUMPTIONS.md`.**
+> **CORRECTION APPLIED DURING EXECUTION.** The test as drafted above normalised the correction by the local tangent and asserted it stayed under 50%. It measured **exactly 200%**, and investigation showed that is a real property of the field rather than a defect:
+>
+> **The Rankine gradient is discontinuous at the core edge.** Velocity is continuous there — both branches agree — but the derivative is not. Inside, `d(w)/dx = +V₀/r₀`; outside at `r = r₀` it is `−V₀/r₀`. The two one-sided derivatives differ by `2·V₀/r₀` and have **opposite signs**, so at the boundary the tangent is *ambiguous*, and `vortex_wind`'s strict `<` resolves the tie toward the outside branch. The secant has no such ambiguity: at the boundary the airframe is still almost entirely inside the core, and that is what it reports.
+>
+> Normalising by the tangent is therefore unstable exactly where the answer matters. The shipped tests normalise by **`V₀/r₀`, the core's own characteristic rate**, which is a fixed property of the vortex, and sweep the traverse rather than sampling one point. A second test, `test_the_rankine_gradient_is_discontinuous_at_the_core_edge`, asserts the discontinuity directly.
+
+Expected: 3 passed, with the profile printed. **Record the printed profile — Task 13 writes it into `ASSUMPTIONS.md`.** Measured:
+
+| Station | Correction (units of `V₀/r₀`) |
+|---|---|
+| 0.50 r₀ | 0.0000 |
+| 0.99 r₀ | 0.0000 |
+| **1.00 r₀** | **2.0000** |
+| 1.10 r₀ | 0.7472 |
+| 1.25 r₀ | 0.1086 |
+| 2.00 r₀ | 0.0250 |
+| 3.00 r₀ | 0.0072 |
 
 - [ ] **Step 5: Run the whole suite**
 
