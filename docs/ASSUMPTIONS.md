@@ -337,6 +337,48 @@ and with §2's note that the rotational gust from a Wingrove-scale vortex alread
 the 747's full aileron authority by ~1.5×. Vortex conclusions should stay orderings, which
 is what §5 already requires for a different reason.
 
+**Bound, measured session 13 — the consequence, not just the scale ratio.** The point model
+takes the gust gradient as the tangent at the CG. `wind.sampled_rates` fits the slope across
+the airframe instead, over the span and the derived tail arm. The difference between them is
+the cost of treating the aircraft as a point, and it is now measured along a traverse of the
+Parks Hannibal core, **normalised by `V₀/r₀`, the core's own characteristic pitch-rate input**:
+
+| Station | Correction (units of `V₀/r₀`) |
+|---|---|
+| 0.50 r₀ | **0.0000** |
+| 0.99 r₀ | **0.0000** |
+| **1.00 r₀** | **2.0000** |
+| 1.10 r₀ | 0.7472 |
+| 1.25 r₀ | 0.1086 |
+| 2.00 r₀ | 0.0250 |
+| 3.00 r₀ | 0.0072 |
+
+**Two things this says that the scale ratio alone did not.**
+
+1. **Inside the core the correction is exactly zero**, not merely small. Parks' Rankine profile
+   is *linear* in radius, so a point sample plus an analytic gradient is not an approximation at
+   all while the airframe is inside the core. **This is why the existing vortex results survived
+   this assumption**, and it is specific to this field — it would not hold for a Dryden field or
+   a wake vortex.
+2. **At the core boundary the gradient is discontinuous.** The velocity is continuous there —
+   both branches agree, which `test_the_two_forms_agree_at_the_core_edge` already asserted — but
+   the derivative is not: inside `∂w/∂x = +V₀/r₀`, outside at `r = r₀` it is `−V₀/r₀`. The two
+   one-sided derivatives differ by `2·V₀/r₀` and have **opposite signs**. So at the boundary the
+   tangent is not merely inaccurate, it is *ambiguous*, and `vortex_wind`'s strict `<` resolves
+   the tie toward the outside branch — the wrong side, since the airframe is still almost
+   entirely inside the core. The fit has no such ambiguity.
+
+**Verdict: bounded, and the bound is a profile rather than a number.** The correction is zero
+where the aircraft spends most of the encounter and reaches a full sign reversal at one
+crossing. Asserted by `test_the_curvature_correction_across_the_parks_core_is_measured` and
+`test_the_rankine_gradient_is_discontinuous_at_the_core_edge`.
+
+**What is still not bounded:** everything above concerns the *linear* fit. Genuine curvature
+across the span — a profile that bends rather than ramps — is carried only by
+`wind.strip_roll_moment`, and its accuracy rests on a DECLARED spanwise loading shape. The two
+physically defensible shapes agree to **2.6%**; including a uniform distribution as a bracket
+widens that to **49.7%**. See `flightsim/provenance.py`, `strip.loading_shape`.
+
 ### E3. The field is frozen — wind depends on position, not time
 
 **Where:** `field_model(field)` wraps `pos_ned -> wind_ned`.
@@ -428,7 +470,7 @@ believing its own slope.
 | 1 | **E4** wind held across RK4 stages | **CLOSED, session 12** | no spurious body force, to 1e-9 m against a closed form |
 | 2 | **B1** rigid airframe vs flexible data | **unquantifiable** | cap claims; do not assert structural fidelity |
 | 3 | **C3** derivatives frozen across the envelope | **unbounded** | state the excursion with every result away from trim |
-| 4 | **E2** point-aircraft gusts, vortex at 2.3–3.1 spans | **newly bounded** | record in §5; keep vortex claims as orderings |
+| 4 | **E2** point-aircraft gusts, vortex at 2.3–3.1 spans | **CLOSED for the linear fit, session 13** | correction is exactly 0 inside the core and 2.0·`V₀/r₀` at the boundary, where the gradient is discontinuous. Curvature beyond the linear fit rests on a DECLARED loading shape: 2.6% across defensible shapes, 49.7% including a uniform bracket |
 | 5 | **A2** constant g, +0.383% at cruise | **CLOSED, session 12** | not modelled: worst mode movement is 7.6% of its tolerance. Phugoid only carries the full 0.38% |
 | 6 | **C5** no thrust moment, no spool | sound for now | required before any powered-recovery result |
 | 7 | **B4** accelerometer at CG vs DFDR | caveat | keep Fig. 8 claims as orderings |
