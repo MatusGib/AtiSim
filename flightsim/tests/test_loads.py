@@ -60,3 +60,66 @@ def test_adding_zero_changes_nothing_exactly():
     total = loads.add(a, loads.zero_increment())
     for name in a._fields:
         assert np.asarray(getattr(total, name)) == np.asarray(getattr(a, name))
+
+
+# --- building an increment from a field ------------------------------------
+
+
+def test_the_strip_increment_carries_roll_only_for_now():
+    """Only the rolling moment has a validated strip integral. Pitch and yaw
+    are left at exact zero rather than filled with something plausible -- the
+    plan that added the roll integral deliberately stopped there, and an
+    unvalidated pitch integral would be worse than none.
+
+    Asserted so that if someone later fills those channels, they have to change
+    this test and therefore have to justify it.
+    """
+    from flightsim import airframe, wind
+    from flightsim.aircraft import REGISTRY
+    from flightsim.state import State, euler_to_quat
+
+    ac = REGISTRY["boeing747"]
+    st = airframe.stations(ac, n_span=201, n_lon=9)
+    field = lambda p: jnp.array([0.0, 0.0, 1e-7 * p[1] ** 3])  # noqa: E731
+    state = State(
+        pos_ned=jnp.array([0.0, 0.0, -11278.0]),
+        vel_body=jnp.array([236.0, 0.0, 0.0]),
+        quat=euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
+        omega=jnp.zeros(3),
+    )
+
+    inc = loads.strip_increment(state, field, ac, st)
+    expected = wind.strip_roll_moment(
+        state.pos_ned, state.quat, field, ac, st, 236.0
+    )
+    assert float(inc.Cl) == pytest.approx(float(expected), rel=1e-9)
+    assert float(inc.CL) == 0.0
+    assert float(inc.Cm) == 0.0
+    assert float(inc.Cn) == 0.0
+
+
+def test_the_strip_increment_uses_air_relative_speed_not_ground_speed():
+    """The incidence a strip sees is set by the speed of the air over it. Using
+    inertial speed would reintroduce exactly the error the whole air-relative
+    design exists to avoid, and it would only show up in a headwind."""
+    from flightsim import airframe
+    from flightsim.aircraft import REGISTRY
+    from flightsim.state import State, euler_to_quat
+
+    ac = REGISTRY["boeing747"]
+    st = airframe.stations(ac, n_span=201, n_lon=9)
+    field = lambda p: jnp.array([50.0, 0.0, 1e-7 * p[1] ** 3])  # noqa: E731
+    base = State(
+        pos_ned=jnp.array([0.0, 0.0, -11278.0]),
+        vel_body=jnp.array([236.0, 0.0, 0.0]),
+        quat=euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
+        omega=jnp.zeros(3),
+    )
+    # A 50 m/s tailwind component leaves ground speed alone and reduces
+    # airspeed, so an air-relative implementation must give a LARGER incidence
+    # and therefore a larger rolling moment than a ground-speed one would.
+    inc = loads.strip_increment(base, field, ac, st)
+    still = loads.strip_increment(
+        base, lambda p: jnp.array([0.0, 0.0, 1e-7 * p[1] ** 3]), ac, st
+    )
+    assert abs(float(inc.Cl)) > abs(float(still.Cl))
