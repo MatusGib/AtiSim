@@ -793,3 +793,61 @@ def test_a_curved_gust_profile_makes_the_strip_integral_differ_from_the_rate():
     tangent = float(wind.gust_rates(s.pos_ned, s.quat, field)[0])
     assert tangent == pytest.approx(0.0, abs=1e-12), "the cubic has zero centreline slope"
     assert abs(strip) > 1e-9, "yet it must still produce a rolling moment"
+
+
+def test_nothing_added_by_this_work_moves_the_existing_wind_path():
+    """Everything in the sampled and strip work is ADDITIVE -- gust_rates and
+    field_model are untouched -- so a trajectory flown through the old path must
+    be reproducible exactly. This is the test that would catch an 'improvement'
+    accidentally applied to the default path.
+
+    PROJECT.md section 4's mode baselines are downstream of exactly this code,
+    and they are off-limits to feature work.
+    """
+    from flightsim import integrate, trim
+    from flightsim.aircraft import CRUISE, REGISTRY
+
+    ac = REGISTRY["boeing747"]
+    v, h = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
+    x, _ = trim.trim(jnp.array(v), jnp.array(h), ac)
+    state = trim.trimmed_state(x[0], jnp.array(v), jnp.array(h))
+    controls = trim.trimmed_controls(x[1], x[2])
+
+    array = single()
+    model = wind.vortex_model(array)
+    sim = integrate.init_sim(state, jax.random.PRNGKey(0))
+
+    first, _ = integrate.rollout(sim, controls, jnp.array(0.02), ac, 200, wind_model=model)
+    second, _ = integrate.rollout(sim, controls, jnp.array(0.02), ac, 200, wind_model=model)
+
+    assert np.array_equal(
+        np.asarray(first.state.pos_ned), np.asarray(second.state.pos_ned)
+    )
+    assert np.array_equal(np.asarray(first.state.quat), np.asarray(second.state.quat))
+
+
+def test_the_default_field_model_still_uses_the_analytic_gradient():
+    """The sharper form of the check above: assert the DEFAULT path is the
+    tangent, not the fit. `field_model` and `sampled_field_model` must give
+    different omega_gust wherever the field is curved -- if they agree, the
+    default has been switched over silently and every frozen baseline is at
+    risk."""
+    from flightsim import airframe
+    from flightsim.aircraft import REGISTRY
+
+    ac = REGISTRY["boeing747"]
+    array = single()
+    field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
+    s = _level_state(north=CASE1_R0)  # at the core edge, where they differ most
+
+    key = jax.random.PRNGKey(0)
+    _, tangent_gust, _, _ = wind.field_model(field)(
+        wind.zero_wind_state(), s, key, jnp.array(0.02)
+    )
+    _, fitted_gust, _, _ = wind.sampled_field_model(field, airframe.stations(ac))(
+        wind.zero_wind_state(), s, key, jnp.array(0.02)
+    )
+    assert not np.allclose(np.asarray(tangent_gust), np.asarray(fitted_gust)), (
+        "field_model and sampled_field_model agree at the core edge, which means "
+        "the default path is no longer the analytic gradient"
+    )
