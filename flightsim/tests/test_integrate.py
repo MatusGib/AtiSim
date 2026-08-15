@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from flightsim import integrate
+from flightsim import integrate, loads
 from flightsim.state import Array, Controls, State, euler_to_quat
 
 CRUISE_CONTROLS = Controls(
@@ -155,6 +155,7 @@ def test_wind_state_and_key_are_threaded_through_the_scan(test_aircraft):
         key=key0,
         wind_ned=jnp.zeros(3),
         omega_gust=jnp.zeros(3),
+        increment=loads.zero_increment(),
     )
     final, _ = integrate.rollout(
         sim, CRUISE_CONTROLS, jnp.array(0.02), test_aircraft, 250, wind_model=counting_wind
@@ -181,6 +182,9 @@ def test_different_keys_diverge_once_wind_is_stochastic(test_aircraft):
         key=keys,
         wind_ned=jnp.zeros((n, 3)),
         omega_gust=jnp.zeros((n, 3)),
+        increment=jax.tree.map(
+            lambda x: jnp.broadcast_to(x, (n,) + x.shape), loads.zero_increment()
+        ),
     )
     _, hist = jax.vmap(
         lambda s: integrate.rollout(
@@ -200,8 +204,64 @@ def test_wind_is_sampled_once_per_step_not_per_rk4_stage(test_aircraft):
         key=jax.random.PRNGKey(1),
         wind_ned=jnp.zeros(3),
         omega_gust=jnp.zeros(3),
+        increment=loads.zero_increment(),
     )
     after_one = integrate.step(
         sim, CRUISE_CONTROLS, jnp.array(0.02), test_aircraft, wind_model=counting_wind
     )
     assert float(after_one.wind.accumulated) == 1.0
+
+
+# --- the load seam: an optional strip model, off by default ----------------
+
+
+def test_omitting_the_load_model_is_bit_identical_to_today(test_aircraft):
+    """The gate that protects every frozen baseline. A run that does not ask for
+    strip loads must produce exactly the trajectory it produced before this
+    feature existed -- not nearly, exactly."""
+    state = State(
+        pos_ned=jnp.array([0.0, 0.0, -2000.0]),
+        vel_body=jnp.array([60.0, 0.0, 2.0]),
+        quat=euler_to_quat(jnp.array(0.0), jnp.array(0.03), jnp.array(0.0)),
+        omega=jnp.zeros(3),
+    )
+    controls = Controls(
+        elevator=jnp.array(0.02), aileron=jnp.array(0.0),
+        rudder=jnp.array(0.0), throttle=jnp.array(0.5),
+    )
+    sim = integrate.init_sim(state, jax.random.PRNGKey(0))
+
+    plain, _ = integrate.rollout(sim, controls, jnp.array(0.02), test_aircraft, 100)
+    explicit, _ = integrate.rollout(
+        sim, controls, jnp.array(0.02), test_aircraft, 100, load_model=None
+    )
+    assert np.array_equal(
+        np.asarray(plain.state.pos_ned), np.asarray(explicit.state.pos_ned)
+    )
+    assert np.array_equal(np.asarray(plain.state.quat), np.asarray(explicit.state.quat))
+
+
+def test_the_applied_increment_is_cached_on_the_sim_state(test_aircraft):
+    """Same reason wind_ned and omega_gust are cached: a recorder or controller
+    must be able to see what was actually applied without calling the model a
+    second time. Consumers see one step of lag, which is what a real sensor
+    gives anyway."""
+    state = State(
+        pos_ned=jnp.array([0.0, 0.0, -2000.0]),
+        vel_body=jnp.array([60.0, 0.0, 0.0]),
+        quat=euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
+        omega=jnp.zeros(3),
+    )
+    controls = Controls(
+        elevator=jnp.array(0.0), aileron=jnp.array(0.0),
+        rudder=jnp.array(0.0), throttle=jnp.array(0.5),
+    )
+    sim = integrate.init_sim(state, jax.random.PRNGKey(0))
+    assert isinstance(sim.increment, loads.CoeffIncrement)
+    assert float(sim.increment.Cl) == 0.0
+
+    stepped = integrate.step(
+        sim, controls, jnp.array(0.02), test_aircraft,
+        load_model=lambda s: loads.zero_increment()._replace(Cl=jnp.array(0.005)),
+    )
+    assert float(stepped.increment.Cl) == pytest.approx(0.005)
