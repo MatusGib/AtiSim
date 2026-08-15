@@ -19,19 +19,20 @@ from jax import Array
 
 from flightsim.aircraft import Aircraft
 from flightsim.dynamics import derivatives
+from flightsim.loads import CoeffIncrement, zero_increment
 from flightsim.state import Controls, State, quat_normalize
 from flightsim.wind import WindState, zero_wind, zero_wind_state
 
 
 class SimState(NamedTuple):
-    """Rigid-body state, wind-model state, PRNG key, and the wind last applied.
+    """Rigid-body state, wind-model state, PRNG key, and the loads last applied.
 
-    `wind_ned` and `omega_gust` are an OUTPUT cache, not model state: they record
-    what the previous `step` actually blew on the aircraft. They are here so that
-    a controller or a recorder can sense the air without calling the wind model a
-    second time -- which would cost a duplicate evaluation and, for a stochastic
-    model, split the key twice and yield a different realisation from the one the
-    aircraft actually flew through.
+    `wind_ned`, `omega_gust` and `increment` are an OUTPUT cache, not model
+    state: they record what the previous `step` actually blew on the aircraft.
+    They are here so that a controller or a recorder can sense the air without
+    calling the wind or load model a second time -- which would cost a duplicate
+    evaluation and, for a stochastic model, split the key twice and yield a
+    different realisation from the one the aircraft actually flew through.
 
     Consumers therefore see the wind from one step ago. At 50 Hz that is 20 ms of
     lag, which is what a real sensor gives you anyway.
@@ -42,6 +43,7 @@ class SimState(NamedTuple):
     key: Array
     wind_ned: Array  # (3,) m/s NED, applied by the previous step
     omega_gust: Array  # (3,) rad/s body, applied by the previous step
+    increment: CoeffIncrement  # coefficients applied by the previous step
 
 
 def init_sim(state: State, key: Array) -> SimState:
@@ -51,6 +53,7 @@ def init_sim(state: State, key: Array) -> SimState:
         key=key,
         wind_ned=jnp.zeros(3),
         omega_gust=jnp.zeros(3),
+        increment=zero_increment(),
     )
 
 
@@ -79,19 +82,35 @@ def rk4_step(f, x, dt):
     return _axpy(x, increment, dt)
 
 
-@partial(jax.jit, static_argnames=("wind_model",))
+@partial(jax.jit, static_argnames=("wind_model", "load_model"))
 def step(
     sim: SimState,
     controls: Controls,
     dt: Array,
     ac: Aircraft,
     wind_model=zero_wind,
+    load_model=None,
 ) -> SimState:
-    """One RK4 step. The PRNG key is threaded through the wind model."""
+    """One RK4 step. The PRNG key is threaded through the wind model.
+
+    `load_model` maps a `State` to a `loads.CoeffIncrement`. It is sampled once
+    per step and held across the four RK4 stages, exactly as the wind is and for
+    the same reason. Omitting it gives an exact zero increment, which makes the
+    step bit-identical to one taken before this feature existed.
+
+    Two names for the one increment, deliberately. The CACHED value is always a
+    `CoeffIncrement`, because `lax.scan` needs the carry's pytree structure to be
+    the same on every iteration and a `None` leaf would change it. The value
+    handed to `derivatives` is `None` when no load model was given, so the
+    default path adds nothing at all rather than adding four exact zeros.
+    `load_model` is static, so this branch is resolved at trace time.
+    """
     wind_ned, omega_gust, wind_state, key = wind_model(sim.wind, sim.state, sim.key, dt)
+    applied = zero_increment() if load_model is None else load_model(sim.state)
+    increment = None if load_model is None else applied
 
     def f(s: State) -> State:
-        return derivatives(s, controls, ac, wind_ned, omega_gust)
+        return derivatives(s, controls, ac, wind_ned, omega_gust, increment=increment)
 
     new_state = rk4_step(f, sim.state, dt)
     new_state = new_state._replace(quat=quat_normalize(new_state.quat))
@@ -102,10 +121,11 @@ def step(
         key=key,
         wind_ned=wind_ned,
         omega_gust=omega_gust,
+        increment=applied,
     )
 
 
-@partial(jax.jit, static_argnames=("n_steps", "wind_model"))
+@partial(jax.jit, static_argnames=("n_steps", "wind_model", "load_model"))
 def rollout(
     sim: SimState,
     controls: Controls,
@@ -113,6 +133,7 @@ def rollout(
     ac: Aircraft,
     n_steps: int,
     wind_model=zero_wind,
+    load_model=None,
 ) -> tuple[SimState, State]:
     """Run n_steps with fixed controls.
 
@@ -121,7 +142,7 @@ def rollout(
     """
 
     def body(carry: SimState, _) -> tuple[SimState, State]:
-        carry = step(carry, controls, dt, ac, wind_model=wind_model)
+        carry = step(carry, controls, dt, ac, wind_model=wind_model, load_model=load_model)
         return carry, carry.state
 
     return jax.lax.scan(body, sim, None, length=n_steps)
@@ -136,12 +157,16 @@ def batch_sim(state: State, keys: Array) -> SimState:
     n = keys.shape[0]
     tiled = jax.tree.map(lambda x: jnp.broadcast_to(x, (n,) + x.shape), state)
     winds = jax.tree.map(lambda x: jnp.broadcast_to(x, (n,) + x.shape), zero_wind_state())
+    increments = jax.tree.map(
+        lambda x: jnp.broadcast_to(x, (n,) + x.shape), zero_increment()
+    )
     return SimState(
         state=tiled,
         wind=winds,
         key=keys,
         wind_ned=jnp.zeros((n, 3)),
         omega_gust=jnp.zeros((n, 3)),
+        increment=increments,
     )
 
 
@@ -152,8 +177,11 @@ def batched_rollout(
     ac: Aircraft,
     n_steps: int,
     wind_model=zero_wind,
+    load_model=None,
 ) -> tuple[SimState, State]:
     """rollout vmapped over the leading batch axis of `sim`."""
     return jax.vmap(
-        lambda s: rollout(s, controls, dt, ac, n_steps, wind_model=wind_model)
+        lambda s: rollout(
+            s, controls, dt, ac, n_steps, wind_model=wind_model, load_model=load_model
+        )
     )(sim)

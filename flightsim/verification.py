@@ -217,6 +217,7 @@ def free_fall_through_a_swinging_wind(ac, dt=0.02, n=300):
     """
     from flightsim.atmosphere import G0
     from flightsim.integrate import SimState, rollout
+    from flightsim.loads import zero_increment
     from flightsim.state import State, euler_to_quat, quat_to_dcm
     from flightsim.trim import trimmed_controls
 
@@ -237,6 +238,7 @@ def free_fall_through_a_swinging_wind(ac, dt=0.02, n=300):
         key=jax.random.PRNGKey(0),
         wind_ned=jnp.zeros(3),
         omega_gust=jnp.zeros(3),
+        increment=zero_increment(),
     )
     final, traj = rollout(sim, controls, jnp.array(dt), ac, n, wind_model=_swinging_wind)
 
