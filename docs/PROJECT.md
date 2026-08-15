@@ -219,8 +219,13 @@ Suite: **358 passed, 1 skipped**, up from 342 with nothing broken.
 | Ordering vortex < updraft < manoeuvre | **HOLDS on both paths** | exact |
 | Rigid-rotation structure, inside the Parks core | **q-pair +1.0000**, p-pair n/a | reported |
 | …outside the core | **q-pair −1.0000**, p-pair n/a | reported |
+| `CL` increment through `load_factor` | raises it | strict inequality |
+| `Cl` increment through `load_factor` | **exactly no effect** — it enters the moment, not the force | exact |
+| Zero increment vs omitting it, `specific_force` | **bit-identical** | `np.array_equal` |
+| Load model reaching the measured `n_z` in `_measure` | changes it | `not allclose` |
+| Omitting the load model in `fly` | **bit-identical** `n_z` | `np.array_equal` |
 
-Suite: **373 passed, 1 skipped**, up from 358 with nothing broken.
+Suite: **377 passed, 1 skipped**, up from 358 with nothing broken.
 
 **Read the two zeros together, because they have one cause.** The strip path
 changes neither turbulence encounter, and that is a property of the two fields
@@ -230,12 +235,28 @@ through, so in both cases every strip on the span sees the same vertical gust
 and the antisymmetric roll integral cancels. The diagnostic reports the same
 fact from the other side: `p-pair n/a` means `∂w/∂y` is identically zero.
 
-The `q-pair` numbers are the informative ones. Inside the core the flow is
-exactly rigid rotation, which is what the point model implicitly assumes, so
-the point treatment is exact there. Outside it the ratio is **−1**, the
-maximally non-rotation-like case — the field is irrotational, and the point
-model's assumption is not approximately violated but inverted. That is where a
-strip *pitch* integral would earn its keep, and there is not one yet.
+**What the `q-pair` measures, stated carefully.** `gust_rates` reads three
+entries out of the 3×3 body-frame velocity-gradient tensor: `p_g = +∂w/∂y`,
+`q_g = −∂w/∂x`, `r_g = +∂v/∂x`. A rigid rotation of the air mass has a
+*skew-symmetric* gradient tensor, which has exactly three free parameters — so
+when the tensor is skew, those three numbers capture the field's entire
+first-order structure with nothing left over. The q-pair reports
+`−(∂u/∂z)/(∂w/∂x)`, which is `+1` iff the (x,z) block is skew.
+
+Inside the core it is **+1.0000**: Rankine solid-body rotation, tensor skew,
+three numbers sufficient. Outside it is **−1.0000**: irrotational, in Parks'
+own terms — the tensor is *symmetric*, pure **strain**, zero vorticity, and the
+model has no channel for strain at all.
+
+The implication that holds is one-directional: q-pair `= +1` ⇒ rigid rotation
+⇒ the field is linear in position ⇒ the point treatment is exact. That is
+independently why the curvature correction is exactly `0.0000` at 0.50 r₀ and
+0.99 r₀ in the session-13 table. **The converse does not hold**, and a strip
+*pitch* integral would not address the `−1` region: a pitch integral gives each
+longitudinal station the gust at its own `x` instead of fitting one slope, so
+it fixes curvature in `w(x)` and never reads `∂u/∂z` at all. Two different
+failures. That irrotational and curved coincide outside the core is a property
+of the Rankine profile, not a theorem.
 
 The 0.187 m cubic case is the positive control. It is the only evidence here
 that the seam reaches the equations of motion at all; without it every number
