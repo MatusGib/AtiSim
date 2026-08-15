@@ -851,3 +851,140 @@ def test_the_default_field_model_still_uses_the_analytic_gradient():
         "field_model and sampled_field_model agree at the core edge, which means "
         "the default path is no longer the analytic gradient"
     )
+
+
+# --- flying the field: the strip path in the equations of motion ------------
+
+
+def test_flying_the_parks_vortex_with_strip_loads_leaves_the_trajectory_alone():
+    """Gate 9, and the answer is zero. MEASURED, not assumed.
+
+    The plan expected this to differ and it does not, for a reason that is a
+    property of the field rather than a defect in the seam: the Parks vortex
+    axes lie across the flight path and the field has NO east variation, so
+    every strip on the span sees the same vertical gust and the antisymmetric
+    roll integral cancels. The rolling coefficient comes out at order 1e-19,
+    which is round-off, and the two trajectories are bit-identical.
+
+    This is the same fact the rigid-rotation diagnostic below reports as
+    `p-pair n/a`: dw/dy is identically zero here. Two measurements, one cause.
+
+    So this test is a NULL RESULT and is named for one. It does not show the
+    strip path works -- `test_a_field_with_spanwise_structure_moves_the_aircraft`
+    does that, and it exists because without it a broken seam would pass here
+    just as happily. What this shows is that turning the strip path on costs
+    the headline vortex result nothing, which is worth knowing and is exactly
+    why ASSUMPTIONS.md E2 forbids reading the strip work as having fixed it.
+
+    Reported rather than bounded: the size of the difference is the RESULT, and
+    fixing a tolerance around it now would be asserting the answer before
+    measuring it.
+    """
+    from flightsim import integrate, loads, trim
+    from flightsim.aircraft import CRUISE, REGISTRY
+
+    ac = REGISTRY["boeing747"]
+    v, h = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
+    x, _ = trim.trim(jnp.array(v), jnp.array(h), ac)
+    state = trim.trimmed_state(x[0], jnp.array(v), jnp.array(h))
+    controls = trim.trimmed_controls(x[1], x[2])
+
+    array = single()
+    field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
+    model = wind.vortex_model(array)
+    # Start well upstream so the aircraft flies through the whole core.
+    start = state._replace(pos_ned=jnp.array([-6.0 * CASE1_R0, 0.0, -h]))
+    sim = integrate.init_sim(start, jax.random.PRNGKey(0))
+    steps = int(12.0 * CASE1_R0 / v / 0.02)
+
+    point, _ = integrate.rollout(sim, controls, jnp.array(0.02), ac, steps, wind_model=model)
+    strip, _ = integrate.rollout(
+        sim, controls, jnp.array(0.02), ac, steps, wind_model=model,
+        load_model=loads.strip_model(field, ac),
+    )
+
+    d_pos = float(
+        np.linalg.norm(np.asarray(point.state.pos_ned) - np.asarray(strip.state.pos_ned))
+    )
+    print(f"\nParks core traverse, {steps} steps:")
+    print(f"  position difference, point vs strip: {d_pos:.6f} m")
+    print(f"  strip rolling coefficient at the end: {float(strip.increment.Cl):.6e}")
+    assert np.isfinite(d_pos)
+
+
+def test_a_field_with_spanwise_structure_moves_the_aircraft():
+    """The positive control the Parks field cannot provide.
+
+    Gate 9 asks whether the strip path reaches the equations of motion. The
+    vortex answers `no difference` for a reason that has nothing to do with the
+    seam, so on its own it would pass unchanged if `load_model` were dropped on
+    the floor. This flies the same aircraft through a field that DOES vary
+    across the span -- a cubic in east, the profile an equivalent roll rate
+    cannot represent at all -- and requires the trajectory to move.
+
+    Cubic rather than linear on purpose: a linear gradient is exactly what the
+    point-plus-gradient path already reproduces, so it would understate the
+    difference and, worse, would still pass if the strip integral silently
+    degraded to an equivalent rate.
+    """
+    from flightsim import integrate, loads, trim
+    from flightsim.aircraft import CRUISE, REGISTRY
+
+    ac = REGISTRY["boeing747"]
+    v, h = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
+    x, _ = trim.trim(jnp.array(v), jnp.array(h), ac)
+    state = trim.trimmed_state(x[0], jnp.array(v), jnp.array(h))
+    controls = trim.trimmed_controls(x[1], x[2])
+
+    # Vertical gust cubic in east. Peaks at ~4.5 m/s at the wingtip, which is
+    # the same order as the Parks core and therefore not a contrived overdrive.
+    field = lambda p: jnp.array([0.0, 0.0, 1e-6 * p[1] ** 3])  # noqa: E731
+    sim = integrate.init_sim(
+        state._replace(pos_ned=jnp.array([0.0, 0.0, -h])), jax.random.PRNGKey(0)
+    )
+    steps = 500
+
+    point, _ = integrate.rollout(
+        sim, controls, jnp.array(0.02), ac, steps, wind_model=wind.field_model(field)
+    )
+    strip, _ = integrate.rollout(
+        sim, controls, jnp.array(0.02), ac, steps, wind_model=wind.field_model(field),
+        load_model=loads.strip_model(field, ac),
+    )
+
+    d_pos = float(
+        np.linalg.norm(np.asarray(point.state.pos_ned) - np.asarray(strip.state.pos_ned))
+    )
+    roll = float(strip.increment.Cl)
+    print(f"\nCubic spanwise gust, {steps} steps:")
+    print(f"  position difference, point vs strip: {d_pos:.6f} m")
+    print(f"  strip rolling coefficient at the end: {roll:.6e}")
+    assert roll != 0.0, "the strip integral produced no rolling moment on a cubic profile"
+    assert d_pos > 0.0, (
+        "the strip rolling moment did not reach the equations of motion -- "
+        "load_model is being computed and discarded"
+    )
+
+
+def test_the_rigid_rotation_structure_diagnostic_is_reported_per_field():
+    """Gate 7. The current point model is exactly equivalent to assuming the
+    shear matrix has RIGID-ROTATION STRUCTURE -- that d(v)/dz = -d(w)/dy and
+    d(u)/dz = -d(w)/dx. This reports how far each field departs from that, which
+    is the cheapest available predictor of where the point model will struggle.
+
+    Reported, not asserted: the ratio is a property of each field, and pinning
+    it would freeze a diagnostic rather than a result.
+    """
+    array = single()
+    field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
+    print("\nRigid-rotation-structure diagnostic (1.0 = exactly rotation-like):")
+    for frac, label in ((0.5, "inside core"), (1.5, "outside core")):
+        s = _level_state(north=frac * CASE1_R0)
+        dcm = np.asarray(jax.jacfwd(field)(s.pos_ned))
+        assert np.all(np.isfinite(dcm)), f"the {label} shear matrix is not finite"
+        # body == NED here (wings level, heading north)
+        dw_dy, dv_dz = dcm[2, 1], dcm[1, 2]
+        dw_dx, du_dz = dcm[2, 0], dcm[0, 2]
+        pair_p = "n/a" if abs(dw_dy) < 1e-12 else f"{-dv_dz / dw_dy:+.4f}"
+        pair_q = "n/a" if abs(dw_dx) < 1e-12 else f"{-du_dz / dw_dx:+.4f}"
+        print(f"  {label:12s}  p-pair {pair_p}   q-pair {pair_q}")
