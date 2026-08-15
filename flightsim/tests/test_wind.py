@@ -728,3 +728,68 @@ def test_the_curvature_correction_across_the_parks_core_is_measured():
     assert profile[1.25] < 0.2
     assert profile[2.0] < 0.05
     assert profile[3.0] < profile[2.0], "the correction must keep decaying outward"
+
+
+# --- A2: strip integration ---------------------------------------------------
+
+
+def _b747_and_stations(n_span=2001):
+    from flightsim import airframe
+    from flightsim.aircraft import REGISTRY
+
+    ac = REGISTRY["boeing747"]
+    return ac, airframe.stations(ac, n_span=n_span, n_lon=9)
+
+
+def test_a_rigid_roll_rate_through_the_strip_integral_returns_the_sourced_Clp():
+    """The calibration target, asserted end to end through the real integral
+    rather than through the closed form it was derived from."""
+    ac, st = _b747_and_stations()
+    p_hat = 0.01
+    clp = wind.strip_clp_from_rate(ac, st, p_hat)
+    assert float(clp) / p_hat == pytest.approx(float(ac.Clp), rel=1e-3)
+
+
+def test_a_uniform_vertical_gust_produces_no_rolling_moment():
+    """A gust that is the same at both tips cannot roll the aircraft. If this
+    fails, the integration weights are asymmetric."""
+    ac, st = _b747_and_stations()
+    field = lambda p: jnp.array([0.0, 0.0, 5.0])  # noqa: E731
+    s = _level_state()
+    moment = wind.strip_roll_moment(s.pos_ned, s.quat, field, ac, st, 236.0)
+    assert abs(float(moment)) < 1e-12
+
+
+def test_a_linear_gust_gradient_matches_the_equivalent_rate_answer():
+    """The bridge between A1 and A2. For a gust varying linearly across the
+    span, the strip integral and the equivalent-rate treatment describe the same
+    physics and must agree -- that is what makes the rate equivalence legitimate
+    in the first place (Stengel eq. 3.4-48). They diverge only when the profile
+    is curved, which is the next test."""
+    ac, st = _b747_and_stations()
+    gradient = 0.002  # 1/s, d(w_g)/dy
+    field = lambda p: jnp.array([0.0, 0.0, gradient * p[1]])  # noqa: E731
+    s = _level_state()
+    V = 236.0
+
+    strip = float(wind.strip_roll_moment(s.pos_ned, s.quat, field, ac, st, V))
+    # Equivalent rate: p_gust = +d(w_g)/dy, and the aero model sees -p_gust.
+    p_equivalent = -gradient
+    equivalent = float(
+        wind.strip_clp_from_rate(ac, st, p_equivalent * float(ac.b) / (2.0 * V))
+    )
+    assert strip == pytest.approx(equivalent, rel=1e-6)
+
+
+def test_a_curved_gust_profile_makes_the_strip_integral_differ_from_the_rate():
+    """The reason Phase 3 exists. A cubic spanwise profile has the same
+    centreline slope as no gust at all, yet it genuinely rolls the aircraft. The
+    equivalent-rate treatment cannot represent that; the strip integral can."""
+    ac, st = _b747_and_stations()
+    field = lambda p: jnp.array([0.0, 0.0, 1e-7 * p[1] ** 3])  # noqa: E731
+    s = _level_state()
+
+    strip = float(wind.strip_roll_moment(s.pos_ned, s.quat, field, ac, st, 236.0))
+    tangent = float(wind.gust_rates(s.pos_ned, s.quat, field)[0])
+    assert tangent == pytest.approx(0.0, abs=1e-12), "the cubic has zero centreline slope"
+    assert abs(strip) > 1e-9, "yet it must still produce a rolling moment"

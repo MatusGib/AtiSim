@@ -28,6 +28,8 @@ import jax
 import jax.numpy as jnp
 from jax import Array
 
+from flightsim import airframe
+from flightsim.aircraft import Aircraft
 from flightsim.state import State, quat_to_dcm
 from flightsim.units import FT2M
 
@@ -551,6 +553,88 @@ def sampled_field_model(field, stations):
         return wind_ned, omega_gust, wind_state, key
 
     return model
+
+
+# ---------------------------------------------------------------------------
+# Strip integration
+#
+# `sampled_rates` improves the ESTIMATOR for three numbers, but it still
+# collapses the field to three numbers, so a profile that varies non-linearly
+# across the span is still not represented. Only integrating the field per
+# strip carries that. Stengel (Flight Dynamics 2nd ed, p. 217) is explicit that
+# below rotor scale the rotary derivatives stop being adequate and strip theory
+# or CFD is required; this is the strip-theory half of that.
+# ---------------------------------------------------------------------------
+
+
+def _strip_rolling_coefficient(ac: Aircraft, stations, incidence: Array) -> Array:
+    """Rolling-moment coefficient from a spanwise incidence distribution.
+
+        Cl = -(1/(S*b)) * integral( y * c(y) * a0 * dalpha(y) dy )
+
+    The leading minus sign is the body-axis convention: extra lift on the right
+    wing (y > 0) acts in -z, and the moment about x is y*F_z, so more lift to
+    starboard rolls the aircraft to port. That is what makes roll damping oppose
+    roll rate, and it is the sign most easily got backwards.
+
+    Trapezoidal rather than a fixed-order quadrature because the elliptic chord
+    has infinite slope at the tips, where a low-order rule does noticeably worse
+    than simply using more stations.
+    """
+    y = stations.span
+    chord = airframe.chord_distribution(y, ac)
+    a0 = airframe.calibrated_lift_slope(ac)
+    return -jnp.trapezoid(y * chord * a0 * incidence, y) / (ac.S * ac.b)
+
+
+def strip_clp_from_rate(ac: Aircraft, stations, p_hat: Array) -> Array:
+    """Rolling-moment coefficient produced by a rigid roll rate.
+
+    The calibration check: with `airframe.calibrated_lift_slope` pinned to the
+    tabulated Clp, this must return `Clp * p_hat`. Stengel eq. 3.4-39 gives the
+    spanwise incidence a roll rate induces, dalpha = p*y/V, which in terms of
+    p_hat = pb/2V is dalpha = 2*p_hat*y/b.
+    """
+    incidence = 2.0 * p_hat * stations.span / ac.b
+    return _strip_rolling_coefficient(ac, stations, incidence)
+
+
+def strip_roll_moment(
+    pos_ned: Array, quat: Array, field, ac: Aircraft, stations, airspeed: Array
+) -> Array:
+    """Rolling-moment coefficient from a wind field, integrated across the span.
+
+    Each strip is given the gust at ITS OWN position rather than the CG's, so a
+    profile that varies non-linearly across the span produces the moment it
+    physically would. That is the whole point of the strip treatment and the one
+    thing an equivalent rate cannot reproduce.
+
+    Returns a coefficient, not a moment, so it composes with `aero.py`'s
+    coefficient build-up rather than bypassing it.
+
+    SIGN, and it is the one to be careful about because the two halves point
+    opposite ways. A wing moving DOWN meets the air from below and gains
+    incidence: that is the +p*y/V of `strip_clp_from_rate`. Air moving DOWN past
+    a stationary wing arrives from above and LOSES incidence. So the gust
+    increment is -w_g/V, not +w_g/V.
+
+    This is the same convention as everywhere else in the package, and it is
+    forced by it: `dynamics.relative_velocity` forms `vel_body - dcm.T @
+    wind_ned`, so a larger downward gust reduces the relative w and therefore
+    reduces alpha. Getting this backwards produces a model that rolls the right
+    way for its own motion and the wrong way for every gust, which no test of
+    rigid rotation alone would catch -- which is why
+    `test_a_linear_gust_gradient_matches_the_equivalent_rate_answer` compares
+    the two against each other.
+    """
+    dcm = quat_to_dcm(quat)
+
+    def gust_w(y: Array) -> Array:
+        offset = jnp.array([0.0, y, 0.0])
+        return (dcm.T @ field(pos_ned + dcm @ offset))[2]
+
+    w_gust = jax.vmap(gust_w)(stations.span)
+    return _strip_rolling_coefficient(ac, stations, -w_gust / airspeed)
 
 
 def vortex_model(array: VortexArray):
