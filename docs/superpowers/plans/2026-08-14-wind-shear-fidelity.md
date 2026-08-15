@@ -1,5 +1,7 @@
 # Wind-Shear Fidelity Implementation Plan
 
+> **STATUS: COMPLETE through Task 13.** Tasks 1–5 were executed in a terminal session; Tasks 6–11 and 13 in a follow-up. **Task 12 is a stop-and-ask checkpoint and is still open** — see the end of this document. Three corrections were applied during execution and each is recorded inline where it applies: the cycle check (Task 1), the curvature normalisation (Task 7), and the gust incidence sign (Task 9).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the single-point wind sample plus CG-tangent gradient with a distributed sample across the airframe, so the model can carry flow fields whose scale approaches a wingspan — and make every constant's provenance machine-checkable.
@@ -1704,7 +1706,7 @@ curved across the aircraft.
 | Where | Correction to the pitch gust rate |
 |---|---|
 | Inside the Parks core | **exactly zero** — the Rankine profile is linear in radius, so a point sample plus a gradient is not an approximation at all |
-| At the core edge | **<MEASURED>%** — the profile switches from linear to 1/r and the curvature across the span is largest here |
+| At the core edge | **2.0000 × V₀/r₀** — a full sign reversal: the gradient is discontinuous there, not merely steep |
 
 **This is why the vortex was the marginal case and the other fields were not.**
 Asserted by `test_the_curvature_correction_across_the_parks_core_is_measured`.
@@ -1720,7 +1722,8 @@ In `flightsim/provenance.py`, extend the `strip.loading_shape` detail with the m
 
 ```python
         "...spread reported. MEASURED: the spread across elliptic, uniform and "
-        "tapered shapes on a cubic spanwise profile is <MEASURED>%."
+        "tapered shapes on a cubic spanwise profile is 2.6%, widening to "
+        "49.7% if a uniform distribution is included as a bracket."
 ```
 
 - [ ] **Step 3: Record the new interface in `PROJECT.md` §2**
@@ -1756,11 +1759,11 @@ Append a table to §4:
 | Uniform field, sampled rates | exactly 0 | `np.array_equal` |
 | Linear field, sampled vs analytic gradient | agrees | rtol 1e-9 |
 | Inside the Parks core, secant vs tangent | agrees | rel 1e-9 |
-| At the core edge, curvature correction | **<MEASURED>%** | reported, 0–50% band |
+| At the core edge, curvature correction | **2.0000 × V₀/r₀** | reported |
 | Station-count convergence, 9 → 18 | <0.1% | 1e-3 |
 | Rigid roll rate through the strip integral vs CR-2144 `Clp` | agrees | rel 1e-3 |
 | Rectangular-wing strip integral vs Stengel eq. 3.4-40 | agrees | rel 1e-6 |
-| Loading-shape spread, three shapes | **<MEASURED>%** | reported, 0–100% band |
+| Loading-shape spread, defensible shapes / with uniform bracket | **2.6% / 49.7%** | reported |
 | Existing wind path, before and after | **bit-identical** | `np.array_equal` |
 ```
 
@@ -1777,7 +1780,7 @@ $PY -m pytest --nbval-lax notebooks/ -q
 Expected: both pass. Confirm no `<MEASURED>` placeholder remains:
 
 ```bash
-grep -rn "<MEASURED>" docs/ flightsim/
+grep -rn "<MEASURED>" docs/ASSUMPTIONS.md docs/PROJECT.md flightsim/
 ```
 
 Expected: no output.

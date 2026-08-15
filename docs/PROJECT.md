@@ -58,6 +58,8 @@ without a core rewrite. Both have now been exercised and both held.
 | `verification.py` | **tier 0** — `fitted_order`, `oscillator_refinement`, `fixed_control_refinement`, `newton_residual_history`, `torque_free_omega`, `without_aerodynamics`, `free_fall_through_a_swinging_wind` | takes **no aircraft data as a reference**; a failure here is a defect in the core. Every check lives here rather than inside its test, so the notebook runs the same code the suite asserts on |
 | `validation.py` | **tiers 1–2** — `longitudinal_matrix`, `to_stability_axes`, `to_imperial_matrix`, `longitudinal_modes`, `lateral_modes`, `Reference`/`REFERENCES`, `CAUGHEY_A`, `sweep`, `affine_fit` | the linearisation lives here, not in `tests/modes.py`, which is now a re-export. Every reference number carries its citation as a `Reference.source` field, enforced by a test |
 | **`docs/ASSUMPTIONS.md`** | not code — the **assumption register**: what the model assumes, why, and a measured bound on each | this document records what has been *measured*; that one records what has been *assumed*. Read it before quoting any result to better than ~0.5%, before flying far from a trim point, and before adding a wind field whose scale approaches a wingspan |
+| **`provenance.py`** | the **ledger**: every constant's category and citation, as data — SOURCED / DERIVED / CALIBRATED / DECLARED | enforced by `test_provenance.py`; a constant with no entry fails the build. Answers "which numbers are bulletproof?" as a query rather than a memory |
+| **`airframe.py`** | where on the airframe the field is sampled: derived tail arm, sample stations, spanwise loading | the tail arm is DERIVED from `Cmq`/`CLq`, never sourced; the loading shape is DECLARED and carries a measured sensitivity |
 | `state.py` | `State`/`Controls`, quaternion utilities | NED inertial, body x-fwd/y-right/z-down; quat is `[w,x,y,z]`, body→NED |
 | `atmosphere.py` | ISA to 20 km | two layers — the 747 cruise sits above the tropopause |
 | `aero.py` | coefficient build-up | **takes `vel_rel`/`omega_rel` only; never sees inertial velocity** |
@@ -98,6 +100,30 @@ omitting its rotational one.
 
 Gust-rate signs, derived from the repo's own conventions:
 `p_gust = +∂w_g/∂y`, `q_gust = −∂w_g/∂x`, `r_gust = +∂v_g/∂x`.
+
+**These three signs are independently verified** against Stengel, *Flight Dynamics* 2nd ed.,
+eqs. 3.4-48, 3.4-50 and 3.4-52, by re-deriving them from `v_rel = v_cg + ω×r − w_g(r)` rather
+than transcribing them. **Two equations in that source are wrong** — eq. 3.4-49's sign, and
+eq. 3.4-55 by a factor of −2 — and
+`docs/superpowers/specs/2026-08-14-wind-shear-fidelity-design.md` §2 records which, with the
+rigid-rotation self-consistency test that found them. **Read it before changing any sign here.**
+
+3. **Gust gradients may be sampled rather than differentiated.** `wind.gust_rates` takes the
+   analytic Jacobian at the CG; `wind.sampled_rates` fits the slope across the airframe using
+   `airframe.stations`. The two agree *exactly* for any field that is linear across the
+   aircraft, which is asserted — so this is a better estimator of the same quantity, not a new
+   one. `wind.strip_roll_moment` goes further and integrates the field per strip, which is the
+   only form that carries curvature.
+
+   **`field_model` remains the default and still uses the tangent.** A test asserts the two
+   disagree at the vortex core edge, because that is what proves the default has not been
+   switched over — §4's frozen baselines sit downstream of it.
+
+4. **Every constant carries its provenance.** `flightsim/provenance.py` classifies each as
+   SOURCED, DERIVED, CALIBRATED or DECLARED, and `test_provenance.py` enforces that DERIVED
+   chains name inputs that exist, are acyclic, and bottom out in something sourced. A constant
+   added without a ledger entry fails the build. This is the `Reference.source` rule
+   generalised from published reference values to every number in the model.
 
 ## 3. Sources
 
@@ -154,6 +180,28 @@ Every figure below is measured, with the tolerance the test asserts.
 | Quaternion norm, 1e5 steps | holds | atol 1e-12 |
 | Coordinated turn vs `g·tanφ/V`, 25.4° bank | 1.12% | 3% |
 | Zero-strength wind vs still air, 2000 steps | **bit-identical**, max diff 0.0 | `np.array_equal` |
+
+### Distributed-airframe sampling (session 13)
+
+| Check | Measured | Tolerance |
+|---|---|---|
+| Uniform field, sampled rates | **exactly 0** | `np.array_equal` |
+| Linear field, sampled vs analytic gradient | agrees | rtol 1e-9 |
+| Inside the Parks core, secant vs tangent | agrees | rel 1e-9 |
+| At the core edge, one-sided derivatives | differ by **2·`V₀/r₀`**, opposite signs | rel 1e-6 |
+| Curvature correction, 1.25 r₀ / 2.0 r₀ | **0.109 / 0.025** `V₀/r₀` | reported |
+| Station-count convergence, 9 → 18 | below 0.1% | 1e-3 |
+| Derived tail arm, 747 | **4.0241 c̄ = 109.90 ft** | inside the real 100–110 ft |
+| Plausibility gate | passes both 747 sets, rejects both light-aircraft sets | exact |
+| Rigid roll rate through the strip integral vs CR-2144 `Clp` | agrees | rel 1e-3 |
+| Rectangular-wing strip integral vs Stengel eq. 3.4-40 | agrees | rel 1e-6 |
+| Elliptic closed form `∫y²c dy = c₀b³π/64` | agrees | rel 1e-5 |
+| Linear gust gradient, strip vs equivalent rate | agrees | rel 1e-6 |
+| Loading-shape spread, elliptic vs tapered | **2.6%** | reported |
+| …including uniform as a bracket | **49.7%** | reported |
+| Existing wind path, before and after | **reproducible, and still the tangent** | `np.array_equal` |
+
+Suite: **358 passed, 1 skipped**, up from 342 with nothing broken.
 
 ### 747 modes vs CR-2144
 
