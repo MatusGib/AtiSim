@@ -319,3 +319,67 @@ def test_load_factor_is_the_negated_z_component_of_specific_force(test_aircraft)
     n = dynamics.specific_force(s, controls, test_aircraft, jnp.zeros(3), jnp.zeros(3))
     n_z = dynamics.load_factor(s, controls, test_aircraft, jnp.zeros(3), jnp.zeros(3))
     assert float(n_z) == pytest.approx(-float(n[2]), abs=1e-15)
+
+
+# --- the load seam: how strip-integrated coefficients reach the equations ---
+
+
+def test_a_zero_increment_is_bit_identical_to_not_passing_one(test_aircraft):
+    """The property the whole design rests on. Every existing caller omits the
+    increment, so if the zero case were merely close rather than exact, every
+    frozen baseline in PROJECT.md section 4 would drift.
+
+    Bit-identical, not approximately equal: adding exact 0.0 to a float is the
+    identity for every finite value, so there is no reason to accept less.
+    """
+    from flightsim import loads
+
+    state = State(
+        pos_ned=jnp.array([0.0, 0.0, -2000.0]),
+        vel_body=jnp.array([60.0, 2.0, 3.0]),
+        quat=euler_to_quat(jnp.array(0.1), jnp.array(0.05), jnp.array(0.2)),
+        omega=jnp.array([0.1, 0.2, -0.05]),
+    )
+    controls = Controls(
+        elevator=jnp.array(0.1), aileron=jnp.array(-0.05),
+        rudder=jnp.array(0.02), throttle=jnp.array(0.6),
+    )
+    wind_ned, omega_gust = jnp.zeros(3), jnp.zeros(3)
+
+    without = dynamics.derivatives(state, controls, test_aircraft, wind_ned, omega_gust)
+    with_zero = dynamics.derivatives(
+        state, controls, test_aircraft, wind_ned, omega_gust,
+        increment=loads.zero_increment(),
+    )
+    for field in ("pos_ned", "vel_body", "quat", "omega"):
+        assert np.array_equal(
+            np.asarray(getattr(without, field)), np.asarray(getattr(with_zero, field))
+        ), f"{field} differs between omitting the increment and passing zero"
+
+
+def test_a_rolling_increment_produces_a_rolling_acceleration(test_aircraft):
+    """The increment must actually reach the equations of motion, and reach the
+    right axis. A test that only checked the zero case would pass just as
+    happily if the increment were ignored entirely."""
+    from flightsim import loads
+
+    state = State(
+        pos_ned=jnp.array([0.0, 0.0, -2000.0]),
+        vel_body=jnp.array([60.0, 0.0, 0.0]),
+        quat=euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
+        omega=jnp.zeros(3),
+    )
+    controls = Controls(
+        elevator=jnp.array(0.0), aileron=jnp.array(0.0),
+        rudder=jnp.array(0.0), throttle=jnp.array(0.5),
+    )
+    wind_ned, omega_gust = jnp.zeros(3), jnp.zeros(3)
+
+    base = dynamics.derivatives(state, controls, test_aircraft, wind_ned, omega_gust)
+    rolled = dynamics.derivatives(
+        state, controls, test_aircraft, wind_ned, omega_gust,
+        increment=loads.zero_increment()._replace(Cl=jnp.array(0.01)),
+    )
+    # A positive rolling-moment coefficient must raise p-dot and leave q-dot alone.
+    assert float(rolled.omega[0]) > float(base.omega[0])
+    assert float(rolled.omega[1]) == pytest.approx(float(base.omega[1]), abs=1e-12)
