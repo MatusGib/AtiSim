@@ -15,6 +15,7 @@ Provenance for every constant here is in flightsim/provenance.py, and a test
 asserts the two agree.
 """
 
+import contextlib
 from typing import NamedTuple
 
 import jax.numpy as jnp
@@ -95,3 +96,117 @@ def stations(ac: Aircraft, n_span: int = N_SPAN, n_lon: int = N_LON) -> Stations
         span=jnp.linspace(-half_span, half_span, n_span),
         longitudinal=jnp.linspace(-arm, 0.0, n_lon),
     )
+
+
+# ---------------------------------------------------------------------------
+# Spanwise loading
+#
+# The strip integration needs to know how lift is distributed across the span.
+# That distribution is NOT available from any source this project holds: taper
+# ratio is not tabulated in CR-2144, is not in the Boeing simulation data the
+# report itself cites, and is not recoverable from S, b and cbar -- the shape
+# factor those three demand is 0.72873 against a trapezoidal minimum of 0.75,
+# because the 747 planform is cranked. See the design document, section 3f.
+#
+# So the shape is DECLARED and the magnitude is CALIBRATED to a sourced number.
+# The three shapes below all enclose the sourced wing area, so the spread
+# between them measures the shape assumption and nothing else.
+# ---------------------------------------------------------------------------
+
+LOADING_SHAPES = ("elliptic", "uniform", "tapered")
+
+# Taper ratio used ONLY by the `tapered` sensitivity alternative. It is NOT the
+# 747's taper ratio -- that is not tabulated and not recoverable -- it is a
+# representative transport value whose only job is to give the sweep a third,
+# differently-shaped member. No result may quote it as 747 geometry.
+_SENSITIVITY_TAPER = 0.3
+
+_active_shape = "elliptic"
+
+
+@contextlib.contextmanager
+def loading_shape(name: str):
+    """Temporarily select a spanwise loading shape, for the sensitivity sweep.
+
+    A context manager over module state rather than a parameter threaded through
+    every call, because the shape is a project-level declaration that must be the
+    same everywhere within one run. Threading it would invite two call sites
+    disagreeing, which is exactly the failure the ledger exists to prevent.
+    """
+    global _active_shape
+    if name not in LOADING_SHAPES:
+        raise ValueError(f"unknown loading shape {name!r}; expected one of {LOADING_SHAPES}")
+    previous = _active_shape
+    _active_shape = name
+    try:
+        yield
+    finally:
+        _active_shape = previous
+
+
+def elliptic_chord(y: Array, ac: Aircraft) -> Array:
+    """Elliptic spanwise chord distribution, scaled to the sourced wing area.
+
+        c(y) = c0 * sqrt(1 - (2y/b)^2),    c0 = 4S/(pi*b)
+
+    Elliptic is the default because it needs no taper ratio at all, so the shape
+    introduces exactly one assumption rather than one assumption plus an
+    unsourced number.
+
+    The argument of the square root is clamped: `stations` places points exactly
+    at +-b/2 where it is analytically zero, and round-off can make it slightly
+    negative, which conftest's jax_debug_nans would trip on.
+    """
+    c0 = 4.0 * ac.S / (jnp.pi * ac.b)
+    normalised = 2.0 * y / ac.b
+    return c0 * jnp.sqrt(jnp.maximum(1.0 - normalised * normalised, 0.0))
+
+
+def chord_distribution(y: Array, ac: Aircraft, name: str | None = None) -> Array:
+    """Spanwise chord for the named shape, scaled to the sourced wing area."""
+    name = _active_shape if name is None else name
+    if name == "elliptic":
+        return elliptic_chord(y, ac)
+    if name == "uniform":
+        return jnp.full_like(y, ac.S / ac.b)
+    if name == "tapered":
+        # Straight taper: c(y) = c_root * (1 - (1-L)*|2y/b|). The area of that
+        # shape is b*c_root*(1+L)/2, so c_root = 2S/(b*(1+L)) encloses S.
+        lam = _SENSITIVITY_TAPER
+        c_root = 2.0 * ac.S / (ac.b * (1.0 + lam))
+        return c_root * (1.0 - (1.0 - lam) * jnp.abs(2.0 * y / ac.b))
+    raise ValueError(f"unknown loading shape {name!r}")
+
+
+def calibrated_lift_slope(ac: Aircraft) -> Array:
+    """Effective section lift slope, pinned so the strip integral returns Clp.
+
+    Strip theory gives the rolling moment from a roll rate p as
+
+        L = -integral( y * qbar * c(y) * a0 * (p*y/V) dy )
+
+    since a station at y moves down at p*y and therefore sees an incidence
+    increment p*y/V (Stengel Flight Dynamics 2nd ed eq. 3.4-39), and the
+    resulting lift acts at moment arm y. Non-dimensionalising with
+    p_hat = pb/2V:
+
+        Clp_hat = -(2*a0 / (S*b^2)) * integral( y^2 * c(y) dy )
+
+    For the elliptic distribution, integral(y^2 c dy) = c0*b^3*pi/64 with
+    c0 = 4S/(pi*b), which collapses to
+
+        Clp_hat = -a0/8      hence      a0 = -8 * Clp
+
+    CALIBRATED, not sourced. This a0 is an EFFECTIVE value: it absorbs sweep,
+    the tail's share of Clp, and the difference between elliptic strip theory
+    and the real cranked wing. It is not an airfoil property and must never be
+    quoted as one. For the 747 it comes out at 2.80 against a thin-airfoil
+    6.28 -- low precisely BECAUSE it is effective. A value near 6.28 would mean
+    the calibration had not absorbed those effects and would be the surprising
+    outcome.
+
+    What it guarantees is that a rigid roll rate through the strip integral
+    reproduces the tabulated Clp exactly. What it does not guarantee is that the
+    spanwise SHAPE is right, which is why the sensitivity sweep is mandatory.
+    """
+    return -8.0 * ac.Clp
