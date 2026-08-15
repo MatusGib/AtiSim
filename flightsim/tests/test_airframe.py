@@ -155,3 +155,75 @@ def test_the_default_station_count_has_converged():
         f"pitch rate moves {movement:.2%} between 9 and 18 stations; "
         "the default count has not converged"
     )
+
+
+# --- spanwise loading and its calibration -----------------------------------
+
+
+def test_every_loading_shape_encloses_the_sourced_wing_area():
+    """The shape is DECLARED but it is not free: whatever shape is chosen must
+    enclose the tabulated area. That constraint is what turns 'a shape' into
+    'this shape', and it is also what makes the sensitivity sweep meaningful --
+    the spread between shapes then measures the SHAPE and not an area error."""
+    ac = REGISTRY["boeing747"]
+    y = np.linspace(-float(ac.b) / 2.0, float(ac.b) / 2.0, 20001)
+    for name in airframe.LOADING_SHAPES:
+        chord = np.asarray(airframe.chord_distribution(jnp.asarray(y), ac, name))
+        assert np.trapezoid(chord, y) == pytest.approx(float(ac.S), rel=1e-3), (
+            f"shape {name!r} does not enclose the sourced wing area"
+        )
+
+
+def test_the_calibrated_lift_slope_reproduces_the_sourced_Clp():
+    """The calibration target. For elliptic loading the strip integral gives
+    Clp_hat = -a0/8, so a0 = -8*Clp by construction, and this test is what stops
+    that identity drifting if the integral is ever rewritten."""
+    ac = REGISTRY["boeing747"]
+    a0 = float(airframe.calibrated_lift_slope(ac))
+    assert a0 == pytest.approx(-8.0 * float(ac.Clp), rel=1e-12)
+    assert a0 > 0.0, "a lift slope must be positive; check the sign of Clp"
+    # Clp = -0.35018 for this set, so a0 = 2.8014. EXPECT THIS TO LOOK LOW: a
+    # two-dimensional thin-airfoil slope is 2*pi = 6.28 and the 747's own CLa is
+    # 4.94. It is low precisely because it is effective rather than physical --
+    # it absorbs sweep, the tail's share of Clp, and the gap between elliptic
+    # strip theory and a cranked swept wing. A value near 6.28 would mean the
+    # calibration had NOT absorbed those and would be the surprising outcome.
+    assert a0 == pytest.approx(2.8014, rel=1e-3)
+
+
+def test_the_strip_integral_reproduces_stengels_closed_form_for_a_rectangular_wing():
+    """Independent cross-check on the integration machinery, separate from the
+    calibration. Stengel eq. 3.4-40 gives Clp_hat = -(CLa/12)(1+3L)/(1+L) for a
+    tapered wing; at L = 1 (rectangular) that is -CLa/6. Running the same
+    integral over a constant chord must return it.
+
+    This checks the INTEGRAL, not the 747. If it fails, the strip machinery is
+    wrong and the calibration would silently absorb the error."""
+    ac = REGISTRY["boeing747"]
+    b = float(ac.b)
+    y = np.linspace(-b / 2.0, b / 2.0, 20001)
+    a0 = 5.0  # arbitrary; the result is proportional to it
+    S_rect = float(ac.S)
+    chord = np.full_like(y, S_rect / b)  # rectangular wing of the same area
+
+    integral = np.trapezoid(y**2 * chord, y)
+    clp = -(2.0 * a0 / (S_rect * b**2)) * integral
+    assert clp == pytest.approx(-a0 / 6.0, rel=1e-6)
+
+
+def test_the_elliptic_closed_form_used_for_calibration_is_correct():
+    """The calibration rests on integral(y^2 c dy) = c0*b^3*pi/64 for an
+    elliptic chord. Asserted numerically, because it is the one piece of
+    algebra in this module that nothing else would catch if it were wrong."""
+    ac = REGISTRY["boeing747"]
+    b, S = float(ac.b), float(ac.S)
+    y = np.linspace(-b / 2.0, b / 2.0, 200001)
+    chord = np.asarray(airframe.elliptic_chord(jnp.asarray(y), ac))
+    c0 = 4.0 * S / (np.pi * b)
+    assert np.trapezoid(y**2 * chord, y) == pytest.approx(
+        c0 * b**3 * np.pi / 64.0, rel=1e-5
+    )
+    # ...and therefore Clp_hat = -a0/8 for that distribution.
+    a0 = 5.0
+    clp = -(2.0 * a0 / (S * b**2)) * np.trapezoid(y**2 * chord, y)
+    assert clp == pytest.approx(-a0 / 8.0, rel=1e-5)
