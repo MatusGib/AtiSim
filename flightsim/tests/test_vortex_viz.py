@@ -203,3 +203,59 @@ def test_the_discriminator_panel_renders_with_a_single_category_present(encounte
     figure = plt.figure()
     vortex_viz._discriminator_panel(figure.add_subplot(1, 1, 1), [encounter])
     plt.close(figure)
+
+
+def test_the_measured_load_factor_sees_the_applied_increment():
+    """Part (b) of the load seam, and the half that is easy to miss.
+
+    `_measure` is post hoc: it receives a State trajectory, not a SimState one,
+    so the increment cached on `SimState` is not in what it is handed. It
+    already solves exactly this problem for wind by re-invoking the wind model
+    per sample; the load model is re-invoked the same way and for the same
+    reason.
+
+    Without it, `dynamics.load_factor` would be called with no increment and a
+    strip run's Fig. 8 load coordinate would silently be the point model's. A CL
+    increment is used because CL is the only channel that reaches specific force
+    -- see `test_a_lift_increment_reaches_the_load_factor`.
+    """
+    from flightsim import loads
+
+    array = wind.VortexArray(
+        north=jnp.array([0.0]), down=jnp.array([-H]),
+        r0=jnp.array(R0), v0=jnp.array(V0),
+    )
+    field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
+    common = dict(
+        label="lift-increment probe", start_north=-6.0 * R0,
+        seconds=12.0 * R0 / V, dt=0.01,
+        window=(-R0, R0), window_name="first core",
+    )
+    plain = vortex_viz.fly(AC, field, V, H, **common)
+    lifted = vortex_viz.fly(
+        AC, field, V, H,
+        load_model=lambda s: loads.zero_increment()._replace(CL=jnp.array(0.05)),
+        **common,
+    )
+    assert not np.allclose(plain.n_z, lifted.n_z), (
+        "the load model did not reach load_factor -- _measure is still "
+        "reporting the point model's n_z on a run flown with an increment"
+    )
+
+
+def test_omitting_the_load_model_leaves_the_measurement_untouched():
+    """The same bit-identity guarantee the rest of the seam carries, at the one
+    place the Fig. 8 numbers are actually produced."""
+    common = dict(
+        label="null probe", start_north=-6.0 * R0,
+        seconds=12.0 * R0 / V, dt=0.01,
+        window=(-R0, R0), window_name="first core",
+    )
+    array = wind.VortexArray(
+        north=jnp.array([0.0]), down=jnp.array([-H]),
+        r0=jnp.array(R0), v0=jnp.array(V0),
+    )
+    field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
+    plain = vortex_viz.fly(AC, field, V, H, **common)
+    explicit = vortex_viz.fly(AC, field, V, H, load_model=None, **common)
+    assert np.array_equal(plain.n_z, explicit.n_z)

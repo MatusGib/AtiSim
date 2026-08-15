@@ -50,13 +50,9 @@ def derivatives(
     test -- defaulting to `zero_increment()` here would make both branches run
     the same code and assert nothing.
 
-    NOT threaded into `specific_force` or `load_factor`. Those invert this
-    function's own sum, so a LIFT increment would reach them automatically; but
-    they call `derivatives` without one, so today they see the point-model
-    coefficients. That is currently exact -- `loads.strip_increment` populates
-    only `Cl`, and a rolling moment does not enter specific force -- and it
-    stops being exact the moment the `CL` channel is filled. See
-    `docs/ASSUMPTIONS.md` E2.
+    `specific_force` and `load_factor` forward it too. They invert this
+    function's own sum rather than recomputing it, so only channels that entered
+    `force` can reach them -- `CL`, and not `Cl`, `Cm` or `Cn`.
     """
     dcm = quat_to_dcm(state.quat)
 
@@ -92,6 +88,7 @@ def specific_force(
     ac: Aircraft,
     wind_ned: Array,
     omega_gust: Array,
+    increment: CoeffIncrement | None = None,
 ) -> Array:
     """Body-axis specific force in g: what a three-axis accelerometer at the CG reads.
 
@@ -109,8 +106,16 @@ def specific_force(
     Signs are body axes throughout: +x forward, +y right, +z down. Note that
     `load_factor` NEGATES the z component, because the load-factor convention is
     +1 in level flight while a_spec[2] is negative there.
+
+    `increment` is forwarded to `derivatives`, so an accelerometer on a strip run
+    reads the loads the aircraft actually flew. Because this INVERTS the sum
+    rather than recomputing it, only the channels that entered `force` can show
+    up here -- CL, and not Cl, Cm or Cn. That is asserted rather than assumed by
+    `test_a_lift_increment_reaches_the_load_factor`, and it is why omitting the
+    increment was exactly, not approximately, right while `strip_increment`
+    populated Cl alone.
     """
-    d = derivatives(state, controls, ac, wind_ned, omega_gust)
+    d = derivatives(state, controls, ac, wind_ned, omega_gust, increment=increment)
     gravity_body = quat_to_dcm(state.quat).T @ jnp.array([0.0, 0.0, G0])
     return (d.vel_body - gravity_body + jnp.cross(state.omega, state.vel_body)) / G0
 
@@ -121,6 +126,7 @@ def load_factor(
     ac: Aircraft,
     wind_ned: Array,
     omega_gust: Array,
+    increment: CoeffIncrement | None = None,
 ) -> Array:
     """Normal load factor n_z. +1 in level flight, 0 in free fall.
 
@@ -130,8 +136,12 @@ def load_factor(
 
     Needed because the turbulence work's headline comparison is stated in load
     factor, and nothing in the package produced it before.
+
+    `increment` is forwarded. Every Fig. 8 load coordinate is built through here
+    by `vortex_viz._measure`, so a strip run whose increment stopped short of
+    this function would understate its own headline number.
     """
-    return -specific_force(state, controls, ac, wind_ned, omega_gust)[2]
+    return -specific_force(state, controls, ac, wind_ned, omega_gust, increment)[2]
 
 
 # ---------------------------------------------------------------------------

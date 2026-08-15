@@ -401,22 +401,44 @@ fixed the vortex result** — it did not touch it. What it improves is the later
 fields with genuine spanwise structure, which is what flying small-scale fields requires and
 which none of this project's four source fields happens to have.
 
-**Where a pitch integral would earn its keep, if one existed.** The rigid-rotation-structure
-diagnostic (`PROJECT.md` §4) measures how far each field departs from the shear structure the
-point model implicitly assumes. Inside the Parks core it is **+1.0000** — exactly
-rotation-like, so the point treatment is exact there, which is the same fact the zero
-curvature correction above records. Outside the core it is **−1.0000**: the field is
-irrotational and the assumption is not approximately violated but *inverted*. That is the
-regime a strip pitch integral would address, and it would need its own validation against
-`Cmq` before it could be trusted, exactly as the roll integral needed against `Clp`.
+**What the rigid-rotation diagnostic does and does not say.** `gust_rates` reads three
+entries of the velocity-gradient tensor and calls them `(p_g, q_g, r_g)`. That is lossless
+exactly when the tensor is skew-symmetric, because a rigid rotation has three free parameters
+and so does the triple. Inside the Parks core the diagnostic is **+1.0000** — solid-body
+rotation, tensor skew — and since a rigid rotation is linear in position by definition, the
+point treatment is exact there. That is the same fact the zero curvature correction above
+records, reached from the other side. Outside the core it is **−1.0000**: irrotational flow,
+symmetric tensor, pure **strain**, which the model has no channel for.
 
-**One gap this leaves, stated so it is not discovered later.** `dynamics.specific_force` and
-`dynamics.load_factor` call `derivatives` **without** an increment, so they report the point
-model's coefficients even on a strip run. That is currently exact rather than approximate,
-because `strip_increment` populates only `Cl` and a rolling moment does not enter specific
-force. It stops being exact the moment the `CL` channel is filled, and `vortex_viz._measure`
-builds every Fig. 8 `n_z` through `load_factor` — so filling that channel without also
-threading the increment through these two would silently understate every load result.
+**A strip pitch integral would not fix that**, and an earlier draft of this section said it
+would. A pitch integral gives each longitudinal station the gust at its own `x` rather than
+fitting one slope, so it addresses *curvature in `w(x)`*; it never reads `∂u/∂z`. The strain
+component and the curvature component are different failures, and that they coincide outside
+the Parks core is a property of the Rankine profile rather than a general result. The
+implication that does hold is one-directional: diagnostic `= +1` ⇒ rigid rotation ⇒ linear
+field ⇒ point model exact.
+
+**What a pitch integral would cost, since it is the obvious next step.** Not the integral —
+the loading distribution. The roll integral calibrates cleanly because `Clp` is wing-dominated
+and the elliptic chord gives the closed form `∫y²c dy = c₀b³π/64`, so `a₀ = −8·Clp` falls out.
+Longitudinally there is no chord distribution: the load is wing plus tail, and
+`airframe.effective_tail_arm` already attributes **both** `CLq` and `Cmq` entirely to the
+tail, with an explicit do-not-re-attempt note recording that separating the wing's share via
+Etkin's two-dimensional results made the wing 83% of `CLq` and implied a 23-chord arm. So a
+pitch integral needs a DECLARED wing/tail load split — the number this project has already
+derived, rejected and documented as unrecoverable — plus its own sensitivity sweep and its own
+calibration against `Cmq`. It is not a smaller job than the roll integral was.
+
+**Closed: the load-factor path now sees the increment.** `dynamics.specific_force` and
+`dynamics.load_factor` take and forward it, and `vortex_viz._measure` re-invokes the load
+model per sample exactly as it already re-invokes the wind model — necessary because it
+receives a `State` trajectory rather than a `SimState` one, so the increment cached on
+`SimState` is not in what it is handed. Because `specific_force` INVERTS `derivatives`' force
+sum rather than recomputing it, only `CL` can ever reach it; `Cl`, `Cm` and `Cn` enter the
+moment and cannot. That is asserted, not assumed, by
+`test_a_lift_increment_reaches_the_load_factor`. It is also why this was exact rather than
+merely small before the fix, while `strip_increment` populated `Cl` alone — and why every
+measured number above is unchanged by closing it.
 
 ### E3. The field is frozen — wind depends on position, not time
 

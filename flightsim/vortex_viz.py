@@ -79,6 +79,7 @@ def fly(
     window: tuple[float, float],
     window_name: str,
     strip: bool = False,
+    load_model=None,
 ) -> Encounter:
     """Fly the trimmed aircraft through `field` with fixed controls.
 
@@ -96,12 +97,24 @@ def fly(
     is a flag rather than an argument. ROLL ONLY -- see `loads.strip_increment`
     -- so it changes nothing for a field without spanwise structure, which the
     Parks vortex is. `strip=False` is byte-for-byte the run this did before.
+
+    `load_model` is the general form, for a load model this function cannot
+    build from the field alone. `strip=True` is exactly sugar for passing
+    `loads.strip_model(field, ac)`, so giving both is a contradiction rather
+    than an override and is refused.
     """
+    if strip and load_model is not None:
+        raise ValueError(
+            "pass strip=True or load_model, not both -- strip=True IS "
+            "load_model=loads.strip_model(field, ac), and silently preferring "
+            "one would hide which load path the run actually flew"
+        )
     x, _ = trim.trim(jnp.array(airspeed), jnp.array(altitude), ac)
     alpha_trim = jnp.array(float(x[0]))
     controls = trim.trimmed_controls(x[1], x[2])
     model = wind.field_model(field)
-    load_model = loads.strip_model(field, ac) if strip else None
+    if strip:
+        load_model = loads.strip_model(field, ac)
 
     state = trim.trimmed_state(alpha_trim, jnp.array(airspeed), jnp.array(altitude))
     state = state._replace(pos_ned=jnp.array([start_north, 0.0, -altitude]))
@@ -115,7 +128,7 @@ def fly(
     return _measure(
         label=label, hist=hist,
         controls_hist=jax.tree.map(lambda v: jnp.full(n, v), controls),
-        model=model, ac=ac, dt=dt,
+        model=model, load_model=load_model, ac=ac, dt=dt,
         window=(north >= window[0]) & (north <= window[1]),
         window_name=window_name,
     )
@@ -131,6 +144,7 @@ def _measure(
     dt: float,
     window: np.ndarray,
     window_name: str,
+    load_model=None,
 ) -> Encounter:
     """Turn a flown history into an `Encounter`. Every category comes through here.
 
@@ -146,6 +160,13 @@ def _measure(
     `controls_hist` is per-sample, not one `Controls`, because a manoeuvre's
     elevator moves and `load_factor` needs the deflection that was actually
     flown at each sample.
+
+    `load_model` is re-invoked per sample for exactly the reason the wind model
+    is: this function receives a `State` trajectory, not a `SimState` one, so
+    the increment cached on `SimState` is not in what it is handed. Omitting it
+    would make every Fig. 8 load coordinate the point model's even on a run
+    flown with strip loads -- and only the `CL` channel could reveal that, since
+    `load_factor` inverts a force sum that `Cl`, `Cm` and `Cn` never enter.
     """
 
     def analyse(pos_ned, vel_body, quat, omega, controls):
@@ -153,13 +174,15 @@ def _measure(
         wind_ned, omega_gust, _, _ = model(
             wind.zero_wind_state(), s, jax.random.PRNGKey(0), jnp.array(dt)
         )
+        increment = None if load_model is None else load_model(s)
         vel_rel = dynamics.relative_velocity(vel_body, quat, wind_ned)
         _, alpha_air, _ = air_data(vel_rel)
         _, alpha_inertial, _ = air_data(vel_body)
         _, theta, _ = quat_to_euler(quat)
         return jnp.array([
             -wind_ned[2], omega_gust[1], alpha_air, alpha_inertial, theta,
-            omega[1], dynamics.load_factor(s, controls, ac, wind_ned, omega_gust),
+            omega[1],
+            dynamics.load_factor(s, controls, ac, wind_ned, omega_gust, increment),
             controls.elevator,
         ])
 

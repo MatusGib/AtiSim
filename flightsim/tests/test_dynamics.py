@@ -383,3 +383,57 @@ def test_a_rolling_increment_produces_a_rolling_acceleration(test_aircraft):
     # A positive rolling-moment coefficient must raise p-dot and leave q-dot alone.
     assert float(rolled.omega[0]) > float(base.omega[0])
     assert float(rolled.omega[1]) == pytest.approx(float(base.omega[1]), abs=1e-12)
+
+
+def test_a_lift_increment_reaches_the_load_factor(test_aircraft):
+    """The gap this closes. `specific_force` inverts `derivatives`' own sum, so
+    it sees whatever `derivatives` was given -- but it was calling `derivatives`
+    WITHOUT the increment, so a strip run's accelerometer read as if the strip
+    loads were not there.
+
+    CL is the channel that matters and the only one: force is built from CL, CD
+    and CY, while Cl, Cm and Cn go into the moment. A rolling increment
+    therefore cannot move specific force at all, which is why the gap was exact
+    rather than small while `strip_increment` populated only Cl. It stops being
+    exact the moment CL is filled, and `vortex_viz._measure` builds every Fig. 8
+    n_z through `load_factor`.
+    """
+    from flightsim import loads
+
+    s = level_state(u=60.0, altitude=2000.0)
+    controls = Controls(
+        elevator=jnp.array(0.02), aileron=jnp.array(0.0),
+        rudder=jnp.array(0.0), throttle=jnp.array(0.5),
+    )
+    z3 = jnp.zeros(3)
+
+    base = float(dynamics.load_factor(s, controls, test_aircraft, z3, z3))
+    lifted = float(dynamics.load_factor(
+        s, controls, test_aircraft, z3, z3,
+        increment=loads.zero_increment()._replace(CL=jnp.array(0.05)),
+    ))
+    rolled = float(dynamics.load_factor(
+        s, controls, test_aircraft, z3, z3,
+        increment=loads.zero_increment()._replace(Cl=jnp.array(0.05)),
+    ))
+    assert lifted > base, "a positive lift increment must raise the load factor"
+    assert rolled == base, "a rolling increment must not touch specific force at all"
+
+
+def test_omitting_the_increment_in_specific_force_is_bit_identical(test_aircraft):
+    """Same guarantee as `derivatives`, and it must hold for the same reason:
+    every existing caller omits the increment."""
+    from flightsim import loads
+
+    s = level_state(u=60.0, altitude=2000.0)._replace(omega=jnp.array([0.1, 0.2, -0.05]))
+    controls = Controls(
+        elevator=jnp.array(0.1), aileron=jnp.array(-0.05),
+        rudder=jnp.array(0.02), throttle=jnp.array(0.6),
+    )
+    z3 = jnp.zeros(3)
+
+    without = np.asarray(dynamics.specific_force(s, controls, test_aircraft, z3, z3))
+    with_zero = np.asarray(dynamics.specific_force(
+        s, controls, test_aircraft, z3, z3, increment=loads.zero_increment()
+    ))
+    assert np.array_equal(without, with_zero)
