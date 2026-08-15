@@ -95,7 +95,15 @@ LEDGER: dict[str, Entry] = {
         "0.72873 lies below the trapezoidal minimum of 0.75, because the 747 "
         "planform is cranked (design section 3f). Sensitivity is mandatory: "
         "every result re-run against uniform and taper-based shapes with the "
-        "spread reported.",
+        "spread reported. MEASURED on a cubic spanwise profile, the case an "
+        "equivalent rate cannot represent at all and therefore an upper bound "
+        "rather than a typical value: elliptic 1.967e-06, tapered 2.018e-06, "
+        "uniform 3.148e-06, a full spread of 49.7% of the mean. Read that as "
+        "two numbers, not one: the two shapes that actually taper toward the "
+        "tips agree to 2.6%, and the 49.7% is driven entirely by the uniform "
+        "shape, which loads the tips where a cubic gust is largest and is not "
+        "a defensible transport planform. It is in the sweep as a bracket, not "
+        "as a candidate. Quote 2.6% as the shape cost and 49.7% as the bound.",
     ),
     "strip.lift_slope": Entry(
         "CALIBRATED",

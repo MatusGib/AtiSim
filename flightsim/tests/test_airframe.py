@@ -227,3 +227,65 @@ def test_the_elliptic_closed_form_used_for_calibration_is_correct():
     a0 = 5.0
     clp = -(2.0 * a0 / (S * b**2)) * np.trapezoid(y**2 * chord, y)
     assert clp == pytest.approx(-a0 / 8.0, rel=1e-5)
+
+
+def test_the_loading_shape_sensitivity_is_measured_and_recorded():
+    """The spread across defensible shapes, on the hardest case. This number
+    must be quoted with any strip result -- it is the cost of the shape being
+    DECLARED rather than sourced, and the ledger requires it.
+
+    The field is a cubic spanwise profile: the case an equivalent rate cannot
+    represent at all, so the shape assumption is doing maximum work and the
+    spread is an upper bound rather than a typical value.
+
+    Asserted as a band. A zero spread would mean the sweep was measuring
+    nothing; a spread above 100% would mean the shape assumption dominated the
+    answer and no strip result could be reported at all.
+    """
+    from flightsim import wind
+    from flightsim.state import State, euler_to_quat
+
+    ac = REGISTRY["boeing747"]
+    st = airframe.stations(ac, n_span=2001, n_lon=9)
+    field = lambda p: jnp.array([0.0, 0.0, 1e-7 * p[1] ** 3])  # noqa: E731
+    state = State(
+        pos_ned=jnp.array([0.0, 0.0, -11278.0]),
+        vel_body=jnp.array([236.0, 0.0, 0.0]),
+        quat=euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
+        omega=jnp.zeros(3),
+    )
+
+    results = {}
+    for name in airframe.LOADING_SHAPES:
+        with airframe.loading_shape(name):
+            results[name] = float(
+                wind.strip_roll_moment(state.pos_ned, state.quat, field, ac, st, 236.0)
+            )
+
+    values = list(results.values())
+    spread = (max(values) - min(values)) / abs(np.mean(values))
+    print("\nLoading-shape sensitivity on a cubic spanwise profile:")
+    for name, value in results.items():
+        print(f"  {name:10s} {value:+.6e}")
+    print(f"  spread {spread:.2%} of the mean")
+    assert 0.0 < spread < 1.0, f"shape spread {spread:.2%} is outside the reportable band"
+
+
+def test_the_loading_shape_context_manager_restores_the_previous_shape():
+    """The sweep mutates module state, so it must put it back. If it does not,
+    a test that runs after the sweep silently uses whatever shape the sweep left
+    behind -- a cross-test contamination that would be very hard to trace."""
+    assert airframe.chord_distribution(jnp.array([0.0]), REGISTRY["boeing747"])[0] == (
+        pytest.approx(
+            float(airframe.elliptic_chord(jnp.array([0.0]), REGISTRY["boeing747"])[0])
+        )
+    )
+    with airframe.loading_shape("uniform"):
+        pass
+    ac = REGISTRY["boeing747"]
+    assert float(airframe.chord_distribution(jnp.array([0.0]), ac)[0]) == pytest.approx(
+        float(airframe.elliptic_chord(jnp.array([0.0]), ac)[0])
+    )
+    with pytest.raises(ValueError, match="unknown loading shape"):
+        with airframe.loading_shape("parabolic"):
+            pass
