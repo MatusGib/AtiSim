@@ -59,8 +59,23 @@ class Loaded:
         self.kind = meta["wind_field"]["kind"]
         self.representation = REPRESENTATION.get(self.kind, "none")
         params = meta["wind_field"].get("params", {})
-        self.core_radius = params.get("r0")
+        self.core_radius = params.get("r0")  # vortex only; the readout's north/r0
         self.peak_tangential = params.get("v0")
+        # A CHARACTERISTIC SCALE AND A PEAK, per field kind, so the 2D
+        # cross-section is not a vortex-only panel. Three of the four fields
+        # have both; a run with no field at all (the manoeuvre) has neither and
+        # falls back to the 3D panel.
+        #   scale sets the view extent, peak pins the diverging colour scale.
+        # A quarter wavelength is the lee wave's scale because that is the
+        # distance from a zero crossing to a trough -- the structure a reader
+        # needs to see, where a whole wavelength would show two of everything.
+        self.field_scale, self.field_peak = {
+            "VortexArray": (params.get("r0"), params.get("v0")),
+            "UpdraftColumn": (params.get("radius"), params.get("w0")),
+            "LeeWave": ((params.get("wavelength") or 0) / 4 or None,
+                        params.get("w0")),
+            "Microburst": (params.get("radius"), params.get("u_max")),
+        }.get(self.kind, (None, None))
         # Where the STRUCTURE is, from the field spec. Not the trajectory
         # midpoint: a 40 core-radii lead-in puts that ~2.5 km upstream of the
         # cores, in irrotational flow, and the isosurface comes out empty while
@@ -69,6 +84,14 @@ class Loaded:
         self.field_centre = (
             float(np.mean(centre)) if isinstance(centre, list) and centre
             else float(centre) if isinstance(centre, (int, float)) else None
+        )
+        # Core centres as (north, altitude), for the cross-section to draw
+        # circles at. `down` is NED so altitude is its negation -- getting that
+        # backwards would put the circles 24 km below the aircraft.
+        down = params.get("down")
+        self.cores = (
+            [(float(n), -float(d)) for n, d in zip(centre, down)]
+            if isinstance(centre, list) and isinstance(down, list) else []
         )
         window = meta["declared_parameters"].get("window", {})
         north = window.get("north_m")
@@ -193,24 +216,37 @@ def build_app(root: Path) -> Dash:
                     style={"width": "220px", "display": "inline-block",
                            "verticalAlign": "middle", "marginLeft": "8px"},
                 ),
+                # 2D IS THE DEFAULT, and for the Parks vortex it is not a
+                # simplification: `wind.vortex_wind` fixes dpsi = 0, so the field
+                # has NO east variation and one north-altitude plane contains all
+                # of it. The 3D scene is the option, not the baseline.
+                dcc.RadioItems(
+                    id="fieldview", value="2d",
+                    options=[{"label": " 2D cross-section", "value": "2d"},
+                             {"label": " 3D scene", "value": "3d"}],
+                    inline=True,
+                    style={"display": "inline-block", "marginLeft": "12px",
+                           "fontSize": "12px", "verticalAlign": "middle"},
+                    inputStyle={"marginRight": "4px", "marginLeft": "8px"},
+                ),
             ], style={"marginBottom": "8px"}),
             html.Div(id="header"),
             html.Div(id="badges", style=_CARD),
             html.Div([
                 html.Div([
-                    dcc.Graph(id="strips", config={"displaylogo": False}),
+                    dcc.Graph(id="strips", config={"displaylogo": False, "responsive": True}),
                 ], style={"width": "56%", "display": "inline-block",
                           "verticalAlign": "top", **_CARD}),
                 html.Div([
-                    dcc.Graph(id="scene", config={"displaylogo": False}),
+                    dcc.Graph(id="scene", config={"displaylogo": False, "responsive": True}),
                     html.Div(id="readout", style={"fontSize": "11.5px", **_MONO}),
                 ], style={"width": "41%", "display": "inline-block",
                           "verticalAlign": "top", "marginLeft": "1.5%", **_CARD}),
             ]),
             html.Div([
-                html.Div([dcc.Graph(id="fig8", config={"displaylogo": False})],
+                html.Div([dcc.Graph(id="fig8", config={"displaylogo": False, "responsive": True})],
                          style={"width": "48%", "display": "inline-block", **_CARD}),
-                html.Div([dcc.Graph(id="nzalpha", config={"displaylogo": False})],
+                html.Div([dcc.Graph(id="nzalpha", config={"displaylogo": False, "responsive": True})],
                          style={"width": "48%", "display": "inline-block",
                                 "marginLeft": "1.5%", **_CARD}),
             ]),
@@ -265,9 +301,10 @@ def build_app(root: Path) -> Dash:
         Output("fig8", "figure"), Output("nzalpha", "figure"),
         Output("readout", "children"),
         Input("run", "value"), Input("scalar", "value"), Input("cursor", "data"),
+        Input("fieldview", "value"),
         State("scene", "relayoutData"),
     )
-    def render(run_name, scalar, cursor_t, scene_relayout):
+    def render(run_name, scalar, cursor_t, fieldview, scene_relayout):
         """Everything updates from the cursor in ONE callback, so nothing tears.
 
         Six outputs, one input set. Splitting this into six callbacks would let
@@ -283,16 +320,28 @@ def build_app(root: Path) -> Dash:
         s = loaded.series
         index = None if cursor_t is None else int(np.argmin(np.abs(s.t - cursor_t)))
 
-        scene = figures.apply_camera(
-            figures.field_3d(
-                s, loaded.field, scalar=scalar, cursor_index=index,
-                representation=loaded.representation,
-                core_radius=loaded.core_radius,
-                peak_tangential=loaded.peak_tangential,
-                field_centre=loaded.field_centre,
-            ),
-            scene_relayout,
-        )
+        # The cross-section needs a core radius and a peak to pin its scale to.
+        # A field that supplies neither (the manoeuvre run has no field at all)
+        # falls back to the 3D panel rather than drawing an unpinned map.
+        can_slice = bool(loaded.field_scale and loaded.field_peak)
+        if fieldview == "2d" and can_slice:
+            scene = figures.field_cross_section(
+                s, loaded.field,
+                scale=loaded.field_scale, peak=loaded.field_peak,
+                cores=loaded.cores, window=loaded.window,
+                cursor_index=index, field_centre=loaded.field_centre,
+                label=loaded.kind,
+            )
+        else:
+            scene = figures.apply_camera(
+                figures.field_3d(
+                    s, loaded.field, scalar=scalar, cursor_index=index,
+                    representation=loaded.representation,
+                    scale=loaded.field_scale, peak=loaded.field_peak,
+                    field_centre=loaded.field_centre,
+                ),
+                scene_relayout,
+            )
         return (
             _header(loaded),
             [_badge(c) for c in loaded.run.checks],
