@@ -243,6 +243,12 @@ def build_app(root: Path) -> Dash:
                 ], style={"width": "41%", "display": "inline-block",
                           "verticalAlign": "top", "marginLeft": "1.5%", **_CARD}),
             ]),
+            # The verdict FIRST, then the domain-standard figure it comes from.
+            # Fig. 8's claim is an ordering and Fig. 8 does not state it; this
+            # panel does, and it is the one a reader should hit first.
+            html.Div([dcc.Graph(id="ordering",
+                                config={"displaylogo": False, "responsive": True})],
+                     style=_CARD),
             html.Div([
                 html.Div([dcc.Graph(id="fig8", config={"displaylogo": False, "responsive": True})],
                          style={"width": "48%", "display": "inline-block", **_CARD}),
@@ -298,6 +304,7 @@ def build_app(root: Path) -> Dash:
     @app.callback(
         Output("header", "children"), Output("badges", "children"),
         Output("strips", "figure"), Output("scene", "figure"),
+        Output("ordering", "figure"),
         Output("fig8", "figure"), Output("nzalpha", "figure"),
         Output("readout", "children"),
         Input("run", "value"), Input("scalar", "value"), Input("cursor", "data"),
@@ -347,6 +354,7 @@ def build_app(root: Path) -> Dash:
             [_badge(c) for c in loaded.run.checks],
             figures.strip_stack(s, loaded.window, cursor_t=cursor_t),
             scene,
+            figures.ordering(fig8_points),
             figures.discriminator(fig8_points),
             figures.load_vs_alpha(s, cursor_index=index),
             _readout(loaded, index),

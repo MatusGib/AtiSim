@@ -340,6 +340,46 @@ def test_the_field_cross_section_locks_1_to_1_by_shrinking_its_box(sample):
     assert fig.layout.xaxis.constrain == "domain"
 
 
+_THREE = [
+    dict(label="vortex", dtheta=2.24, dn=-1.235, dtheta_whole=8.29, dn_whole=-1.235),
+    dict(label="updraft", dtheta=4.37, dn=-0.112, dtheta_whole=7.45, dn_whole=-0.112),
+    dict(label="manoeuvre", dtheta=30.37, dn=-1.90, dtheta_whole=30.74, dn_whole=-1.90),
+]
+
+
+def test_the_ordering_panel_states_the_verdict_in_words():
+    """The claim is an ordering, so the panel says whether it holds.
+
+    Fig. 8 is the domain-standard figure and it stays, but its actual claim is
+    ONE-DIMENSIONAL -- three model points in the same left-to-right order as
+    three reference points -- while it is drawn as a 2D scatter whose y-axis is
+    nearly constant across all three. A reader has to reconstruct the claim from
+    the geometry. This panel just states it.
+    """
+    fig = figures.ordering(_THREE)
+    text = " ".join(a.text for a in fig.layout.annotations)
+    assert "HOLDS" in text, text
+    assert "FAILS" not in text, text
+
+
+def test_the_ordering_panel_says_FAILS_when_the_order_is_wrong():
+    """The negative control. A panel that can only say HOLDS says nothing."""
+    broken = [dict(_THREE[0], dtheta=99.0), _THREE[1], _THREE[2]]
+    fig = figures.ordering(broken)
+    text = " ".join(a.text for a in fig.layout.annotations)
+    assert "FAILS" in text, text
+
+
+def test_the_ordering_panel_compares_model_against_paper_on_one_axis():
+    """Two rows, one shared axis, same three categories."""
+    fig = figures.ordering(_THREE)
+    ys = {float(v) for tr in fig.data for v in (tr.y or [])}
+    assert len(ys) == 2, f"expected exactly two rows, got {ys}"
+    xs = [round(float(v), 2) for tr in fig.data for v in (tr.x or [])]
+    for expected in (1.4, 6.2, 12.0, 2.24, 4.37, 30.37):
+        assert expected in xs, f"{expected} missing from {xs}"
+
+
 def test_the_discriminator_says_so_when_a_category_is_missing():
     """A one-point Fig. 8 must not read as a complete discriminator.
 

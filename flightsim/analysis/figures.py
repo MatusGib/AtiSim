@@ -392,6 +392,104 @@ def load_vs_alpha(s: Series, cursor_index: int | None = None) -> go.Figure:
 FIG8_REFERENCE = {"vortex": 1.4, "updraft": 6.2, "manoeuvring": 12.0}
 FIG8_LOAD_BAND = (-2.01, -1.69)
 
+#: The order the categories must come in, and the physics that puts them there.
+#: A vortex core traverse is 0.235 short periods -- impulsive, so the aircraft
+#: takes the load before it has time to change attitude. An updraft column is
+#: 3.03 short periods -- quasi-steady, so it pitches and follows the air. A
+#: manoeuvre is the elevator moving, so pitch follows the stick. Hence
+#: increasing pitch excursion, left to right. PROJECT.md section 4.
+CATEGORY_ORDER = ("vortex", "updraft", "manoeuvr")
+
+
+def _category(label: str) -> int | None:
+    """Which of the three categories a run label names, or None."""
+    low = label.lower()
+    for i, name in enumerate(CATEGORY_ORDER):
+        if name in low:
+            return i
+    return None
+
+
+def ordering(points: list[dict]) -> go.Figure:
+    """The discriminator's claim, stated instead of implied.
+
+    WHY THIS EXISTS BESIDE FIG. 8 RATHER THAN INSTEAD OF IT. Fig. 8 is the
+    domain-standard figure and it carries two things this cannot: the paper's
+    load band, and the whole-run markers that draw the windowing trap. But its
+    actual claim is ONE-DIMENSIONAL -- three model points in the same
+    left-to-right order as three reference points -- while it is drawn as a
+    two-dimensional scatter whose y-coordinate is nearly identical for all
+    three. The reader is asked to reconstruct a rank comparison out of a cloud
+    of markers, a grey band, three hollow rings and three connectors.
+
+    So this panel does the one job: two rows on one axis, the same three
+    categories, and the verdict in words. The verdict is COMPUTED and it can
+    say FAILS -- a panel that could only ever say HOLDS would demonstrate
+    nothing, which is this project's standing rule about checks.
+    """
+    fig = go.Figure()
+    ranked = sorted(
+        ((_category(p["label"]), p) for p in points
+         if _category(p["label"]) is not None),
+        key=lambda pair: pair[0],
+    )
+    model_x = [p["dtheta"] for _, p in ranked]
+    holds = len(ranked) == 3 and all(a < b for a, b in zip(model_x, model_x[1:]))
+    names = list(FIG8_REFERENCE)
+
+    rows = [
+        (1.0, "paper — DC-10 class",
+         list(enumerate(FIG8_REFERENCE.values())), REFERENCE),
+        (0.0, "model — 747", [(i, p["dtheta"]) for i, p in ranked], None),
+    ]
+    for y, row_label, values, fixed in rows:
+        if len(values) > 1:
+            fig.add_trace(go.Scatter(
+                x=[v for _, v in values], y=[y] * len(values), mode="lines",
+                line=dict(color=AXIS_RULE, width=1), showlegend=False,
+                hoverinfo="skip",
+            ))
+        for i, v in values:
+            fig.add_trace(go.Scatter(
+                x=[v], y=[y], mode="markers+text",
+                text=[f"{names[i]}<br>{v:.2f}°"],
+                textposition="top center" if y else "bottom center",
+                textfont=dict(size=10, color=INK),
+                marker=dict(size=13, color=fixed or SERIES[i % len(SERIES)],
+                            line=dict(color=SURFACE, width=2)),
+                showlegend=False,
+                hovertemplate=f"{row_label}: {names[i]} {v:.2f}°<extra></extra>",
+            ))
+
+    verdict = "HOLDS" if holds else "FAILS"
+    # Status colours, and they mean status: good / critical, never a series hue.
+    colour, wash = (("#1a7f37", "rgba(26,127,55,0.09)") if holds
+                    else (CRITICAL, "rgba(208,59,59,0.09)"))
+    chain = " &lt; ".join(f"{v:.2f}°" for v in model_x) or "no categories"
+    fig.add_annotation(
+        xref="paper", yref="paper", x=0.0, xanchor="left", y=1.16,
+        showarrow=False,
+        text=(f"<b style='color:{colour}'>ordering {verdict}</b>"
+              f"  ·  vortex &lt; updraft &lt; manoeuvre  ·  model reads {chain}"),
+        font=dict(size=11, color=INK), bgcolor=wash, borderpad=4,
+    )
+
+    reach = max([*FIG8_REFERENCE.values(), *model_x]) if model_x \
+        else max(FIG8_REFERENCE.values())
+    fig.update_xaxes(title_text="pitch attitude excursion in the window  deg",
+                     range=[0, reach * 1.18], **_AXIS)
+    fig.update_yaxes(range=[-0.75, 1.75], tickvals=[0.0, 1.0],
+                     ticktext=["model<br>747", "paper<br>DC-10"],
+                     showgrid=False, zeroline=False, linecolor=AXIS_RULE,
+                     tickfont=dict(color=INK_MUTED, size=10))
+    return _base(
+        fig, 280,
+        title="Does the discriminator's ordering hold?",
+        subtitle="The same three categories on one axis. The claim is the "
+                 "ORDER, not the numbers: the paper never states which aircraft "
+                 "its records came from, so the two rows are not expected to "
+                 "line up.")
+
 
 def discriminator(points: list[dict]) -> go.Figure:
     """Fig. 8, with the whole-run marker and the connector that shames it.
