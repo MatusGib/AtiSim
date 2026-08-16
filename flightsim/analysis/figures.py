@@ -40,6 +40,47 @@ from flightsim.analysis.series import Series, envelope
 # Held constant so a callback never resets the user's camera or zoom. Verified.
 UIREVISION = "flightsim-analysis"
 
+# ---------------------------------------------------------------------------
+# Palette
+#
+# VALIDATED, not chosen. The previous set was matplotlib's default cycle, and
+# `scripts/validate_palette.js` fails it: #2ca02c vs #ff7f0e is dE 0.7 under
+# protanopia. Those two were the UPDRAFT and MANOEUVRE markers on Fig. 8 -- two
+# of the three points whose ORDERING is the entire claim of the panel -- so a
+# red-green colourblind reader could not read the project's headline result.
+#
+# These three clear every gate on the ALL-PAIRS list (Fig. 8 is a scatter, so
+# adjacent-pairs is not the right test): worst CVD dE 9.2 light / 9.4 dark,
+# worst normal-vision dE 24.0 light / 20.9 dark. Three is the documented cap for
+# all-pairs, and three is exactly what the discriminator needs.
+#
+# AQUA IS BELOW 3:1 ON THE LIGHT SURFACE, so the relief rule applies: it never
+# carries meaning alone. Every Fig. 8 point is direct-labelled and every run is
+# in the table view.
+# ---------------------------------------------------------------------------
+SERIES = ("#2a78d6", "#eb6834", "#1baf7a")  # blue, orange, aqua
+REFERENCE = "#898781"  # muted ink -- the "wrong" trace, and the paper's markers
+INK = "#0b0b0b"
+INK_MUTED = "#52514e"
+GRID = "#e1e0d9"
+AXIS_RULE = "#c3c2b7"
+SURFACE = "#fcfcfb"
+CRITICAL = "#d03b3b"  # status, reserved -- cursor and out-of-range only
+
+# Sequential = ONE hue, light to dark. Viridis is perceptually uniform but it is
+# multi-hue, and the rule here is stricter for a reason: a multi-hue ramp on the
+# trajectory tube competes with the categorical hues elsewhere on the same
+# screen. Blue steps 100 -> 700 from the reference ramp.
+SEQUENTIAL = [
+    [0.0, "#cde2fb"], [0.25, "#86b6ef"], [0.5, "#3987e5"],
+    [0.75, "#256abf"], [1.0, "#0d366b"],
+]
+# Diverging: warm/cool poles with a NEUTRAL GRAY midpoint, never a hue at zero.
+DIVERGING = [
+    [0.0, "#184f95"], [0.25, "#6da7ec"], [0.5, "#f0efec"],
+    [0.75, "#e88b8b"], [1.0, "#a52121"],
+]
+
 # Points per 2D panel. Measured: 12 Scattergl traces at 2,000 points serialise to
 # 0.542 MB, at 4,018 to 1.081 MB and at 31,791 to 8.499 MB. 2,000 keeps a
 # ten-panel sweep inside the 2 MB budget with the 3D scene alongside it.
@@ -62,18 +103,73 @@ STRIP_POINTS = 2000
 ISO_GRID = 32  # north and vertical -- the plane the Rankine profile lives in
 ISO_GRID_LATERAL = 8  # east -- the direction this field does not vary in
 
-_AXIS = dict(showgrid=True, gridcolor="rgba(128,128,128,0.25)", zeroline=False)
+# Hairline, SOLID, one step off the surface. Never dashed: dashing reads as
+# "threshold" or "projection" when it is only a grid.
+_AXIS = dict(showgrid=True, gridcolor=GRID, gridwidth=1, zeroline=False,
+             linecolor=AXIS_RULE, tickfont=dict(color=INK_MUTED, size=10),
+             title_font=dict(color=INK_MUTED, size=11))
 
 
-def _base(fig: go.Figure, height: int, title: str | None = None) -> go.Figure:
+def _wrap(text: str, width: int) -> list[str]:
+    """Greedy wrap that never splits a word.
+
+    `textwrap` is not used because the strings carry HTML entities (`&lt;`,
+    `&amp;`) that count as one glyph and several characters, and a wrapper that
+    counted characters would break a line early or split an entity in half.
+    """
+    words, lines, current = text.split(), [], ""
+    for word in words:
+        glyphs = len(word)
+        for entity, real in (("&lt;", 1), ("&gt;", 1), ("&amp;", 1)):
+            glyphs -= word.count(entity) * (len(entity) - real)
+        if current and len(current) + 1 + glyphs > width:
+            lines.append(current)
+            current = word
+        else:
+            current = f"{current} {word}".strip()
+    if current:
+        lines.append(current)
+    return lines
+
+
+def _base(fig: go.Figure, height: int, title: str | None = None,
+          subtitle: str | None = None, legend: bool = False) -> go.Figure:
+    """Chrome shared by every panel.
+
+    `subtitle` carries WHAT THE PANEL IS FOR in one line. A reader who has to
+    infer a panel's job from its axes will infer wrong -- that is what happened
+    with the first version of this module, where the two scatter panels read as
+    decoration because nothing on them said what they assert.
+    """
+    # WRAPPED, because plotly does not wrap a title and an unwrapped subtitle
+    # runs straight off the panel. Measured in the browser: the cross-section's
+    # subtitle overhung its card by 41 px and the incidence panel's by 96 px, on
+    # a 597 px column. 70 characters fits the narrowest panel this layout makes.
+    lines = _wrap(subtitle, 70) if subtitle else []
+    text = title
+    if title and lines:
+        body = "<br>".join(lines)
+        text = (f"{title}<br><span style='font-size:10px;color:{INK_MUTED}'>"
+                f"{body}</span>")
+    top = 30 if title else 8
+    if lines:
+        top = 34 + 13 * len(lines)
     fig.update_layout(
         uirevision=UIREVISION,
         height=height,
-        margin=dict(l=64, r=16, t=30 if title else 8, b=36),
-        title=dict(text=title, font=dict(size=13)) if title else None,
+        margin=dict(l=68, r=16, t=top, b=38),
+        title=dict(text=text, font=dict(size=13, color=INK), x=0.0, xanchor="left")
+        if text else None,
         template="plotly_white",
-        showlegend=False,
-        font=dict(size=11),
+        paper_bgcolor=SURFACE,
+        plot_bgcolor=SURFACE,
+        showlegend=legend,
+        legend=dict(orientation="h", y=1.02, yanchor="bottom", x=1.0,
+                    xanchor="right", font=dict(size=10, color=INK_MUTED),
+                    bgcolor="rgba(0,0,0,0)"),
+        font=dict(size=11, color=INK,
+                  family='system-ui, -apple-system, "Segoe UI", sans-serif'),
+        hoverlabel=dict(font_size=11),
     )
     return fig
 
@@ -129,6 +225,31 @@ def _pad(lo: float, hi: float, frac: float = 0.08) -> tuple[float, float]:
 # P1 -- the causal strip stack
 # ---------------------------------------------------------------------------
 
+# The row spec, module level so a test can assert the unit rule structurally.
+#
+# ONE UNIT PER ROW. Two measures of different scale sharing an axis is the most
+# common charting mistake there is: the alignment between the two scales is
+# arbitrary, so the panel invents a correlation the data does not contain. The
+# first version of this module had `w_up` twinned with `q_gust` and `theta`
+# twinned with `q`, which is exactly that.
+#
+# q_gust and q now share a row and that is NOT the same thing -- both are deg/s
+# on ONE scale, and putting them together is the point: the rotational gust going
+# in and the body rate coming out are directly comparable, which is the whole
+# causal claim of the panel.
+STRIP_ROWS = [
+    ("vertical gust", "m/s", [("gust, up positive", "w_up", SERIES[0])], None),
+    ("pitch rates", "deg/s", [("q gust (sim truth)", "q_gust_deg", SERIES[1]),
+                              ("q, body rate", "q_deg", SERIES[0])], None),
+    ("incidence", "deg", [("air-relative", "alpha_deg", SERIES[0]),
+                          ("inertial (wrong)", "alpha_inertial_deg", REFERENCE)],
+     "alpha"),
+    ("load factor", "g", [("n_z", "n_z", SERIES[0])], "nz"),
+    ("pitch attitude", "deg", [("theta", "theta_deg", SERIES[0])], None),
+    ("elevator", "deg", [("elevator", "elevator_deg", SERIES[0])], "elevator"),
+]
+
+
 def strip_stack(s: Series, window: np.ndarray, cursor_t: float | None = None,
                 alpha_bands: bool = True) -> go.Figure:
     """Gust in at the top, response propagating down, control at the bottom.
@@ -141,40 +262,36 @@ def strip_stack(s: Series, window: np.ndarray, cursor_t: float | None = None,
     """
     from plotly.subplots import make_subplots
 
-    rows = [
-        ("gust up<br>m/s", [("w_up", s.w_up, "#1f77b4")], None),
-        ("q gust<br>deg/s", [("q_gust", s.q_gust_deg, "#d62728")], None),
-        ("alpha<br>deg", [("air-relative", s.alpha_deg, "#1f77b4"),
-                          ("inertial", s.alpha_inertial_deg, "#bbbbbb")], "alpha"),
-        ("n_z<br>g", [("n_z", s.n_z, "#1f77b4")], "nz"),
-        ("theta<br>deg", [("theta", s.theta_deg, "#1f77b4"),
-                          ("q", s.q_deg, "#d62728")], None),
-        ("elevator<br>deg", [("elevator", s.elevator_deg, "#1f77b4")], "elevator"),
-    ]
+    rows = STRIP_ROWS
     fig = make_subplots(rows=len(rows), cols=1, shared_xaxes=True,
-                        vertical_spacing=0.018)
+                        vertical_spacing=0.022)
 
-    for i, (label, traces, special) in enumerate(rows, start=1):
-        for name, y, colour in traces:
-            xs, ys = envelope(s.t, np.asarray(y), STRIP_POINTS)
+    for i, (label, unit, traces, special) in enumerate(rows, start=1):
+        multi = len(traces) > 1
+        for name, attr, colour in traces:
+            xs, ys = envelope(s.t, np.asarray(getattr(s, attr)), STRIP_POINTS)
             fig.add_trace(
                 go.Scattergl(
                     x=xs, y=ys, mode="lines", name=name,
-                    line=dict(color=colour, width=1.4, shape="linear"),
-                    hovertemplate=f"{name}: %{{y:.4f}}<br>t %{{x:.2f}} s<extra></extra>",
+                    line=dict(color=colour, width=2, shape="linear"),
+                    # A legend whenever a row carries two series: identity is
+                    # never colour-alone. A single-series row needs none -- its
+                    # own axis title names it.
+                    showlegend=multi, legendgroup=name,
+                    hovertemplate=f"{name}: %{{y:.4f}} {unit}"
+                                  "<br>t %{x:.2f} s<extra></extra>",
                 ), row=i, col=1,
             )
-        fig.update_yaxes(title_text=label, title_font=dict(size=10), row=i, col=1,
-                         **_AXIS)
+        fig.update_yaxes(title_text=f"{label}<br>{unit}", row=i, col=1, **_AXIS)
 
         if special == "alpha" and alpha_bands:
             # The DECLARED linear-aero band, PROJECT.md section 7. Symmetric,
             # because aero.py is odd-symmetric in alpha -- a pushdown is exactly
             # as far out of range as an equal pull-up, which is what latent bug
             # (e)'s one-sided gauge could not see.
-            for lo, hi, colour in ((-10.0, 10.0, "rgba(44,160,44,0.10)"),
-                                   (10.0, 12.0, "rgba(255,187,0,0.16)"),
-                                   (-12.0, -10.0, "rgba(255,187,0,0.16)")):
+            for lo, hi, colour in ((-10.0, 10.0, "rgba(12,163,12,0.08)"),
+                                   (10.0, 12.0, "rgba(250,178,25,0.16)"),
+                                   (-12.0, -10.0, "rgba(250,178,25,0.16)")):
                 fig.add_hrect(y0=lo, y1=hi, line_width=0, fillcolor=colour,
                               row=i, col=1, layer="below")
             reach = max(13.0, float(np.abs(s.alpha_deg).max()) * 1.1)
@@ -182,7 +299,7 @@ def strip_stack(s: Series, window: np.ndarray, cursor_t: float | None = None,
         elif special == "nz":
             # Pinned to include 1 g. Autoscaled to the excursion, a 0.03 g trim
             # offset fills the panel and reads as a defect.
-            fig.add_hline(y=float(s.n_z[0]), line=dict(color="#888", width=1,
+            fig.add_hline(y=float(s.n_z[0]), line=dict(color=AXIS_RULE, width=1,
                                                        dash="dot"), row=i, col=1)
             fig.update_yaxes(
                 range=list(_pad(min(float(s.n_z.min()), 0.9),
@@ -195,13 +312,22 @@ def strip_stack(s: Series, window: np.ndarray, cursor_t: float | None = None,
     if window is not None and np.asarray(window).any():
         wt = s.t[np.asarray(window, dtype=bool)]
         fig.add_vrect(x0=float(wt.min()), x1=float(wt.max()), line_width=0,
-                      fillcolor="rgba(255,127,14,0.12)", layer="below")
+                      fillcolor="rgba(235,104,52,0.10)", layer="below",
+                      annotation_text="analysis window", annotation_position="top left",
+                      annotation_font=dict(size=9, color=INK_MUTED))
     if cursor_t is not None:
-        fig.add_vline(x=float(cursor_t), line=dict(color="#d62728", width=1.2))
+        fig.add_vline(x=float(cursor_t), line=dict(color=CRITICAL, width=1.5))
 
-    fig.update_xaxes(title_text="time  s", row=len(rows), col=1, **_AXIS)
     fig.update_xaxes(**_AXIS)
-    return _base(fig, height=560)
+    fig.update_xaxes(title_text="time  s", row=len(rows), col=1, **_AXIS)
+    return _base(
+        fig, height=620,
+        title="Encounter traces — the causal chain, top to bottom",
+        subtitle="gust in → incidence → load → attitude → control. "
+                 "Elevator must be FLAT on a turbulence run; a response that "
+                 "leads its input is a defect.",
+        legend=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -220,29 +346,43 @@ def load_vs_alpha(s: Series, cursor_index: int | None = None) -> go.Figure:
     aircraft's curve bends at buffet onset and `CL = CL0 + CLa*alpha` cannot,
     which is why no +-g asymmetry can come out of this model.
     """
+    r_air = float(np.corrcoef(s.n_z, s.alpha_deg)[0, 1])
+    r_inertial = float(np.corrcoef(s.n_z, s.alpha_inertial_deg)[0, 1])
+
     fig = go.Figure()
     fig.add_trace(go.Scattergl(
-        x=s.alpha_inertial_deg, y=s.n_z, mode="markers", name="inertial",
-        marker=dict(size=3, color="#cccccc"),
+        x=s.alpha_inertial_deg, y=s.n_z, mode="markers",
+        name=f"inertial — scatters (r={r_inertial:.3f})",
+        marker=dict(size=4, color=REFERENCE, opacity=0.55),
         hovertemplate="inertial alpha %{x:.2f} deg<extra></extra>",
     ))
     fig.add_trace(go.Scattergl(
-        x=s.alpha_deg, y=s.n_z, mode="markers", name="air-relative",
-        marker=dict(size=3.5, color=s.t, colorscale="Viridis",
-                    colorbar=dict(title=dict(text="t  s", side="right"),
-                                  thickness=10, len=0.85)),
+        x=s.alpha_deg, y=s.n_z, mode="markers",
+        name=f"air-relative — a line (r={r_air:.4f})",
+        marker=dict(size=4.5, color=s.t, colorscale=SEQUENTIAL,
+                    colorbar=dict(title=dict(text="time  s", side="right",
+                                             font=dict(size=10)),
+                                  thickness=11, len=0.85, outlinewidth=0,
+                                  tickfont=dict(size=9))),
         hovertemplate="air-relative alpha %{x:.2f} deg<br>n_z %{y:.3f} g<extra></extra>",
     ))
     if cursor_index is not None:
-        fig.add_trace(go.Scattergl(
+        fig.add_trace(go.Scatter(
             x=[s.alpha_deg[cursor_index]], y=[s.n_z[cursor_index]], mode="markers",
-            marker=dict(size=12, color="rgba(0,0,0,0)",
-                        line=dict(color="#d62728", width=2)),
-            hoverinfo="skip",
+            marker=dict(size=13, color="rgba(0,0,0,0)",
+                        line=dict(color=CRITICAL, width=2.5)),
+            name="cursor", showlegend=False, hoverinfo="skip",
         ))
     fig.update_xaxes(title_text="angle of attack  deg", **_AXIS)
-    fig.update_yaxes(title_text="load factor  g", **_AXIS)
-    return _base(fig, 300, "n_z vs incidence — air-relative must be a line")
+    fig.update_yaxes(title_text="load factor n_z  g", **_AXIS)
+    return _base(
+        fig, 340,
+        title="Load factor against incidence — an assertion, not a display",
+        subtitle="Air-relative points MUST fall on a straight line; the "
+                 "ground-relative ones must scatter. A scattered blue cloud "
+                 "means the wind is not reaching the sensing path.",
+        legend=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -277,37 +417,50 @@ def discriminator(points: list[dict]) -> go.Figure:
     """
     lo, hi = FIG8_LOAD_BAND
     fig = go.Figure()
-    fig.add_hrect(y0=lo, y1=hi, line_width=0, fillcolor="rgba(0,0,0,0.07)",
-                  layer="below")
+    fig.add_hrect(y0=lo, y1=hi, line_width=0, fillcolor="rgba(137,135,129,0.14)",
+                  layer="below", annotation_text="paper's load band",
+                  annotation_position="bottom right",
+                  annotation_font=dict(size=9, color=INK_MUTED))
 
     for name, dtheta in FIG8_REFERENCE.items():
         fig.add_trace(go.Scatter(
             x=[dtheta], y=[0.5 * (lo + hi)], mode="markers+text", text=[name],
-            textposition="top center", textfont=dict(size=9, color="#777"),
-            marker=dict(size=11, symbol="square-open", color="#777"),
+            textposition="bottom center",
+            textfont=dict(size=9, color=INK_MUTED),
+            marker=dict(size=11, symbol="square-open",
+                        line=dict(color=REFERENCE, width=1.5)),
+            name="paper (DC-10 class)", showlegend=name == "vortex",
+            legendgroup="paper",
             hovertemplate=f"paper: {name}, {dtheta} deg<extra></extra>",
         ))
 
     spread = list(FIG8_REFERENCE.values())
-    palette = ["#1f77b4", "#ff7f0e", "#2ca02c", "#9467bd"]
     for i, p in enumerate(points):
-        colour = palette[i % len(palette)]
+        colour = SERIES[i % len(SERIES)]
         fig.add_trace(go.Scatter(
             x=[p["dtheta"], p["dtheta_whole"]], y=[p["dn"], p["dn_whole"]],
-            mode="lines", line=dict(color=colour, width=1, dash="dot"),
-            hoverinfo="skip",
+            mode="lines", line=dict(color=colour, width=1.2, dash="dot"),
+            showlegend=False, hoverinfo="skip",
         ))
+        # Text wears an INK token, never the series colour: the mark beside it
+        # carries identity. Aqua at 2.74:1 on this surface is illegible as text,
+        # and it is also why every point is direct-labelled -- the relief rule
+        # for a sub-3:1 categorical hue.
         fig.add_trace(go.Scatter(
             x=[p["dtheta"]], y=[p["dn"]], mode="markers+text",
-            text=[f"  {p['dtheta']:.2f}°, {p['dn']:+.2f} g"],
-            textposition="middle right", textfont=dict(size=9, color=colour),
-            marker=dict(size=10, color=colour), name=p["label"],
+            text=[f"  {p['label']}  {p['dtheta']:.2f}°, {p['dn']:+.2f} g"],
+            textposition="middle right", textfont=dict(size=10, color=INK),
+            marker=dict(size=11, color=colour,
+                        line=dict(color=SURFACE, width=2)),  # surface ring
+            name=f"{p['label']} (windowed)", legendgroup=p["label"],
             hovertemplate=f"{p['label']} (windowed)<extra></extra>",
         ))
         fig.add_trace(go.Scatter(
             x=[p["dtheta_whole"]], y=[p["dn_whole"]], mode="markers",
-            marker=dict(size=10, symbol="circle-open",
+            marker=dict(size=11, symbol="circle-open",
                         line=dict(color=colour, width=2)),
+            name=f"{p['label']} (whole run)", legendgroup=p["label"],
+            showlegend=False,
             hovertemplate=f"{p['label']} WHOLE RUN — wrong window<extra></extra>",
         ))
         spread += [p["dtheta"], p["dtheta_whole"]]
@@ -324,29 +477,170 @@ def discriminator(points: list[dict]) -> go.Figure:
             bgcolor="rgba(180,35,24,0.07)", borderpad=3,
         )
 
-    fig.update_xaxes(title_text="pitch attitude excursion  deg",
-                     range=[0, max(spread) * 1.22], **_AXIS)
+    fig.update_xaxes(title_text="pitch attitude excursion in the window  deg",
+                     range=[0, max(spread) * 1.32], **_AXIS)
     fig.update_yaxes(title_text="load excursion from trim  g", **_AXIS)
-    return _base(fig, 320,
-                 "Wingrove & Bach Fig. 8 — grey = paper (DC-10 class), "
-                 "hollow = whole run (wrong window)")
+    return _base(
+        fig, 360,
+        title="Wingrove &amp; Bach Fig. 8 — does the ordering hold?",
+        subtitle="The claim is the ORDERING vortex &lt; updraft &lt; manoeuvre, "
+                 "never the values (§5: the paper never states an aircraft "
+                 "type). Hollow = same run over its whole length.",
+        legend=True,
+    )
 
 
 # ---------------------------------------------------------------------------
-# P7 -- the 3D scene
+# P7a -- the field cross-section. THE PRIMARY FIELD VIEW.
+# ---------------------------------------------------------------------------
+
+def field_cross_section(s: Series, field, *, scale: float, peak: float,
+                        cores: list[tuple[float, float]] | None = None,
+                        window: np.ndarray | None = None,
+                        cursor_index: int | None = None,
+                        field_centre: float | None = None,
+                        label: str = "field") -> go.Figure:
+    """The vertical gust field with the flight path through it. 2D, on purpose.
+
+    THIS REPLACES THE 3D SCENE AS THE PRIMARY VIEW FOR A PARKS VORTEX, and the
+    reason is physics rather than taste. `wind.vortex_wind` fixes dpsi = 0, so
+    the cores are infinite east-west lines and the field has NO east variation
+    at all -- `panel.py` reports a range to them with no bearing for the same
+    reason. A single north-altitude plane therefore contains the entire field,
+    and rendering it as a volume adds a dimension the data does not have. The
+    design document's own rule for the lee wave says it outright: rendering a
+    field as a volume it has no structure in MANUFACTURES structure.
+
+    It is also 15x cheaper -- about 0.1 MB against the isosurface's 1.5 MB --
+    and it is legible on first sight, which the 3D scene measurably was not.
+
+    This is `vortex_viz._field_panel` in Plotly, and deliberately so: that panel
+    is the project's established rendering of this field and it was already
+    right. Four properties carried across unchanged:
+
+      * colour is DIVERGING and pinned to +-V0, never autoscaled, because the
+        claim under test is a signed up-then-down doublet and a sign error must
+        reverse the colour order visibly;
+      * the zero contour is drawn, because superposition DISPLACES it between
+        cores -- it is the visible check that the array is summed rather than
+        repeated;
+      * the core circles are drawn from r0 INDEPENDENTLY of the field, so a
+        circle that does not sit on the colour transition is a transcription
+        error;
+      * both axes are metres with a 1:1 aspect, so a wrong core radius shows up
+        as an ellipse.
+    """
+    import jax
+    import jax.numpy as jnp
+
+    cores = cores or []
+    centre = (float(field_centre) if field_centre is not None
+              else (cores[0][0] + cores[-1][0]) / 2.0 if cores
+              else 0.5 * float(s.north.max() + s.north.min()))
+    mid_alt = float(np.median(s.altitude))
+
+    first = cores[0][0] if cores else centre - 3.0 * scale
+    last = cores[-1][0] if cores else centre + 3.0 * scale
+    margin = 3.0 * scale
+    north = np.linspace(first - margin, last + margin, 300)
+    alt = np.linspace(mid_alt - 2.2 * scale, mid_alt + 2.2 * scale, 150)
+    mesh_n, mesh_a = np.meshgrid(north, alt, indexing="xy")
+    pts = jnp.stack([jnp.asarray(mesh_n.ravel()), jnp.zeros(mesh_n.size),
+                     jnp.asarray(-mesh_a.ravel())], axis=1)
+    w_up = -np.asarray(jax.jit(jax.vmap(field))(pts))[:, 2].reshape(mesh_n.shape)
+
+    fig = go.Figure()
+    fig.add_trace(go.Heatmap(
+        x=north, y=alt, z=w_up, colorscale=DIVERGING,
+        zmin=-peak, zmax=peak, zmid=0.0,
+        colorbar=dict(title=dict(text="vertical gust<br>up positive  m/s",
+                                 side="right", font=dict(size=10)),
+                      thickness=11, len=0.9, outlinewidth=0,
+                      tickfont=dict(size=9)),
+        hovertemplate="north %{x:.0f} m<br>alt %{y:.0f} m"
+                      "<br>gust %{z:+.2f} m/s<extra></extra>",
+    ))
+    fig.add_trace(go.Contour(
+        x=north, y=alt, z=w_up, contours=dict(start=0.0, end=0.0, size=1.0,
+                                              coloring="none"),
+        line=dict(color=INK, width=1), showscale=False, hoverinfo="skip",
+        name="zero gust",
+    ))
+
+    for cn, ca in cores:
+        fig.add_shape(type="circle", x0=cn - scale, x1=cn + scale,
+                      y0=ca - scale, y1=ca + scale,
+                      line=dict(color=INK, width=1.2, dash="dash"))
+        fig.add_trace(go.Scatter(
+            x=[cn], y=[ca], mode="markers",
+            marker=dict(symbol="cross-thin", size=9,
+                        line=dict(color=INK, width=1.4)),
+            hovertemplate=f"core: north {cn:.0f} m, r0 {scale:.1f} m"
+                          "<extra></extra>", showlegend=False,
+        ))
+
+    fig.add_trace(go.Scattergl(
+        x=s.north, y=s.altitude, mode="lines",
+        line=dict(color=INK, width=2.5, shape="linear"),
+        name="flight path",
+        hovertemplate="north %{x:.0f} m<br>alt %{y:.0f} m<extra></extra>",
+    ))
+    if window is not None and np.asarray(window).any():
+        m = np.asarray(window, dtype=bool)
+        fig.add_trace(go.Scattergl(
+            x=s.north[m], y=s.altitude[m], mode="lines",
+            line=dict(color=SERIES[1], width=4, shape="linear"),
+            name="analysis window", hoverinfo="skip",
+        ))
+    if cursor_index is not None:
+        fig.add_trace(go.Scatter(
+            x=[s.north[cursor_index]], y=[s.altitude[cursor_index]],
+            mode="markers",
+            marker=dict(size=11, color=CRITICAL,
+                        line=dict(color=SURFACE, width=2)),  # surface ring
+            name="cursor", hoverinfo="skip",
+        ))
+
+    # 1:1 IN DATA SPACE, and the axis shrinks its BOX to get there rather than
+    # widening its RANGE. `constrain="domain"` is the whole trick: with an
+    # explicit `range` on both axes and no constraint, plotly satisfies the
+    # aspect lock by collapsing the plot area -- measured 369 x 29 px, a
+    # twenty-nine pixel tall field map that still looked like a figure in every
+    # automated check. Caught by rendering it and reading the geometry back.
+    fig.update_xaxes(title_text="along track (north)  m",
+                     range=[north[0], north[-1]], constrain="domain", **_AXIS)
+    fig.update_yaxes(title_text="altitude  m", range=[alt[0], alt[-1]],
+                     scaleanchor="x", scaleratio=1.0, constrain="domain",
+                     **_AXIS)
+    return _base(
+        fig, 360,
+        title=f"{label}: vertical gust field and flight path",
+        subtitle=(
+            "Where the aircraft actually was. Colour is pinned to ±peak, never "
+            "autoscaled, so a sign error reverses it visibly. Black line is "
+            "zero gust." + (
+                " Dashed circles are r₀ drawn from the source, not from the "
+                "field, so a circle off the colour transition is a "
+                "transcription error." if cores else "")),
+        legend=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# P7b -- the 3D scene, for fields that genuinely have three-dimensional structure
 # ---------------------------------------------------------------------------
 
 SCALARS = {
-    "n_z": ("n_z  g", "Viridis", False),
-    "alpha_deg": ("alpha  deg", "Viridis", False),
-    "w_up": ("gust up  m/s", "RdBu_r", True),  # SIGNED -> diverging, pinned
-    "altitude": ("altitude  m", "Viridis", False),
+    "n_z": ("n_z  g", SEQUENTIAL, False),
+    "alpha_deg": ("alpha  deg", SEQUENTIAL, False),
+    "w_up": ("gust up  m/s", DIVERGING, True),  # SIGNED -> diverging, pinned
+    "altitude": ("altitude  m", SEQUENTIAL, False),
 }
 
 
 def field_3d(s: Series, field, *, scalar: str = "n_z", cursor_index: int | None = None,
-             representation: str = "isosurface", core_radius: float | None = None,
-             peak_tangential: float | None = None,
+             representation: str = "isosurface", scale: float | None = None,
+             peak: float | None = None,
              field_centre: float | None = None) -> go.Figure:
     """Trajectory through the field, coloured by a selectable scalar.
 
@@ -387,7 +681,7 @@ def field_3d(s: Series, field, *, scalar: str = "n_z", cursor_index: int | None 
     keep = np.linspace(0, len(s.t) - 1, min(len(s.t), 4000)).astype(int)
 
     fig = go.Figure()
-    _add_field(fig, field, s, representation, core_radius, peak_tangential,
+    _add_field(fig, field, s, representation, scale, peak,
                field_centre)
     fig.add_trace(go.Scatter3d(
         x=s.east[keep], y=s.north[keep], z=s.altitude[keep], mode="lines",
@@ -402,7 +696,7 @@ def field_3d(s: Series, field, *, scalar: str = "n_z", cursor_index: int | None 
         fig.add_trace(go.Scatter3d(
             x=[s.east[cursor_index]], y=[s.north[cursor_index]],
             z=[s.altitude[cursor_index]], mode="markers",
-            marker=dict(size=6, color="#d62728"), name="cursor",
+            marker=dict(size=7, color=CRITICAL), name="cursor",
             hovertemplate="cursor<extra></extra>",
         ))
 
@@ -416,7 +710,7 @@ def field_3d(s: Series, field, *, scalar: str = "n_z", cursor_index: int | None 
     return _base(fig, 460)
 
 
-def _add_field(fig, field, s: Series, representation, core_radius, peak_tangential,
+def _add_field(fig, field, s: Series, representation, scale, peak,
                field_centre=None):
     """Draw the wind field itself, in whichever form is legible for it."""
     import jax
@@ -429,13 +723,13 @@ def _add_field(fig, field, s: Series, representation, core_radius, peak_tangenti
     mid_n = float(field_centre) if field_centre is not None \
         else 0.5 * float(s.north.max() + s.north.min())
     mid_alt = float(np.median(s.altitude))
-    reach = core_radius * 3.0 if core_radius else 0.35 * span_n
+    reach = scale * 3.0 if scale else 0.35 * span_n
 
-    if representation == "isosurface" and core_radius:
+    if representation == "isosurface" and scale:
         g = ISO_GRID
-        a = np.linspace(mid_n - 4.0 * core_radius, mid_n + 4.0 * core_radius, g)
+        a = np.linspace(mid_n - 4.0 * scale, mid_n + 4.0 * scale, g)
         e = np.linspace(-reach, reach, ISO_GRID_LATERAL)
-        d = np.linspace(-(mid_alt + 2.5 * core_radius), -(mid_alt - 2.5 * core_radius), g)
+        d = np.linspace(-(mid_alt + 2.5 * scale), -(mid_alt - 2.5 * scale), g)
         ga, ge, gd = np.meshgrid(a, e, d, indexing="ij")
         pts = jnp.stack([ga.ravel(), ge.ravel(), gd.ravel()], axis=1)
 
@@ -450,7 +744,7 @@ def _add_field(fig, field, s: Series, representation, core_radius, peak_tangenti
             fig.add_trace(go.Isosurface(
                 x=ge.ravel(), y=ga.ravel(), z=-gd.ravel(), value=mag,
                 isomin=0.9 * peak, isomax=peak, surface_count=1,
-                opacity=0.22, colorscale="Blues", showscale=False,
+                opacity=0.22, colorscale=SEQUENTIAL, showscale=False,
                 caps=dict(x_show=False, y_show=False, z_show=False),
                 name="core (|curl| = 2 V0/r0)", hoverinfo="skip",
             ))
@@ -468,7 +762,7 @@ def _add_field(fig, field, s: Series, representation, core_radius, peak_tangenti
             u=w[:, 1], v=w[:, 0], w=-w[:, 2],
             starts=dict(x=seeds, y=np.full(24, mid_n - reach),
                         z=np.full(24, mid_alt)),
-            sizeref=0.4, opacity=0.35, colorscale="Blues", showscale=False,
+            sizeref=0.4, opacity=0.35, colorscale=SEQUENTIAL, showscale=False,
             hoverinfo="skip",
         ))
     elif representation == "slice":
@@ -481,7 +775,7 @@ def _add_field(fig, field, s: Series, representation, core_radius, peak_tangenti
         cap = float(np.abs(w_up).max()) or 1.0
         fig.add_trace(go.Surface(
             x=np.zeros_like(ga), y=ga, z=-gd, surfacecolor=w_up,
-            colorscale="RdBu_r", cmin=-cap, cmax=cap, opacity=0.55,
+            colorscale=DIVERGING, cmin=-cap, cmax=cap, opacity=0.55,
             showscale=False, hoverinfo="skip",
         ))
 
@@ -503,19 +797,23 @@ def energy_residual(profile, core_edges: list[float] | None = None) -> go.Figure
     fig = go.Figure()
     fig.add_trace(go.Scattergl(
         x=xs / 1000.0, y=np.maximum(ys, 1e-30), mode="lines",
-        line=dict(color="#1f77b4", width=1.2, shape="linear"),
+        line=dict(color=SERIES[0], width=2, shape="linear"),
         hovertemplate="north %{x:.3f} km<br>%{y:.3e} J<extra></extra>",
     ))
     fig.add_hline(y=max(profile.median, 1e-30),
-                  line=dict(color="#888", width=1, dash="dot"),
+                  line=dict(color=AXIS_RULE, width=1, dash="dot"),
                   annotation_text="run median", annotation_font_size=9)
     for edge in core_edges or []:
         fig.add_vline(x=edge / 1000.0,
-                      line=dict(color="#d62728", width=1, dash="dash"))
+                      line=dict(color=CRITICAL, width=1, dash="dash"))
     fig.update_xaxes(title_text="along track  km", **_AXIS)
     fig.update_yaxes(title_text="per-step |Δresidual|  J", type="log", **_AXIS)
-    return _base(fig, 300,
-                 "energy closure residual — spikes locate the core boundary")
+    return _base(
+        fig, 320,
+        title="Energy closure residual — where the field is not smooth",
+        subtitle="Per-step |Δresidual| against position, log axis. Spikes at "
+                 "the core boundary are the Rankine gradient discontinuity, "
+                 "20–350× the run median.")
 
 
 # ---------------------------------------------------------------------------
@@ -544,12 +842,15 @@ def difference(a: Series, b: Series, channel: str, labels: tuple[str, str]) -> g
     fig = go.Figure()
     fig.add_trace(go.Scattergl(
         x=xs, y=ys, mode="lines",
-        line=dict(color="#9467bd", width=1.4, shape="linear"),
+        line=dict(color=SERIES[2], width=2, shape="linear"),
         hovertemplate="t %{x:.2f} s<br>Δ %{y:.4e}<extra></extra>",
     ))
-    fig.add_hline(y=0.0, line=dict(color="#888", width=1))
+    fig.add_hline(y=0.0, line=dict(color=AXIS_RULE, width=1))
     fig.update_xaxes(title_text="time  s", **_AXIS)
     fig.update_yaxes(title_text=f"Δ {channel}", **_AXIS)
-    return _base(fig, 300,
-                 f"{labels[0]} − {labels[1]}, linearly interpolated onto the "
-                 "coarser grid")
+    return _base(
+        fig, 320,
+        title=f"Difference: {labels[0]} − {labels[1]}",
+        subtitle="Plotted as a difference, never as two overlaid absolutes — "
+                 "h and h/2 differ by 4e-5 relative and are one line when "
+                 "overlaid. Linearly interpolated onto the coarser grid.")

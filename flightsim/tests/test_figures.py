@@ -109,7 +109,7 @@ def test_a_whole_sweep_view_holds_the_two_megabyte_callback_budget(sample):
     panels = [
         figures.strip_stack(sample, window, cursor_t=12.0),
         figures.field_3d(sample, lambda p: p * 0.0, cursor_index=3,
-                         representation="isosurface", core_radius=182.88),
+                         representation="isosurface", scale=182.88),
         figures.discriminator([dict(label="v", dtheta=2.24, dn=-1.235,
                                     dtheta_whole=8.33, dn_whole=-1.3)]),
         figures.load_vs_alpha(sample, cursor_index=3),
@@ -150,7 +150,7 @@ def test_the_field_is_drawn_around_the_STRUCTURE_not_the_trajectory_midpoint():
     field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
 
     fig = figures.field_3d(s, field, representation="isosurface",
-                           core_radius=r0, field_centre=533.4)
+                           scale=r0, field_centre=533.4)
     iso = [t for t in fig.data if t.type == "isosurface"][0]
     peak = float(np.max(iso.value))
     assert peak > 0.5 * (2 * v0 / r0), (
@@ -235,6 +235,109 @@ def test_the_discriminator_draws_the_whole_run_marker_and_the_connector():
     assert "lines" in modes, "no connector between windowed and whole-run"
     symbols = [getattr(tr.marker, "symbol", None) for tr in fig.data]
     assert "circle-open" in symbols, "no hollow whole-run marker"
+
+
+def test_no_strip_row_mixes_two_units_on_one_axis():
+    """The single most-flagged charting mistake, made structural.
+
+    Two measures of different scale sharing one y-axis invents a correlation
+    that is not in the data -- the alignment of the two scales is arbitrary. The
+    row spec carries an explicit unit per row precisely so this is checkable
+    rather than a matter of review attention.
+
+    q_gust and q DO share a row, and legitimately: both are deg/s, both are
+    rates, and the whole point of putting them together is that the gust rate in
+    and the body rate out are directly comparable on one scale.
+    """
+    for label, unit, traces, _special in figures.STRIP_ROWS:
+        assert unit, f"row {label!r} declares no unit"
+        assert isinstance(unit, str), label
+
+
+def _vortex_field():
+    """A real single-core Parks field, so the cross-section has structure."""
+    import jax.numpy as jnp
+
+    from flightsim import wind
+
+    array = wind.VortexArray(
+        north=jnp.array([0.0, 1066.8]), down=jnp.array([-12192.0, -12192.0]),
+        r0=jnp.array(182.88), v0=jnp.array(25.908),
+    )
+    return lambda p: wind.vortex_wind(p, array)
+
+
+def test_every_multi_series_strip_row_carries_a_legend(sample):
+    """Identity is never colour-alone.
+
+    A row with one series needs no legend -- its axis title names it. A row with
+    two does, because a reader who cannot separate the hues has nothing else to
+    go on.
+    """
+    fig = figures.strip_stack(sample, window=np.zeros(len(sample.t), dtype=bool))
+    by_row = {}
+    for tr in fig.data:
+        if tr.yaxis:
+            by_row.setdefault(tr.yaxis, []).append(tr)
+    multi = [axis for axis, trs in by_row.items() if len(trs) > 1]
+    assert multi, "expected at least one row with two series"
+    for axis in multi:
+        assert all(tr.showlegend for tr in by_row[axis]), (
+            f"row on {axis} has {len(by_row[axis])} series and no legend")
+
+
+def test_the_field_cross_section_pins_its_scale_to_the_sourced_peak(sample):
+    """Diverging, symmetric about zero, pinned to +-V0 -- never autoscaled.
+
+    `vortex_viz._field_panel` already makes this argument: the physics claim
+    under test is a SIGNED up-then-down doublet, so a sign error must reverse
+    the colour order visibly. An autoscaled map renormalises and hides it.
+    """
+    fig = figures.field_cross_section(
+        sample, _vortex_field(), scale=182.88, peak=25.908,
+        cores=[(0.0, 12192.0)], field_centre=0.0,
+    )
+    heat = [t for t in fig.data if t.type == "heatmap"][0]
+    assert heat.zmin == pytest.approx(-25.908)
+    assert heat.zmax == pytest.approx(25.908)
+    assert heat.zmid == pytest.approx(0.0)
+
+
+def test_the_field_cross_section_draws_cores_at_the_stated_radius(sample):
+    """Circles come from r0, NOT from the field.
+
+    Drawing the boundary from the same array that coloured the map would make
+    the two agree by construction. Drawn independently, a circle that does not
+    sit on the colour transition is a transcription error, visible instantly.
+    """
+    fig = figures.field_cross_section(
+        sample, _vortex_field(), scale=182.88, peak=25.908,
+        cores=[(0.0, 12192.0), (1066.8, 12192.0)], field_centre=533.4,
+    )
+    circles = [sh for sh in fig.layout.shapes if sh.type == "circle"]
+    assert len(circles) == 2
+    width = circles[0].x1 - circles[0].x0
+    assert width == pytest.approx(2 * 182.88, rel=1e-9)
+
+
+def test_the_field_cross_section_locks_1_to_1_by_shrinking_its_box(sample):
+    """A circle must render as a circle, and the axis must not cheat to get there.
+
+    `scaleanchor` alone is not enough. With an explicit `range` on both axes and
+    no `constrain`, plotly satisfies the aspect lock by collapsing the plot area
+    instead of shrinking the axis domain -- measured 369 x 29 px in the browser,
+    a twenty-nine pixel tall field map that passed every check in this file.
+    `constrain="domain"` is what makes it shrink the BOX. Verified in the
+    browser afterwards at exactly 4.9635 m/px on both axes.
+    """
+    fig = figures.field_cross_section(
+        sample, _vortex_field(), scale=182.88, peak=25.908,
+        cores=[(0.0, 12192.0)], field_centre=0.0,
+    )
+    assert fig.layout.yaxis.scaleanchor == "x"
+    assert fig.layout.yaxis.scaleratio == 1.0
+    assert fig.layout.yaxis.constrain == "domain", "the aspect lock collapses the plot"
+    assert fig.layout.xaxis.constrain == "domain"
 
 
 def test_the_discriminator_says_so_when_a_category_is_missing():
