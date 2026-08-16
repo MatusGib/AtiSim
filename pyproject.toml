@@ -7,6 +7,12 @@ dependencies = ["jax", "numpy", "scipy", "matplotlib"]
 
 [project.optional-dependencies]
 dev = ["pytest", "pymupdf", "jupyter", "nbval"]
+# The analysis UI. A SEPARATE extra rather than a runtime dependency: the
+# simulator and every script in scripts/ must keep working without it, and
+# `pyarrow` alone is a ~90 MB wheel against a four-package runtime list.
+# flightsim/checks.py and flightsim/analysis/artifact.py need pyarrow;
+# flightsim/analysis/figures.py needs plotly; only flightsim/apps needs dash.
+ui = ["dash", "plotly", "pyarrow"]
 
 [build-system]
 requires = ["setuptools"]

@@ -63,7 +63,7 @@ def oscillator_refinement(dts, t_end=2.0):
 
 
 def fixed_control_refinement(ac, airspeed, altitude, dts, dt_ref, t_end=4.0,
-                             d_elevator=0.02):
+                             d_elevator=0.02, wind_model=None, start_north=0.0):
     """Refine the real 6-DOF rollout against a fine-step reference.
 
     The manufactured case isolates the stage weights; this one can also see a
@@ -74,19 +74,41 @@ def fixed_control_refinement(ac, airspeed, altitude, dts, dt_ref, t_end=4.0,
     pos_ned carries a 12,184 m altitude that float64 resolves to 2.7e-12 m -- and
     a sequence crossing it fits partly to round-off. See the test for the
     measured pairwise orders either side of the floor.
+
+    `wind_model` and `start_north` exist because the paragraph above promises
+    this function can see a wind sample applied at the wrong stage and, with no
+    way to pass a wind model, it never could. Both defaults reproduce the
+    still-air call exactly -- `trimmed_state` already puts the aircraft at
+    north = 0 -- so adding them moved no existing result.
+
+    THE ANSWER IS NOT 4 ONCE A SPATIAL FIELD IS PASSED, and that is a property
+    of the scheme rather than a defect. `integrate.step` samples the wind once
+    per step and holds it across the four stages, which is an O(h) perturbation
+    of the right-hand side within the step, so the observed order falls to 1.
+    Measured 1.01-1.03 across four independent smooth fields against 3.989 in
+    still air; see `test_verification.py` and PROJECT.md section 4. A field with
+    a KINK -- the Rankine core edge -- has no order at all, because the error
+    depends on where the step grid lands relative to the crossing.
     """
     import jax
 
     from flightsim.integrate import init_sim, rollout
     from flightsim.trim import trim, trimmed_controls, trimmed_state
+    from flightsim.wind import zero_wind
 
     x, _ = trim(jnp.array(airspeed), jnp.array(altitude), ac)
     state = trimmed_state(x[0], jnp.array(airspeed), jnp.array(altitude))
+    state = state._replace(
+        pos_ned=state.pos_ned.at[0].set(jnp.asarray(start_north, dtype=float))
+    )
     controls = trimmed_controls(x[1] + d_elevator, x[2])
+    model = zero_wind if wind_model is None else wind_model
 
     def final_pos(dt):
         sim = init_sim(state, jax.random.PRNGKey(0))
-        _, traj = rollout(sim, controls, jnp.array(dt), ac, int(round(t_end / dt)))
+        _, traj = rollout(
+            sim, controls, jnp.array(dt), ac, int(round(t_end / dt)), wind_model=model
+        )
         return np.asarray(traj.pos_ned[-1])
 
     reference = final_pos(dt_ref)

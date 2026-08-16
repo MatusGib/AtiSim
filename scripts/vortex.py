@@ -55,6 +55,12 @@ parser.add_argument(
          "be reported with the loading-shape sensitivity beside it.",
 )
 parser.add_argument("--png", type=Path, help="save here instead of showing")
+parser.add_argument(
+    "--artifacts", type=Path, metavar="DIR",
+    help="also write a run artifact per encounter, for the analysis UI. Needs "
+         "the `ui` extra (pyarrow). Every number this script prints came from a "
+         "run that did not survive it until this flag existed.",
+)
 args = parser.parse_args()
 
 case = CASES[args.case]
@@ -168,6 +174,98 @@ print(f"\nFig. 8 pitch excursion, deg:  paper {paper}  model "
       f"{[round(m, 2) for m in model]}")
 print(f"ordering vortex < updraft < manoeuvre: {'HOLDS' if ordered else 'FAILS'}"
       "   (ordering is the claim; absolute agreement is forbidden by section 5)")
+
+if args.artifacts:
+    # The artifact carries what the PNG footer carries, as data rather than as
+    # text. Everything below is already assembled above for `provenance`; this is
+    # a restructuring, not new information.
+    from flightsim import checks
+    from flightsim.analysis import artifact
+
+    common = dict(
+        aircraft_key=args.aircraft,
+        aircraft=ac,
+        flight_condition={"airspeed_mps": float(V), "altitude_m": float(H),
+                          "source": "NASA CR-2144 flight condition 9"},
+        trim_solution={"alpha_rad": alpha, "elevator_rad": elevator,
+                       "throttle": throttle, "residual_norm": None,
+                       "is_physical": True},
+        load_model=("loads.strip_model" if args.strip else None),
+        loading_shape=("elliptic" if args.strip else None),
+        caveats=[
+            "Load comparisons are ORDERING ONLY, never values (PROJECT.md 5): "
+            "both papers' records are DC-10 class and neither identifies an "
+            "aircraft type.",
+            "The Parks core is 3.07 spans, so the point-gust assumption E2 is "
+            "marginal for the vortex case specifically.",
+        ] + ([
+            "STRIP loads: quote the loading-shape sensitivity beside any result "
+            "-- 2.6% across defensible shapes, 49.7% including the uniform bracket."
+        ] if args.strip else []),
+    )
+
+    encounters = [
+        (vortex, f"vortex-{args.case}",
+         {"kind": "VortexArray", "case": args.case,
+          "source": "Parks, Wingrove, Bach & Mehta 1985, J. Aircraft 22(2) 124-129",
+          "params": {"north": [c[0] for c in cores],
+                     "down": [-c[1] for c in cores],
+                     "r0": r0, "v0": v0, "spacing": spacing},
+          "model": "wind.field_model",
+          "omega_gust_estimator": "analytic tangent at CG"},
+         {"lead_in_core_radii": args.lead_in,
+          "window": {"kind": "first core", "north_m": [-r0, r0]},
+          "window_rule": "the disturbance's own extent (PROJECT.md 8)"}),
+        (updraft, "updraft",
+         {"kind": "UpdraftColumn",
+          "source": "Wingrove & Bach 1994, J. Aircraft 31(4) 753-760",
+          "params": {"north": 0.0, "east": 0.0, "w0": float(UPDRAFT_W0),
+                     "radius": float(radius), "sharpness": args.sharpness},
+          "model": "wind.field_model",
+          "omega_gust_estimator": "analytic tangent at CG"},
+         {"sharpness": args.sharpness,
+          "sharpness_provenance": "DECLARED, not sourced -- the paper fixes the "
+                                  "magnitude and duration and says nothing about the edge",
+          "window": {"kind": "column", "north_m": [-radius, radius]},
+          "window_rule": "the disturbance's own extent (PROJECT.md 8)"}),
+        (pushdown, "manoeuvre",
+         {"kind": "none (zero wind)",
+          "source": "the category is DEFINED by the absence of turbulence",
+          "params": {}},
+         {"pushdown_seconds": hold,
+          "pushdown_provenance": "DECLARED, not sourced -- the paper fixes the "
+                                 "load the pilot reached, not how long they held it",
+          "elevator_deg_from_trim": float(elevator_step * RAD2DEG),
+          "elevator_provenance": "BISECTED to reach the Fig. 8 band read as an "
+                                 "INCREMENT, so the load is sourced and the angle "
+                                 "is an output",
+          "window": {"kind": "elevator pulse", "seconds": hold,
+                     "starts_at_s": pushdown_lead},
+          "window_rule": "the disturbance's own extent (PROJECT.md 8)"}),
+    ]
+
+    sha = artifact.git_sha()[:7] or "nogit"
+    for enc, name, field_spec, declared in encounters:
+        meta = artifact.build_meta(
+            integrator={"dt_s": args.dt, "n_steps": len(enc.t)},
+            wind_field=field_spec,
+            declared_parameters=declared,
+            **common,
+        )
+        enc_field = (
+            vortex_field if name.startswith("vortex")
+            else updraft_field if name == "updraft"
+            else (lambda p: jnp.zeros(3))
+        )
+        report = checks.run_checks(
+            enc.log, ac, trim.trimmed_controls(x[1], x[2]), enc_field, enc.window
+        )
+        out = artifact.write_run(
+            args.artifacts / f"{name}-{args.aircraft}-{sha}", enc.log, meta, report
+        )
+        failed = [c.name for c in report if c.passed is False]
+        print(f"wrote {out}"
+              + (f"   CHECKS FAILED: {', '.join(failed)}" if failed else "   checks ok"))
 
 figure = vortex_viz.figure(
     [vortex, updraft, pushdown],

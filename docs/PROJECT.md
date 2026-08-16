@@ -73,6 +73,9 @@ without a core rewrite. Both have now been exercised and both held.
 | `manual.py` | manual control, mode switching, pitch trim | trim moves the stick's centring point, never `controls` |
 | `panel.py` | live cockpit, instruments, `Stick`, `LiveSim`, `run_live` | basic T + test overlay; takes a `wind_model` and a `field_range` |
 | `viz.py` | `Trajectory`, `Recorder`, `derived`, `post_flight` | the log and the post-flight figure only; no simulator needed to read a run |
+| **`checks.py`** | **tier 3 — RUN checks**: `quaternion_norm`, `field_divergence`, `energy_closure`, `energy_residual_profile`, `trimmed_start`, `alpha_band`, `lateral_symmetry`, `recorded_wind_matches_field`, `run_checks` | `verification`/`validation` ask whether the MODEL is right, once, in the suite. This asks whether ONE RUN is sensible, every time one is flown. Each check carries a `kind`: **gate** (can and does fail), **tripwire** (has never fired — renders as a number and the word, never a green tick), **report** (a number with no honest threshold). Every check has a **negative control** in `test_checks.py` |
+| **`analysis/`** | `artifact.py` (run artifacts: Parquet + `meta.json` + `checks.json`, and `rebuild_field`), `series.py` (every plotted channel), `figures.py` (pure Plotly figures) | needs the **`ui` extra**. Imports `flightsim`, never the reverse. Nothing in `flightsim/` proper imports it, so the simulator and every script keep working without it |
+| **`apps/`** | `sweep.py` — the Dash analysis UI | **the only package that imports Dash, and it computes nothing.** It never runs the simulator either: `n_steps` is a `static_argname`, so every distinct dt pays a fresh 0.6–0.9 s compile and a panel whose contents depend on machine warmth is not a check |
 | `vortex_viz.py` | encounter analysis and the Fig. 8 figure | air-relative throughout; deliberately separate from `viz.py`. `fly` for a wind field with fixed controls, `manoeuvre` for an elevator schedule at zero wind; both go through `_measure`, so the three Fig. 8 points cannot drift apart |
 
 ### The two interfaces turbulence depends on
@@ -559,6 +562,49 @@ second order when it claims to be fourth.
 | Torque-free asymmetric body vs Jacobi elliptic closed form, 1500 steps | agrees | atol 1e-8 |
 | …the closed form itself vs Euler's equations | 8.3e-8 | atol 1e-6 |
 | `rk4_step` extraction from `step` | **bit-identical**, sha256 pinned | equality |
+
+### The ORDER half of the wind seam (session 15)
+
+Session 12 closed E4's **body-force** half — no spurious `−m·dW/dt` term. The
+**order** half was left open, and `ASSUMPTIONS.md` §E4 said plainly why: the
+order-of-accuracy test flies in still air, so it cannot see the once-per-step
+wind hold. `verification.fixed_control_refinement` now takes a `wind_model`, and
+the answer is **not 4**.
+
+| Check | Measured | Tolerance |
+|---|---|---|
+| Observed order, still air (the control, same window) | **3.9891** | 4.00 ± 0.05 |
+| Observed order, C∞ field (lee wave, 1.2 km, 25 m/s) | **1.0537** | 1.00 ± 0.10 |
+| …its pairwise orders | 1.073 / 1.048 / 1.042 | reported |
+| **…with the hold removed** (wind re-sampled per RK4 stage) | **4.0542** | must fail |
+| Observed order across a Rankine core traverse | **non-monotone** | asserted non-monotone |
+| …its errors, dt 1/16 → 1/128 | 0.435 / 0.0396 / 0.0827 / 0.0806 m | > 1e-4, i.e. off the floor |
+
+**This is a property of the scheme, not a defect.** `integrate.step` samples the
+wind once per step and holds it across the four stages — documented since
+session 2 as *"the standard treatment for Dryden and von Karman"*, and correct
+for a stochastic field. For a field varying in **space** it is an O(h)
+perturbation of the right-hand side inside the step, so the scheme is **first
+order** however good the stage weights are. The falsification is what makes that
+attribution rather than assertion: re-sampling the wind at each stage restores
+**4.0542**.
+
+**What it costs the project's own results: nothing measurable.** Inside the first
+core the h-vs-h/2 position difference is **0.0169 m** over a 366 m traverse.
+Inside the core `∂w/∂x = V₀/r₀ = 0.1417 s⁻¹`, so that displacement is worth
+**0.0024 m/s of gust out of a ~26 m/s peak** — about 1e-4 relative, three orders
+below the ±25% band §5 places on the identified vortex parameters. The headline
+Δθ 2.240° and Δn −1.235 g are not threatened.
+
+**The Rankine row is a second, separate mechanism.** `vortex_wind` switches
+branches at `r = r₀`, where §E2 records the one-sided derivatives differ by
+`2·V₀/r₀` with opposite signs, so the right-hand side is C⁰ but not C¹ there.
+RK4 across a kink has an error depending on where the step grid lands relative
+to the crossing, so refining dt does not monotonically improve the answer. The
+core test **passes with the falsification probe still in**, which is what says
+the two mechanisms are independent. **Anything reporting a fitted order across a
+core traverse is reporting an artefact** — a least-squares slope through that
+sequence returns 0.62 and describes nothing.
 
 **The 6-DOF error floor is round-off, and it bites earlier than expected.** The first
 fitted window read **3.82** and the cause was the measurement, not the integrator. The
@@ -1167,6 +1213,79 @@ protocol with a linear and a table implementation. That was the option not taken
 
 ## 9. Session log
 
+### Session 15 — the order half of the wind seam, and the analysis UI
+
+Two things, and the first came out of designing the second.
+
+**The integrator is first order, not fourth, in a spatially varying wind field.**
+Found while measuring for the UI design: the energy-closure residual converged at
+order 1.00 and the explanation first written for it — trapezoidal quadrature
+across the core kink — was wrong. The trajectory itself is first order. §4 has
+the table; the cause is the once-per-step wind hold, which `integrate.py` has
+documented as deliberate since session 2 and which `ASSUMPTIONS.md` §E4 said in
+as many words the still-air order test could not see. Session 12 closed E4's
+body-force half; this closes the order half.
+
+`verification.fixed_control_refinement` now takes a `wind_model`, which is what
+its own docstring always claimed it was for — it promised to catch "a wind sample
+applied at the wrong RK4 stage" while having no way to pass a wind model.
+**Falsified by injecting the fix**: re-sampling the wind at each stage restores
+4.0542, so the 1.05 is attributable to the hold and to nothing else. Bounded and
+harmless at the step sizes in use — 0.0024 m/s of gust error in the Parks core,
+~1e-4 relative — so nothing §4 quotes moves.
+
+**The analysis UI.** `checks.py`, `analysis/` and `apps/` (§2), fed by run
+artifacts from `scripts/vortex.py --artifacts`. `integrate.logged_rollout` is the
+one core addition: `rollout` emits `carry.state` and therefore discards the wind
+a run actually flew, so no analysis script could write a self-describing run.
+`vortex_viz.fly` now uses it and carries the log on the `Encounter`; a test pins
+the headline pair to exact equality with the pre-change values, and it did not
+move a bit.
+
+**Three things the work found in itself, all recorded rather than repaired
+quietly:**
+
+- **A 14 r₀ lead-in starts the aircraft 0.100 g out of equilibrium**, and
+  `trimmed_start` caught it in its own test fixture on first use — the same
+  defect §9 session 3 records at −6 r₀. But the check as first written was also
+  wrong: at `scripts/vortex.py`'s own **40 r₀ it is still 0.0384 g**, because the
+  Parks far field is 1/r and never dies away. There is no trimmed start in a
+  vortex, so demanding one would fail the project's canonical run and loosening
+  the tolerance until it passed would be choosing a number to make a check
+  succeed. It is now a **report** carrying the offset as a fraction of the run's
+  own peak excursion (3.1% at 40 r₀ against 16% at −6 r₀), and a **gate** only in
+  still air, where cos θ₀ is genuinely the right answer.
+- **The α gate condemned the project's own published result.** Collapsing three
+  declared bands into a boolean as `band == "linear"` failed the manoeuvring
+  Fig. 8 point at |α| 10.31°, which is amber and which §4 reports. The gate now
+  answers "does this run prove anything?" and condemns **INVALID** alone, with
+  the band word carried separately for the UI to colour.
+- **Two browser measurements of `uirevision` disagreed with each other**, because
+  the synthetic drag fired a `plotly_relayout` and populated `_preGUI` without
+  actually moving the camera — so the mechanism looked broken when the probe was.
+  The app therefore does not rely on it: `figures.apply_camera` restores the
+  camera explicitly from `relayoutData`, which is deterministic, unit-tested
+  without a browser, and verified end-to-end.
+- **The 3D panel drew a flight path through an empty field, and looked fine
+  doing it.** The field grid was centred on the trajectory's midpoint, which for
+  a 40 r₀ lead-in is ~2.5 km upstream of both cores — where the Parks field is
+  **exactly irrotational** — so the vorticity isosurface was computed over a
+  region of zero vorticity. `vortex_viz._field_panel` had already written the
+  rule: *"Zoom to the structure, not the run."* The grid is now centred from the
+  artifact's field spec; `isomin` reads 0.255 against 0.9·2V₀/r₀ = 0.255 and the
+  isosurface peaks at the in-core 0.28333 s⁻¹. **Found by reading a number off
+  the rendered page, not by a test** — which is the same way §9 session 7 found
+  the one-sided α gauge.
+
+Suite **434 passed, 1 skipped** in 339 s, up from 377. Nothing in §4's validated
+baseline moved.
+
+**Deliberately not done:** no comparison driver (Galilean, strip-vs-point and the
+h/2 Richardson panel all need a second run and belong to a driver that writes its
+own artifact); no multi-run sweep table; `leewave.py` and `microburst.py` do not
+write artifacts yet — the schema and `rebuild_field` already cover their fields,
+so it is the same wiring as `vortex.py` and nothing yet needs it.
+
 ### Session 13 — putting session 12's work where the notebook can see it
 
 Session 12 closed E4 but left its two checks **inside the test file**, unlike every other
@@ -1749,6 +1868,8 @@ several sessions, which is the drift §4's rules exist to prevent.
 | `.venv/Scripts/python.exe scripts/microburst.py --png runs/mb.png` | Flies the Cherokee through an Oseguera & Bowles microburst at 300 m and reports the 1 km average F against its thrust authority. Cuts the run at one wingspan above the ground and says so. |
 | `.venv/Scripts/python.exe scripts/leewave.py --png runs/lw.png` | Flies the 747 through a Doyle et al. lee wave and compares the Bowles F-factor against the aircraft's own `(T−D)/W`. Prints both of the source's flight legs and which of them the engines can cover. |
 | `.venv/Scripts/python.exe scripts/analyse.py runs/a.npz` | Replays a saved `.npz`. Accepts several files; `--png DIR` writes instead of showing. |
+| `.venv/Scripts/python.exe scripts/vortex.py --artifacts runs/analysis` | The same run, **also written as a run artifact per encounter** — Parquet series plus `meta.json` and `checks.json`. Prints `checks ok` or names the checks that failed. Needs the `ui` extra. Until this flag existed, every number in §4's encounter tables came from a run that did not survive the script that produced it. |
+| `.venv/Scripts/python.exe -m flightsim.apps.sweep runs/analysis` | **The analysis UI.** Sweep view per run — provenance header with caveats, check badges, the causal strip stack, the 3D field with the trajectory through it, Fig. 8, and n_z-vs-α — plus a shared time cursor: click any strip and every panel, the 3D marker and the readout move to that sample together. Needs the `ui` extra (`pip install -e .[ui]`). |
 | `.venv/Scripts/python.exe scripts/summary.py docs/summary/flightsim-summary.pdf docs/summary/panel.png` | Rebuilds the plain-English summary PDF (14 pages). The parts that are *computed* cannot drift from the code — the vortex figures call `wind.vortex_wind`, and the aircraft table reads `CRUISE`. **The prose and the summary statistics are literals and can**: the test and line counts were stale by session 7, and four page cross-references were wrong by session 8. The page numbers are now generated from `PAGE_ORDER` with a build-time count check; the statistics are still literals. Re-run it after anything that changes those. |
 
 ### The documents, and which question each answers

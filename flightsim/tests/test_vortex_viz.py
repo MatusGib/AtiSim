@@ -75,6 +75,47 @@ def pushdown():
     )
 
 
+# Captured from `fly` BEFORE it was changed to log the SimState it flew. This is
+# the guard on that change: PROJECT.md section 4's headline pair is 2.240 deg /
+# -1.235 g, and switching the rollout must move neither by a single bit.
+FIG8_VORTEX_BEFORE_LOGGING = (2.239956221700959, -1.2352174348304876)
+
+
+def test_logging_the_run_did_not_move_the_headline_numbers(encounter):
+    """Exact equality, not a tolerance.
+
+    `fly` now uses `integrate.logged_rollout` so a run can be written to an
+    artifact with the wind it actually flew. That is the same `step` scanned with
+    a wider output, so the claim is arithmetic-neutrality, and any tolerance
+    admits a change that was not.
+    """
+    assert vortex_viz.fig8_point(encounter) == FIG8_VORTEX_BEFORE_LOGGING
+
+
+def test_a_flown_encounter_carries_the_run_it_flew(encounter):
+    """The artifact needs the applied wind, which `rollout` throws away."""
+    log = encounter.log
+    assert log is not None
+    assert len(log.t) == len(encounter.t)
+    assert np.array_equal(log.pos_ned[:, 0], encounter.north)
+    # The recorded wind is the vertical gust the trace stack plots, one step on.
+    assert np.abs(log.wind_ned).max() > 0.0
+    assert np.abs(log.omega_gust).max() > 0.0
+
+
+def test_a_manoeuvre_carries_a_still_air_log(pushdown):
+    """Zero wind is a fact about the run, not an absence of one.
+
+    The manoeuvring category is DEFINED by the absence of turbulence, so its log
+    must record zeros rather than carry no wind columns -- otherwise a reader
+    cannot tell a still-air run from an unrecorded one.
+    """
+    log = pushdown.log
+    assert log is not None
+    assert np.array_equal(log.wind_ned, np.zeros_like(log.wind_ned))
+    assert np.abs(log.controls[:, 0]).max() > 0.0  # the elevator did move
+
+
 def test_the_manoeuvring_point_separates_from_both_turbulence_clusters(
     encounter, updraft, pushdown
 ):

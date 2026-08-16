@@ -65,6 +65,40 @@ def test_rk4_is_fourth_order(test_aircraft):
     assert 10.0 < ratio < 20.0, f"observed order ratio {ratio}"
 
 
+def test_logged_rollout_gives_the_same_states_as_rollout(test_aircraft):
+    """Bit-identical, because it is the same `step` scanned with a wider output.
+
+    `rollout` emits `carry.state`, so the wind and gust a run actually flew
+    through are unrecoverable from it -- which is why no analysis script could
+    write a run artifact. `logged_rollout` emits the whole `SimState`. If the two
+    ever disagreed, an artifact would describe a different run from the figure
+    drawn beside it.
+    """
+    import jax.numpy as jnp
+
+    from flightsim import wind
+
+    def shear(wind_state, state, key, dt):
+        del dt
+        return jnp.array([0.0, 0.0, -0.001 * state.pos_ned[0]]), jnp.zeros(3), wind_state, key
+
+    sim = integrate.init_sim(initial_state(), jax.random.PRNGKey(0))
+    _, plain = integrate.rollout(
+        sim, CRUISE_CONTROLS, jnp.array(0.02), test_aircraft, 200, wind_model=shear
+    )
+    _, logged = integrate.logged_rollout(
+        sim, CRUISE_CONTROLS, jnp.array(0.02), test_aircraft, 200, wind_model=shear
+    )
+
+    for field in State._fields:
+        assert np.array_equal(
+            np.asarray(getattr(logged.state, field)), np.asarray(getattr(plain, field))
+        ), field
+    # And it carries the thing rollout throws away.
+    assert np.asarray(logged.wind_ned).shape == (200, 3)
+    assert np.abs(np.asarray(logged.wind_ned)).max() > 0.0
+
+
 def test_step_matches_a_manual_rk4_stage_sequence(test_aircraft):
     """Guard against a mis-weighted Butcher tableau."""
     from flightsim.dynamics import derivatives
