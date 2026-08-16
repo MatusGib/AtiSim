@@ -266,6 +266,14 @@ def discriminator(points: list[dict]) -> go.Figure:
     reading this as agreement -- Wingrove & Bach never identifies an aircraft type
     -- and a chart cropped to the reference range would hide the model's
     manoeuvring point sitting 2.5x to the right of the paper's.
+
+    AND IT SAYS SO WHEN A CATEGORY IS MISSING. The claim here is an ORDERING
+    across three categories, so a chart with one or two points on it demonstrates
+    nothing while looking perfectly finished. `vortex_viz._discriminator_panel`
+    records the same guard in its matplotlib form -- it drew the empty
+    manoeuvring slot as a labelled marker "so the figure could not read as
+    complete while it was not" -- and that annotation was only removed once the
+    third point existed.
     """
     lo, hi = FIG8_LOAD_BAND
     fig = go.Figure()
@@ -303,6 +311,18 @@ def discriminator(points: list[dict]) -> go.Figure:
             hovertemplate=f"{p['label']} WHOLE RUN — wrong window<extra></extra>",
         ))
         spread += [p["dtheta"], p["dtheta_whole"]]
+
+    shown = {p["label"].split()[0].lower() for p in points}
+    missing = [c for c in ("vortex", "updraft", "manoeuvr")
+               if not any(c in s for s in shown)]
+    if missing:
+        fig.add_annotation(
+            xref="paper", yref="paper", x=0.5, y=1.0, showarrow=False,
+            text=("INCOMPLETE — the claim is an <b>ordering</b> across three "
+                  f"categories; missing: {', '.join(missing)}"),
+            font=dict(size=10, color="#b42318"),
+            bgcolor="rgba(180,35,24,0.07)", borderpad=3,
+        )
 
     fig.update_xaxes(title_text="pitch attitude excursion  deg",
                      range=[0, max(spread) * 1.22], **_AXIS)
