@@ -237,6 +237,36 @@ def test_the_discriminator_draws_the_whole_run_marker_and_the_connector():
     assert "circle-open" in symbols, "no hollow whole-run marker"
 
 
+def test_the_discriminator_says_so_when_a_category_is_missing():
+    """A one-point Fig. 8 must not read as a complete discriminator.
+
+    The panel's claim is an ORDERING across three categories, so a chart with
+    one dot on it shows nothing -- and looks perfectly finished while doing it.
+    `vortex_viz._discriminator_panel` records the same guard in its matplotlib
+    form: it drew the empty manoeuvring slot as a labelled marker "so the figure
+    could not read as complete while it was not".
+
+    Found the hard way: a snapshot script passed only the run being rendered and
+    the resulting chart was unreadable as a discriminator.
+    """
+    fig = figures.discriminator([
+        dict(label="vortex", dtheta=2.24, dn=-1.235, dtheta_whole=8.29, dn_whole=-1.235),
+    ])
+    notes = " ".join(a.text for a in fig.layout.annotations)
+    assert "ordering" in notes.lower() or "missing" in notes.lower(), notes
+
+
+def test_a_complete_discriminator_carries_no_incompleteness_note():
+    """The negative control: three categories must NOT be nagged at."""
+    fig = figures.discriminator([
+        dict(label="vortex", dtheta=2.24, dn=-1.235, dtheta_whole=8.29, dn_whole=-1.235),
+        dict(label="updraft", dtheta=4.37, dn=-0.11, dtheta_whole=7.45, dn_whole=-0.11),
+        dict(label="manoeuvre", dtheta=30.37, dn=-1.90, dtheta_whole=30.74, dn_whole=-1.90),
+    ])
+    notes = " ".join(a.text for a in fig.layout.annotations).lower()
+    assert "missing" not in notes, notes
+
+
 def test_the_discriminator_x_axis_scales_to_the_data_not_the_paper():
     """A chart cropped to the paper's range hides the model sitting 2.5x right."""
     fig = figures.discriminator([
