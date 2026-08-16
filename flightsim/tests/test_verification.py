@@ -108,6 +108,121 @@ def test_the_six_dof_rollout_is_fourth_order():
     assert slope == pytest.approx(4.0, abs=0.05), f"observed order {slope}, errors {errors}"
 
 
+# --- the ORDER half of the wind seam ---
+#
+# test_the_six_dof_rollout_is_fourth_order says in its own docstring that it
+# "cannot see a wind sample or control update applied at the wrong RK4 stage",
+# because it flies in STILL AIR. ASSUMPTIONS.md E4 says the same thing. Session
+# 12 closed the BODY-FORCE half of that seam -- no spurious -m dW/dt term -- and
+# left the ORDER half open. These two close it, and the answer is not 4.
+#
+# The two test fields are declared here rather than sourced. Their job is to be
+# smooth and to produce a response large enough to sit above the round-off floor,
+# not to represent any measured atmosphere.
+
+_SMOOTH_WAVELENGTH = 1200.0  # m, DECLARED: short enough that 4 s covers 0.8 of it
+_SMOOTH_AMPLITUDE = 25.0  # m/s, DECLARED: large enough to clear the 7e-11 m floor
+
+
+def _smooth_wind_model():
+    """A C-infinity wind field, through the real `field_model` path.
+
+    Deliberately goes through `wind.field_model` rather than a hand-written
+    closure, so `omega_gust` is derived by the same analytic gradient the real
+    fields use. The per-step hold applies to both components and a closure that
+    returned a zero gust rate would not exercise the seam being measured.
+    """
+    from flightsim import wind
+
+    wave = wind.LeeWave(
+        w0=jnp.array(_SMOOTH_AMPLITUDE),
+        wavelength=jnp.array(_SMOOTH_WAVELENGTH),
+        north=jnp.array(0.0),
+    )
+    return wind.field_model(lambda p: wind.lee_wave_wind(p, wave))
+
+
+def test_the_rollout_is_only_first_order_through_a_spatially_varying_wind():
+    """The wind is held across the four RK4 stages, and that costs three orders.
+
+    `integrate.py` samples the wind once per step and holds it -- documented as
+    "the standard treatment for Dryden and von Karman", and correct for a
+    stochastic field. For a field that varies in SPACE it is an O(h) perturbation
+    of the right-hand side within the step, so the scheme is FIRST order however
+    good the stage weights are.
+
+    The control is the same function, same window, same aircraft, same elevator
+    perturbation, with the wind model removed: that must still read 4. Without
+    it this test would only show a number, not attribute it to the wind.
+
+    FALSIFIED, per PROJECT.md section 3's rule that a check which can only pass
+    shows nothing. With `integrate.step`'s `f` changed to re-sample the wind at
+    each RK4 stage instead of holding it, this test goes RED at an observed order
+    of 4.054 -- fourth order restored. So the 1.05 measured here is caused by the
+    hold and by nothing else. Measured values, dts 1/4 .. 1/32, dt_ref 1/1024:
+
+        still air        3.9891   (PROJECT.md section 4 records 3.98913)
+        smooth field     1.0537   pairwise 1.073, 1.048, 1.042
+        ...with the hold removed   4.0542
+
+    The field is C-infinity, so nothing here is about the Rankine core edge --
+    that is the next test, and it is a different mechanism. The core test passes
+    with the probe still in, which is what says the two are separate.
+    """
+    ac = REGISTRY["boeing747"]
+    V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
+    dts = np.array([1.0 / 4, 1.0 / 8, 1.0 / 16, 1.0 / 32])
+
+    _, still_air = verification.fixed_control_refinement(ac, V, H, dts, dt_ref=1.0 / 1024.0)
+    errors, windy = verification.fixed_control_refinement(
+        ac, V, H, dts, dt_ref=1.0 / 1024.0, wind_model=_smooth_wind_model()
+    )
+
+    assert still_air == pytest.approx(4.0, abs=0.05), f"control moved: {still_air}"
+    assert windy == pytest.approx(1.0, abs=0.1), f"observed order {windy}, errors {errors}"
+
+
+def test_a_rankine_core_crossing_destroys_even_first_order_convergence():
+    """Crossing the core edge makes the error non-monotonic in dt.
+
+    `vortex_wind` switches branches at r = r0, where ASSUMPTIONS.md E2 records
+    that the one-sided derivatives differ by 2*V0/r0 and have OPPOSITE SIGNS. The
+    right-hand side is therefore C0 but not C1 there, and RK4 across a kink has
+    an error that depends on where the step grid happens to land relative to the
+    crossing. So refining dt does not monotonically improve the answer.
+
+    Asserted as non-monotonicity rather than as an order, because there is no
+    order to assert -- which is the whole point. A fitted slope through this
+    sequence returns a number that describes nothing, and anything reporting one
+    is reporting an artefact.
+    """
+    from flightsim import wind
+
+    ac = REGISTRY["boeing747"]
+    V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
+    case = wind.PARKS_CASES["hannibal"]
+    r0 = case["r0"]
+    # ONE core, so "through the core" means through exactly one kink pair.
+    array = wind.VortexArray(
+        north=jnp.array([0.0]), down=jnp.array([-H]),
+        r0=jnp.array(r0), v0=jnp.array(case["v0"]),
+    )
+    model = wind.field_model(lambda p: wind.vortex_wind(p, array))
+
+    dts = np.array([1.0 / 16, 1.0 / 32, 1.0 / 64, 1.0 / 128])
+    errors, _ = verification.fixed_control_refinement(
+        ac, V, H, dts, dt_ref=1.0 / 2048.0,
+        wind_model=model, start_north=-2.0 * r0, d_elevator=0.0,
+    )
+
+    # Monotone refinement would mean every error smaller than the last.
+    monotone = all(b < a for a, b in zip(errors, errors[1:]))
+    assert not monotone, f"expected non-monotone refinement across the core, got {errors}"
+    # And it is not the round-off floor doing it: the floor at 40,000 ft is about
+    # 7e-11 m (ASSUMPTIONS.md F4) and these errors are centimetres.
+    assert errors.min() > 1e-4, f"errors are at the round-off floor: {errors}"
+
+
 def test_a_uniform_horizontal_wind_only_translates_the_trajectory():
     """Galilean invariance -- the assertion the zero-wind test cannot make.
 

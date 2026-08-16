@@ -485,7 +485,43 @@ Galilean test **passes with the bug still in** (2.7e-15 on quaternion, 6.9e-16 o
 against its own 1e-11 tolerances) once the wind cache is seeded consistently. Its blindness
 is therefore measured rather than argued.
 
-**Verdict: closed.** The seam Dryden will load is the one now covered.
+**Verdict on the body-force half: closed.** The seam Dryden will load is the one
+now covered.
+
+**Session 15 — the OTHER half of this entry, and it was not closed.** Everything
+above concerns whether the hold introduces a spurious **force**. It does not. But
+this entry's own second paragraph says the order-of-accuracy test "flies at fixed
+controls in still air, so it cannot see a wind term evaluated at the wrong
+stage", and nothing ever measured the **order** with a field switched on.
+`verification.fixed_control_refinement` now takes a `wind_model`. Measured:
+
+| Case | Observed order |
+|---|---|
+| still air (the control, same window, same aircraft) | **3.9891** |
+| C∞ field — lee wave, 1.2 km, 25 m/s | **1.0537** |
+| …with the hold removed (wind re-sampled per RK4 stage) | **4.0542** |
+| across a Rankine core traverse | **non-monotone; no order exists** |
+
+**The scheme is first order in a spatially varying wind field**, and the
+falsification attributes it: restoring per-stage sampling restores fourth order.
+This is a **property of the deliberate design choice**, not a defect — holding
+the wind is right for a stochastic field, which is what the choice was made for,
+and it is wrong only in the sense that a deterministic spatial field could do
+better.
+
+**Bound, measured:** inside the first Parks core the h-vs-h/2 position difference
+is **0.0169 m** over a 366 m traverse. With `∂w/∂x = V₀/r₀ = 0.1417 s⁻¹` inside
+the core that is **0.0024 m/s of gust error against a ~26 m/s peak**, ~1e-4
+relative — three orders below the ±25% band `PROJECT.md` §5 places on the
+identified vortex parameters. **No result the project quotes is affected.**
+
+**Verdict: bounded, and the trade-off is now stated rather than latent.** What
+changes is expectation: refining dt through a wind field buys `O(h)`, not
+`O(h⁴)`, so a convergence study that assumes fourth order will misread its own
+output. Revisit if a deterministic field ever needs an accuracy the step size
+cannot cheaply buy — per-stage sampling costs four field evaluations per step
+instead of one, and a 64³ grid samples in 0.6–2.8 ms, so the cost is small; the
+reason not to do it unconditionally is that it is wrong for Dryden.
 
 ---
 
@@ -528,7 +564,7 @@ believing its own slope.
 
 | | Assumption | Status | Action |
 |---|---|---|---|
-| 1 | **E4** wind held across RK4 stages | **CLOSED, session 12** | no spurious body force, to 1e-9 m against a closed form |
+| 1 | **E4** wind held across RK4 stages | **body force CLOSED session 12; ORDER measured session 15** | no spurious body force, to 1e-9 m against a closed form. But the scheme is **first order** in a spatially varying field (1.05 against 3.99 in still air; 4.05 with the hold removed). Bounded: 0.0024 m/s of gust error in the Parks core, ~1e-4 relative, affects nothing quoted |
 | 2 | **B1** rigid airframe vs flexible data | **unquantifiable** | cap claims; do not assert structural fidelity |
 | 3 | **C3** derivatives frozen across the envelope | **unbounded** | state the excursion with every result away from trim |
 | 4 | **E2** point-aircraft gusts, vortex at 2.3–3.1 spans | **CLOSED for the linear fit, session 13; strip path flyable and measured, session 14** | correction is exactly 0 inside the core and 2.0·`V₀/r₀` at the boundary, where the gradient is discontinuous. Curvature beyond the linear fit rests on a DECLARED loading shape: 2.6% across defensible shapes, 49.7% including a uniform bracket. Flying the strip path moves the vortex result by **0.000000 m** — the field has no spanwise variation — so the headline number is still the point model's. **Roll only**; a pitch integral is the open work |

@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Circle
 
-from flightsim import dynamics, integrate, loads, trim, wind
+from flightsim import dynamics, integrate, loads, trim, viz, wind
 from flightsim.aero import air_data
 from flightsim.aircraft import Aircraft
 from flightsim.atmosphere import density
@@ -64,6 +64,11 @@ class Encounter(NamedTuple):
     elevator: np.ndarray  # (n,) rad
     window: np.ndarray  # (n,) bool, the declared analysis window
     window_name: str
+    # The run as flown, for `analysis.artifact.write_run`. Last and defaulted so
+    # every existing positional construction still works. It carries the wind and
+    # gust ACTUALLY APPLIED, which `integrate.rollout` discards -- re-deriving
+    # them by re-evaluating the model is exact only for a deterministic field.
+    log: object = None  # viz.Trajectory | None
 
 
 def fly(
@@ -120,17 +125,25 @@ def fly(
     state = state._replace(pos_ned=jnp.array([start_north, 0.0, -altitude]))
 
     n = int(round(seconds / dt))
-    _, hist = integrate.rollout(
+    # `logged_rollout`, not `rollout`: same `step`, wider scan output, so the run
+    # can be written to an artifact carrying the wind it actually flew.
+    # `test_vortex_viz.py` pins the headline pair against the pre-change values.
+    _, log = integrate.logged_rollout(
         integrate.init_sim(state, jax.random.PRNGKey(0)),
         controls, jnp.array(dt), ac, n, wind_model=model, load_model=load_model,
     )
+    hist = log.state
+    controls_hist = jax.tree.map(lambda v: jnp.full(n, v), controls)
     north = np.asarray(hist.pos_ned)[:, 0]
     return _measure(
         label=label, hist=hist,
-        controls_hist=jax.tree.map(lambda v: jnp.full(n, v), controls),
+        controls_hist=controls_hist,
         model=model, load_model=load_model, ac=ac, dt=dt,
         window=(north >= window[0]) & (north <= window[1]),
         window_name=window_name,
+        log=integrate.trajectory_from_log(
+            np.arange(1, n + 1) * dt, log, controls_hist
+        ),
     )
 
 
@@ -145,6 +158,7 @@ def _measure(
     window: np.ndarray,
     window_name: str,
     load_model=None,
+    log=None,
 ) -> Encounter:
     """Turn a flown history into an `Encounter`. Every category comes through here.
 
@@ -201,6 +215,7 @@ def _measure(
         elevator=rows[:, 7],
         window=window,
         window_name=window_name,
+        log=log,
     )
 
 
@@ -281,11 +296,28 @@ def manoeuvre(
     # Sample i is the state AFTER the step driven by the controls at t = i*dt, so
     # the samples actually flown under the pulse are (lead_in, lead_in + hold].
     t = np.arange(1, n + 1) * dt
+    # Zero wind is a FACT about this run, not an absence of one -- the category is
+    # defined by the absence of turbulence -- so the log records explicit zeros
+    # rather than omitting the columns. A reader must be able to tell a still-air
+    # run from an unrecorded one.
+    zeros = np.zeros((n, 3))
+    log = viz.Trajectory(
+        t=t,
+        pos_ned=np.asarray(hist.pos_ned, dtype=float),
+        vel_body=np.asarray(hist.vel_body, dtype=float),
+        quat=np.asarray(hist.quat, dtype=float),
+        omega=np.asarray(hist.omega, dtype=float),
+        controls=np.stack([np.asarray(c, dtype=float) for c in controls_hist], axis=1),
+        mode=np.zeros(n, dtype=int),
+        wind_ned=zeros,
+        omega_gust=zeros,
+    )
     return _measure(
         label=label, hist=hist, controls_hist=controls_hist,
         model=wind.zero_wind, ac=ac, dt=dt,
         window=(t > lead_in) & (t <= lead_in + hold),
         window_name=f"elevator pulse, {hold:g} s",
+        log=log,
     )
 
 

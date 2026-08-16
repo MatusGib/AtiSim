@@ -148,6 +148,62 @@ def rollout(
     return jax.lax.scan(body, sim, None, length=n_steps)
 
 
+@partial(jax.jit, static_argnames=("n_steps", "wind_model", "load_model"))
+def logged_rollout(
+    sim: SimState,
+    controls: Controls,
+    dt: Array,
+    ac: Aircraft,
+    n_steps: int,
+    wind_model=zero_wind,
+    load_model=None,
+) -> tuple[SimState, SimState]:
+    """`rollout`, but the whole `SimState` is stacked rather than just the state.
+
+    `rollout` emits `carry.state`, which discards `wind_ned`, `omega_gust` and
+    `increment` -- so the wind a run actually flew through is unrecoverable from
+    its output, and no analysis script could write a self-describing run.
+    Re-evaluating the model afterwards is NOT the same thing: it is exact for a
+    deterministic field and returns a different realisation for a stochastic one,
+    which is the trap `SimState`'s own docstring warns about.
+
+    Separate from `rollout` rather than replacing it, because `rollout`'s narrower
+    output is what `lax.scan` stacks in the hot path and every existing caller
+    wants a `State` trajectory. `test_integrate.py` asserts the two produce
+    bit-identical states.
+    """
+
+    def body(carry: SimState, _) -> tuple[SimState, SimState]:
+        carry = step(carry, controls, dt, ac, wind_model=wind_model, load_model=load_model)
+        return carry, carry
+
+    return jax.lax.scan(body, sim, None, length=n_steps)
+
+
+def trajectory_from_log(t, log: SimState, controls_hist: Controls, mode: int = 0):
+    """Turn a `logged_rollout` output into a `viz.Trajectory`.
+
+    Lives here rather than in `viz.py` so that `viz` keeps its standing property
+    of needing no simulator to read a run -- this function is on the writing side,
+    where the simulator is already in scope.
+    """
+    import numpy as np
+
+    from flightsim.viz import Trajectory
+
+    return Trajectory(
+        t=np.asarray(t, dtype=float),
+        pos_ned=np.asarray(log.state.pos_ned, dtype=float),
+        vel_body=np.asarray(log.state.vel_body, dtype=float),
+        quat=np.asarray(log.state.quat, dtype=float),
+        omega=np.asarray(log.state.omega, dtype=float),
+        controls=np.stack([np.asarray(c, dtype=float) for c in controls_hist], axis=1),
+        mode=np.full(len(t), int(mode), dtype=int),
+        wind_ned=np.asarray(log.wind_ned, dtype=float),
+        omega_gust=np.asarray(log.omega_gust, dtype=float),
+    )
+
+
 def batch_sim(state: State, keys: Array) -> SimState:
     """Replicate one initial state across a batch of PRNG keys.
 
