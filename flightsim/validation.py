@@ -156,7 +156,12 @@ def lateral_modes(ac: Aircraft, alpha: float, elevator: float, throttle: float,
             dutch_roll = (abs(lam), -lam.real / abs(lam))
         elif abs(lam.imag) <= 1e-9:
             reals.append(-1.0 / lam.real)
-    reals.sort()  # roll subsidence is fast (small tau), spiral is slow
+    # Roll subsidence is the fast mode and the spiral the slow one, and "fast"
+    # is a statement about |tau|: an UNSTABLE spiral has a negative time
+    # constant, which a signed sort puts in front of every positive one and
+    # returns as the roll mode. Three of the four registry aircraft have a
+    # stable spiral, where the two sorts agree exactly; the Cherokee does not.
+    reals.sort(key=abs)
     roll_tau, spiral_tau = reals[0], reals[1]
     return dutch_roll, roll_tau, spiral_tau
 
@@ -236,9 +241,12 @@ def sweep(ac: Aircraft, field: str, values, quantity, V: float, H: float):
 
     The aircraft is RE-TRIMMED at every sample, because changing a derivative
     moves the trim point and comparing modes across different trims would
-    confound the two. Both the residual AND the resulting angle of attack are
+    confound the two. Both the residual AND the sense of the solution are
     checked, the latter through `trim.is_physical` -- convergence and sense are
-    different questions and only the first is what a residual measures.
+    different questions and only the first is what a residual measures. The
+    swept airframe is passed rather than the original, because the deflection
+    and throttle limits `is_physical` reads belong to the aircraft actually
+    being trimmed.
 
     `quantity` takes (aircraft, alpha, elevator, throttle) and returns a float.
     """
@@ -253,7 +261,7 @@ def sweep(ac: Aircraft, field: str, values, quantity, V: float, H: float):
         if residual_norm > TRIM_RESIDUAL_LIMIT:
             raise RuntimeError(f"{field}={v} did not trim: residual {residual_norm:.3e}")
         alpha = float(x[0])
-        if not is_physical(x):
+        if not is_physical(x, swept):
             raise RuntimeError(
                 f"{field}={v} did not trim: alpha {np.degrees(alpha):.1f} deg is "
                 f"outside the linear-aero range (PROJECT.md section 7)"

@@ -145,9 +145,12 @@ def _smooth_wind_model():
 def test_the_rollout_is_only_first_order_through_a_spatially_varying_wind():
     """The wind is held across the four RK4 stages, and that costs three orders.
 
-    `integrate.py` samples the wind once per step and holds it -- documented as
-    "the standard treatment for Dryden and von Karman", and correct for a
-    stochastic field. For a field that varies in SPACE it is an O(h) perturbation
+    `integrate.py` samples the wind once per step and holds it. That is correct
+    for a stochastic field, for the reason its module docstring now gives --
+    re-sampling a key-drawn process per stage makes the realisation a function of
+    the step size -- and NOT, as this docstring used to say, because it is "the
+    standard treatment for Dryden and von Karman". No source for that claim
+    exists in this repository. For a field that varies in SPACE it is an O(h) perturbation
     of the right-hand side within the step, so the scheme is FIRST order however
     good the stage weights are.
 

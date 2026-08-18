@@ -133,6 +133,29 @@ altitudes, which is the case a constant g genuinely cannot serve.
 systematic errors of a few tenths of a percent, and both should be revisited together if
 either is.
 
+### A4. There is no ground
+
+**Where:** `integrate.step` and `rollout`. Nothing in the engine stops a trajectory at
+h = 0, and `atmosphere.py` keeps extrapolating below it — see D2.
+
+**Bound, measured — and it is not a bound so much as an absence.** A 747-approach
+released at 300 m in a 20° nose-down attitude crosses h = 0 at **t = 8.65 s** at a
+**25.1 m/s** sink rate and integrates on to **−698 m**, every sample finite throughout.
+Pinned by `test_the_integrator_has_no_ground_plane`.
+
+**What keeps it from being a live defect is a guard at one call site, not in the engine.**
+`scripts/microburst.py` — the one shipped analysis that flies at terrain — cuts its run at
+one wingspan of clearance, with a stated rationale: there is no terrain, no landing gear
+and no ground effect in this model, so an aeroplane within its own span of the surface is
+not flying any more and the integration past that point is arithmetic rather than physics.
+**That guard protects exactly one caller.** Any new script that flies low inherits nothing.
+
+**Verdict: undeclared until the remediation pass, now declared.** The right response is a
+guard where the reader will look for one, not a ground plane in the engine — JAX cannot
+raise inside `jit`, so a clamp inside `step` would silently bounce a trajectory instead of
+stopping it, which is worse than integrating through. Anything flying below ~1 km AGL
+should truncate at its own clearance and say so.
+
 ---
 
 ## B. Mass and structure
@@ -194,6 +217,33 @@ DFDR accelerometer sits metres from the CG and therefore reads an additional
 negligible, and **the Fig. 8 reference data carries it while this model does not.** The
 project's Fig. 8 claims are orderings rather than values (§5), which is what keeps this
 safe — but it is another reason those claims must stay orderings.
+
+### B5. The 747's slug mass is built through a truncated g₀
+
+**Where:** `aircraft._B747_G = 32.174`, used once, to turn Table IX-3's tabulated weight
+into slugs for the non-dimensionalisation.
+
+**Why it is an assumption at all:** `units.py` states the rule — *"Never inline a
+conversion factor anywhere else"* — and this breaks it. The value truncates
+g₀ = **32.17404855643044** ft/s², which is `LB2KG/SLUG2KG` and `G0 · M2FT` alike, both
+exact from the 1959 international agreement.
+
+**Bound, measured: 1.509e-6 relative**, and it reaches only this aircraft. The same
+function ships its kilogram mass as `W · LB2KG`, which is exact, so the two masses inside
+one constructor disagree by that amount. Making the change — `m = W · LB2KG / SLUG2KG`,
+pure `units.py` constants — moves **19 quantities on the 747 and nothing on any other
+aircraft**, all at ≤ 4.1e-6 relative: `CLa`, `CLq`, `CLde`, `CYb`, `CYdr` at 1.5e-6,
+`CL0` 2.4e-6, `e` 2.5e-6, `CD0` 4.1e-6, and the modes and trim below 1.2e-6. **Every
+number `PROJECT.md` §4 quotes is unchanged at its quoted precision**, as are the ledger's
+5.9450, −23.9232 and 4.0241.
+
+**Verdict: the change was made, measured, and deliberately reverted.** It breaks two
+pre-existing tests — `test_extracting_rk4_step_did_not_move_a_single_bit` and
+`test_logging_the_run_did_not_move_the_headline_numbers` — which assert **bit equality**
+against values captured before earlier refactors. Their whole value is that they admit no
+tolerance; re-pinning them would spend that guarantee to buy a cosmetic rule fix that
+moves no result. **The flaw is smaller than the fix.** Recorded here rather than closed,
+and the reasoning is repeated at the constant itself.
 
 ---
 
@@ -284,6 +334,131 @@ period** — and the model applies it in one 0.02 s sample.
 point.** §8 already records that Δθ moves from 25° to 30° across defensible pulse lengths,
 so a 0.24 s ramp sits inside that existing sensitivity rather than beside it.
 
+### C7. Drag responds to pitch rate and elevator, giving an `X_q` the source does not model
+
+**Where:** `aero.coefficients` builds `CD` from the **total** `CL`, which carries
+`CLq·q̂` and `CLδe·δe` as well as `CL0 + CLa·α`. So a pitch rate changes induced drag.
+
+**This is the engine being *more* complete than its reference, not less.** CR-2144
+tabulates no `C_Dq` at all, and its linear model has no row for this term.
+
+**Bound, measured:** the engine's stability-axis `A[0,2] = X_q = −0.8807 s⁻¹` at the
+approach condition, against the parabolic polar's own prediction of **−0.8887**, agreeing
+to **0.9%** — which identifies the mechanism rather than merely noting the element is
+non-zero. Pinned by `test_the_engine_carries_an_Xq_that_cr2144_does_not_model`.
+
+**Verdict: correct physics, and it matters for interpretation rather than accuracy.** It
+is one of the two terms that decide phugoid damping, and it is why a "clean-room" rebuild
+from CR-2144's tabulated derivatives is not an independent instrument for that mode — it
+is a *different* model, missing terms this one has. An audit pass that did not know this
+concluded from such a rebuild that CR-2144 contradicted itself by a factor of 4.4 in
+`Xu`. It does not. See `AUDIT.md` §2.3.
+
+### C8. Wave drag acts on the total `CL`, including the rate and control contributions
+
+**Where:** `aero.wave_drag` and the Korn `CL/(10cos³Λ)` term in `drag_divergence_mach`
+both receive the same total `CL` as C7 describes. Related to C7 but a separate channel —
+compressibility rather than induced drag.
+
+**Bound, measured** on the 747 at its cruise condition (M = 0.80, α = 4.64°), as the
+change in total `CD` against a `CD` whose wave term saw only the α part of `CL`:
+
+| condition | `CL` | wave drag | vs α-only | ΔCD/CD |
+|---|---|---|---|---|
+| at trim (δe = −0.025°) | 0.657 | 0.001053 | 0.001055 | **−0.004%** |
+| q = 10 °/s | 0.675 | 0.001246 | 0.001055 | **+0.43%** |
+| half elevator (12.5°) | 0.736 | 0.002090 | 0.001055 | +2.03% |
+| full elevator (25°) | 0.816 | 0.003748 | 0.001055 | +4.48% |
+
+**Verdict: defensible, and now declared with its size.** At trim it is nothing; the fourth
+power in Lock's law means it only bites when a large control input is held at cruise Mach,
+which is not a condition this project reports. Quote it beside any result that pulls hard
+and fast at high Mach.
+
+### C9. Every lift increment acts at the CG's relative wind
+
+**Where:** `aero.aero_forces_moments` builds ONE lift vector, perpendicular to the
+relative wind **at the CG**, and one moment. A surface at arm `l` actually meets a local
+wind tilted by `ε = q·l/V`, and the streamwise component of its tilted lift is what makes
+that channel dissipative. The model omits that component, so a control moment does work on
+the airframe with nothing opposing it.
+
+**Bound, measured — and this is a genuine energy-conservation violation, not a rounding
+artefact.** The Cherokee delivers `P_aero = +56,927.7 W` in motionless air with the
+throttle shut, at |q| = 8.256 rad/s and full elevator. The omitted term cancels the
+elevator's moment power **exactly** — algebraically, to a relative residual of **1.9e-16**
+— when its lift increment is placed at `l_δe = −(Cmδe/CLδe)·c`, and restoring it takes the
+violating region from **1190 grid points to 0**.
+
+**Why it is nevertheless bounded, and wholly outside the declared envelope:**
+
+| Check | Result |
+|---|---|
+| `P_aero > 0` among 80,000 randomised states inside the declared abs(α) ≤ 12° envelope | **0** |
+| threshold pitch rate at which any aircraft enters the region | **84–201 °/s** |
+| `max(E − E₀)` over every still-air run tried, including feedback laws designed to pump it | **+0 exactly** |
+| a fixed-control pull from trim | never reaches the region |
+
+**Verdict: documented, and deliberately NOT repaired.** Three reasons, each sufficient.
+*(1)* The tilt applies to **every** lift contribution at its own arm — `CL0`, `CLa`, `CLq`
+as well as `CLδe` — and the model has arms for none of the others, so correcting one
+channel would make the force build-up less coherent than leaving all four alone.
+*(2)* The arm is only valid under an attribution this project has already rejected:
+`l_δe = −Cmδe/CLδe·c` holds if *all* of both derivatives come from the tail, and
+`airframe.effective_tail_arm`'s docstring records that separating the wing's share was
+tried, gave the wing 83% of `CLq`, implied a 23-chord arm, and was rejected with an
+explicit do-not-re-attempt note. No held source settles it. *(3)* It would move trim, all
+five modes and every headline number.
+
+**What would settle it:** a source giving the wing/tail split of `CLδe`, or replacing the
+derivative build-up with a strip or panel force model that places every load where it
+acts. Pinned by five tests around
+`test_the_elevator_moment_power_is_cancelled_by_its_own_lift_tilt`.
+
+### C10. `δa` is a compound control treated as a single angle
+
+**Where:** `Controls.aileron`, and `aileron_limit = 20°` on every aircraft.
+
+CR-2144's own footnote to Table IX-1 defines `δa` as *"total deflection of right inboard
+aileron plus left inboard aileron with the effect of outboard ailerons included"*. The
+engine treats it as one deflection angle with one limit, which is what the source's
+derivatives are referenced to and therefore correct — but it means `aileron_limit` is a
+declared limit on a **compound** quantity and is not the travel of any single surface.
+
+**Verdict: document, do not reinterpret.** Rescaling the limit to a per-surface figure
+would break the correspondence with the derivative it multiplies. Anyone comparing this
+number against a 747 flight manual is comparing two different quantities.
+
+### C11. The two routes to the tail arm disagree by 2–2.9× on the light aircraft
+
+**Where:** `airframe.effective_tail_arm` takes `l/c = −Cmq/CLq`. The control pair gives the
+same geometry independently as `l/c = −Cmδe/CLδe`. Nothing in the engine compares them.
+
+**Bound, measured:**
+
+| aircraft | rate pair `−Cmq/CLq` | control pair `−Cmδe/CLδe` | ratio |
+|---|---|---|---|
+| 747 cruise | 4.0241 | 3.9694 | 1.4% |
+| 747 approach | 3.8519 | 3.9645 | 2.9% |
+| **Cherokee** | **1.2802** | **2.5621** | **2.00×** |
+| **Cessna 172** | **0.8558** | **2.4681** | **2.88×** |
+
+**The split is exactly the sourcing split**, and that is the finding. The two CR-2144
+aircraft agree to a few per cent, which is an independent corroboration of that
+transcription the project did not previously claim. The two that disagree are precisely
+the two whose cited source file is not in this repository — see `aircraft.py`'s status
+notes on the Cherokee and the Cessna.
+
+**Verdict: unresolvable here, and it must stay that way.** **Which** of the two estimates
+is wrong, or whether both are, cannot be determined without the source. Adjusting either
+derivative to make them agree would be fabrication.
+
+*Identified improvement, not taken in this pass:* `tail_arm_is_plausible` reads only the
+rate estimate and checks it against a band. It rejects both light aircraft, but by luck
+rather than by design — requiring the two routes to **agree** as well as to fall in band
+would reject them for the actual reason. That changes which aircraft may enter the strip
+path, so it is a scoped modelling change with its own re-measurement, not a repair.
+
 ---
 
 ## D. Atmosphere
@@ -296,6 +471,32 @@ so a 0.24 s ramp sits inside that existing sensitivity rather than beside it.
 and each is taken from a source that specifies its own conditions. Adding a temperature
 offset would mean inventing one, which §3's rule forbids. Humidity changes density by well
 under a percent at these altitudes.
+
+### D2. The atmosphere has no ceiling and no floor
+
+**Where:** `atmosphere.temperature`, `pressure`, `density`. The module docstring says
+"0 to 20 km"; nothing enforces either end.
+
+**Bound, measured:** above 11 km it holds T = 216.65 K **forever** — which is right to
+20 km and wrong above it, since the real stratosphere warms again. Below sea level the
+troposphere lapse continues without clamp or warning:
+
+| altitude | temperature | density |
+|---|---|---|
+| −5,000 m | 320.65 K | 1.9305 kg/m³ |
+| −50,000 m | 613.15 K | **30.468 kg/m³** |
+
+Pinned by `test_the_atmosphere_extrapolates_below_sea_level_without_limit`.
+
+**This is reachable, not hypothetical**, because A4 says nothing stops a trajectory at
+h = 0. The two compound: a run that flies into the ground keeps integrating, and the air
+it flies through gets denser without limit.
+
+**Verdict: a declared design decision, left as it is.** Clamping changes behaviour for
+existing callers, and JAX cannot raise inside `jit`, so a clamp would silently return a
+plausible number for an altitude the model does not cover — the same objection as A4's.
+The honest instrument is a caller-side check. Anything integrating near either end must
+bound its own altitude and say so.
 
 ---
 
@@ -453,8 +654,13 @@ true for Dryden**, which is a stochastic process in time — see §7's extensibi
 
 ### E4. Wind is sampled once per step and held across all four RK4 stages
 
-**Where:** `integrate.step`, documented in its module docstring as the standard treatment
-for Dryden and von Kármán.
+**Where:** `integrate.step`. Its module docstring used to justify this as "the standard
+treatment for Dryden and von Kármán turbulence"; **no source for that claim exists in this
+repository and none was found**, and since it was the sole stated justification for a
+choice that costs three orders of accuracy, the remediation pass replaced it with the
+reasoning itself — a stochastic field is drawn from a key, so re-sampling it per stage
+would make the realisation depend on dt and a convergence study would be measuring the
+noise process rather than the integrator.
 
 **Why it was the one seam session 11's verification did NOT cover.** The order-of-accuracy
 test flies at fixed controls in still air, so it cannot see a wind term evaluated at the
@@ -509,11 +715,29 @@ the wind is right for a stochastic field, which is what the choice was made for,
 and it is wrong only in the sense that a deterministic spatial field could do
 better.
 
-**Bound, measured:** inside the first Parks core the h-vs-h/2 position difference
-is **0.0169 m** over a 366 m traverse. With `∂w/∂x = V₀/r₀ = 0.1417 s⁻¹` inside
-the core that is **0.0024 m/s of gust error against a ~26 m/s peak**, ~1e-4
-relative — three orders below the ±25% band `PROJECT.md` §5 places on the
-identified vortex parameters. **No result the project quotes is affected.**
+**Bound — CORRECTED in the remediation pass, and it was wrong by ~80×.** This entry
+used to bound the seam by an h-vs-h/2 **discretisation** refinement inside the first
+Parks core: 0.0169 m over a 366 m traverse, worth 0.0024 m/s of gust against a ~26 m/s
+peak, "~1e-4 relative", and it concluded "no result the project quotes is affected".
+
+**That is the wrong instrument.** The flaw is a **scheme** error, and h-vs-h/2 measures
+the discretisation error with the hold still in place — refining dt refines a different
+scheme, not this one. The right instrument is hold-vs-per-stage at the **same** dt.
+Measured on the number `scripts/vortex.py` prints, the in-core Fig-8 Δθ:
+
+| dt | wind held | wind re-sampled per stage | cost |
+|---|---|---|---|
+| 0.02 | 2.2596° | 2.2230° | **−1.62%** |
+| **0.01 (published)** | **2.2400°** | **2.2216°** | **−0.82%** |
+| 0.005 | 2.2271° | 2.2179° | −0.41% |
+
+It halves with dt, which is what an O(h) error must do and is what identifies it as this
+mechanism rather than another.
+
+**No conclusion changes** — `PROJECT.md` §5 caps the vortex claims at orderings and puts
+±25% bands on the identified parameters. **But the quoted 2.240° is not good to four
+figures**, and this entry said it was. Its last two digits are scheme-dependent; quote
+2.24°. Pinned by `test_the_wind_hold_costs_the_headline_figure_more_than_E4_bounds_it`.
 
 **Verdict: bounded, and the trade-off is now stated rather than latent.** What
 changes is expectation: refining dt through a wind field buys `O(h)`, not
@@ -522,6 +746,124 @@ output. Revisit if a deterministic field ever needs an accuracy the step size
 cannot cheaply buy — per-stage sampling costs four field evaluations per step
 instead of one, and a 64³ grid samples in 0.6–2.8 ms, so the cost is small; the
 reason not to do it unconditionally is that it is wrong for Dryden.
+
+### E5. Superposition is exact for the fields but not for the microburst's ground boundary condition
+
+**Where:** `wind.superpose`.
+
+**The sum itself is exact.** `wind_ned` is bit-identical to a hand-written sum and
+`omega_gust` agrees to 6.5e-16, which is what makes "a vortex array sitting in background
+turbulence" cost nothing beyond the two components.
+
+**What does not survive addition is a boundary condition.** The microburst's defining
+property — both components vanish at z = 0, which Oseguera & Bowles' introduction singles
+out as *the* thing earlier analytic models got wrong — is a property of that field alone.
+Superposing anything with a non-zero ground value destroys it. Measured: adding a uniform
+3 m/s downdraft puts **exactly 3 m/s through the ground at every radius**, on the axis and
+at the peak-outflow radius alike.
+
+**Verdict: latent, and declared before it bites.** No run currently superposes onto the
+microburst. The module comment saying summation "is exact within the model's own
+linearisation" is true of the velocities and says nothing about boundary conditions, which
+is the gap this entry fills. A composed field that includes the microburst must be checked
+at z = 0 by its caller.
+
+### E6. The microburst has no ceiling — the source's fourth parameter is not modelled
+
+**Where:** `wind.microburst(u_max, radius, z_m)` carries **three** parameters. Oseguera &
+Bowles specify **four**: their summary says "a microburst can be modeled by specifying four
+characteristic parameters", and their symbol list defines the missing one as
+`z_h` — *depth of outflow*.
+
+**Bound, measured.** Without `z_h` the field has no upper bound. The on-axis downdraft
+grows monotonically with altitude to a closed-form asymptote `λ(z* − ε)`:
+
+| altitude | on-axis downdraft |
+|---|---|
+| 300 m (the project's penetration altitude) | 15.21 m/s |
+| 1,000 m | 37.95 m/s |
+| 3,000 m | 49.97 m/s |
+| ≥ 10 km, forever | **50.64 m/s (98.5 kt)** |
+
+**The transcription itself is exact** — eqs. (5)–(6) verified over 12,000 points to 4e-15
+(`w`) and 1.6e-11 (`u`) — so this is a missing parameter, not a transcription error.
+
+**Verdict: declared; implementing `z_h` is a scoped change, not a repair.** The audit puts
+the paper's own `z_h` for this profile at 294.4 m, essentially the 300 m the project's
+penetration starts at — so the runs on record sit inside the model's valid band, **but by
+coincidence of the chosen altitude, not by anything the code enforces**. Adding `z_h`
+changes the field and moves every microburst number the project reports, which makes it a
+modelling decision with its own re-measurement.
+
+### E7. The along-track shear index needs the caller's turn rate
+
+**Where:** `wind.along_track_shear(pos_ned, vel_ned, accel_ned, field)`.
+
+The index is `dU_x/dt` where `U_x` is the wind resolved along the ground track. Both the
+wind **and the track direction** depend on time, so the derivative has two groups: Proctor
+et al. Eq. (4), and the rotation of the track itself. Until the remediation pass the
+heading was held fixed and the second group was missing entirely; the derivation and its
+reduction to Eq. (4) at ψ̇ = 0 are now in that function's docstring.
+
+**Bound, measured.** The term is `ψ̇ · (W_h · n̂)`, the cross-track wind times the track's
+turn rate. At a **standard-rate turn one core radius above a Parks core**, where the
+Rankine tangential velocity is fully horizontal and equal to `v₀`, it is worth
+**ΔF = 0.1423** — the *entire* FAA 1 km alerting threshold of 0.1. The single-core closed
+form `v₀·ψ̇/g` gives 0.1383 of that.
+
+**It is exactly zero on every run the project reports**, and that is measured rather than
+assumed: ψ̇ was **identically 0.0** at all 77,036 samples of the two lee-wave legs and the
+microburst penetration, and both scripts' printed output was byte-identical across the
+change. Every field in `wind.py` has zero east wind on the north axis and every run is
+flown due north, so neither factor is ever non-zero.
+
+**The residual assumption is on the caller.** A caller that passes `accel_ned = 0` gets
+Eq. (4) and nothing else. The two shipped scripts rebuild the acceleration from the same
+dynamics the rollout flew, so their straight track is a measurement; a new caller that
+does not will under-report the hazard in a turn by up to the whole threshold.
+
+### E8. The longitudinal station set is entirely aft of the CG
+
+**Where:** `airframe.stations` builds its longitudinal set from `−arm` to `0`.
+
+**Bound, measured.** The set's centroid is **−16.75 m** — every station behind the CG, none
+in front — so `sampled_rates`' pitch channel is a **backward secant** rather than a centred
+one, carrying an `O(arm/2 · f'')` bias. E2's headline claim that the correction is "exactly
+zero inside the core, not merely small" therefore holds on the **downstream** half of a
+core traverse and not the upstream half:
+
+| position | correction, in `V₀/r₀` |
+|---|---|
+| +0.50 r₀, +0.99 r₀ | **< 1e-9** (E2's "exactly zero") |
+| **−0.99 r₀** | **1.80** |
+| +1.00 r₀ | 2.00 |
+| −1.00 r₀ | 0.156 |
+
+At −0.99 r₀ the CG is inside the core while the tail, 33.5 m behind it, is outside, so the
+fit straddles the gradient discontinuity.
+
+**Verdict: uncertain, and not repairable from held sources.** Centring the stations needs a
+forward extent and **no source tabulates one** for any aircraft here; the aft arm is itself
+derived from `−Cmq/CLq` rather than measured, and inventing a nose station would breach the
+project's rule against inventing constants. Nothing the project publishes moves — the
+default wind path uses `gust_rates`, the analytic tangent, not `sampled_rates` — so what
+changes is the size of the error E2 attributes to the point model on the upstream half.
+
+### E9. The vortex core branch resolves the tie at exactly `r = r₀` to the outside
+
+**Where:** `wind.vortex_wind` selects the solid-body branch with a strict `r² < r₀²`, so a
+sample landing exactly on the core edge takes the irrotational branch.
+
+**Bound, measured: the choice is unobservable in value.** The two branches agree at the
+boundary to **~1e-13** — the field is C⁰ there — so what differs is only which side's
+*derivative* a differentiating sampler sees. The set of positions hitting the tie exactly
+has measure zero, and round-off in the position decides it anyway.
+
+**Verdict: leave it.** A one-character change picks the inside branch instead, and there is
+no basis for calling that an improvement rather than a different arbitrary choice. What is
+worth knowing is the related fact E8 and E2 both turn on: the *derivatives* differ by
+`2·V₀/r₀` with opposite signs across `r = r₀`, so the right-hand side is C⁰ but not C¹ and
+RK4 across it has an error depending on where the step grid lands.
 
 ---
 
@@ -558,24 +900,123 @@ difference of two trajectories at altitude.** It is why the order-of-accuracy wi
 at dt = 1/32. Any future convergence study must check it is above the floor before
 believing its own slope.
 
+### F5. The strip integral at the shipped station count returns 82.6% of its own calibration
+
+**Where:** `airframe.N_SPAN = 9`, which is what `loads.strip_model` builds.
+
+`airframe.calibrated_lift_slope` sets `a₀ = −8·Clp` from the elliptic-loading identity
+`Clp_hat = −a₀/8`. **That identity is exact only in the continuum limit**, and the
+docstring said "exactly" without saying so. At the shipped station count the trapezoidal
+quadrature returns:
+
+| stations | strip `Clp` / tabulated `Clp` | error |
+|---|---|---|
+| **9 (shipped)** | **0.826** | **−17.4%** |
+| 15 | 0.922 | −7.8% |
+| 21 | 0.954 | −4.6% |
+| 41 | 0.983 | −1.7% |
+| 81 | 0.994 | −0.59% |
+| 201 | 0.9985 | −0.15% |
+| 2001 | 0.99995 | −4.7e-5 |
+
+**Convergence measured, because "slow" needed a number: the observed order is 1.50**,
+stable to three digits across every refinement from 21→41 up to 1281→2561. That is the
+signature of the sqrt singularity in the elliptic chord at the tips, which the trapezoidal
+rule cannot resolve. Extrapolating the fitted order: **~19 stations for 5% and ~56 for
+1%.** Every existing test overrides the count (201, 2001, 21); none exercised 9 until the
+audit added `test_the_production_station_count_is_the_one_that_is_wrong`.
+
+**Verdict: `N_SPAN` stays at 9 and `a₀` stays calibrated in the continuum, deliberately.**
+The two defensible repairs mean different things and neither is settled by any source
+here:
+
+- **Raise `N_SPAN` until converged.** Keeps `a₀` meaning what its docstring says. Costs
+  field evaluations per step, and at order 1.5 the count needed for a genuinely converged
+  integral is large.
+- **Calibrate `a₀` against the discrete quadrature at the shipped `N`.** Makes the identity
+  exact *in the code as run*, which is arguably what a calibration is for. But it makes
+  `a₀` depend on `N_SPAN`, changing what the constant means — and `a₀` is already an
+  *effective* value absorbing sweep and the tail's share of `Clp`.
+
+Switching calibration basis silently is the one move that would be wrong, so neither was
+taken in a remediation pass. **What this costs today is nothing the project quotes**: the
+Parks core traverse gives point-vs-strip 0.000000 m because the field has no spanwise
+variation there, so the headline number is the point model's either way.
+
+**State the loading-shape sensitivity beside any strip result**: **2.6%** across the two
+shapes that actually taper toward the tips, **49.7%** including the uniform bracket, which
+is in the sweep as a bound and not as a candidate transport planform.
+
+### F6. `airframe._active_shape` is process-global mutable state
+
+**Where:** a module-level name set by a context manager, read by
+`chord_distribution` — so a **physics parameter** is carried in process-global state.
+
+**Bound: none, and that is the point.** Correctness under `pytest-xdist` or threads is
+assumed and untested; the shipped suite runs single-process, where it is fine.
+
+**Verdict: a refactor, not a bug fix.** Threading the shape through the call chain would
+touch every strip call site. Anything that parallelises the suite or calls the strip path
+from more than one thread must check this first.
+
+### F7. A control channel with zero authority makes a Newton solve return NaN in silence
+
+**Where:** the Cessna's `CYdr = Cldr = Cndr = 0`, a declared modelling choice in
+`aircraft.py` — the source omits two of the three and the one it gives has the wrong sign
+for this package's convention, and a side force with no matching yawing moment is worse
+than no rudder.
+
+**The undeclared consequence:** the rudder column of any control Jacobian is identically
+zero, so `det = 0` and `jnp.linalg.solve` returns `[nan, nan, inf]` **without raising**.
+Pinned by `test_a_control_channel_with_zero_authority_returns_nan_in_silence`.
+
+**Bound: latent for the shipped solvers.** `trim` does not carry rudder as an unknown, so
+nothing in the package hits it. A steady-turn solve is the obvious next one that would.
+
+**Partial mitigation, and it is narrower than it looks:** `conftest.py` sets
+`jax_debug_nans`, so the suite catches it. That is a **test-time setting only** — nothing
+enables it for `scripts/` or for a library caller.
+
+**Verdict: documented, not guarded.** JAX cannot raise inside a jitted function, so the
+obvious guard is unavailable where it would be needed, and making `trim` non-jittable to
+get one would cost the vmap in `minimum_drag_speed`. If a guard is added it should be an
+explicit **non-jitted precondition** at the solver's entry, which is a decision about where
+solver preconditions live rather than a defect repair.
+
 ---
 
 ## Summary: which assumptions need action
 
 | | Assumption | Status | Action |
 |---|---|---|---|
-| 1 | **E4** wind held across RK4 stages | **body force CLOSED session 12; ORDER measured session 15** | no spurious body force, to 1e-9 m against a closed form. But the scheme is **first order** in a spatially varying field (1.05 against 3.99 in still air; 4.05 with the hold removed). Bounded: 0.0024 m/s of gust error in the Parks core, ~1e-4 relative, affects nothing quoted |
+| 1 | **E4** wind held across RK4 stages | **body force CLOSED session 12; ORDER measured session 15; BOUND CORRECTED in the remediation pass** | no spurious body force, to 1e-9 m against a closed form. But the scheme is **first order** in a spatially varying field (1.05 against 3.99 in still air; 4.05 with the hold removed). The old bound, 0.0024 m/s of gust error in the Parks core, measured the wrong quantity by ~80×: hold-vs-per-stage at the published dt costs **0.82%** of the headline in-core Δθ. No conclusion moves, but **2.240° is not good to four figures** |
 | 2 | **B1** rigid airframe vs flexible data | **unquantifiable** | cap claims; do not assert structural fidelity |
 | 3 | **C3** derivatives frozen across the envelope | **unbounded** | state the excursion with every result away from trim |
 | 4 | **E2** point-aircraft gusts, vortex at 2.3–3.1 spans | **CLOSED for the linear fit, session 13; strip path flyable and measured, session 14** | correction is exactly 0 inside the core and 2.0·`V₀/r₀` at the boundary, where the gradient is discontinuous. Curvature beyond the linear fit rests on a DECLARED loading shape: 2.6% across defensible shapes, 49.7% including a uniform bracket. Flying the strip path moves the vortex result by **0.000000 m** — the field has no spanwise variation — so the headline number is still the point model's. **Roll only**; a pitch integral is the open work |
 | 5 | **A2** constant g, +0.383% at cruise | **CLOSED, session 12** | not modelled: worst mode movement is 7.6% of its tolerance. Phugoid only carries the full 0.38% |
 | 6 | **C5** no thrust moment, no spool | sound for now | required before any powered-recovery result |
 | 7 | **B4** accelerometer at CG vs DFDR | caveat | keep Fig. 8 claims as orderings |
+| 8 | **C9** every lift increment acts at the CG's relative wind | **bounded, wholly outside the envelope** | a real energy violation — +56.9 kW on the Cherokee at 8.26 rad/s — and **0 of 80,000** in-envelope states show it, threshold pitch rate 84–201 °/s, `max(E − E₀) = +0` exactly in every still-air run. Deliberately not repaired: the correction needs an arm for every lift channel and the only available one rests on an attribution this project has rejected |
+| 9 | **F5** strip quadrature at 9 stations | **measured, decision recorded** | returns **82.6%** of its own calibration target, order 1.50, ~56 stations for 1%. `N_SPAN` and `a₀` both left as they are, because the two repairs mean different things and neither is settled here. Costs nothing quoted — the vortex field has no spanwise variation |
+| 10 | **C11** the two tail-arm routes | **unresolvable** | 1.4% and 2.9% on the CR-2144 pair; **2.0× and 2.9×** on the two aircraft whose source file is missing. Do not adjust either derivative to make them agree |
+| 11 | **E6** microburst `z_h` unmodelled | **bounded by run geometry, and only just** | on-axis downdraft grows to a **50.6 m/s** asymptote; the runs sit inside the valid band by choice of altitude, not by anything enforced |
+| 12 | **A4 / D2** no ground, no atmosphere floor | **declared, guarded at one call site** | a 747-approach integrates to −698 m through air of increasing density. Truncate at your own clearance |
+| 13 | **E7** along-track shear needs the caller's turn rate | **repaired, residual on the caller** | the term was missing entirely; worth **ΔF = 0.1423** at a standard-rate turn, and identically zero on all 77,036 samples of the runs on record |
+| 14 | **F7** singular control Jacobian returns NaN silently | **latent** | no shipped solver carries rudder as an unknown; a steady-turn solve would be the first |
 
 Items 1 and 5 — the two session 11 flagged as new and actionable — are both closed by
 measurement, and in both cases the measurement changed the answer the reasoning had given.
 Items 2 and 3 are honest limits rather than bugs, and the correct response to both is to
 stop short of claims they cannot support.
+
+**Items 8–14 were added by the remediation pass**, from the audit's list of assumptions
+the code makes and the register never declared. Two things are worth saying about them as
+a group. First, **most are not repairs and must not become repairs**: C9, C11, E6, E8, F5
+and F7 are all cases where the flaw is measured and bounded and the correct form is *not*
+established by any source this project holds, so changing the code would trade a documented
+limitation for an invented certainty. Second, the one that *was* repaired — E7 — moved
+nothing the project reports, and the reason is recorded as a measurement rather than an
+argument, which is the standard the rest of this register is held to.
 
 ---
 

@@ -106,7 +106,7 @@ def test_trim_converges_to_a_physically_absurd_solution():
     ac = REGISTRY["boeing747_approach"]._replace(CLa=jnp.array(0.1))
     x, res = trim.trim(jnp.array(85.0), jnp.array(0.0), ac)
     assert float(jnp.linalg.norm(res)) < 1e-12, "this case converges; that is the point"
-    assert not trim.is_physical(x), f"alpha {float(x[0]) * RAD2DEG:.1f} deg passed"
+    assert not trim.is_physical(x, ac), f"alpha {float(x[0]) * RAD2DEG:.1f} deg passed"
 
 
 def test_every_real_aircraft_trims_to_a_physical_solution():
@@ -120,4 +120,4 @@ def test_every_real_aircraft_trims_to_a_physical_solution():
         x, _ = trim.trim(
             jnp.array(CRUISE[name]["airspeed"]), jnp.array(CRUISE[name]["altitude"]), ac
         )
-        assert trim.is_physical(x), f"{name}: alpha {float(x[0]) * RAD2DEG:.2f} deg"
+        assert trim.is_physical(x, ac), f"{name}: alpha {float(x[0]) * RAD2DEG:.2f} deg"

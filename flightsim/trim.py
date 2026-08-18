@@ -120,7 +120,7 @@ def trim(
 ALPHA_LIMIT = math.radians(15.0)
 
 
-def is_physical(x: Array) -> bool:
+def is_physical(x: Array, ac: Aircraft) -> bool:
     """Is a trim solution a flight condition, as opposed to merely converged?
 
     `CL = CL0 + CLa*alpha` is linear, so a large alpha compensates a small CLa
@@ -128,9 +128,30 @@ def is_physical(x: Array) -> bool:
     hundreds of degrees of incidence. A residual check detects non-convergence;
     it cannot detect nonsense, and the two are different questions.
 
+    ALL THREE UNKNOWNS ARE CHECKED, not just alpha. Until the remediation pass
+    this read the angle of attack alone, and a plain (V, h) sweep at the shipped
+    initial guess produced solutions it endorsed while they demanded throttle
+    outside [0, 1] or elevator past the stops: 319/640 for the 747, 22/640 for
+    the 747 approach, 284/640 for the Cherokee, 364/640 for the Cessna. The
+    sharpest was the 747 at V = 471.8 m/s, endorsed at alpha = -0.57 deg on a
+    throttle of 567. A trim requiring 567 times full thrust is not a flight
+    condition under any reading of the word, and the limits that say so were
+    already in the `Aircraft` pytree -- which is why this now takes one.
+
+    THE RESIDUAL IS DELIBERATELY NOT AN ARGUMENT. Convergence is the caller's
+    other question and every caller that sweeps already asks it separately
+    (`validation.sweep`, `verification.newton_residual_history`). Folding it in
+    here would make one function answer two questions and would bind this
+    module's notion of "converged" to whatever tolerance the caller had in mind.
+
     NOT folded into `trim` itself, deliberately. `trim` is jitted and vmapped
     (see `minimum_drag_speed`), so it cannot raise, and returning a flag would
     churn every call site for a case that has never arisen with real aircraft
     data. This is a separate question, asked by the callers that sweep.
     """
-    return bool(abs(float(x[0])) <= ALPHA_LIMIT)
+    alpha, elevator, throttle = (float(v) for v in x)
+    return bool(
+        abs(alpha) <= ALPHA_LIMIT
+        and abs(elevator) <= float(ac.elevator_limit)
+        and 0.0 <= throttle <= 1.0
+    )

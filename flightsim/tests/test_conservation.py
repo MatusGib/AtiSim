@@ -79,7 +79,7 @@ def test_free_rigid_body_conserves_angular_momentum_and_energy():
 
     L_mag = np.linalg.norm(L_ned, axis=1)
     mag_drift = np.abs(L_mag - L_mag[0]).max() / L_mag[0]
-    assert mag_drift < 1e-11  # measured ~5.7e-14
+    assert mag_drift < 1e-11  # measured 5.6958e-13, as PROJECT.md section 4 records
 
     L_dir0 = L_ned[0] / L_mag[0]
     cos_angle = np.clip((L_ned / L_mag[:, None] * L_dir0).sum(axis=1), -1.0, 1.0)

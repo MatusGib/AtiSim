@@ -352,24 +352,88 @@ def lee_wave_wind(pos_ned: Array, wave: LeeWave) -> Array:
     return jnp.array([0.0, 0.0, -w_up])  # NED z is DOWN; an updraft is negative
 
 
-def along_track_shear(pos_ned: Array, vel_ned: Array, field) -> Array:
-    """dU_x/dt experienced by the aircraft. Proctor et al. Eq. (4), steady field.
+def along_track_shear(
+    pos_ned: Array, vel_ned: Array, accel_ned: Array, field
+) -> Array:
+    """dU_x/dt experienced by the aircraft, including the turn of its own track.
 
     `U_x` is the horizontal wind resolved along the ground track, POSITIVE FOR A
-    TAILWIND, which is the sign convention Eq. (3) requires. Eq. (4) splits the
-    rate into three terms -- along-track shear times ground speed, vertical
-    shear times ascent rate, and the local time derivative. The first two are
-    exactly the gradient of `U_x` contracted with the ground velocity, which is
-    what this computes; the third is zero for every field in this module,
-    because they are all steady in the earth frame.
+    TAILWIND, which is the sign convention Proctor et al. Eq. (3) requires.
+
+    DERIVATION. Write the ground position p(t), the horizontal inertial velocity
+    v_h = (v_N, v_E), the horizontal wind field W_h(p), and the unit track
+    direction
+
+        h = v_h / |v_h| = (cos psi, sin psi),   psi = atan2(v_E, v_N).
+
+    Eq. (3) needs U_x(t) = W_h(p(t)) . h(t), and BOTH factors depend on time:
+
+        dU_x/dt = [ (v.grad) W_h + dW_h/dt ] . h  +  W_h . dh/dt
+                  |______________________________|    |____________|
+                          Proctor Eq. (4)             heading rotation
+
+    The first group IS Eq. (4), term for term. Its two spatial pieces are that
+    equation's along-track shear times ground speed and vertical shear times
+    ascent rate -- together the gradient of `U_x` contracted with the ground
+    velocity -- and dW_h/dt is its local time derivative, zero for every field
+    in this module because they are all steady in the earth frame.
+
+    The second group is what this function used to omit, and it is a DERIVATION
+    rather than a transcription: Eq. (4) is written for a straight track, and
+    the paper does not extend it. Differentiating h,
+
+        dh/dt = psi_dot * (-sin psi, cos psi) = psi_dot * n,   n = (-h_E, h_N),
+
+    with n the track normal pointing 90 deg to the RIGHT (at psi = 0, h is north
+    and n is east). So the omitted term is
+
+        W_h . dh/dt = psi_dot * (W_h . n),
+
+    the cross-track wind times the rate at which the along-track direction
+    sweeps through it. Writing u_perp = -(W_h . n) for the crosswind FROM the
+    right gives the equivalent form -u_perp * psi_dot.
+
+    REDUCTION TO THE SOURCE. psi_dot = 0 annihilates the second group and leaves
+    Eq. (4) untouched. That reduction is the check that this EXTENDS Proctor et
+    al. rather than replacing them, and it is asserted as BIT equality against
+    the straight-track expression this replaced, by
+    test_audit_regression.py::test_along_track_shear_reduces_to_proctor_eq_4
+    _when_the_track_is_straight.
+
+    WHY THE ACCELERATION IS AN ARGUMENT. A position and a velocity do not
+    determine a turn rate -- the track's rotation is a property of the
+    trajectory, not of the field or of the instantaneous state. From the
+    inertial acceleration,
+
+        psi_dot = (v_N a_E - v_E a_N) / |v_h|^2,
+
+    which is computed here so the formula lives in one place rather than at
+    every call site. A caller whose ground track is genuinely straight passes
+    zeros, and that is then a stated assumption rather than a silent one.
+
+    SIZE OF THE OMISSION. Exactly zero along every run this project reports:
+    they fly due north, and every field in this module has zero east wind on the
+    north axis, so the cross-track wind and psi_dot both vanish. It reaches
+    dF = 0.1423 at a standard-rate turn one core radius above a Parks core,
+    where the Rankine tangential velocity is fully horizontal -- the whole of
+    the FAA's 1 km alerting threshold, and measured rather than estimated. See
+    `docs/ASSUMPTIONS.md` E7.
     """
     track = vel_ned[:2]
-    heading = track / jnp.maximum(jnp.linalg.norm(track), 1e-9)
+    speed = jnp.maximum(jnp.linalg.norm(track), 1e-9)
+    heading = track / speed
 
     def u_x(p: Array) -> Array:
         return jnp.dot(field(p)[:2], heading)
 
-    return jnp.dot(jax.grad(u_x)(pos_ned), vel_ned)
+    # Proctor Eq. (4): the field's own variation, seen along a frozen heading.
+    frozen_heading = jnp.dot(jax.grad(u_x)(pos_ned), vel_ned)
+
+    # The heading is not frozen. Same 1e-9 guard, squared, so a degenerate
+    # ground track gives 0/1e-18 = 0 rather than a NaN, exactly as above.
+    psi_dot = (track[0] * accel_ned[1] - track[1] * accel_ned[0]) / speed**2
+    normal = jnp.array([-heading[1], heading[0]])
+    return frozen_heading + psi_dot * jnp.dot(field(pos_ned)[:2], normal)
 
 
 # ---------------------------------------------------------------------------
@@ -393,15 +457,26 @@ def along_track_shear(pos_ned: Array, vel_ned: Array, field) -> Array:
 #   w(r,z) = -lambda exp(-(r/R)^2) [z*(1 - exp(-z/z*)) - eps(1 - exp(-z/eps))]
 #
 # These satisfy mass continuity exactly, which is asserted in the tests rather
-# than taken on trust. The paper states four constants derived from them by
-# iteration, and they are what pins the transcription:
+# than taken on trust. The paper states four constants, and they are what pins
+# the transcription:
 #
 #   peak outflow at r/R = 1.1212, z_m/z* = 0.22, z*/eps = 12.5,
 #   u_max = 0.2357 * lambda * R
 #
-# All four are re-derivable from the equations above -- 1.1212 solves
-# exp(-x^2)(2x^2+1) = 1, and 0.22 is ln(12.5)/11.5 -- so they are a genuine
-# cross-check rather than four restatements of one number.
+# THEY ARE NOT FOUR INDEPENDENT CHECKS, and this comment used to say they were.
+# The paper's own order is the other way round: "Analysis of TASS data indicated
+# ... the ratio z_m/z* = 0.22", and then "Recalling that z_m/z* = 0.22, the
+# values 1.1212 and 12.5 were obtained from iteration for the ratios r/R and
+# z*/eps", and 0.2357 follows from those. So 0.22 is an EMPIRICAL INPUT from the
+# TASS model and 12.5 and 0.2357 are its consequences. The arithmetic the old
+# comment gave is correct -- 0.22 is indeed ln(12.5)/11.5 -- but that identity
+# is the relation 12.5 was solved FROM, so reading it backwards turns one
+# empirical number into an apparent agreement between two.
+#
+# 1.1212 is the one that IS independent: it solves exp(-x^2)(2x^2+1) = 1, which
+# involves no z at all. Treat the set as one empirical input, one independent
+# root, and two consequences. Checked against the paper, printed pp. 4-5 and the
+# appendix's "From TASS" block, held at refs/NASA-TM-100632-Oseguera-Bowles-1988.
 # ---------------------------------------------------------------------------
 
 # Oseguera & Bowles, from iteration on their own equations.
@@ -498,7 +573,26 @@ def microburst_wind(pos_ned: Array, burst: Microburst) -> Array:
 
 
 def superpose(*fields):
-    """Sum wind fields. Parks et al. 1985 builds its vortex arrays this way."""
+    """Sum wind fields. Parks et al. 1985 builds its vortex arrays this way.
+
+    THE EMPTY CASE IS HANDLED EXPLICITLY. `sum(...)` over no terms is the Python
+    integer 0, so `superpose()` used to return a value where its caller expected
+    a callable -- reachable from `superpose(*chosen)` whenever the filter that
+    built `chosen` selected nothing. A sum of no fields is the zero field, which
+    is the identity this function's own algebra requires, so that is what comes
+    back.
+
+    Written as a separate branch rather than as a `start=` argument so that the
+    non-empty path performs exactly the arithmetic it always did, down to the
+    signed zeros.
+    """
+    if not fields:
+
+        def zero_field(pos_ned: Array) -> Array:
+            del pos_ned
+            return jnp.zeros(3)
+
+        return zero_field
 
     def combined(pos_ned: Array) -> Array:
         return sum(field(pos_ned) for field in fields)
@@ -591,9 +685,12 @@ def strip_clp_from_rate(ac: Aircraft, stations, p_hat: Array) -> Array:
     """Rolling-moment coefficient produced by a rigid roll rate.
 
     The calibration check: with `airframe.calibrated_lift_slope` pinned to the
-    tabulated Clp, this must return `Clp * p_hat`. Stengel eq. 3.4-39 gives the
-    spanwise incidence a roll rate induces, dalpha = p*y/V, which in terms of
-    p_hat = pb/2V is dalpha = 2*p_hat*y/b.
+    tabulated Clp, this returns `Clp * p_hat` -- IN THE CONTINUUM LIMIT, which is
+    where the identity a0 = -8*Clp holds. At the shipped `airframe.N_SPAN = 9` it
+    returns 82.6% of that, converging at order 1.50; see
+    `airframe.calibrated_lift_slope` and docs/ASSUMPTIONS.md F5. Stengel
+    eq. 3.4-39 gives the spanwise incidence a roll rate induces, dalpha = p*y/V,
+    which in terms of p_hat = pb/2V is dalpha = 2*p_hat*y/b.
     """
     incidence = 2.0 * p_hat * stations.span / ac.b
     return _strip_rolling_coefficient(ac, stations, incidence)

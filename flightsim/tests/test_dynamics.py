@@ -133,9 +133,13 @@ def test_free_fall_gives_exactly_g(test_aircraft):
         omega=jnp.zeros(3),
     )
     d = dynamics.derivatives(s, ZERO_CONTROLS, test_aircraft, jnp.zeros(3), jnp.zeros(3))
-    # The V_MIN airspeed floor leaves a residue of CL0 lift and CD0 drag at
-    # 1 m/s. It is ~0.03% of g here and only exists to keep alpha/beta finite at
-    # zero velocity, a condition that never arises in flight.
+    # This used to carry a residue: the V_MIN airspeed floor was applied to qbar
+    # as well as to the divisions it guards, so CL0 and CD0 produced force at
+    # 1 m/s of dynamic pressure the aircraft did not have -- ~0.03% of g here.
+    # The floor is now confined to beta and the non-dimensional rates and free
+    # fall is exact, which test_audit_regression.py asserts to the bit. The
+    # tolerance below is left as it was rather than tightened on the back of a
+    # change to the code it is measuring.
     np.testing.assert_allclose(np.asarray(d.vel_body), [0.0, 0.0, G0], atol=5e-3)
     assert np.isfinite(np.asarray(d.vel_body)).all()
 

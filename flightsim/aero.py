@@ -19,9 +19,20 @@ from flightsim.aircraft import Aircraft
 from flightsim.atmosphere import RHO0
 from flightsim.state import Controls
 
-# Airspeed floor. Purely a NaN guard for the zero-velocity case -- alpha, beta
-# and the non-dimensional rates all divide by V. Far below any flight speed, so
-# it never binds in normal operation.
+# Airspeed floor. Purely a NaN guard, and it is applied ONLY where something
+# divides by V: beta, and the three non-dimensional rates. Far below any flight
+# speed, so it never binds in normal operation.
+#
+# It is deliberately NOT applied to dynamic pressure or to Mach. Neither divides
+# by V and both are finite at V = 0, so flooring them would report a force the
+# aircraft does not have -- a stationary airframe used to produce 1.4 to 171 N
+# out of still air through the residual CL0 term, and free fall did not read
+# n_z = 0. `jnp.maximum(x, 1.0)` returns x exactly for x >= 1, so confining the
+# floor this way changes nothing at or above 1 m/s, bit for bit.
+#
+# `air_data` still REPORTS the floored airspeed, which is what keeps alpha, beta
+# and the rates finite at rest and is what `sensors.sense` shows on the ASI.
+# That residue is bounded, tested, and separate from the force path.
 V_MIN = 1.0  # m/s
 
 # Lock's fourth-power drag-rise law is anchored on the definition of drag
@@ -76,12 +87,15 @@ def coefficients(
     """(CL, CD, CY, Cl, Cm, Cn). Lift and drag wind-axis, the rest body-axis.
 
     Speed of sound is passed rather than Mach so that the Mach used for wave
-    drag is built from the same airspeed as alpha and dynamic pressure.
+    drag is built from the same airspeed as dynamic pressure -- the TRUE one,
+    not the floored one the rates below need.
     """
     V, alpha, beta = air_data(vel_rel)
     p, q, r = omega_rel
 
-    # Non-dimensional rates. Span for the lateral pair, chord for pitch.
+    # Non-dimensional rates. Span for the lateral pair, chord for pitch. These
+    # are three of the four divisions the V_MIN floor exists for, so they take
+    # the floored V that `air_data` returns.
     p_hat = p * ac.b / (2.0 * V)
     q_hat = q * ac.c / (2.0 * V)
     r_hat = r * ac.b / (2.0 * V)
@@ -91,10 +105,14 @@ def coefficients(
     CL = ac.CL0 + ac.CLa * alpha + ac.CLq * q_hat + ac.CLde * de
     Cm = ac.Cm0 + ac.Cma * alpha + ac.Cmq * q_hat + ac.Cmde * de
     # Parabolic core plus a lift-dependent compressibility rise.
+    # Mach divides by the speed of sound, not by V, so it takes the true
+    # airspeed. Below the floor this is unobservable either way -- M_crit is
+    # above 0.5 for every aircraft here and `wave_drag` is identically zero at
+    # walking pace -- but the floor has no defence here and does not belong.
     CD = (
         ac.CD0
         + CL**2 / (jnp.pi * ac.e * ac.AR)
-        + wave_drag(V / a_sound, CL, ac)
+        + wave_drag(jnp.linalg.norm(vel_rel) / a_sound, CL, ac)
     )
 
     CY = ac.CYb * beta + ac.CYp * p_hat + ac.CYr * r_hat + ac.CYdr * dr
@@ -137,8 +155,12 @@ def aero_forces_moments(
     module-level import either way closes a cycle. The type is documented
     instead, which costs a checker and buys a one-directional dependency.
     """
-    V, alpha, beta = air_data(vel_rel)
-    qbar = 0.5 * rho * V**2
+    _, alpha, beta = air_data(vel_rel)
+    # The fourth quantity that used to be floored, and the only one that put a
+    # force on the airframe. qbar has no division by V and is finite at V = 0.
+    # Written as norm(...)**2 rather than dot(...) so that above the floor it is
+    # the identical expression to the one this replaced, to the last bit.
+    qbar = 0.5 * rho * jnp.linalg.norm(vel_rel) ** 2
     CL, CD, CY, Cl, Cm, Cn = coefficients(vel_rel, omega_rel, controls, ac, a_sound)
     if increment is not None:
         CL = CL + increment.CL

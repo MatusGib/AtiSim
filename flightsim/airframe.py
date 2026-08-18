@@ -205,8 +205,18 @@ def calibrated_lift_slope(ac: Aircraft) -> Array:
     the calibration had not absorbed those effects and would be the surprising
     outcome.
 
-    What it guarantees is that a rigid roll rate through the strip integral
-    reproduces the tabulated Clp exactly. What it does not guarantee is that the
-    spanwise SHAPE is right, which is why the sensitivity sweep is mandatory.
+    WHAT IT GUARANTEES, AND AT WHICH STATION COUNT. `Clp_hat = -a0/8` is the
+    CONTINUUM integral, so a rigid roll rate through the strip sum reproduces the
+    tabulated Clp exactly only in the limit. This docstring used to say "exactly"
+    without that qualification. At the shipped N_SPAN = 9 the trapezoidal sum
+    returns 82.6% of it -- a -17.4% understatement -- because the elliptic chord
+    has a sqrt singularity at the tips that the rule cannot resolve. Measured
+    convergence order is 1.50, stable across every refinement tried, so it takes
+    ~19 stations for 5% and ~56 for 1%. Both the count and this calibration basis
+    were deliberately left as they are; see docs/ASSUMPTIONS.md F5 for why, and
+    provenance.LEDGER["strip.n_stations"].
+
+    What it does not guarantee at any station count is that the spanwise SHAPE is
+    right, which is why the sensitivity sweep is mandatory.
     """
     return -8.0 * ac.Clp
