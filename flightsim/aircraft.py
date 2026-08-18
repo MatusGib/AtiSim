@@ -213,13 +213,45 @@ def _unprime(Lp, Np, Ix, Iz, Ixz):
 # only for the landing and power-approach configurations (Tables IX-1, IX-2, both
 # sea level). Cruise appears as dimensional derivatives, so the set below is
 # recovered from those. Tables IX-4 and IX-8 both state BODY AXIS SYSTEM, so no
-# stability-to-body rotation is applied. The recovered values agree closely with
-# the report's own landing-configuration table (Cmde -1.44 vs -1.40, CLde 0.364
-# vs 0.396, Clb -0.294 vs -0.281, Cnb +0.172 vs +0.184), which is the check that
-# the conversion chain is right.
+# stability-to-body rotation is applied. The recovered values agree with the
+# report's own landing-configuration table, Table IX-1 on printed p.216 -- read
+# again at 500 dpi during the remediation pass, because this comment previously
+# cited CLde as .396 and the table reads .356:
+#
+#   CLde  +0.3638 recovered vs  .356 tabulated   +2.2%
+#   Cmde  -1.4442             vs -1.40           -3.2%
+#   Clb   -0.2944             vs -.281           -4.8%
+#   Cnb   +0.1715             vs  .184           -6.8%
+#
+# That is the check that the conversion chain is right. It is a cross-CONDITION
+# check, not a repeat measurement -- landing configuration at sea level against
+# cruise at 40,000 ft -- so a few per cent is what agreement looks like here,
+# and the comparison bounds the chain rather than validating the numbers.
 # ---------------------------------------------------------------------------
 
-_B747_G = 32.174  # ft/s^2, used only to turn the tabulated weight into mass
+# ft/s^2, used only to turn the tabulated weight into slugs.
+#
+# A DECLARED EXCEPTION to units.py's "never inline a conversion factor anywhere
+# else", kept deliberately after being measured. It truncates
+# g0 = 32.17404855643044 ft/s^2, so this slug mass sits 1.5e-6 relative away
+# from the kilogram mass the same function ships as `W * LB2KG`, and that slip
+# reaches CLa, CLq, CLde, CD0 and e for this one aircraft.
+#
+# The remediation pass made the correct change -- `m = W * LB2KG / SLUG2KG`,
+# pure units.py constants, no inlined number -- measured it, and REVERTED IT.
+# What it moved: 19 quantities on the 747 and nothing on any other aircraft, all
+# at <= 4.1e-6 relative; every number PROJECT.md section 4 quotes was unchanged
+# at its quoted precision, as were the ledger's 5.9450, -23.9232 and 4.0241.
+# What it broke: `test_extracting_rk4_step_did_not_move_a_single_bit` and
+# `test_logging_the_run_did_not_move_the_headline_numbers`, two BIT-EXACT
+# arithmetic-neutrality guards on earlier refactors, whose entire value is that
+# they admit no tolerance at all.
+#
+# Re-pinning those two to new values would have been changing reference data to
+# let a change through, which this project does not do -- and it would have
+# spent the guarantee those tests exist to provide on a violation that moves no
+# result. The flaw is smaller than the fix. See docs/ASSUMPTIONS.md B5.
+_B747_G = 32.174
 
 
 def _boeing_747() -> Aircraft:
@@ -491,10 +523,29 @@ def _boeing_747_approach() -> Aircraft:
 # ---------------------------------------------------------------------------
 # Piper PA-28-180 Cherokee
 #
-# Source: McCormick, "Aerodynamics, Aeronautics, and Flight Mechanics", worked
-# example for the Cherokee 180, as collated in aircraft_data_validated.py. Two
-# independent transcriptions of the same textbook table agree on every digit.
-# This is a published worked example, not a flight-test report.
+# Source status: UNVERIFIABLE -- SOURCE NOT AVAILABLE.
+#
+# CLAIMED source: McCormick, "Aerodynamics, Aeronautics, and Flight Mechanics",
+# worked example for the Cherokee 180. That claim reached this file through
+# `aircraft_data_validated.py`, WHICH IS NOT IN THIS REPOSITORY, so neither the
+# textbook nor the collation can be checked from anything held here. The earlier
+# note that "two independent transcriptions of the same textbook table agree on
+# every digit" describes work done in that missing file; it is reported here as
+# a claim about an absent document, not as evidence.
+#
+# Left as it stands rather than replaced. Substituting numbers from some other
+# source to make the citation resolvable would turn a documented gap into an
+# undocumented one, and no source held by this project supplies this aircraft.
+# What CAN be said from inside the repository is said below -- the source's own
+# non-dimensional table is reproduced by the conversion chain -- and that is an
+# internal consistency check on the transcription, not on the data.
+#
+# Independent evidence that the data has a real problem: the two routes to the
+# tail arm, -Cmq/CLq and -Cmde/CLde, describe the same geometry and disagree by
+# a factor of 2.0 here (1.280 against 2.562) while the two CR-2144 aircraft
+# agree to 1.4% and 2.9%. The split is exactly the sourcing split. WHICH of the
+# two estimates is wrong, or whether both are, cannot be determined.
+# See AUDIT.md findings 20 and 35, and ASSUMPTIONS_AUDIT.md U19.
 #
 # Flight condition: level flight, 4,920 ft, V0 = 50 m/s, rho = 1.06. ISA density
 # at that altitude is 1.0581, so the source condition is ISA to 0.18%.
@@ -621,10 +672,22 @@ def _cherokee_pa28_180() -> Aircraft:
 # ---------------------------------------------------------------------------
 # Cessna 172
 #
-# Source: Roskam and USAF DATCOM as transcribed in PyFME (AeroPython/PyFME,
-# MIT), collated in aircraft_data_validated.py. Mass, inertia and geometry are
-# independently corroborated by a second citation of the same Roskam table, and
-# the inertia ordering Izz > Iyy > Ixx is the physically expected one.
+# Source status: UNVERIFIABLE -- SOURCE NOT AVAILABLE.
+#
+# CLAIMED source: Roskam and USAF DATCOM as transcribed in PyFME
+# (AeroPython/PyFME, MIT). That claim reached this file through
+# `aircraft_data_validated.py`, WHICH IS NOT IN THIS REPOSITORY, so the chain
+# stops one link short of anything checkable. The corroboration previously
+# claimed here -- "a second citation of the same Roskam table" -- also lives in
+# that missing file and is likewise unverified. The inertia ordering
+# Izz > Iyy > Ixx being the physically expected one is a plausibility remark and
+# is worth exactly that.
+#
+# Not replaced, for the reason given on the Cherokee above: finding substitute
+# numbers elsewhere would convert a documented gap into an undocumented one.
+# The same tail-arm disagreement applies and is worse -- 0.856 by the rate pair
+# against 2.468 by the control pair, a factor of 2.9.
+# See AUDIT.md findings 20 and 35, and ASSUMPTIONS_AUDIT.md U19.
 #
 # Unlike the Cherokee this data is already NON-DIMENSIONAL, tabulated against
 # angle of attack, so no dimensional conversion is needed. The project's aero

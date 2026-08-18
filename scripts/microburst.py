@@ -99,7 +99,15 @@ def analyse(pos_ned, vel_body, quat, omega):
     s = State(pos_ned=pos_ned, vel_body=vel_body, quat=quat, omega=omega)
     wind_ned = field(pos_ned)
     air = sensors.sense(s, wind_ned)
-    shear = wind.along_track_shear(pos_ned, quat_to_dcm(quat) @ vel_body, field)
+    # The ground track's own rotation is part of dU_x/dt, so `along_track_shear`
+    # needs the inertial acceleration to get psi_dot. Rebuilt from the same
+    # dynamics the rollout flew -- one extra evaluation -- rather than assumed
+    # zero, which makes "this run is straight" a measurement instead of a hope.
+    omega_gust = wind.gust_rates(pos_ned, quat, field)
+    d = dynamics.derivatives(s, controls, ac, wind_ned, omega_gust)
+    accel_ned = quat_to_dcm(quat) @ (d.vel_body + jnp.cross(omega, vel_body))
+    shear = wind.along_track_shear(
+        pos_ned, quat_to_dcm(quat) @ vel_body, accel_ned, field)
     return jnp.array([
         dynamics.f_factor(shear, -wind_ned[2], air.airspeed),
         shear / dynamics.G0, -wind_ned[2] / air.airspeed,

@@ -2,9 +2,16 @@
 
 Review asked for an unambiguous separation between numbers taken from cited
 tables and numbers that were predicted, with no credit given to a calibrated
-value for landing in a plausible range. This file is what makes that
-separation enforceable rather than aspirational: a constant added without a
-ledger entry fails the build.
+value for landing in a plausible range. This file makes the separation itself
+enforceable: categories are exclusive, DERIVED chains name inputs that exist,
+the graph is acyclic, and every chain bottoms out.
+
+WHAT IT DOES NOT DO is check COVERAGE -- every test here iterates `LEDGER`
+against itself, so a constant that never got an entry is invisible to all of
+them. This docstring used to end "a constant added without a ledger entry fails
+the build", which described a test that did not exist. The one that does is
+`test_audit_regression.py::test_the_provenance_ledger_does_not_cover_the_source_modules`,
+and its scope is stated in `provenance.py`'s own docstring.
 
 The precedent is `validation.Reference`, whose mandatory `source` field is
 asserted by test_validation.py. This is the same idea applied to every

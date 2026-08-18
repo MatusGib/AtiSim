@@ -58,7 +58,7 @@ without a core rewrite. Both have now been exercised and both held.
 | `verification.py` | **tier 0** — `fitted_order`, `oscillator_refinement`, `fixed_control_refinement`, `newton_residual_history`, `torque_free_omega`, `without_aerodynamics`, `free_fall_through_a_swinging_wind` | takes **no aircraft data as a reference**; a failure here is a defect in the core. Every check lives here rather than inside its test, so the notebook runs the same code the suite asserts on |
 | `validation.py` | **tiers 1–2** — `longitudinal_matrix`, `to_stability_axes`, `to_imperial_matrix`, `longitudinal_modes`, `lateral_modes`, `Reference`/`REFERENCES`, `CAUGHEY_A`, `sweep`, `affine_fit` | the linearisation lives here, not in `tests/modes.py`, which is now a re-export. Every reference number carries its citation as a `Reference.source` field, enforced by a test |
 | **`docs/ASSUMPTIONS.md`** | not code — the **assumption register**: what the model assumes, why, and a measured bound on each | this document records what has been *measured*; that one records what has been *assumed*. Read it before quoting any result to better than ~0.5%, before flying far from a trim point, and before adding a wind field whose scale approaches a wingspan |
-| **`provenance.py`** | the **ledger**: every constant's category and citation, as data — SOURCED / DERIVED / CALIBRATED / DECLARED | enforced by `test_provenance.py`; a constant with no entry fails the build. Answers "which numbers are bulletproof?" as a query rather than a memory |
+| **`provenance.py`** | the **ledger**: a constant's category and citation, as data — SOURCED / DERIVED / CALIBRATED / DECLARED | `test_provenance.py` enforces the entries' internal consistency; coverage is enforced separately and only over five modules' module-level constants — see §2's point 4, which corrects what this row used to claim. Answers "which numbers are bulletproof?" as a query rather than a memory |
 | **`airframe.py`** | where on the airframe the field is sampled: derived tail arm, sample stations, spanwise loading | the tail arm is DERIVED from `Cmq`/`CLq`, never sourced; the loading shape is DECLARED and carries a measured sensitivity |
 | `state.py` | `State`/`Controls`, quaternion utilities | NED inertial, body x-fwd/y-right/z-down; quat is `[w,x,y,z]`, body→NED |
 | `atmosphere.py` | ISA to 20 km | two layers — the 747 cruise sits above the tropopause |
@@ -122,11 +122,20 @@ rigid-rotation self-consistency test that found them. **Read it before changing 
    disagree at the vortex core edge, because that is what proves the default has not been
    switched over — §4's frozen baselines sit downstream of it.
 
-4. **Every constant carries its provenance.** `flightsim/provenance.py` classifies each as
-   SOURCED, DERIVED, CALIBRATED or DECLARED, and `test_provenance.py` enforces that DERIVED
-   chains name inputs that exist, are acyclic, and bottom out in something sourced. A constant
-   added without a ledger entry fails the build. This is the `Reference.source` rule
-   generalised from published reference values to every number in the model.
+4. **Constants carry their provenance, and the ledger's reach is bounded.**
+   `flightsim/provenance.py` classifies each entry as SOURCED, DERIVED, CALIBRATED or
+   DECLARED, and `test_provenance.py` enforces that DERIVED chains name inputs that exist,
+   are acyclic, and bottom out in something sourced. **This document used to add "a
+   constant added without a ledger entry fails the build", and that was not true**: every
+   test in `test_provenance.py` iterates the ledger against itself, so nothing checked
+   coverage. The audit measured it — roughly 346 non-trivial numeric literals across nine
+   physics modules against 13 entries, about **2%**. The missing direction now exists as
+   `test_audit_regression.py::test_the_provenance_ledger_does_not_cover_the_source_modules`,
+   and the true statement is narrower: **a NEW module-level constant in `aero`, `airframe`,
+   `atmosphere`, `trim` or `wind`, added without a ledger entry, fails the build.**
+   Constants inside functions, the other four physics modules, and the aircraft data in
+   `aircraft.py` are not covered. The recorded baseline may only ever shrink — a second
+   test fails if a name is ledgered and left in it.
 
 ## 3. Sources
 
@@ -230,6 +239,14 @@ Suite: **358 passed, 1 skipped**, up from 342 with nothing broken.
 
 Suite: **377 passed, 1 skipped**, up from 358 with nothing broken.
 
+> **Precision note added by the remediation pass.** The Δθ figures above are quoted to
+> four significant figures and are only good to three. They are unchanged as
+> measurements — nothing moved them — but the once-per-step wind hold costs the in-core
+> Δθ **0.82%** at the published dt (§4, "The ORDER half of the wind seam", and
+> `ASSUMPTIONS.md` E4, whose bound this pass corrected by ~80×). Read them as 2.24° and
+> 4.37°. The comparison this table is making — point path against strip path — is
+> unaffected, because both paths carry the same hold.
+
 **Read the two zeros together, because they have one cause.** The strip path
 changes neither turbulence encounter, and that is a property of the two fields
 rather than a defect in the seam. The Parks vortex has no east variation and
@@ -275,8 +292,28 @@ discarded.
 | Roll τ | 1.795 s | 1.779 s | 0.9% |
 | Spiral τ | 138.0 s | 137.0 s | 0.8% |
 | Phugoid ωn (as shipped) | 0.0553 | 0.0673 rad/s | 17.8% — attributed, §5 |
+| Phugoid ζ (as shipped) | 0.0560 | 0.0489 | 14.4% — attributed, §5 |
+| Short-period ωn (as shipped) | 0.9508 | 0.964 rad/s | 1.4% — attributed, §5 |
 | Short-period ζ (as shipped) | 0.3425 | 0.387 | 11.5% — attributed, §5 |
 | Phugoid / short period (augmented model) | — | — | ~1% |
+
+**All four published longitudinal factors are now listed.** CR-2144 Table IX-5's
+denominator publishes four for FC9 and this table compared two of them until the
+remediation pass — and the two it omitted were the two that look worse, phugoid ζ at
++14.4% and short-period ωn at −1.4%. Reference values are the denominator block on
+printed **p.231**, `Z(DET)1 = .0489`, `W(DET)1 = .0673`, `Z(DET)2 = .387`,
+`W(DET)2 = .964`, read at 600 dpi and re-read independently when the rows were added.
+
+Adding them strengthens the position rather than weakening it. `AUDIT.md` §2.3 patches
+the engine's own cruise plant with the two derivative families §5 declares out of scope,
+one family at a time, and **every one of the four closes to ≤1% when both are restored**
+(phugoid ωn +0.3%, phugoid ζ +0.5%, short-period ωn −0.9%, short-period ζ +0.1%). The
+speed derivatives alone fix the phugoid frequency and make short-period damping slightly
+worse; the α̇ derivatives alone fix short-period damping and leave the phugoid frequency
+exactly unmoved; phugoid damping needs both, which is why it is attributable to neither.
+So the whole cruise mode discrepancy is the two documented omissions and nothing else —
+the aerodynamic data, the conversion chain, the trim solve and the eigen-extraction are
+all exonerated by it.
 
 Superseded by the session-5 `Mq` fix (§6d), kept per §4's rule: short-period ζ read
 **0.338 / 12.6%** and phugoid ωn **0.0554** while `Mq` was −0.330. Short-period ωn moved
@@ -581,20 +618,40 @@ the answer is **not 4**.
 | …its errors, dt 1/16 → 1/128 | 0.435 / 0.0396 / 0.0827 / 0.0806 m | > 1e-4, i.e. off the floor |
 
 **This is a property of the scheme, not a defect.** `integrate.step` samples the
-wind once per step and holds it across the four stages — documented since
-session 2 as *"the standard treatment for Dryden and von Karman"*, and correct
-for a stochastic field. For a field varying in **space** it is an O(h)
+wind once per step and holds it across the four stages. Session 2 justified that
+as *"the standard treatment for Dryden and von Karman"* — **an appeal to
+authority with no citation behind it**, which the remediation pass replaced with
+the actual argument in `integrate.py`'s module docstring: a Dryden field is a
+stochastic process drawn from a key, so re-sampling it per stage makes the
+realisation depend on the step size and a convergence study would then be
+measuring the noise rather than the integrator. Correct for a stochastic field,
+on that reasoning rather than on a source. For a field varying in **space** it is an O(h)
 perturbation of the right-hand side inside the step, so the scheme is **first
 order** however good the stage weights are. The falsification is what makes that
 attribution rather than assertion: re-sampling the wind at each stage restores
 **4.0542**.
 
-**What it costs the project's own results: nothing measurable.** Inside the first
-core the h-vs-h/2 position difference is **0.0169 m** over a 366 m traverse.
-Inside the core `∂w/∂x = V₀/r₀ = 0.1417 s⁻¹`, so that displacement is worth
-**0.0024 m/s of gust out of a ~26 m/s peak** — about 1e-4 relative, three orders
-below the ±25% band §5 places on the identified vortex parameters. The headline
-Δθ 2.240° and Δn −1.235 g are not threatened.
+**What it costs the project's own results, re-measured with the right instrument.**
+The figure this paragraph used to give was **0.0169 m** of h-vs-h/2 position difference
+inside the first core, worth **0.0024 m/s of gust out of a ~26 m/s peak**, about 1e-4
+relative. **That measures the wrong quantity.** h-vs-h/2 is the DISCRETISATION error with
+the hold still in place; the SCHEME error is hold-vs-per-stage at the SAME dt. On the
+number `scripts/vortex.py` actually prints — the in-core Fig-8 Δθ:
+
+| dt | wind held | wind re-sampled per stage | cost |
+|---|---|---|---|
+| 0.02 | 2.2596° | 2.2230° | **−1.62%** |
+| **0.01 (published)** | **2.2400°** | **2.2216°** | **−0.82%** |
+| 0.005 | 2.2271° | 2.2179° | −0.41% |
+
+So the cost at the production step is **~0.8%, not ~1e-4 — about 80× the figure this
+paragraph carried** — and it halves with dt, as an O(h) error must. Pinned by
+`test_the_wind_hold_costs_the_headline_figure_more_than_E4_bounds_it`.
+
+**No conclusion changes**, because §5 caps the vortex claims at orderings and puts ±25%
+bands on the identified parameters, and 0.8% sits far inside both. What does change is
+the precision claim: **Δθ = 2.240° is not good to four significant figures** — its last
+two digits are scheme-dependent. Quote it as 2.24°.
 
 **The Rankine row is a second, separate mechanism.** `vortex_wind` switches
 branches at `r = r₀`, where §E2 records the one-sided derivatives differ by
@@ -1212,6 +1269,67 @@ protocol with a linear and a table implementation. That was the option not taken
   interactive rate has still not been re-taken since the re-layout.
 
 ## 9. Session log
+
+### Session 16 — remediation: fixing what the audit found, and not fixing the rest
+
+The audit produced 41 findings. This session acted on them under `FIX_PROMPT.md`, whose
+standing rule is the audit's own: *a known, bounded, honestly-recorded flaw is a pass; an
+unexamined assumption presented as fine is a failure.* It follows that **"fix" is not
+always the right response to a finding**, and the most important thing this session did was
+decide which were which.
+
+**Ten repairs, each with its own measurement rather than "the tests pass".**
+
+| # | Repair | Verification that it was surgical |
+|---|---|---|
+| 21 | `validation.lateral_modes` sorted **signed** time constants, so an unstable spiral came back as `roll_tau`. Now `sort(key=abs)`. | Cherokee returns roll 0.3595 s and spiral −51.59 s, the same two numbers in the right slots. The three stable-spiral aircraft are **bit-identical**, which is what `sort()` and `sort(key=abs)` must be when every value is positive |
+| 40 | `V_MIN` floored `V` before `qbar`, so a stationary airframe made 1.4–171 N out of still air. `qbar` and Mach now use the true airspeed; the floor stays on β and the three rates. | Force and moment at V = 0 are **exactly** zero on all four aircraft; free fall reads `n_z = −0.0` with the aerodynamics live; and **81/81 sampled states at ‖v‖ ≥ 1 m/s are bit-identical**, which is the whole safety argument — `jnp.maximum(x, 1)` returns `x` exactly for `x ≥ 1` |
+| 37 | `trim.is_physical` checked α and nothing else, endorsing up to 364/640 of a (V, h) sweep on throttle outside [0,1] or elevator past the stops. Now `is_physical(x, ac)`. | The pinned 747 root at 471.8 m/s — α = −0.57° on throttle 567 — is rejected; all four aircraft still pass at their own cruise conditions, which is the positive control `test_trim.py` already asserted |
+| 30 | `along_track_shear` held the track direction fixed, dropping the heading-rotation term. Derived, with the reduction to Proctor Eq. (4) at ψ̇ = 0 shown in the docstring. | Reproduces the differentiated truth along a prescribed circular track to **0–5.6e-17**; ΔF = **0.1423** at a standard-rate turn, the FAA threshold entire. **ψ̇ was identically 0.0 at all 77,036 samples** of the runs on record and both scripts' printed output was byte-identical |
+| 17 | `aircraft.py` cited Table IX-1's `CLδe` as .396; the table reads **.356**. | Printed p.216 re-read at 500 dpi in this session. The recovered 0.3638 agrees to **2.2%**, not the 8.1% the comment implied |
+| 8 | `PROJECT.md` §4 compared 2 of the 4 published longitudinal factors. | All four now listed, from p.231 re-read at 600 dpi. The two that were missing are the two that look worse — and adding them **strengthens** the position, because §2.3's attribution closes all four to ≤1% |
+| 11 | "A constant with no ledger entry fails the build" was false — nothing checked coverage. | Both documents now state what is enforced: a **new** module-level constant in one of five modules. Seven ledger entries added, `KNOWN_UNLEDGERED` shrunk to match, and a second test now fails if a ledgered name is left in it |
+| 27 | `ASSUMPTIONS.md` E4 bounded the wind hold with the wrong instrument, by ~80×. | Re-measured hold-vs-per-stage at the same dt: **−1.62%** at dt 0.02, **−0.82%** at the published 0.01, **−0.41%** at 0.005. Halving with dt is what identifies it as O(h) |
+| — | `integrate.py` justified the wind hold as "the standard treatment for Dryden and von Kármán". **No such source exists in this repository and none was found.** | Replaced with the actual argument — a stochastic field is drawn from a key, so per-stage sampling makes the realisation depend on dt — with no appeal to authority |
+| 29 | `superpose()` with no arguments returned the integer `0`. | Returns the zero field, and superposing it is bit-identical to not superposing |
+
+Also repaired: `test_conservation.py`'s comment was wrong by a decade (5.6958e-13, not
+5.7e-14); `wind.py` had Oseguera & Bowles' four constants' dependency backwards, which the
+paper's own wording settles — 0.22 is the TASS input and 12.5 was iterated *from* it; and
+the Cherokee and Cessna source notes now say **`unverifiable — source not available`**
+rather than citing a file that is not in the repository.
+
+**One repair was made, measured, and reverted.** `_B747_G = 32.174` breaks `units.py`'s
+no-inlined-factor rule and truncates g₀ by 1.5e-6. Going through `LB2KG / SLUG2KG` moved 19
+quantities on the 747 and nothing on any other aircraft, all ≤ 4.1e-6, with **every number
+§4 quotes unchanged at its quoted precision** — and broke two bit-exact
+arithmetic-neutrality guards on earlier refactors. Re-pinning those would have spent the
+guarantee they exist to provide on a violation that moves no result. **The flaw is smaller
+than the fix.** Recorded as `ASSUMPTIONS.md` B5 and at the constant.
+
+**Eight findings were real, measured, and deliberately left alone**, because the correct
+form is not established by any source this project holds. Changing them would convert an
+honest documented limitation into a fabricated certainty, which is strictly worse than the
+flaw. They are now declared in the register: the **lift-tilt energy seam** (C9 — the fix is
+exact to 1.9e-16 and would still be wrong to apply, because the tilt belongs to every lift
+channel and the only available arm rests on an attribution this project already rejected);
+the **strip quadrature at 9 stations** (F5 — 82.6%, convergence order measured at **1.50**,
+and the decision to change neither `N_SPAN` nor `a₀` recorded in `provenance.py` so it is
+not re-taken silently); the **microburst's unmodelled `z_h`** (E6); the **silent NaN on a
+singular control Jacobian** (F7); the **one-sided longitudinal station set** (E8); the **two
+tail arms that disagree by 2–2.9×** (C11 — and which of them is wrong cannot be determined,
+because the split is exactly the sourcing split); the **vortex core branch tie** (E9); and
+the **compound `δa`** (C10). Four more assumptions the code made and the register never
+declared are now A4, C7, C8 and D2.
+
+**Verification.** Pre-existing suite **444 passed, 1 skipped** — the baseline, unmoved.
+`test_audit_regression.py` grew from 109 to 116: three fail-when-fixed tests were replaced
+by the positive assertions their own messages named, and new tests pin the heading-rotation
+derivation, its reduction to Eq. (4), the straightness of the shipped runs, the empty
+superposition, and the widened trim gate. **No tolerance, reference value or assertion was
+weakened anywhere** — the only assertions removed from the whole repository are the seven
+that constituted those three tests.
+
 
 ### Session 15 — the order half of the wind seam, and the analysis UI
 

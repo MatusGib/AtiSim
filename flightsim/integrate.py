@@ -6,8 +6,33 @@ to batch, which is what makes a Monte Carlo ensemble over turbulence
 realisations a one-line change later.
 
 Wind is sampled once per step and held constant across the four RK4 stages.
-This is the standard treatment for Dryden and von Karman turbulence and avoids
-splitting four keys per step.
+
+THIS IS A DESIGN CHOICE, NOT A CITATION. Earlier text here called it "the
+standard treatment for Dryden and von Karman turbulence"; no source saying so
+exists anywhere in this repository and none was found when one was looked for.
+That matters more than an ordinary uncited line would, because this is the sole
+stated justification for a choice that costs the scheme three orders of accuracy
+in a spatially varying field (ASSUMPTIONS.md E4). So here is the reasoning
+instead, with no appeal to authority:
+
+  A Dryden or von Karman field is a STOCHASTIC PROCESS whose realisation is
+  drawn from a PRNG key, not a function that can be evaluated twice at the same
+  argument and give the same answer. Re-sampling it inside the RK4 stages means
+  drawing four times per step, which changes the realisation the aircraft flies
+  through as a function of the step size -- so refining dt would no longer be
+  refining the same problem, and a convergence study would be measuring the
+  noise process rather than the integrator. Holding one draw per step keeps the
+  realisation a property of the key alone, which is what makes an ensemble over
+  keys mean anything and what lets a batch of keys vary only the stochastic part
+  of a composed field.
+
+  For a DETERMINISTIC spatial field the same argument does not apply and the
+  hold is simply first-order-accurate where per-stage sampling would be fourth.
+  That cost is measured, in E4, rather than argued about: 1.05 against 3.99 in
+  still air, and 4.05 with the hold removed.
+
+It also avoids splitting four keys per step, which is a cost rather than a
+justification.
 """
 
 from functools import partial
