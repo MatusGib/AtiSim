@@ -1,0 +1,27 @@
+Reference = the same field at dt = 1/4096 s. Errors are the FULL-SIM error
+of the state at the end of the run, at the dt the project's scripts use.
+
+--- lee wave (Doyle, w0=6 m/s, 25 km), 60 s ---
+        dt     |dpos| [m]   |dvel| [m/s]      |dquat|     |domega|
+      0.02    6.56076e-02    4.24347e-03  4.27114e-06  9.56445e-07
+      0.01    3.23919e-02    2.09473e-03  2.10851e-06  4.82128e-07
+     0.005    1.57891e-02    1.02096e-03  1.02771e-06  2.37424e-07
+    0.0025    7.48890e-03    4.84232e-04  4.87436e-07  1.13185e-07
+   reference final pos = [ 14253.76688486      0.         -12330.86691576]
+
+--- Parks vortex array (hannibal, 5 cores), 60 s ---
+        dt     |dpos| [m]   |dvel| [m/s]      |dquat|     |domega|
+      0.02    1.48526e+00    3.30237e-02  1.27191e-04  1.62259e-05
+      0.01    5.38899e-01    8.50507e-03  4.78007e-05  3.92764e-06
+     0.005    6.08485e-01    8.44534e-03  5.43380e-05  3.96175e-06
+    0.0025    2.41959e-01    4.18858e-03  2.00256e-05  1.81727e-06
+   reference final pos = [ 13555.19813161      0.         -12122.29707778]
+
+--- updraft column (Wingrove & Bach), 60 s ---
+        dt     |dpos| [m]   |dvel| [m/s]      |dquat|     |domega|
+      0.02    7.56769e-02    3.48011e-03  1.10070e-05  1.60195e-06
+      0.01    3.73789e-02    1.71821e-03  5.43598e-06  7.91059e-07
+     0.005    1.82237e-02    8.37526e-04  2.65010e-06  3.85628e-07
+    0.0025    8.64457e-03    3.97246e-04  1.25706e-06  1.82915e-07
+   reference final pos = [ 14405.37046432      0.         -12588.74484782]
+

@@ -1,0 +1,30 @@
+=== 1a. Conversion factors vs. defining standards ===
+PASS  FT2M                   got=0.3048                     want=0.3048                      1959 intl foot, exact
+PASS  M2FT                   got=3.280839895013123          want=3.280839895013123           reciprocal
+      lbf exact rational = 8896443230521/2000000000000 = 4.4482216152605
+PASS  LBF2N                  got=4.4482216152605            want=4.4482216152605             0.45359237 kg x 9.80665 m/s^2, exact
+PASS  LBF2N literal          got=4.4482216152605            want=4.4482216152605             NIST SP811 B.9
+PASS  LB2KG                  got=0.45359237                 want=0.45359237                  1959 intl pound, exact
+PASS  SLUG2KG                got=14.593902937206362         want=14.593902937206362          lbf/ft, = 14.5939029372064
+      SLUG2KG = 14.593902937206362   (NIST: 14.59390 kg)
+PASS  SLUG_FT2_TO_KG_M2      got=1.3558179483314003         want=1.3558179483314003          slug.ft^2 -> kg.m^2
+      SLUG_FT2_TO_KG_M2 = 1.3558179483314003  (NIST: 1.355818 kg.m^2)
+PASS    same, via lbf.ft     got=1.3558179483314003         want=1.3558179483314003          identity slug.ft^2 == lbf.ft.s^2
+PASS  DEG2RAD                got=0.017453292519943295       want=0.017453292519943295        definition
+PASS  RAD2DEG                got=57.29577951308232          want=57.29577951308232           definition
+PASS  PER_DEG_TO_PER_RAD     got=57.29577951308232          want=57.29577951308232           d/ddeg -> d/drad multiplies by 180/pi
+PASS  KT2MS                  got=0.5144444444444445         want=0.5144444444444445          1852 m/h, exact -> 0.514444...
+      KT2MS = 0.5144444444444445  (NIST: 0.5144444 m/s)
+PASS  FTS2MS                 got=0.3048                     want=0.3048                      ft/s -> m/s is the same number as ft->m
+PASS  SLUG_FT3_TO_KG_M3      got=515.3788183931961          want=515.3788183931961           slug/ft^3 -> kg/m^3
+      SLUG_FT3_TO_KG_M3 = 515.3788183931961  (lit: 515.3788 kg/m^3)
+PASS  HP2W                   got=745.6998715822702          want=745.6998715822702           550 ft.lbf/s
+      HP2W = 745.6998715822702  (NIST: 745.6999 W)
+
+=== 1b. Round-trip / internal consistency ===
+PASS  FT2M*M2FT              got=0.9999999999999999         want=1.0                         round trip
+PASS  DEG2RAD*RAD2DEG        got=1.0                        want=1.0                         round trip
+      SLUG2KG/LB2KG = 32.17404855643044   (should be g0 in ft/s^2 = 32.17404855643044)
+PASS  slug/lb == g0[ft/s^2]  got=32.17404855643044          want=32.17404855643044           1 slug = g0(ft/s^2) lb
+
+FAILURES: none

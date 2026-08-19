@@ -1,0 +1,39 @@
+=== 1a. Butcher tableau extraction by probing rk4_step ===
+fitted R(z) coefficients : [1.         1.         0.5        0.16666667 0.04166667]
+classical RK4 exact      : [1.         1.         0.5        0.16666667 0.04166667]
+max |diff|               : 4.340972026284362e-13
+
+=== 1b. quadrature identity: integral of t^k over [0,1] ===
+  k=0  rk4=1.0000000000000000  exact=1.0000000000000000 err=+0.000e+00
+  k=1  rk4=0.5000000000000000  exact=0.5000000000000000 err=+0.000e+00
+  k=2  rk4=0.3333333333333333  exact=0.3333333333333333 err=+0.000e+00
+  k=3  rk4=0.2500000000000000  exact=0.2500000000000000 err=+0.000e+00
+  k=4  rk4=0.2083333333333333  exact=0.2000000000000000 err=+8.333e-03
+  k=5  rk4=0.1875000000000000  exact=0.1666666666666667 err=+2.083e-02
+  Exact through k=3.  At k=4 the error is 5/24 - 1/5 = +1/120 = +8.3333e-3,
+  which is Simpson's rule error EXACTLY -- so b = [1,2,2,1]/6 with
+  c = [0,1/2,1/2,1], and no other weight set.
+
+=== 1c. observed order, harmonic oscillator (verification.oscillator_refinement) ===
+  dt=0.2      err=2.665603e-05
+  dt=0.1      err=1.666501e-06
+  dt=0.05     err=1.041641e-07
+  dt=0.025    err=6.510376e-09
+  pairwise orders: [3.9996, 3.9999, 4.0]
+  fitted order: 3.999819351358985
+
+=== 1d. independent order check: y'=y, exact e^t, no project code path ===
+  dt=0.5      err=9.356371e-04
+  dt=0.25     err=7.188926e-05
+  dt=0.125    err=4.984042e-06
+  dt=0.0625   err=3.281185e-07
+  dt=0.03125  err=2.104785e-08
+  pairwise: [3.7021, 3.8504, 3.925, 3.9625]
+
+=== 1e. nonlinear problem: y' = -y^3, y(0)=1 -> y(t) = 1/sqrt(1+2t) ===
+  dt=0.25     err=1.878679e-05
+  dt=0.125    err=1.431722e-07
+  dt=0.0625   err=1.324969e-08
+  dt=0.03125  err=1.378638e-09
+  dt=0.015625 err=1.012780e-10
+  pairwise: [7.0358, 3.4337, 3.2646, 3.7669]

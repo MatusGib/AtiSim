@@ -1,0 +1,49 @@
+==============================================================================
+A. the shipped default vs the count the calibration test uses
+==============================================================================
+   airframe.N_SPAN (production)             = 9
+   test_wind._b747_and_stations default     = 2001
+
+     n_span   strip Cl/p_hat   sourced Clp      error
+          9        -0.289400     -0.350179   -17.357%  <-- SHIPPED
+         11        -0.305981     -0.350179   -12.622%
+         21        -0.334066     -0.350179    -4.601%
+         51        -0.346031     -0.350179    -1.185%
+        101        -0.348705     -0.350179    -0.421%
+        501        -0.350047     -0.350179    -0.038%
+       2001        -0.350163     -0.350179    -0.005%  <-- test uses this
+      20001        -0.350179     -0.350179    -0.000%
+
+   The deficit is a pure quadrature error and is IDENTICAL for all four
+   aircraft (ratio 0.826435 at n=9), because it depends only on the
+   elliptic chord shape and the station count, not on the airframe:
+     boeing747            ratio = 0.826435
+     boeing747_approach   ratio = 0.826435
+     cherokee             ratio = 0.826435
+     cessna172            ratio = 0.826435
+
+   Other loading shapes at n_span = 9:
+     elliptic   ratio = 0.826435  (-17.357%)
+     uniform    ratio = 1.375000  (+37.500%)
+     tapered    ratio = 0.971154  (-2.885%)
+
+==============================================================================
+B. does it reach the PRODUCTION path?  (loads.strip_model, no override)
+==============================================================================
+   linear gust dw/dy = 0.05 1/s
+   gust_rates p_gust           = +0.049836 rad/s
+   equivalent-rate Cl          = +0.00220604   (Clp * p_hat)
+   strip_model Cl (N_SPAN=9)    = +0.00182315
+   ratio strip/rate            = 0.826435  (-17.357%)
+   SIGN AGREES (both positive); only the MAGNITUDE is short.
+   strip with n_span=2001      = +0.00220593  ratio 0.999953
+
+==============================================================================
+C. how much does it move a flown trajectory?
+==============================================================================
+   after 10 s in a dw/dy = 0.05 1/s gradient:
+     point model (equivalent rate only) phi = +17.3810 deg
+     strip, N_SPAN=9                    phi = +28.4495 deg
+     strip, n_span=2001                 phi = +30.6402 deg
+   the 9-station strip understates the 2001-station answer's DEVIATION
+   from the point model by 16.5%

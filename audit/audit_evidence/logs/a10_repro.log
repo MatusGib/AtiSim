@@ -1,0 +1,43 @@
+==============================================================================
+### repro of test_conservation.test_free_rigid_body_... (claims 5.7e-14 / 9.3e-13)
+==============================================================================
+  dt=0.01   T=600     n=60000    |L| drift=5.6958e-13 (tol 1e-11)  dir drift=1.4788e-06 deg (tol 3e-5)  KE drift=9.3205e-13 (tol 2e-11)
+  dt=0.02   T=600     n=30000    |L| drift=1.8334e-11 (tol 1e-11)  dir drift=1.4788e-06 deg (tol 3e-5)  KE drift=2.9341e-11 (tol 2e-11)
+  dt=0.05   T=600     n=12000    |L| drift=1.7865e-09 (tol 1e-11)  dir drift=1.4788e-06 deg (tol 3e-5)  KE drift=2.8071e-09 (tol 2e-11)
+  dt=0.01   T=6000    n=600000   |L| drift=5.7209e-12 (tol 1e-11)  dir drift=1.4788e-06 deg (tol 3e-5)  KE drift=8.8871e-12 (tol 2e-11)
+
+==============================================================================
+### repro of test_verification order numbers
+==============================================================================
+  oscillator                 order = 3.999819   (test asserts 4.0 +- 0.05)
+  6-DOF still air            order = 3.989127   (PROJECT.md records 3.98913)
+    errors = [5.68971293e-05 3.62320033e-06 2.27634168e-07 1.42195329e-08]
+  6-DOF smooth field         order = 1.053691   (test docstring records 1.0537)
+    errors = [1.77946531 0.84583208 0.40910308 0.19866952]
+  6-DOF Rankine core   'order' = 0.623593  (MEANINGLESS: sequence non-monotone)
+    errors = [0.43525628 0.03960198 0.08265195 0.08063046]
+    monotone? False
+
+### the WIDE sweep the docstring of test_the_six_dof_rollout_is_fourth_order quotes
+  errors = [5.68971293e-05 3.62320033e-06 2.27634168e-07 1.42195329e-08
+ 8.60807307e-10 1.48908060e-11 4.40097299e-11]
+  pairwise orders (docstring: 3.973, 3.993, 4.008, 4.167, 3.420, -0.685):
+    1/4 -> 1/8   +3.9730
+    1/8 -> 1/16   +3.9925
+    1/16 -> 1/32   +4.0008
+    1/32 -> 1/64   +4.0460
+    1/64 -> 1/128   +5.8532
+    1/128 -> 1/256   -1.5634
+  fitted slope over the WIDE window = 3.7406 (docstring says such a window reads 3.82)
+
+==============================================================================
+### free-fall / swinging-wind experiment (test claims < 1e-9 m)
+==============================================================================
+  FreeFallResult(max_position_error=3.979039320256561e-12, peak_wind=29.461817060245487, peak_dwdt=88.3855191759374, elapsed=5.99999999999996)
+
+==============================================================================
+### the pre-refactor hash (test_extracting_rk4_step_did_not_move_a_single_bit)
+==============================================================================
+  got  bbc0323e77183d73bd03817a98a530d0d563b56b4962520705aaee589f276aa4
+  want bbc0323e77183d73bd03817a98a530d0d563b56b4962520705aaee589f276aa4
+  MATCH: True

@@ -1,0 +1,98 @@
+==============================================================================
+6.1 747 cruise: recover CR-2144 Table IX-4's Zq and Mq from the plant
+==============================================================================
+   dZ/dq / m  = -1.572770 m/s   table Zq = -5.160 ft/s = -1.572768 m/s   err +0.0002%
+   dM/dq / Iyy= -0.339000 1/s   table Mq = -0.339000 1/s     err -0.0000%
+PASS  Zq round trip (q_hat = q*c/2V, chord)                          +0.0002%
+PASS  Mq round trip (q_hat = q*c/2V, chord)                          -0.0000%
+   -- had q_hat used the span b instead of c, Mq would come out -2.4290 (x7.17) -- not -0.339
+   -- had q_hat omitted the factor 2, Mq would come out -0.6780
+   dZ/dw / m  = -0.315539 1/s      table Zw = -0.317000 1/s     err -0.461%
+   dM/dw / Iyy= -0.00344488 1/(m.s)  table Mw = -0.00105000 1/(ft.s) = -0.00344488 1/(m.s)  err -0.000%
+PASS  Zw round trip (alpha = w/U0, per RADIAN)                       -0.461%
+PASS  Mw round trip (alpha = w/U0, per RADIAN)                       -0.000%
+
+==============================================================================
+6.2 747 cruise: span-referenced p_hat and r_hat (already exact in c4)
+==============================================================================
+   raw Lp=-0.463316  Np=-0.022524  Lr=+0.394129  Nr=-0.122573
+   (c4_ixz.py already showed these reproduce Table IX-8's PRIMED values to machine precision once I^-1 is applied)
+   -- had p_hat used the chord c, Lp would be -0.06466, a factor 7.17 out
+PASS  p_hat and r_hat use the SPAN (Clp is O(-0.35), not O(-2.5))    Clp=-0.3502
+PASS  q_hat uses the CHORD (Cmq is O(-20), not O(-2.9))              Cmq=-23.9232
+
+==============================================================================
+6.3 aircraft.py's helpers use the same reference lengths as aero.py
+==============================================================================
+   deriv       recovered        input      ratio
+   Zq          -1.900000     -1.90000   1.000000
+PASS     round trip Zq                                               ratio=1.00000000
+   Mq          -2.200000     -2.20000   1.000000
+PASS     round trip Mq                                               ratio=1.00000000
+   Zw          -1.700000     -1.70000   1.000000
+PASS     round trip Zw                                               ratio=1.00000000
+   Mw          -0.280000     -0.28000   1.000000
+PASS     round trip Mw                                               ratio=1.00000000
+   Zde        -17.000000    -17.00000   1.000000
+PASS     round trip Zde                                              ratio=1.00000000
+   Mde        -44.000000    -44.00000   1.000000
+PASS     round trip Mde                                              ratio=1.00000000
+   Yv          -0.150000     -0.15000   1.000000
+PASS     round trip Yv                                               ratio=1.00000000
+   Lv          -0.120000     -0.12000   1.000000
+PASS     round trip Lv                                               ratio=1.00000000
+   Nv           0.170000      0.17000   1.000000
+PASS     round trip Nv                                               ratio=1.00000000
+   Lp          -2.300000     -2.30000   1.000000
+PASS     round trip Lp                                               ratio=1.00000000
+   Np          -1.700000     -1.70000   1.000000
+PASS     round trip Np                                               ratio=1.00000000
+   Lr           1.050000      1.05000   1.000000
+PASS     round trip Lr                                               ratio=1.00000000
+   Nr          -1.030000     -1.03000   1.000000
+PASS     round trip Nr                                               ratio=1.00000000
+   Lda          3.100000      3.10000   1.000000
+PASS     round trip Lda                                              ratio=1.00000000
+   Nda          0.400000      0.40000   1.000000
+PASS     round trip Nda                                              ratio=1.00000000
+   Ydr          2.100000      2.10000   1.000000
+PASS     round trip Ydr                                              ratio=1.00000000
+   Ldr          0.600000      0.60000   1.000000
+PASS     round trip Ldr                                              ratio=1.00000000
+   Ndr         -6.500000     -6.50000   1.000000
+PASS     round trip Ndr                                              ratio=1.00000000
+
+==============================================================================
+5. PER-RADIAN: no degree-valued quantity reaches the plant
+==============================================================================
+PASS     boeing747: 1 deg gives exactly DEG2RAD x the 1 rad moment   ratio=0.017453292520 vs 0.017453292520
+PASS     cherokee: 1 deg gives exactly DEG2RAD x the 1 rad moment    ratio=0.017453292520 vs 0.017453292520
+PASS     cessna172: 1 deg gives exactly DEG2RAD x the 1 rad moment   ratio=0.017453292520 vs 0.017453292520
+PASS     boeing747_approach: 1 deg gives exactly DEG2RAD x the 1 rad moment ratio=0.017453292520 vs 0.017453292520
+
+   boeing747            CLa=+4.9441  Cma=-1.0118  Cmq=-23.9232  Clp=-0.3502  Cnb=+0.1715
+PASS     boeing747: every derivative is in its per-RADIAN band       
+   boeing747_approach   CLa=+5.7000  Cma=-1.2600  Cmq=-20.8000  Clp=-0.4500  Cnb=+0.1500
+PASS     boeing747_approach: every derivative is in its per-RADIAN band 
+   cherokee             CLa=+4.6797  Cma=-0.7409  Cmq=-7.3740  Clp=-0.4291  Cnb=+0.0673
+PASS     cherokee: every derivative is in its per-RADIAN band        
+   cessna172            CLa=+5.7296  Cma=-0.8075  Cmq=-6.2320  Clp=-0.4778  Cnb=+0.0126
+PASS     cessna172: every derivative is in its per-RADIAN band       
+
+   Cessna CL table slope = 0.10000 /deg = 5.7296 /rad;  ac.CLa = 5.7296
+PASS     Cessna CLa is the PER-RADIAN fit of a per-degree table      5.72958 vs 5.72958
+   Cessna alpha_ref = 0.02907 rad = 1.666 deg
+PASS     alpha_ref is a radian value in a sane flight range          0.0291 rad (1.67 deg)
+PASS     at_reference interpolates against RADIANS                   Clb=-0.207530 vs -0.207530
+PASS     boeing747: control limits are radians, not degrees          elev=0.4363 rad (25.0 deg)
+PASS     boeing747_approach: control limits are radians, not degrees elev=0.4363 rad (25.0 deg)
+PASS     cherokee: control limits are radians, not degrees           elev=0.4363 rad (25.0 deg)
+PASS     cessna172: control limits are radians, not degrees          elev=0.4363 rad (25.0 deg)
+PASS     boeing747: sweep is radians                                 sweep=0.6545 rad (37.5 deg)
+PASS     boeing747_approach: sweep is radians                        sweep=0.6545 rad (37.5 deg)
+PASS     cherokee: sweep is radians                                  sweep=0.0000 rad (0.0 deg)
+PASS     cessna172: sweep is radians                                 sweep=0.0000 rad (0.0 deg)
+
+FAILURES: none
+
+NOTE: Zw round-trips to ~1% rather than exactly, because aircraft.py's CLa relation subtracts the trim CD and the plant's dZ/dw at alpha=0 also picks up the induced-drag slope. This is a linearisation-point effect, not a unit error: the discrepancy is O(CD), not O(57.3) or O(b/c).

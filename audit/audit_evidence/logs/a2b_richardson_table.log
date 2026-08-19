@@ -1,0 +1,61 @@
+
+============================================================================
+(a) STILL AIR   [RK4 should be p=4]
+  three finest grids 1/256, 1/512, 1/1024
+  componentwise observed p from that triple: [ 0.7843     nan -1.2801]
+  extrapolation uses p = 4.0
+  RICHARDSON-EXTRAPOLATED EXACT pos_ned = [944.4786093043, 0.0000000000, -12184.5674676620]
+          dt    |pos - exact| [m]     order    x above 7e-11 floor
+        0.25         5.689713e-05                        8.128e+05
+       0.125         3.623199e-06    3.9730              5.176e+04
+      0.0625         2.276324e-07    3.9925                   3252
+     0.03125         1.421778e-08    4.0009                  203.1
+    0.015625         8.590563e-10    4.0488                  12.27
+   0.0078125         1.489298e-11    5.8500                 0.2128
+  0.00390625         4.582863e-11   -1.6216                 0.6547
+  0.00195312         3.281298e-11    0.4820                 0.4688
+  0.000976562         1.822539e-12    4.1702                0.02604
+
+============================================================================
+(b) SMOOTH LeeWave field, w0=25 m/s, lambda=1200 m   [wind held -> p=1]
+  three finest grids 1/256, 1/512, 1/1024
+  componentwise observed p from that triple: [0.9981    nan 1.0019]
+  extrapolation uses p = 1.0
+  RICHARDSON-EXTRAPOLATED EXACT pos_ned = [943.2466404865, 0.0000000000, -12200.7087868896]
+          dt    |pos - exact| [m]     order    x above 7e-11 floor
+        0.25         1.785791e+00                        2.551e+10
+       0.125         8.521594e-01    1.0674              1.217e+10
+      0.0625         4.154308e-01    1.0365              5.935e+09
+     0.03125         2.049974e-01    1.0190              2.929e+09
+    0.015625         1.018141e-01    1.0097              1.454e+09
+   0.0078125         5.073703e-02    1.0048              7.248e+08
+  0.00390625         2.532793e-02    1.0023              3.618e+08
+  0.00195312         1.265584e-02    1.0009              1.808e+08
+  0.000976562         6.327921e-03    1.0000               9.04e+07
+
+
+(c) RANKINE CORE: p is assumed 1 ONLY to show the extrapolation is unusable.
+
+============================================================================
+(c) RANKINE VORTEX CORE CROSSING   [no order exists]
+  three finest grids 1/256, 1/512, 1/1024
+  componentwise observed p from that triple: [-0.3765     nan  3.0452]
+  extrapolation uses p = 1.0
+  RICHARDSON-EXTRAPOLATED EXACT pos_ned = [580.6061477218, 0.0000000000, -12185.5220549493]
+          dt    |pos - exact| [m]     order    x above 7e-11 floor
+        0.25         3.036548e+00                        4.338e+10
+       0.125         1.426875e+00    1.0896              2.038e+10
+      0.0625         4.242487e-01    1.7499              6.061e+09
+     0.03125         3.067406e-02    3.7898              4.382e+08
+    0.015625         7.169942e-02   -1.2249              1.024e+09
+   0.0078125         6.959444e-02    0.0430              9.942e+08
+  0.00390625         1.915000e-02    1.8616              2.736e+08
+  0.00195312         6.358801e-03    1.5905              9.084e+07
+  0.000976562         3.179400e-03    1.0000              4.542e+07
+
+Also extrapolate (c) with p=2 and p=4 to show the answer moves with the
+assumed order -- the mark of an extrapolation that means nothing:
+   p=0.5: exact_pD = -12185.526378 m   exact_pN = 580.604912 m
+   p=1.0: exact_pD = -12185.522055 m   exact_pN = 580.606148 m
+   p=2.0: exact_pD = -12185.520017 m   exact_pN = 580.606730 m
+   p=4.0: exact_pD = -12185.519202 m   exact_pN = 580.606963 m

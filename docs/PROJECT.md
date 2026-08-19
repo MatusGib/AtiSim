@@ -304,16 +304,28 @@ remediation pass — and the two it omitted were the two that look worse, phugoi
 printed **p.231**, `Z(DET)1 = .0489`, `W(DET)1 = .0673`, `Z(DET)2 = .387`,
 `W(DET)2 = .964`, read at 600 dpi and re-read independently when the rows were added.
 
-Adding them strengthens the position rather than weakening it. `AUDIT.md` §2.3 patches
-the engine's own cruise plant with the two derivative families §5 declares out of scope,
-one family at a time, and **every one of the four closes to ≤1% when both are restored**
-(phugoid ωn +0.3%, phugoid ζ +0.5%, short-period ωn −0.9%, short-period ζ +0.1%). The
-speed derivatives alone fix the phugoid frequency and make short-period damping slightly
-worse; the α̇ derivatives alone fix short-period damping and leave the phugoid frequency
-exactly unmoved; phugoid damping needs both, which is why it is attributable to neither.
-So the whole cruise mode discrepancy is the two documented omissions and nothing else —
-the aerodynamic data, the conversion chain, the trim solve and the eigen-extraction are
-all exonerated by it.
+**THE MODEL DID NOT CHANGE — the comparison did.** Every "as shipped" figure above is
+the engine's own value, unchanged: the remediation pass added two ROWS, not two
+derivatives. `Aircraft` still carries no speed derivative (`Xu, Zu, Mu`) and no α̇
+derivative (`Zẇ, Mẇ`), and §5 still declares both families out of scope. Read the row
+labels literally.
+
+The ≤1% figures below are an **attribution, computed in analysis**, and are not a state
+this code can be run in. `AUDIT.md` §2.3 patches the engine's own cruise plant matrix
+with those two families, taken from CR-2144 Table IX-4 FC9, one family at a time, and
+**every one of the four closes to ≤1% when both are restored**: phugoid ωn +0.3%,
+phugoid ζ +0.5%, short-period ωn −0.9%, short-period ζ +0.1%. The speed derivatives alone
+fix the phugoid frequency and make short-period damping slightly worse; the α̇ derivatives
+alone fix short-period damping and leave the phugoid frequency exactly unmoved; phugoid
+damping needs both, which is why it is attributable to neither.
+
+**Why that strengthens the position rather than weakening it.** The two rows added are
+the two that look worse, so the table now shows a larger worst-case error than it did —
+and it simultaneously shows that the whole cruise mode discrepancy is the two documented
+omissions and nothing else. The aerodynamic data, the conversion chain, the trim solve
+and the eigen-extraction are all exonerated by it. Restoring the two families in the
+engine is a **feature with its own design and re-measurement**, not an error correction,
+and deliberately did not happen here.
 
 Superseded by the session-5 `Mq` fix (§6d), kept per §4's rule: short-period ζ read
 **0.338 / 12.6%** and phugoid ωn **0.0554** while `Mq` was −0.330. Short-period ωn moved
@@ -1271,6 +1283,9 @@ protocol with a linear and a table implementation. That was the option not taken
 ## 9. Session log
 
 ### Session 16 — remediation: fixing what the audit found, and not fixing the rest
+
+Code and documents in commit `4e925c4`; the audit documents, the regression tests and
+the regenerated PDF in the commit after it.
 
 The audit produced 41 findings. This session acted on them under `FIX_PROMPT.md`, whose
 standing rule is the audit's own: *a known, bounded, honestly-recorded flaw is a pass; an

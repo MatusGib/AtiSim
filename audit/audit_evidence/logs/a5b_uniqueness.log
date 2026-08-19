@@ -1,0 +1,233 @@
+grid 19x11x10 = 2090 starts per aircraft
+
+==========================================================================
+boeing747  V=235.915 m/s  H=12192.0 m   converged 2090/2090
+PHYSICALLY DISTINCT roots (alpha folded mod 2pi): 2
+  elevator_limit = +-0.436 rad, throttle is physical on [0, 1]
+  root 0: alpha=   +4.6362 deg  de=-0.000443 rad (  -0.025 deg)  thr=   +0.737647
+           basin  1870/2090  |residual at folded root| = 1.421e-14
+           guess alpha  -30.0.. +90.0 deg,  de -0.60..+0.60,  thr -1.00..+5.00
+           VERDICT: PHYSICAL
+  root 1: alpha= -118.1008 deg  de=+1.500365 rad ( +85.965 deg)  thr= -193.686533
+           basin   220/2090  |residual at folded root| = 3.163e-14
+           guess alpha  -90.0.. -60.0 deg,  de -0.60..+0.60,  thr -1.00..+5.00
+           VERDICT: ABSURD -- alpha>15deg (is_physical=False); |elevator|>0.44 rad; throttle outside [0,1]
+  -- basin boundary probe around the default guess [0.05, 0.0, 0.5] --
+     guess alpha  -90.0 deg -> converged alpha  -118.1008 deg (folded), thr=-193.6865 
+     guess alpha  -85.0 deg -> converged alpha  -118.1008 deg (folded), thr=-193.6865 
+     guess alpha  -80.0 deg -> converged alpha  -118.1008 deg (folded), thr=-193.6865 
+     guess alpha  -75.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  -70.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  -65.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  -60.0 deg -> converged alpha  -118.1008 deg (folded), thr=-193.6865 
+     guess alpha  -55.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  -50.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  -45.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  -40.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  -35.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  -30.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  -25.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  -20.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  -15.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  -10.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha   -5.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha   +0.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha   +5.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  +10.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  +15.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  +20.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  +25.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  +30.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  +35.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  +40.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  +45.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  +50.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  +55.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  +60.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  +65.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  +70.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  +75.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  +80.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  +85.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+     guess alpha  +90.0 deg -> converged alpha    +4.6362 deg (folded), thr=+0.7376 <-- DIFFERENT ROOT
+  Newton Jacobian at the nominal root: cond = 8.5374e+01
+     J = 
+[[-6.260346e-01 -4.606933e-02  8.733066e-01]
+ [-7.434985e+01 -5.423934e+00  0.000000e+00]
+ [-8.047360e-01 -1.148633e+00  0.000000e+00]]
+
+==========================================================================
+boeing747_approach  V=84.883 m/s  H=0.0 m   converged 2090/2090
+PHYSICALLY DISTINCT roots (alpha folded mod 2pi): 2
+  elevator_limit = +-0.436 rad, throttle is physical on [0, 1]
+  root 0: alpha=   +5.6219 deg  de=+0.001282 rad (  +0.073 deg)  thr=   +0.296129
+           basin  1980/2090  |residual at folded root| = 2.665e-14
+           guess alpha  -60.0.. +90.0 deg,  de -0.60..+0.60,  thr -1.00..+5.00
+           VERDICT: PHYSICAL
+  root 1: alpha= -116.0927 deg  de=+1.998777 rad (+114.521 deg)  thr=  -37.123364
+           basin   110/2090  |residual at folded root| = 8.926e-15
+           guess alpha  -90.0.. -90.0 deg,  de -0.60..+0.60,  thr -1.00..+5.00
+           VERDICT: ABSURD -- alpha>15deg (is_physical=False); |elevator|>0.44 rad; throttle outside [0,1]
+  -- basin boundary probe around the default guess [0.05, 0.0, 0.5] --
+     guess alpha  -90.0 deg -> converged alpha  -116.0927 deg (folded), thr=-37.1234 
+     guess alpha  -85.0 deg -> converged alpha  -116.0927 deg (folded), thr=-37.1234 
+     guess alpha  -80.0 deg -> converged alpha  -116.0927 deg (folded), thr=-37.1234 
+     guess alpha  -75.0 deg -> converged alpha  +179.3399 deg (folded), thr=-4124.4661 <-- DIFFERENT ROOT
+     guess alpha  -70.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  -65.0 deg -> converged alpha  -116.0927 deg (folded), thr=-37.1234 
+     guess alpha  -60.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  -55.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  -50.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  -45.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  -40.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  -35.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  -30.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  -25.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  -20.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  -15.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  -10.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha   -5.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha   +0.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha   +5.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  +10.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  +15.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  +20.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  +25.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  +30.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  +35.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  +40.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  +45.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  +50.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  +55.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  +60.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  +65.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  +70.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  +75.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  +80.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  +85.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+     guess alpha  +90.0 deg -> converged alpha    +5.6219 deg (folded), thr=+0.2961 <-- DIFFERENT ROOT
+  Newton Jacobian at the nominal root: cond = 9.5136e+01
+     J = 
+[[-8.293470e-01 -4.917882e-02  3.025284e+00]
+ [-5.146025e+01 -2.998379e+00  0.000000e+00]
+ [-5.400660e-01 -5.743560e-01  0.000000e+00]]
+
+==========================================================================
+cherokee  V=50.000 m/s  H=1499.6 m   converged 2090/2090
+PHYSICALLY DISTINCT roots (alpha folded mod 2pi): 3
+  elevator_limit = +-0.436 rad, throttle is physical on [0, 1]
+  root 0: alpha=   +0.0124 deg  de=-0.000067 rad (  -0.004 deg)  thr=   +0.658771
+           basin  1910/2090  |residual at folded root| = 1.620e-14
+           guess alpha  -60.0.. +90.0 deg,  de -0.60..+0.60,  thr -1.00..+5.00
+           VERDICT: PHYSICAL
+  root 1: alpha= +149.5490 deg  de=-0.809132 rad ( -46.360 deg)  thr= -241.812685
+           basin   150/2090  |residual at folded root| = 3.081e-13
+           guess alpha  -90.0.. +90.0 deg,  de -0.60..+0.60,  thr -1.00..+5.00
+           VERDICT: ABSURD -- alpha>15deg (is_physical=False); |elevator|>0.44 rad; throttle outside [0,1]
+  root 2: alpha= -130.1754 deg  de=+0.704311 rad ( +40.354 deg)  thr= -139.638268
+           basin    30/2090  |residual at folded root| = 2.403e-13
+           guess alpha  +90.0.. +90.0 deg,  de -0.20..+0.20,  thr -1.00..+5.00
+           VERDICT: ABSURD -- alpha>15deg (is_physical=False); |elevator|>0.44 rad; throttle outside [0,1]
+  -- basin boundary probe around the default guess [0.05, 0.0, 0.5] --
+     guess alpha  -90.0 deg -> converged alpha  +149.5490 deg (folded), thr=-241.8127 
+     guess alpha  -85.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  -80.0 deg -> converged alpha  -130.1754 deg (folded), thr=-139.6383 <-- DIFFERENT ROOT
+     guess alpha  -75.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  -70.0 deg -> converged alpha  +149.5490 deg (folded), thr=-241.8127 
+     guess alpha  -65.0 deg -> converged alpha  -130.1754 deg (folded), thr=-139.6383 <-- DIFFERENT ROOT
+     guess alpha  -60.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  -55.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  -50.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  -45.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  -40.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  -35.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  -30.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  -25.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  -20.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  -15.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  -10.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha   -5.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha   +0.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha   +5.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  +10.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  +15.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  +20.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  +25.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  +30.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  +35.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  +40.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  +45.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  +50.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  +55.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  +60.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  +65.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  +70.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+     guess alpha  +75.0 deg -> converged alpha  -130.1754 deg (folded), thr=-139.6383 <-- DIFFERENT ROOT
+     guess alpha  +80.0 deg -> converged alpha  -130.1754 deg (folded), thr=-139.6383 <-- DIFFERENT ROOT
+     guess alpha  +85.0 deg -> converged alpha  +149.5490 deg (folded), thr=-241.8127 
+     guess alpha  +90.0 deg -> converged alpha    +0.0124 deg (folded), thr=+0.6588 <-- DIFFERENT ROOT
+  Newton Jacobian at the nominal root: cond = 5.4216e+01
+     J = 
+[[ -8.626534  -1.719673   1.70186 ]
+ [-86.299281 -16.980005   0.      ]
+ [-13.835256 -44.630181   0.      ]]
+
+==========================================================================
+cessna172  V=60.000 m/s  H=1524.0 m   converged 2090/2090
+PHYSICALLY DISTINCT roots (alpha folded mod 2pi): 3
+  elevator_limit = +-0.436 rad, throttle is physical on [0, 1]
+  root 0: alpha=   +1.8171 deg  de=-0.035072 rad (  -2.009 deg)  thr=   +0.820063
+           basin  1810/2090  |residual at folded root| = 1.607e-14
+           guess alpha  -60.0.. +90.0 deg,  de -0.60..+0.60,  thr -1.00..+5.00
+           VERDICT: PHYSICAL
+  root 1: alpha= -114.9094 deg  de=+1.390704 rad ( +79.681 deg)  thr= -290.676438
+           basin   260/2090  |residual at folded root| = 1.381e-13
+           guess alpha  -90.0.. +90.0 deg,  de -0.60..+0.60,  thr -1.00..+5.00
+           VERDICT: ABSURD -- alpha>15deg (is_physical=False); |elevator|>0.44 rad; throttle outside [0,1]
+  root 2: alpha= +154.9861 deg  de=-1.905978 rad (-109.205 deg)  thr= -818.005775
+           basin    20/2090  |residual at folded root| = 1.419e-12
+           guess alpha  +90.0.. +90.0 deg,  de -0.20..+0.10,  thr -1.00..+5.00
+           VERDICT: ABSURD -- alpha>15deg (is_physical=False); |elevator|>0.44 rad; throttle outside [0,1]
+  -- basin boundary probe around the default guess [0.05, 0.0, 0.5] --
+     guess alpha  -90.0 deg -> converged alpha  -114.9094 deg (folded), thr=-290.6764 
+     guess alpha  -85.0 deg -> converged alpha  -114.9094 deg (folded), thr=-290.6764 
+     guess alpha  -80.0 deg -> converged alpha  -114.9094 deg (folded), thr=-290.6764 
+     guess alpha  -75.0 deg -> converged alpha  +154.9861 deg (folded), thr=-818.0058 <-- DIFFERENT ROOT
+     guess alpha  -70.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha  -65.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha  -60.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha  -55.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha  -50.0 deg -> converged alpha  -114.9094 deg (folded), thr=-290.6764 
+     guess alpha  -45.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha  -40.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha  -35.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha  -30.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha  -25.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha  -20.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha  -15.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha  -10.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha   -5.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha   +0.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha   +5.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha  +10.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha  +15.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha  +20.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha  +25.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha  +30.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha  +35.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha  +40.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha  +45.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha  +50.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha  +55.0 deg -> converged alpha  -114.9094 deg (folded), thr=-290.6764 
+     guess alpha  +60.0 deg -> converged alpha  -114.9094 deg (folded), thr=-290.6764 
+     guess alpha  +65.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha  +70.0 deg -> converged alpha    +1.8171 deg (folded), thr=+0.8201 <-- DIFFERENT ROOT
+     guess alpha  +75.0 deg -> converged alpha  -114.9094 deg (folded), thr=-290.6764 
+     guess alpha  +80.0 deg -> converged alpha  -114.9094 deg (folded), thr=-290.6764 
+     guess alpha  +85.0 deg -> converged alpha  -114.9094 deg (folded), thr=-290.6764 
+     guess alpha  +90.0 deg -> converged alpha  -114.9094 deg (folded), thr=-290.6764 
+  Newton Jacobian at the nominal root: cond = 1.3981e+02
+     J = 
+[[ 3.669602e-01  2.994293e-02  1.231760e+00]
+ [-1.701192e+02 -1.379883e+01  0.000000e+00]
+ [-2.034464e+01 -2.907007e+01  0.000000e+00]]

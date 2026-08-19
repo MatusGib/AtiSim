@@ -1,0 +1,96 @@
+==============================================================================
+### 4a. TORQUE-FREE: angular momentum and rotational KE drift
+==============================================================================
+
+dt=0.002, n=30000, t_end=60 s   H0=4385.556749148 kg m^2/s  T0=2191.500000000 J
+  max |H|/H0 - 1                     = 8.881784e-15
+  final |H|/H0 - 1                   = -5.995204e-15
+  max |T/T0 - 1|                     = 1.576517e-14
+  final T/T0 - 1                     = -1.021405e-14
+  max |H_inertial - H_inertial(0)|   = 4.715730e-10  (direction drift, kg m^2/s)
+  ||q|| - 1 final                    = +0.000000e+00
+
+dt=0.02, n=60000, t_end=1200 s   H0=4385.556749148 kg m^2/s  T0=2191.500000000 J
+  max |H|/H0 - 1                     = 2.608880e-10
+  final |H|/H0 - 1                   = -2.550059e-10
+  max |T/T0 - 1|                     = 5.743778e-10
+  final T/T0 - 1                     = -5.651413e-10
+  max |H_inertial - H_inertial(0)|   = 3.619130e-06  (direction drift, kg m^2/s)
+  ||q|| - 1 final                    = -1.110223e-16
+
+dt=0.02, n=300000, t_end=6000 s   H0=4385.556749148 kg m^2/s  T0=2191.500000000 J
+  max |H|/H0 - 1                     = 1.126312e-09
+  final |H|/H0 - 1                   = -1.124493e-09
+  max |T/T0 - 1|                     = 2.544548e-09
+  final T/T0 - 1                     = -2.542247e-09
+  max |H_inertial - H_inertial(0)|   = 5.484106e-06  (direction drift, kg m^2/s)
+  ||q|| - 1 final                    = +0.000000e+00
+
+==============================================================================
+### 4b. GALILEAN INVARIANCE under a uniform STEADY wind
+==============================================================================
+
+W = [7.0, -3.0, 0.0] m/s NED, 20 s at dt=0.02
+  max |dquat|          = 2.726118e-15
+  max |domega| [rad/s] = 6.917210e-16
+  max |dvel_body|      = 4.681239e-01
+  max |pos - (pos_still + W t)| [m] = 2.819434e-11
+
+W = [70.0, -30.0, 0.0] m/s NED, 20 s at dt=0.02
+  max |dquat|          = 3.022756e-14
+  max |domega| [rad/s] = 7.433941e-15
+  max |dvel_body|      = 4.681239e+00
+  max |pos - (pos_still + W t)| [m] = 2.264642e-10
+
+W = [0.0, 0.0, 2.0] m/s NED, 20 s at dt=0.02
+  max |dquat|          = 8.849986e-04
+  max |domega| [rad/s] = 1.632554e-04
+  max |dvel_body|      = 7.746892e-02
+  max |pos - (pos_still + W t)| [m] = 3.077563e+00
+
+==============================================================================
+### 4c. ROTATIONAL INVARIANCE about the NED z (down) axis
+==============================================================================
+Gravity is along NED +z, so ONLY rotations about z are a symmetry of the
+problem. Rotating the whole configuration by psi about z must rotate the
+whole trajectory by psi and leave body-frame quantities untouched.
+
+psi = 0.7 rad, 40 s at dt=0.02, aileron+rudder excited
+  max |vel_body diff|   = 5.684342e-14 m/s
+  max |omega diff|      = 2.498002e-16 rad/s
+  max |pos - R pos|     = 6.808477e-09 m
+  max |quat - qz*quat|  = 1.831868e-15
+  |pos| scale           = 1.219e+04 m
+
+psi = 2.5 rad, 40 s at dt=0.02, aileron+rudder excited
+  max |vel_body diff|   = 5.684342e-14 m/s
+  max |omega diff|      = 3.261280e-16 rad/s
+  max |pos - R pos|     = 1.906119e-08 m
+  max |quat - qz*quat|  = 9.992007e-16
+  |pos| scale           = 1.219e+04 m
+
+psi = -1.9 rad, 40 s at dt=0.02, aileron+rudder excited
+  max |vel_body diff|   = 1.705303e-13 m/s
+  max |omega diff|      = 3.747003e-16 rad/s
+  max |pos - R pos|     = 1.398314e-08 m
+  max |quat - qz*quat|  = 3.913536e-15
+  |pos| scale           = 1.219e+04 m
+
+-- control: a rotation about NED x (NOT a symmetry, gravity is along z) --
+  max |vel_body diff| = 9.197289e+00 m/s   <- expected to be LARGE; this is the control that the test above is not vacuous
+
+==============================================================================
+### 4d. ENERGY in still air over a long horizon
+==============================================================================
+
+trimmed, powered: 500000 steps = 10000 s
+  E(0)   = 4.256248e+10 J    E(end) = 4.256248e+10 J   dE/E0 = +0.000000e+00
+  altitude 0 -> end : 12192.0000 -> 12192.0000 m
+  |V| 0 -> end      : 235.915200 -> 235.915200 m/s
+  max |E-E0|/E0 over the run = 0.000000e+00
+
+power off (throttle=0): 100000 steps = 2000 s
+  E(0)   = 4.256160e+10 J    E(end) = -9.936246e+09 J   dE/E0 = -1.233456e+00
+  altitude 0 -> end : 12192.0000 -> -3994.3118 m
+  |V| 0 -> end      : 235.902359 -> 97.594501 m/s
+  max |E-E0|/E0 over the run = 1.233456e+00
