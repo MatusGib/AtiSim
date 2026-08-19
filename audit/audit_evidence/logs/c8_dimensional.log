@@ -1,0 +1,62 @@
+==============================================================================
+(a) ISA standard atmosphere against published table values
+==============================================================================
+       h[m]                  T                      p                    rho                  a
+          0   288.150/288.150    101325.00/101325.00    1.225000/1.225000    340.294/340.294 
+PASS     ISA T at 0 m                                            +0.0000%
+PASS     ISA p at 0 m                                            +0.0000%
+PASS     ISA rho at 0 m                                          +0.0000%
+PASS     ISA a at 0 m                                            -0.0000%
+       5000   255.650/255.650     54019.89/54019.90     0.736116/0.736116    320.529/320.529 
+PASS     ISA T at 5000 m                                         -0.0000%
+PASS     ISA p at 5000 m                                         -0.0000%
+PASS     ISA rho at 5000 m                                       -0.0001%
+PASS     ISA a at 5000 m                                         +0.0001%
+      11000   216.650/216.650     22632.04/22632.10     0.363918/0.363918    295.069/295.070 
+PASS     ISA T at 11000 m                                        -0.0000%
+PASS     ISA p at 11000 m                                        -0.0003%
+PASS     ISA rho at 11000 m                                      -0.0001%
+PASS     ISA a at 11000 m                                        -0.0002%
+      12192   216.650/216.650     18753.90/18753.90     0.301558/0.301559    295.069/295.070 
+PASS     ISA T at 12192 m                                        -0.0000%
+PASS     ISA p at 12192 m                                        +0.0000%
+PASS     ISA rho at 12192 m                                      -0.0003%
+PASS     ISA a at 12192 m                                        -0.0002%
+      20000   216.650/216.650      5474.88/5474.89      0.088035/0.088035    295.069/295.070 
+PASS     ISA T at 20000 m                                        -0.0000%
+PASS     ISA p at 20000 m                                        -0.0002%
+PASS     ISA rho at 20000 m                                      -0.0002%
+PASS     ISA a at 20000 m                                        -0.0002%
+PASS     pressure is continuous at the tropopause                22632.040099 vs 22632.040091
+
+==============================================================================
+(b) SCALING LAWS of aero_forces_moments
+==============================================================================
+PASS  force is exactly linear in rho                             ratios=[2. 2. 2.]
+PASS  moment is exactly linear in rho                            ratios=[2. 2. 2.]
+PASS  force is exactly quadratic in V (alpha,beta held)          ratios=[9. 9. 9.]
+PASS  moment is exactly quadratic in V                           ratios=[9. 9. 9.]
+PASS  force is exactly linear in S                               ratios=[5. 5. 5.]
+   doubling the SPAN  scales (l, m, n) by [2. 1. 2.]
+   doubling the CHORD scales (l, m, n) by [1. 2. 1.]
+PASS  rolling moment l is referenced to the SPAN only            
+PASS  pitching moment m is referenced to the CHORD only          
+PASS  yawing moment n is referenced to the SPAN only             
+
+==============================================================================
+(c) the remaining formulas
+==============================================================================
+   full-throttle sea-level thrust = 773990.6 N = 174.00 klbf (4 x 43.5 klbf = 174 klbf)
+PASS  thrust_force returns newtons and equals max_thrust at rho0 773990.56 vs 773990.56
+PASS  thrust lapses as (rho/rho0)^0.8                            ratio=0.57434918
+PASS  thrust acts along body +x only                             
+   drag-free, thrust-free, omega=0: accel in NED = [ 4.84139711e-16 -8.37121693e-16  9.80665000e+00] m/s^2
+PASS  gravity is exactly (0,0,G0) in NED at a non-trivial attitude err=8.37e-16
+   F for a descending air mass (w=-5 up)      = +0.025000 (must be > 0)
+   F for a growing tailwind (Uxdot=+1 m/s^2)  = +0.101972 (must be > 0)
+PASS  f_factor is positive for a descending air mass             
+PASS  f_factor is positive for an accelerating tailwind          
+PASS  f_factor is dimensionless (shear/g and w/V both non-dimensional) 
+PASS  -omega x v does no work (transport term is orthogonal to v) d|v|/dt from Coriolis = 0.00e+00
+
+FAILURES: none

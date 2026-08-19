@@ -1,0 +1,48 @@
+==============================================================================
+### 7. JIT vs EAGER (jax.disable_jit())
+==============================================================================
+
+-- trim --
+  jit   x = array([ 8.09174992e-02, -4.43029137e-04,  7.37647038e-01])
+  eager x = array([ 8.09174992e-02, -4.43029137e-04,  7.37647038e-01])
+  bit-identical x: False   |dx| = 1.645e-17
+  bit-identical residual: False  |dres| = 1.780e-15
+
+-- one integrate.step, dt=0.02 --
+  pos_ned   identical=True  max|diff|=0.000e+00
+  vel_body  identical=True  max|diff|=0.000e+00
+  quat      identical=True  max|diff|=0.000e+00
+  omega     identical=False  max|diff|=5.421e-20
+
+-- 1000-step rollout, dt=0.02 --
+  traj.pos_ned   identical=False  max|diff|=4.547e-13
+  traj.vel_body  identical=False  max|diff|=3.553e-15
+  traj.quat      identical=False  max|diff|=1.110e-16
+  traj.omega     identical=False  max|diff|=1.128e-17
+  final pos jit   = array([  4809.41371101,      0.        , -11899.72775483])
+  final pos eager = array([  4809.41371101,      0.        , -11899.72775483])
+
+-- 1000-step rollout through the smooth lee-wave field --
+  traj.pos_ned   identical=False  max|diff|=4.547e-13
+  traj.vel_body  identical=False  max|diff|=3.997e-14
+  traj.quat      identical=False  max|diff|=2.220e-16
+  traj.omega     identical=False  max|diff|=1.700e-16
+
+-- mode extraction (jacfwd through validation) --
+  A_lon identical: False  max|diff| = 1.388e-17
+  wn np.float64(0.05531893510535394) vs np.float64(0.05531893510535394)  equal=True
+  zeta np.float64(0.055955500750751154) vs np.float64(0.055955500750751154)  equal=True
+  wn np.float64(0.9507725036852911) vs np.float64(0.9507725036852911)  equal=True
+  zeta np.float64(0.34252586020862247) vs np.float64(0.34252586020862247)  equal=True
+  lateral jit  : ((np.float64(0.9432021593841612), np.float64(0.03608524165826132)), np.float64(1.795365701258733), np.float64(138.04240755269024))
+  lateral eager: ((np.float64(0.9432021593841612), np.float64(0.03608524165826132)), np.float64(1.795365701258733), np.float64(138.04240755269024))
+  lateral equal: True
+
+-- rollout vs logged_rollout vs a hand Python loop of `step` --
+  rollout vs logged_rollout final state identical: True
+  rollout vs python loop      final state identical: True
+    max |dpos| = 0.000e+00
+
+-- batched_rollout (vmap) vs single rollout --
+  vmap member 0 vs single rollout identical: True
+    max |dpos| = 0.000e+00

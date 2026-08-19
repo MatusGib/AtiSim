@@ -1,0 +1,111 @@
+==============================================================================
+2a. alpha positive nose-up  -- deliberately PITCHED velocity
+==============================================================================
+   theta = +8 deg, velocity due north (level flight path)
+   vel_body = [99.02680687  0.         13.9173101 ]   (w = +13.9173 > 0)
+   alpha = +8.000000 deg,  beta = +0.000000 deg
+PASS  alpha == +theta for a nose-up aircraft on a level path           alpha=+8.0000 deg
+PASS  alpha sign is set by +w (relative wind from BELOW)               
+
+==============================================================================
+2b. beta positive = relative wind from the RIGHT -- sideslipping velocity
+==============================================================================
+   heading north, wind FROM THE EAST (from the right) at 15.0 m/s
+   vel_rel = [100.  15.   0.]   (v = +15.0000)
+   beta = +8.5308 deg
+PASS  relative wind from the RIGHT gives beta > 0                      beta=+8.531 deg
+PASS    and the mirror case (wind from the left) gives beta < 0        
+
+   boeing747            CYb= -0.8781 Cnb= +0.1715 Clb= -0.2944 -> Fy=  -349279.1 N  N=  +3979629.8 N.m  L=  -6830562.7 N.m
+PASS     boeing747: beta>0 pushes the aircraft LEFT (Fy<0)             
+PASS     boeing747: beta>0 weathercocks nose RIGHT (N>0)               
+PASS     boeing747: beta>0 rolls AWAY from the wind (L<0, dihedral effect) 
+   boeing747_approach   CYb= -0.9600 Cnb= +0.1500 Clb= -0.2210 -> Fy=  -393971.5 N  N=  +3479717.4 N.m  L=  -5126783.6 N.m
+PASS     boeing747_approach: beta>0 pushes the aircraft LEFT (Fy<0)    
+PASS     boeing747_approach: beta>0 weathercocks nose RIGHT (N>0)      
+PASS     boeing747_approach: beta>0 rolls AWAY from the wind (L<0, dihedral effect) 
+   cherokee             CYb= -0.3960 Cnb= +0.0673 Clb= -0.0998 -> Fy=    -5220.7 N  N=     +6997.3 N.m  L=    -10382.8 N.m
+PASS     cherokee: beta>0 pushes the aircraft LEFT (Fy<0)              
+PASS     cherokee: beta>0 weathercocks nose RIGHT (N>0)                
+PASS     cherokee: beta>0 rolls AWAY from the wind (L<0, dihedral effect) 
+   cessna172            CYb= -0.2680 Cnb= +0.0126 Clb= -0.2075 -> Fy=    -3680.2 N  N=     +1695.4 N.m  L=    -27925.0 N.m
+PASS     cessna172: beta>0 pushes the aircraft LEFT (Fy<0)             
+PASS     cessna172: beta>0 weathercocks nose RIGHT (N>0)               
+PASS     cessna172: beta>0 rolls AWAY from the wind (L<0, dihedral effect) 
+
+==============================================================================
+2c. ELEVATOR positive = trailing edge down -> CLde>0, Cmde<0, nose DOWN
+==============================================================================
+PASS     boeing747: CLde > 0                                           CLde=+0.3638
+PASS     boeing747: Cmde < 0                                           Cmde=-1.4442
+   boeing747            trim res=1.93e-20  +5deg elev -> qdot=-0.10024 rad/s^2, dtheta(3s)=-11.690 deg
+PASS     boeing747: +elevator gives nose-DOWN pitch accel              
+PASS     boeing747: +elevator flies the nose DOWN over 3 s             
+PASS     boeing747: +elevator adds lift at frozen alpha (dFz < 0)      dFz=-181287.4 N
+PASS     boeing747_approach: CLde > 0                                  CLde=+0.3380
+PASS     boeing747_approach: Cmde < 0                                  Cmde=-1.3400
+   boeing747_approach   trim res=5.88e-20  +5deg elev -> qdot=-0.05012 rad/s^2, dtheta(3s)=-6.614 deg
+PASS     boeing747_approach: +elevator gives nose-DOWN pitch accel     
+PASS     boeing747_approach: +elevator flies the nose DOWN over 3 s    
+PASS     boeing747_approach: +elevator adds lift at frozen alpha (dFz < 0) dFz=-21862.1 N
+PASS     cherokee: CLde > 0                                            CLde=+0.9329
+PASS     cherokee: Cmde < 0                                            Cmde=-2.3902
+   cherokee             trim res=9.54e-18  +5deg elev -> qdot=-3.89472 rad/s^2, dtheta(3s)=-69.710 deg
+PASS     cherokee: +elevator gives nose-DOWN pitch accel               
+PASS     cherokee: +elevator flies the nose DOWN over 3 s              
+PASS     cherokee: +elevator adds lift at frozen alpha (dFz < 0)       dFz=-610.6 N
+PASS     cessna172: CLde > 0                                           CLde=+0.4675
+PASS     cessna172: Cmde < 0                                           Cmde=-1.1539
+   cessna172            trim res=1.78e-15  +5deg elev -> qdot=-2.53684 rad/s^2, dtheta(3s)=-48.307 deg
+PASS     cessna172: +elevator gives nose-DOWN pitch accel              
+PASS     cessna172: +elevator flies the nose DOWN over 3 s             
+PASS     cessna172: +elevator adds lift at frozen alpha (dFz < 0)      dFz=-476.1 N
+
+==============================================================================
+2d. AILERON positive -> Clda>0 and a RIGHT-WING-DOWN roll flown
+==============================================================================
+PASS     boeing747: Clda > 0                                           Clda=+0.01362
+   boeing747            +5deg ail -> pdot=+0.01236 rad/s^2  rdot=+0.000670  phi(3s)=+1.95 deg  Cnda=+0.00129
+PASS     boeing747: +aileron gives positive roll accel                 
+PASS     boeing747: +aileron flies to right-wing-down (phi>0)          
+PASS     boeing747_approach: Clda > 0                                  Clda=+0.04610
+   boeing747_approach   +5deg ail -> pdot=+0.02821 rad/s^2  rdot=+0.001761  phi(3s)=+2.79 deg  Cnda=+0.00640
+PASS     boeing747_approach: +aileron gives positive roll accel        
+PASS     boeing747_approach: +aileron flies to right-wing-down (phi>0) 
+PASS     cherokee: Clda > 0                                            Clda=+0.05309
+   cherokee             +5deg ail -> pdot=+0.27013 rad/s^2  rdot=+0.000000  phi(3s)=+12.06 deg  Cnda=+0.00000
+PASS     cherokee: +aileron gives positive roll accel                  
+PASS     cherokee: +aileron flies to right-wing-down (phi>0)           
+PASS     cessna172: Clda > 0                                           Clda=+0.41729
+   cessna172            +5deg ail -> pdot=+9.51578 rad/s^2  rdot=-0.217624  phi(3s)=+6.72 deg  Cnda=-0.01980
+PASS     cessna172: +aileron gives positive roll accel                 
+PASS     cessna172: +aileron flies to right-wing-down (phi>0)          
+
+==============================================================================
+2e. RUDDER positive = TE left -> CYdr>0, Cndr<0, nose swings LEFT
+==============================================================================
+PASS     boeing747: CYdr > 0                                           CYdr=+0.11469
+PASS     boeing747: Cndr < 0                                           Cndr=-0.12471
+   boeing747            +5deg rud -> rdot=-0.04105 rad/s^2  dpsi(3s)=-6.085 deg  beta(3s)=+4.299 deg  Cldr=+0.01704
+PASS     boeing747: +rudder yaws nose LEFT (rdot<0)                    
+PASS     boeing747: +rudder flies the nose LEFT (dpsi<0)               
+PASS     boeing747: nose-left yaw develops POSITIVE beta               
+PASS     boeing747: +rudder side force is to the RIGHT (+y)            dFy=+56924.7 N
+PASS     boeing747_approach: CYdr > 0                                  CYdr=+0.17500
+PASS     boeing747_approach: Cndr < 0                                  Cndr=-0.10900
+   boeing747_approach   +5deg rud -> rdot=-0.02073 rad/s^2  dpsi(3s)=-3.320 deg  beta(3s)=+2.626 deg  Cldr=+0.00700
+PASS     boeing747_approach: +rudder yaws nose LEFT (rdot<0)           
+PASS     boeing747_approach: +rudder flies the nose LEFT (dpsi<0)      
+PASS     boeing747_approach: nose-left yaw develops POSITIVE beta      
+PASS     boeing747_approach: +rudder side force is to the RIGHT (+y)   dFy=+11244.8 N
+PASS     cherokee: CYdr > 0                                            CYdr=+0.11588
+PASS     cherokee: Cndr < 0                                            Cndr=-0.05090
+   cherokee             +5deg rud -> rdot=-0.57345 rad/s^2  dpsi(3s)=-7.385 deg  beta(3s)=+2.962 deg  Cldr=+0.01050
+PASS     cherokee: +rudder yaws nose LEFT (rdot<0)                     
+PASS     cherokee: +rudder flies the nose LEFT (dpsi<0)                
+PASS     cherokee: nose-left yaw develops POSITIVE beta                
+PASS     cherokee: +rudder side force is to the RIGHT (+y)             dFy=+75.8 N
+   cessna172            rudder deliberately zeroed in the definition -- no convention to test
+
+FAILURES: none
+NOTES   : ['cessna172: rudder set is identically zero; untestable']

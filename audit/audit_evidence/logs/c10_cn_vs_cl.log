@@ -1,0 +1,42 @@
+==============================================================================
+747 CRUISE (flight condition 9), alpha0 = 4.60 deg
+==============================================================================
+   CL_trim = 0.65397   CD_trim = 0.043   alpha0 = 4.60 deg
+   C_Na recovered from Zw               = +4.987127
+
+   CLa as the code computes it          = 4.944127
+   CLa from the exact C_N/C_L relation  = 4.977143
+   difference                           = +0.033016 (-0.663% low)
+
+   CDa as the code computes it          = 0.441258
+   CDa from the exact C_X/C_D relation  = 0.443915
+   difference                           = +0.002656 (-0.598%)
+
+   ac.CLa actually shipped              = 4.944127   (confirms the code path above)
+   e:   code 0.75328  exact 0.75383  (-0.073%)
+   CD0: code 0.015995  exact 0.016014  (-0.119%)
+
+==============================================================================
+747 POWER APPROACH -- NOT affected
+==============================================================================
+   Table IX-2 is already NON-DIMENSIONAL and states '/rad'. No Z/X
+   derivative is inverted for this aircraft, so the C_N/C_L question
+   cannot arise. CLa = 5.70 is the table value verbatim: 5.7
+
+==============================================================================
+CHEROKEE -- affected in principle, but alpha0 = 0 so the error VANISHES
+==============================================================================
+   aircraft.py: 'theta0 = 0 in level flight, so alpha0 = 0'. C_N == C_L
+   and C_X == C_D identically at alpha = 0, so `from_dimensional_longitudinal`
+   is exact for this aircraft. The defect is specific to a set
+   linearised at non-zero alpha0, i.e. the 747 cruise set alone.
+
+==============================================================================
+CESSNA -- only CLde and Cmde go through the helper
+==============================================================================
+   `from_dimensional_longitudinal(source_fc, Zw=0, Zq=0, Mw=0, Mq=0,
+    Zde=-17.19, Mde=-36.23, CD=0.0)`. CLde = -Zde*m/qS carries no alpha
+   term in Appendix A at all, and Cmde none either, so both are exact.
+
+SUMMARY: the C_N/C_L mismatch reaches exactly ONE aircraft (747 cruise)
+         and moves CLa by -0.66%, CDa by -0.60%, e by -0.07%, CD0 by -0.12%.

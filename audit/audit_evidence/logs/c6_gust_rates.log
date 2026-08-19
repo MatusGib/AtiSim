@@ -1,0 +1,66 @@
+==============================================================================
+3.1 RIGID ROTATION about each BODY axis in turn
+==============================================================================
+   air in rigid rotation about p (body x, roll)    
+      gust_rates -> [ 3.10000000e-02  1.95744898e-18 -1.58995929e-19]   want [0.031 0.    0.   ]
+PASS     gust_rates recovers the rigid rate, p (body x, roll)          err=6.94e-18
+PASS     no cross-axis leakage, p (body x, roll)                       max other=1.96e-18
+   air in rigid rotation about q (body y, pitch)   
+      gust_rates -> [ 9.62748107e-19  3.10000000e-02 -3.74287240e-19]   want [0.    0.031 0.   ]
+PASS     gust_rates recovers the rigid rate, q (body y, pitch)         err=1.39e-17
+PASS     no cross-axis leakage, q (body y, pitch)                      max other=9.63e-19
+   air in rigid rotation about r (body z, yaw)     
+      gust_rates -> [-3.87403867e-20 -1.86966980e-19  3.10000000e-02]   want [0.    0.    0.031]
+PASS     gust_rates recovers the rigid rate, r (body z, yaw)           err=1.04e-17
+PASS     no cross-axis leakage, r (body z, yaw)                        max other=1.87e-19
+
+==============================================================================
+3.2 THE PHYSICAL STATEMENT: rotating WITH the air must be felt as still air
+==============================================================================
+   p (body x, roll)     omega_rel = [ 6.93889390e-18 -1.95744898e-18  1.58995929e-19]   |M - M_still| = 7.633e-11 N.m
+PASS     rotating with the air feels no rate, p (body x, roll)         
+PASS     ...and produces the still-air moment, p (body x, roll)        
+   q (body y, pitch)    omega_rel = [-9.62748107e-19  1.38777878e-17  3.74287240e-19]   |M - M_still| = 1.437e-11 N.m
+PASS     rotating with the air feels no rate, q (body y, pitch)        
+PASS     ...and produces the still-air moment, q (body y, pitch)       
+   r (body z, yaw)      omega_rel = [3.87403867e-20 1.86966980e-19 1.04083409e-17]   |M - M_still| = 9.889e-11 N.m
+PASS     rotating with the air feels no rate, r (body z, yaw)          
+PASS     ...and produces the still-air moment, r (body z, yaw)         
+
+==============================================================================
+3.3 The three claimed gradient relations, one gradient at a time
+==============================================================================
+   dw_g/dy = +G  ->  p_gust = +G      got [ 1.70000000e-02 -6.69228793e-19  2.58943208e-19]
+PASS     dw_g/dy = +G  ->  p_gust = +G                                 err=3.47e-18
+   dw_g/dx = +G  ->  q_gust = -G      got [-2.53503247e-18 -1.70000000e-02  1.24090073e-19]
+PASS     dw_g/dx = +G  ->  q_gust = -G                                 err=6.94e-18
+   dv_g/dx = +G  ->  r_gust = +G      got [ 1.47243154e-19 -1.96835607e-19  1.70000000e-02]
+PASS     dv_g/dx = +G  ->  r_gust = +G                                 err=6.94e-18
+
+==============================================================================
+3.4 sampled_rates agrees with gust_rates on a LINEAR field (same sign)
+==============================================================================
+   p (body x, roll)     gust_rates=[ 3.10000000e-02  1.95744898e-18 -1.58995929e-19]  sampled_rates=[3.10000000e-02 3.91759898e-18 2.23054054e-16]
+PASS     sampled_rates == gust_rates for p (body x, roll)              err=2.23e-16
+   q (body y, pitch)    gust_rates=[ 9.62748107e-19  3.10000000e-02 -3.74287240e-19]  sampled_rates=[-5.03833701e-18  3.10000000e-02  3.40051581e-19]
+PASS     sampled_rates == gust_rates for q (body y, pitch)             err=4.51e-17
+   r (body z, yaw)      gust_rates=[-3.87403867e-20 -1.86966980e-19  3.10000000e-02]  sampled_rates=[-5.94719841e-19 -1.81059372e-19  3.10000000e-02]
+PASS     sampled_rates == gust_rates for r (body z, yaw)               err=4.86e-17
+
+==============================================================================
+3.5 strip_roll_moment sign: -w_g/V, not +w_g/V
+==============================================================================
+   strip_clp_from_rate(p_hat=+0.050) = -0.01447002  Clp*p_hat = -0.01750897
+FAIL     rigid roll rate reproduces Clp at p_hat=+0.05                 err=3.04e-03
+   strip_clp_from_rate(p_hat=-0.030) = +0.00868201  Clp*p_hat = +0.01050538
+FAIL     rigid roll rate reproduces Clp at p_hat=-0.03                 err=-1.82e-03
+   equivalent gust field w_g = -0.04*y  ->  Cl = -0.00146900
+   rigid roll rate p = 0.04 (p_hat=0.00508)  ->  Cl = -0.00146900
+PASS     a gust field equivalent to a roll rate gives the SAME Cl (sign and magnitude) diff=3.25e-18
+   (had the convention been +w_g/V the two would differ by 0.002938; observed difference 3.25e-18)
+   air rising on the RIGHT wing (w_g = -y) -> Cl = -0.03672508
+PASS     updraught on the right wing rolls the aircraft LEFT (Cl < 0)  
+   uniform 5 m/s body-z gust -> Cl = +5.077e-19
+PASS     a uniform vertical gust produces no rolling moment            Cl=5.08e-19
+
+FAILURES: ['   rigid roll rate reproduces Clp at p_hat=+0.05', '   rigid roll rate reproduces Clp at p_hat=-0.03']

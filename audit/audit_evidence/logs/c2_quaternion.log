@@ -1,0 +1,43 @@
+=== quat_to_dcm claims BODY -> NED (v_ned = C @ v_body) ===
+quat_to_dcm(q) =
+ [[ 0.417286482226 -0.875370820635  0.244126848447]
+ [ 0.884543080866  0.32960992009  -0.330061870974]
+ [ 0.208459899846  0.353671071703  0.911844966645]]
+Rz(psi)Ry(theta)Rx(phi) =
+ [[ 0.417286482226 -0.875370820635  0.244126848447]
+ [ 0.884543080866  0.32960992009  -0.330061870974]
+ [ 0.208459899846  0.353671071703  0.911844966645]]
+PASS  quat_to_dcm == Rz(psi)Ry(theta)Rx(phi)                     err=2.220e-16  tol=1e-12
+PASS  NOT the transpose (must be LARGE)  [inverted sense check]  err=5.682e-01  tol=1e+12
+   |C - C_ref^T|max = 1.7599  (must be non-zero, else the sense is ambiguous)
+
+nose-up theta=+0.30 rad: body-x in NED = [ 0.955336489126  0.             -0.295520206661]   (D component -0.2955 must be NEGATIVE = up)
+PASS  theta>0 puts the nose above the horizon                    err=0.000e+00  tol=5e-01
+right roll phi=+0.30 rad: body-y in NED = [0.             0.955336489126 0.295520206661]   (D component +0.2955 must be POSITIVE = right wing down)
+PASS  phi>0 is right-wing-down                                   err=0.000e+00  tol=5e-01
+yaw psi=+0.30 rad:      body-x in NED = [0.955336489126 0.295520206661 0.            ]   (E component +0.2955 must be POSITIVE = nose right/east)
+PASS  psi>0 turns the nose to the east                           err=0.000e+00  tol=5e-01
+PASS  quat_to_euler round trip                                   err=2.220e-16  tol=1e-12
+PASS  |q| == 1                                                   err=1.110e-16  tol=1e-14
+
+=== quat_derivative vs an INDEPENDENTLY integrated attitude ===
+   dt=1e-03  |C_euler - C_exact|max = 3.258e-12   (O(dt^2) budget 2.0e-07)
+PASS  quat_derivative Euler step matches exact rotation, dt=1e-03 err=3.258e-12  tol=2e-07
+   dt=1e-04  |C_euler - C_exact|max = 3.275e-15   (O(dt^2) budget 2.0e-09)
+PASS  quat_derivative Euler step matches exact rotation, dt=1e-04 err=3.275e-15  tol=2e-09
+   dt=1e-05  |C_euler - C_exact|max = 1.110e-16   (O(dt^2) budget 2.0e-11)
+PASS  quat_derivative Euler step matches exact rotation, dt=1e-05 err=1.110e-16  tol=2e-11
+   error ratios on halving dt: [np.float64(8.008528784648188), np.float64(7.9491525423728815)]
+   implied convergence order:  [np.float64(3.001537235138398), np.float64(2.990801063153535)]  (>=3 => derivative is exact)
+PASS  convergence order >= 3                                     err=9.199e-03  tol=1e-01
+   q after dt=1e-3: euler=[0.815236440019 0.209809539515 0.010853116428 0.53967741648 ]
+                    exact=[0.815236440018 0.209809539516 0.010853116428 0.53967741648 ]
+PASS  quaternion right-multiplication convention (body rates)    err=1.544e-12  tol=1e-09
+   negated-rate control: err=6.251e-04 (must be ~2*|omega|*dt = 7.1e-04, i.e. the test bites)
+PASS  negated-rate control is rejected                           err=1.600e+03  tol=1e+04
+
+=== pos_ned dot = DCM @ vel_body : straight/level north at theta>0 ===
+   theta=+0.10, alpha=+0.10 -> vel_ned = [ 1.000000000000e+02  0.000000000000e+00 -1.449645044522e-16]  (D must be ~0 => level)
+PASS  level flight has zero NED-down velocity                    err=1.450e-16  tol=1e-10
+
+FAILURES: none

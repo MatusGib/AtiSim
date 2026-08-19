@@ -1,0 +1,43 @@
+==============================================================================
+### ROUND-OFF FLOOR
+==============================================================================
+pos_ned at cruise = [944.48, 0, -12192.000]
+  np.spacing(12184.567)      = 1.818989e-12 m   (1 ulp, float64)
+  eps*|pD| = 2.22e-16*12184.6= 2.705517e-12 m
+  np.spacing(944.4786)       = 1.136868e-13 m
+  dt=0.25       n=16     sqrt(n)*ulp/2 random walk = 3.638e-12 m   n*ulp/2 worst case = 1.455e-11 m
+  dt=0.03125    n=128    sqrt(n)*ulp/2 random walk = 1.029e-11 m   n*ulp/2 worst case = 1.164e-10 m
+  dt=0.0078125  n=512    sqrt(n)*ulp/2 random walk = 2.058e-11 m   n*ulp/2 worst case = 4.657e-10 m
+  dt=0.000976562 n=4096   sqrt(n)*ulp/2 random walk = 5.821e-11 m   n*ulp/2 worst case = 3.725e-09 m
+
+-- Direct probe: in STILL AIR pN and pE do not enter `derivatives` at all
+   (only pD does, through density). So offsetting the start north by D must
+   translate the answer by exactly D. Any residue is pure round-off.
+        dt      n   |residue pN| [m]   |residue pD| [m]  |residue vel|  |residue quat|
+      0.25     16       2.069100e-11       0.000000e+00   0.000000e+00    0.000000e+00
+    0.0625     64       1.689386e-10       0.000000e+00   0.000000e+00    0.000000e+00
+  0.015625    256       5.740048e-10       0.000000e+00   0.000000e+00    0.000000e+00
+ 0.0078125    512       1.797389e-10       0.000000e+00   0.000000e+00    0.000000e+00
+0.00390625   1024       1.889475e-10       0.000000e+00   0.000000e+00    0.000000e+00
+0.000976562   4096       3.337732e-09       0.000000e+00   0.000000e+00    0.000000e+00
+
+-- Determinism: is the same call bit-identical across invocations? --
+   identical bits: True
+
+-- 1-ulp perturbation amplification through the rollout (still air, dt=1/128) --
+   input perturbation  = 1.136868e-13 m
+   output |dpos|       = 1.136868e-13 m
+
+==============================================================================
+### QUATERNION NORM DRIFT
+==============================================================================
+
+-- Excited longitudinally + laterally (de +0.02, da +0.02), dt=0.02 --
+   ||q|| - 1 at each step count:
+   steps     renorm ON: ||q||-1    renorm OFF: ||q||-1     |dpos| [m]      |dquat|       |dvel|     |domega|
+       1           0.000000e+00           3.108624e-15   0.000000e+00 3.111133e-15 0.000000e+00 0.000000e+00
+      10           0.000000e+00           3.508305e-14   1.062179e-18 3.511104e-14 1.788934e-18 3.388132e-21
+     100           0.000000e+00           2.193801e-13   1.273343e-11 2.194529e-13 3.129910e-13 6.888055e-17
+    1000           0.000000e+00           2.224887e-13   4.289890e-11 2.226775e-13 1.081096e-12 1.282343e-15
+   10000           0.000000e+00           2.218226e-13   2.244912e-08 2.889678e-13 2.024489e-12 3.978840e-15
+  100000           0.000000e+00           2.129408e-13   3.300560e-07 7.523295e-12 6.197593e-12 1.538366e-14

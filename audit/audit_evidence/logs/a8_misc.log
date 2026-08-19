@@ -1,0 +1,92 @@
+==============================================================================
+### 8a. lateral_modes: roll/spiral assignment sorts on tau, not on |tau|
+==============================================================================
+
+boeing747: real lateral eigenvalues = [-0.55698959 -0.00724415]
+   taus = -1/lambda            = [  1.795366 138.042408]
+   lateral_modes returns  roll_tau=1.795366  spiral_tau=138.042408
+   FASTEST |tau| (physically the roll subsidence) = 1.795366 s
+
+boeing747_approach: real lateral eigenvalues = [-1.21269133 -0.03677222]
+   taus = -1/lambda            = [ 0.824612 27.194444]
+   lateral_modes returns  roll_tau=0.824612  spiral_tau=27.194444
+   FASTEST |tau| (physically the roll subsidence) = 0.824612 s
+
+cherokee: real lateral eigenvalues = [-2.78142966  0.01938326]
+   taus = -1/lambda            = [  0.359527 -51.5909  ]
+   lateral_modes returns  roll_tau=-51.590900  spiral_tau=0.359527
+   FASTEST |tau| (physically the roll subsidence) = 0.359527 s
+   *** MISMATCH: `reals.sort()` sorts on the SIGNED tau, so an
+       UNSTABLE spiral (tau<0) sorts first and is labelled 'roll'. ***
+
+cessna172: real lateral eigenvalues = [-11.34124338  -0.06005444]
+   taus = -1/lambda            = [ 0.088174 16.651559]
+   lateral_modes returns  roll_tau=0.088174  spiral_tau=16.651559
+   FASTEST |tau| (physically the roll subsidence) = 0.088174 s
+
+==============================================================================
+### 8b. ENERGY: a drag-free, thrust-free, moment-free aircraft
+==============================================================================
+Lift in body axes is [L sin a, 0, -L cos a] and vel_rel is
+V[cos a cos b, sin b, sin a cos b]; the dot product is exactly zero, so
+lift does NO work and KE+PE must be conserved.
+  dt=0.02    n=50000    T=    1000 s   max|E-E0|/E0=1.4593e-11  final dE/E0=+1.4304e-11  alt span 3000.0..3121.5 m
+  dt=0.02    n=500000   T=   10000 s   max|E-E0|/E0=1.4593e-11  final dE/E0=+1.4304e-11  alt span 3000.0..3121.5 m
+  dt=0.002   n=500000   T=    1000 s   max|E-E0|/E0=5.7259e-13  final dE/E0=-5.7259e-13  alt span 3000.0..3121.5 m
+  dt=0.1     n=100000   T=   10000 s   max|E-E0|/E0=1.0068e-08  final dE/E0=+1.0068e-08  alt span 3000.1..3121.5 m
+
+==============================================================================
+### 8c. ROTATIONAL INVARIANCE with the WIND FIELD rotated too
+==============================================================================
+
+psi=0.7 rad, 30 s, TWO Rankine vortices rotated with the problem
+  max |vel_body diff| = 2.4880e-11 m/s
+  max |omega diff|    = 1.9995e-13 rad/s
+  max |pos - R pos|   = 1.0597e-09 m
+  max |quat - qz q|   = 1.2795e-13
+  wind actually seen: max |wind_ned| along run A = 12199.3 m position scale
+
+psi=-2.1 rad, 30 s, TWO Rankine vortices rotated with the problem
+  max |vel_body diff| = 1.5857e-10 m/s
+  max |omega diff|    = 5.8106e-13 rad/s
+  max |pos - R pos|   = 2.4751e-09 m
+  max |quat - qz q|   = 3.9136e-13
+  wind actually seen: max |wind_ned| along run A = 12199.3 m position scale
+
+==============================================================================
+### 8d. odds and ends
+==============================================================================
+aero.V_MIN airspeed floor = 1.0 m/s  (alpha/beta/rate denominators)
+trim.minimum_drag_speed grid: linspace(20, 400, 4000) -> resolution 0.095024 m/s
+   boeing747            V_md = 233.423356 m/s   (cruise 235.915 m/s)
+   boeing747_approach   V_md = 97.064266 m/s   (cruise 84.883 m/s)
+   cherokee             V_md = 47.271818 m/s   (cruise 50.000 m/s)
+   cessna172            V_md = 38.434609 m/s   (cruise 60.000 m/s)
+
+trim.ALPHA_LIMIT = 15.0 deg; `is_physical` checks alpha ONLY --
+   elevator and throttle are unbounded in `trim.trim` and unchecked in `is_physical`.
+
+density/temperature extrapolated BELOW sea level (a power-off run reached -3994 m):
+   h=  -5000.0 m  T=320.650 K  p=177687.0 Pa  rho=1.930468 kg/m^3
+   h=  -3994.0 m  T=314.111 K  p=159450.4 Pa  rho=1.768400 kg/m^3
+   h=  -1000.0 m  T=294.650 K  p=113929.1 Pa  rho=1.346996 kg/m^3
+   h=      0.0 m  T=288.150 K  p=101325.0 Pa  rho=1.225000 kg/m^3
+   the troposphere formula has T -> 0 at h = -44330.8 m
+
+verification.fitted_order raises on a zero/negative error:
+   ValueError: an error is zero or negative; the sequence is saturated
+
+validation.modes_from_matrix drops any root with lam.imag <= 1e-9 (ABSOLUTE):
+   a mode of frequency below 1e-9 rad/s would be silently reported as two reals.
+   lateral_modes then does reals[0], reals[1] and would IndexError / mislabel.
+
+Rankine core: one-sided d(w)/dr at r=r0 (ASSUMPTIONS E2 claims 2*V0/r0 jump)
+   d(w_horiz)/d(z) inside  = -0.14166667 1/s
+   d(w_horiz)/d(z) outside = +0.14166667 1/s
+   jump = +0.28333333 1/s ;  2*v0/r0 = 0.28333333 1/s
+
+state.quat_to_dcm does NOT normalise: det(DCM) for ||q||=1+d
+   ||q||-1=0         det = 1.000000000000  (should be 1)
+   ||q||-1=1e-08     det = 1.000000000000  (should be 1)
+   ||q||-1=1e-05     det = 1.000000000000  (should be 1)
+   ||q||-1=0.001     det = 1.000000000000  (should be 1)

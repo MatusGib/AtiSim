@@ -1,0 +1,185 @@
+==============================================================================
+### 5a. NEWTON CONVERGENCE RATE (verification.newton_residual_history)
+==============================================================================
+
+boeing747  (V=235.915 m/s, H=12192.0 m)  start = [0.05 0.   0.5 ]
+   iter  0: |residual| = 2.297995e+00
+   iter  1: |residual| = 4.277288e-02
+   iter  2: |residual| = 8.335234e-08
+   iter  3: |residual| = 5.333706e-15
+   iter  4: |residual| = 1.779906e-15
+   iter  5: |residual| = 1.776359e-15
+   iter  6: |residual| = 1.779824e-15
+   iter  7: |residual| = 1.790182e-15
+   iter  8: |residual| = 1.779824e-15
+   iter  9: |residual| = 1.776358e-15
+   iter 10: |residual| = 1.779824e-15
+   log-residual exponent ratios (2 = quadratic): [3.3004]
+   trim(iterations=  1) -> alpha=+0.080963596021 de=-0.000475324710 thr=+0.786514587974 |res|=4.277e-02
+   trim(iterations=  2) -> alpha=+0.080917499320 de=-0.000443029202 thr=+0.737647132805 |res|=8.335e-08
+   trim(iterations=  3) -> alpha=+0.080917499226 de=-0.000443029137 thr=+0.737647037599 |res|=5.334e-15
+   trim(iterations=  4) -> alpha=+0.080917499226 de=-0.000443029137 thr=+0.737647037599 |res|=3.331e-16
+   trim(iterations=  5) -> alpha=+0.080917499226 de=-0.000443029137 thr=+0.737647037599 |res|=2.920e-19
+   trim(iterations=  6) -> alpha=+0.080917499226 de=-0.000443029137 thr=+0.737647037599 |res|=1.933e-20
+   trim(iterations=  8) -> alpha=+0.080917499226 de=-0.000443029137 thr=+0.737647037599 |res|=1.933e-20
+   trim(iterations= 10) -> alpha=+0.080917499226 de=-0.000443029137 thr=+0.737647037599 |res|=1.933e-20
+   trim(iterations= 40) -> alpha=+0.080917499226 de=-0.000443029137 thr=+0.737647037599 |res|=1.933e-20
+   trim(iterations=200) -> alpha=+0.080917499226 de=-0.000443029137 thr=+0.737647037599 |res|=1.933e-20
+
+boeing747_approach  (V=84.883 m/s, H=0.0 m)  start = [0.05 0.   0.5 ]
+   iter  0: |residual| = 2.582178e+00
+   iter  1: |residual| = 8.423831e-02
+   iter  2: |residual| = 8.787578e-07
+   iter  3: |residual| = 3.568316e-15
+   iter  4: |residual| = 1.790203e-15
+   iter  5: |residual| = 4.461263e-18
+   iter  6: |residual| = 1.858860e-19
+   iter  7: |residual| = 0.000000e+00
+   iter  8: |residual| = 0.000000e+00
+   iter  9: |residual| = 0.000000e+00
+   iter 10: |residual| = 0.000000e+00
+   log-residual exponent ratios (2 = quadratic): [3.3513]
+   trim(iterations=  1) -> alpha=+0.098278854856 de=+0.001132977432 thr=+0.323897968348 |res|=8.424e-02
+   trim(iterations=  2) -> alpha=+0.098120407798 de=+0.001281964964 thr=+0.296129559176 |res|=8.788e-07
+   trim(iterations=  3) -> alpha=+0.098120406723 de=+0.001281965976 thr=+0.296129268942 |res|=2.221e-16
+   trim(iterations=  4) -> alpha=+0.098120406723 de=+0.001281965976 thr=+0.296129268942 |res|=4.394e-19
+   trim(iterations=  5) -> alpha=+0.098120406723 de=+0.001281965976 thr=+0.296129268942 |res|=5.879e-20
+   trim(iterations=  6) -> alpha=+0.098120406723 de=+0.001281965976 thr=+0.296129268942 |res|=5.879e-20
+   trim(iterations=  8) -> alpha=+0.098120406723 de=+0.001281965976 thr=+0.296129268942 |res|=5.879e-20
+   trim(iterations= 10) -> alpha=+0.098120406723 de=+0.001281965976 thr=+0.296129268942 |res|=5.879e-20
+   trim(iterations= 40) -> alpha=+0.098120406723 de=+0.001281965976 thr=+0.296129268942 |res|=5.879e-20
+   trim(iterations=200) -> alpha=+0.098120406723 de=+0.001281965976 thr=+0.296129268942 |res|=5.879e-20
+
+cherokee  (V=50.000 m/s, H=1499.6 m)  start = [0.05 0.   0.5 ]
+   iter  0: |residual| = 4.411529e+00
+   iter  1: |residual| = 1.210741e-01
+   iter  2: |residual| = 2.899691e-06
+   iter  3: |residual| = 5.555017e-15
+   iter  4: |residual| = 1.778227e-15
+   iter  5: |residual| = 1.205633e-16
+   iter  6: |residual| = 8.803722e-17
+   iter  7: |residual| = 8.803722e-17
+   iter  8: |residual| = 8.803722e-17
+   iter  9: |residual| = 8.803722e-17
+   iter 10: |residual| = 8.803722e-17
+   log-residual exponent ratios (2 = quadratic): [2.9591]
+   trim(iterations=  1) -> alpha=+0.000461544786 de=-0.000143077851 thr=+0.730112313197 |res|=1.211e-01
+   trim(iterations=  2) -> alpha=+0.000216056252 de=-0.000066976955 thr=+0.658772990752 |res|=2.900e-06
+   trim(iterations=  3) -> alpha=+0.000216050230 de=-0.000066975088 thr=+0.658771282578 |res|=5.540e-15
+   trim(iterations=  4) -> alpha=+0.000216050230 de=-0.000066975088 thr=+0.658771282578 |res|=1.776e-15
+   trim(iterations=  5) -> alpha=+0.000216050230 de=-0.000066975088 thr=+0.658771282578 |res|=1.709e-16
+   trim(iterations=  6) -> alpha=+0.000216050230 de=-0.000066975088 thr=+0.658771282578 |res|=9.543e-18
+   trim(iterations=  8) -> alpha=+0.000216050230 de=-0.000066975088 thr=+0.658771282578 |res|=9.543e-18
+   trim(iterations= 10) -> alpha=+0.000216050230 de=-0.000066975088 thr=+0.658771282578 |res|=9.543e-18
+   trim(iterations= 40) -> alpha=+0.000216050230 de=-0.000066975088 thr=+0.658771282578 |res|=9.543e-18
+   trim(iterations=200) -> alpha=+0.000216050230 de=-0.000066975088 thr=+0.658771282578 |res|=9.543e-18
+
+cessna172  (V=60.000 m/s, H=1524.0 m)  start = [0.05 0.   0.5 ]
+   iter  0: |residual| = 3.869704e+00
+   iter  1: |residual| = 4.627013e-02
+   iter  2: |residual| = 2.146039e-12
+   iter  3: |residual| = 2.414396e-16
+   iter  4: |residual| = 1.665335e-16
+   iter  5: |residual| = 5.551115e-17
+   iter  6: |residual| = 5.551115e-17
+   iter  7: |residual| = 5.551115e-17
+   iter  8: |residual| = 5.551115e-17
+   iter  9: |residual| = 5.551115e-17
+   iter 10: |residual| = 5.551115e-17
+   log-residual exponent ratios (2 = quadratic): [5.3755]
+   trim(iterations=  1) -> alpha=+0.031714935323 de=-0.035071431438 thr=+0.857627249840 |res|=4.627e-02
+   trim(iterations=  2) -> alpha=+0.031715068194 de=-0.035071524428 thr=+0.820062972231 |res|=2.146e-12
+   trim(iterations=  3) -> alpha=+0.031715068194 de=-0.035071524428 thr=+0.820062972229 |res|=1.777e-15
+   trim(iterations=  4) -> alpha=+0.031715068194 de=-0.035071524428 thr=+0.820062972229 |res|=1.783e-15
+   trim(iterations=  5) -> alpha=+0.031715068194 de=-0.035071524428 thr=+0.820062972229 |res|=1.777e-15
+   trim(iterations=  6) -> alpha=+0.031715068194 de=-0.035071524428 thr=+0.820062972229 |res|=1.783e-15
+   trim(iterations=  8) -> alpha=+0.031715068194 de=-0.035071524428 thr=+0.820062972229 |res|=1.783e-15
+   trim(iterations= 10) -> alpha=+0.031715068194 de=-0.035071524428 thr=+0.820062972229 |res|=1.783e-15
+   trim(iterations= 40) -> alpha=+0.031715068194 de=-0.035071524428 thr=+0.820062972229 |res|=1.783e-15
+   trim(iterations=200) -> alpha=+0.031715068194 de=-0.035071524428 thr=+0.820062972229 |res|=1.783e-15
+
+==============================================================================
+### 5b. ROOT UNIQUENESS: sweep the initial guess on a wide grid
+==============================================================================
+grid: 13 alphas x 9 elevators x 9 throttles = 1053 starts per aircraft
+alphas (deg): [-60. -30. -15.  -8.  -3.   0.   3.   5.   8.  15.  30.  60.  90.]
+elevators   : [-0.6  -0.35 -0.2  -0.05  0.    0.05  0.2   0.35  0.6 ]
+throttles   : [-1.  -0.2  0.   0.2  0.5  0.8  1.   2.   5. ]
+
+--- boeing747: V=235.915 m/s H=12192.0 m ---
+  starts               : 1053
+  non-finite result    : 0
+  |residual| >= 1e-9   : 0
+  converged (<1e-9)    : 1053
+  DISTINCT converged roots (tol 1e-6): 2
+    root 1: alpha=   +4.6362 deg  de=-0.000443 rad (  -0.025 deg)  thr=+0.737647   basin= 972/1053  is_physical=True
+             guess-alpha range -30.0..+90.0 deg, guess-thr range -1.00..+5.00
+    root 0: alpha= +241.8992 deg  de=+1.500365 rad ( +85.965 deg)  thr=-193.686533   basin=  81/1053  is_physical=False
+             guess-alpha range -60.0..-60.0 deg, guess-thr range -1.00..+5.00
+  default INITIAL_GUESS -> alpha=+4.636231 deg, de=-0.000443, thr=+0.737647, |res|=1.933e-20, is_physical=True
+
+--- boeing747_approach: V=84.883 m/s H=0.0 m ---
+  starts               : 1053
+  non-finite result    : 0
+  |residual| >= 1e-9   : 0
+  converged (<1e-9)    : 1053
+  DISTINCT converged roots (tol 1e-6): 2
+    root 1: alpha=   +5.6219 deg  de=+0.001282 rad (  +0.073 deg)  thr=+0.296129   basin= 972/1053  is_physical=True
+             guess-alpha range -30.0..+90.0 deg, guess-thr range -1.00..+5.00
+    root 0: alpha= +365.6219 deg  de=+0.001282 rad (  +0.073 deg)  thr=+0.296129   basin=  81/1053  is_physical=False
+             guess-alpha range -60.0..-60.0 deg, guess-thr range -1.00..+5.00
+  default INITIAL_GUESS -> alpha=+5.621885 deg, de=+0.001282, thr=+0.296129, |res|=5.879e-20, is_physical=True
+
+--- cherokee: V=50.000 m/s H=1499.6 m ---
+  starts               : 1053
+  non-finite result    : 0
+  |residual| >= 1e-9   : 0
+  converged (<1e-9)    : 1053
+  DISTINCT converged roots (tol 1e-6): 9
+    root 0: alpha=   +0.0124 deg  de=-0.000067 rad (  -0.004 deg)  thr=+0.658771   basin= 972/1053  is_physical=True
+             guess-alpha range -60.0..+60.0 deg, guess-thr range -1.00..+5.00
+    root 4: alpha= -719.9876 deg  de=-0.000067 rad (  -0.004 deg)  thr=+0.658771   basin=  18/1053  is_physical=False
+             guess-alpha range +90.0..+90.0 deg, guess-thr range -1.00..+5.00
+    root 2: alpha=-2519.9876 deg  de=-0.000067 rad (  -0.004 deg)  thr=+0.658771   basin=   9/1053  is_physical=False
+             guess-alpha range +90.0..+90.0 deg, guess-thr range -1.00..+5.00
+    root 1: alpha=+8789.5490 deg  de=-0.809132 rad ( -46.360 deg)  thr=-241.812685   basin=   9/1053  is_physical=False
+             guess-alpha range +90.0..+90.0 deg, guess-thr range -1.00..+5.00
+    root 3: alpha=-1210.1754 deg  de=+0.704311 rad ( +40.354 deg)  thr=-139.638268   basin=   9/1053  is_physical=False
+             guess-alpha range +90.0..+90.0 deg, guess-thr range -1.00..+5.00
+    root 5: alpha= -570.4510 deg  de=-0.809132 rad ( -46.360 deg)  thr=-241.812685   basin=   9/1053  is_physical=False
+             guess-alpha range +90.0..+90.0 deg, guess-thr range -1.00..+5.00
+    root 6: alpha= -130.1754 deg  de=+0.704311 rad ( +40.354 deg)  thr=-139.638268   basin=   9/1053  is_physical=False
+             guess-alpha range +90.0..+90.0 deg, guess-thr range -1.00..+5.00
+    root 7: alpha= -359.9876 deg  de=-0.000067 rad (  -0.004 deg)  thr=+0.658771   basin=   9/1053  is_physical=False
+             guess-alpha range +90.0..+90.0 deg, guess-thr range -1.00..+5.00
+    root 8: alpha= -210.4510 deg  de=-0.809132 rad ( -46.360 deg)  thr=-241.812685   basin=   9/1053  is_physical=False
+             guess-alpha range +90.0..+90.0 deg, guess-thr range -1.00..+5.00
+  default INITIAL_GUESS -> alpha=+0.012379 deg, de=-0.000067, thr=+0.658771, |res|=9.543e-18, is_physical=True
+
+--- cessna172: V=60.000 m/s H=1524.0 m ---
+  starts               : 1053
+  non-finite result    : 0
+  |residual| >= 1e-9   : 0
+  converged (<1e-9)    : 1053
+  DISTINCT converged roots (tol 1e-6): 10
+    root 1: alpha=   +1.8171 deg  de=-0.035072 rad (  -2.009 deg)  thr=+0.820063   basin= 810/1053  is_physical=True
+             guess-alpha range -30.0..+30.0 deg, guess-thr range -1.00..+5.00
+    root 0: alpha= +361.8171 deg  de=-0.035072 rad (  -2.009 deg)  thr=+0.820063   basin=  99/1053  is_physical=False
+             guess-alpha range -60.0..+90.0 deg, guess-thr range -1.00..+5.00
+    root 2: alpha= -114.9094 deg  de=+1.390704 rad ( +79.681 deg)  thr=-290.676438   basin=  81/1053  is_physical=False
+             guess-alpha range +60.0..+60.0 deg, guess-thr range -1.00..+5.00
+    root 3: alpha= +514.9861 deg  de=-1.905978 rad (-109.205 deg)  thr=-818.005775   basin=   9/1053  is_physical=False
+             guess-alpha range +90.0..+90.0 deg, guess-thr range -1.00..+5.00
+    root 4: alpha= +605.0906 deg  de=+1.390704 rad ( +79.681 deg)  thr=-290.676438   basin=   9/1053  is_physical=False
+             guess-alpha range +90.0..+90.0 deg, guess-thr range -1.00..+5.00
+    root 5: alpha= +965.0906 deg  de=+1.390704 rad ( +79.681 deg)  thr=-290.676438   basin=   9/1053  is_physical=False
+             guess-alpha range +90.0..+90.0 deg, guess-thr range -1.00..+5.00
+    root 6: alpha= +721.8171 deg  de=-0.035072 rad (  -2.009 deg)  thr=+0.820063   basin=   9/1053  is_physical=False
+             guess-alpha range +90.0..+90.0 deg, guess-thr range -1.00..+5.00
+    root 7: alpha=+1325.0906 deg  de=+1.390704 rad ( +79.681 deg)  thr=-290.676438   basin=   9/1053  is_physical=False
+             guess-alpha range +90.0..+90.0 deg, guess-thr range -1.00..+5.00
+    root 8: alpha=+19801.8171 deg  de=-0.035072 rad (  -2.009 deg)  thr=+0.820063   basin=   9/1053  is_physical=False
+             guess-alpha range +90.0..+90.0 deg, guess-thr range -1.00..+5.00
+    root 9: alpha= -718.1829 deg  de=-0.035072 rad (  -2.009 deg)  thr=+0.820063   basin=   9/1053  is_physical=False
+             guess-alpha range +90.0..+90.0 deg, guess-thr range -1.00..+5.00
+  default INITIAL_GUESS -> alpha=+1.817140 deg, de=-0.035072, thr=+0.820063, |res|=1.783e-15, is_physical=True

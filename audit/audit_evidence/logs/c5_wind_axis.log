@@ -1,0 +1,55 @@
+   sanity: CD of LIFT_ONLY at M~0 = 4.572e-14
+   sanity: CD of DRAG_ONLY at M~0 = 5.000e-01
+==============================================================================
+4.0 air_data inverts the (alpha, beta) construction exactly
+==============================================================================
+PASS  air_data recovers alpha and beta over the whole grid         worst=1.18e-16
+
+==============================================================================
+4.1 DRAG is exactly anti-parallel to the relative velocity
+==============================================================================
+   alpha=-0.25 beta=-0.30: cos(F,v) = -1.000000000000000  |F| = 2207376.2304 N
+   alpha=-0.25 beta=-0.11: cos(F,v) = -1.000000000000000  |F| = 2207376.2304 N
+   alpha=-0.25 beta=+0.22: cos(F,v) = -1.000000000000000  |F| = 2207376.2304 N
+   alpha=+0.19 beta=-0.30: cos(F,v) = -1.000000000000000  |F| = 2207376.2304 N
+   alpha=+0.19 beta=-0.11: cos(F,v) = -1.000000000000000  |F| = 2207376.2304 N
+   alpha=+0.19 beta=+0.22: cos(F,v) = -1.000000000000000  |F| = 2207376.2304 N
+PASS  drag is exactly anti-parallel to v_rel at all (alpha,beta)   max|cos+1|=3.33e-16
+PASS  drag magnitude is qbar*S*CD at all (alpha,beta)              max rel err=2.11e-16
+
+==============================================================================
+4.2 LIFT is exactly perpendicular to the relative velocity
+==============================================================================
+   alpha=-0.25 beta=-0.30: (Fhat . vhat) = -4.571e-14  |F| = 4414752.4608 N  F = [-1.09222724e+06  5.96504160e-08 -4.27750850e+06]
+   alpha=-0.25 beta=-0.11: (Fhat . vhat) = -4.569e-14  |F| = 4414752.4608 N  F = [-1.09222724e+06  2.21586246e-08 -4.27750850e+06]
+   alpha=-0.25 beta=+0.22: (Fhat . vhat) = -4.574e-14  |F| = 4414752.4608 N  F = [-1.09222724e+06 -4.40494000e-08 -4.27750850e+06]
+   alpha=+0.19 beta=-0.30: (Fhat . vhat) = -4.577e-14  |F| = 4414752.4608 N  F = [ 8.33765271e+05  5.96504160e-08 -4.33530561e+06]
+   alpha=+0.19 beta=-0.11: (Fhat . vhat) = -4.577e-14  |F| = 4414752.4608 N  F = [ 8.33765271e+05  2.21586246e-08 -4.33530561e+06]
+   alpha=+0.19 beta=+0.22: (Fhat . vhat) = -4.577e-14  |F| = 4414752.4608 N  F = [ 8.33765271e+05 -4.40494000e-08 -4.33530561e+06]
+PASS  lift is exactly perpendicular to v_rel at all (alpha,beta), INCLUDING beta != 0 max|cos|=4.58e-14
+PASS  lift magnitude is qbar*S*CL at all (alpha,beta)              max rel err=4.22e-16
+PASS  positive CL acts upward (Fz < 0)                             Fz=-4406808.3
+PASS  lift has no body-y component (wind-axis z lies in the body xz plane) Fy/|F|=9.98e-15
+
+==============================================================================
+4.3 SIDE FORCE: what convention is it actually in?
+==============================================================================
+   alpha=+0.19 beta=+0.22: F = [     0.       971245.541376     -0.      ]   F/(qbarS*CY) = [ 0.  1. -0.]
+        (Fhat . vhat) = +0.218230   <- non-zero => side force is BODY-y, not wind-axis-y
+   alpha=-0.25 beta=-0.30: F = [      -0.      -1324425.73824        0.     ]   F/(qbarS*CY) = [ 0.  1. -0.]
+        (Fhat . vhat) = +0.295520   <- non-zero => side force is BODY-y, not wind-axis-y
+   alpha=+0.00 beta=+0.22: F = [     0.       971245.541376     -0.      ]   F/(qbarS*CY) = [ 0.  1. -0.]
+        (Fhat . vhat) = +0.218230   <- non-zero => side force is BODY-y, not wind-axis-y
+   alpha=+0.19 beta=+0.00: F = [ 0.  0. -0.]   F/(qbarS*CY) = n/a
+PASS  side force is exactly (0, qbar*S*CY, 0) in body axes         F=[     0.       971245.541376     -0.      ]
+
+==============================================================================
+4.4 the full force reassembles from the three isolated channels
+==============================================================================
+PASS  aero.py force == R_bw(-D,0,-L) + (0,Y_body,0), independently built max err/qbarS=2.11e-16
+   difference from the fully-wind-axis convention: max |dF|/qbarS = 0.0778 (i.e. 0.0778 in CY units)
+   -- at beta = 0 the two conventions are identical: 9.31e-10 N
+
+FAILURES: none
+
+FINDING: CY is applied as a pure body-y force, NOT rotated through beta. The docstring says so explicitly ('Side force is already body-axis, as the lateral derivatives are defined'), and CR-2144's CY_beta is indeed a body-axis derivative, so this is a stated convention rather than a defect. Consequence: the side force is not perpendicular to the relative wind at beta != 0, so it does a small amount of work along the flight path -- second order in beta (cos(F,v) ~ sin(beta)).

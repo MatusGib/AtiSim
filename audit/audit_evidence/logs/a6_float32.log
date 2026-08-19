@@ -1,0 +1,118 @@
+### where is x64 set?
+flightsim/__init__.py:
+"""JAX 6-DOF fixed-wing flight dynamics.
+
+float64 is enabled here, before any JAX array is created, because it must be set
+before the first array allocation to take effect. float32 is marginal for the
+Newton trim solve and for quaternion norm stability over long rollouts.
+"""
+
+import jax
+
+jax.config.update("jax_enable_x64", True)
+
+x64 now: True
+
+=== float64 REFERENCE ===
+
+boeing747: alpha=0.080917499226 de=-0.000443029137 thr=0.737647037599 |res|=1.933e-20
+   longitudinal  wn=0.0553189351 rad/s  zeta=0.0559555008
+   longitudinal  wn=0.9507725037 rad/s  zeta=0.3425258602
+   dutch roll    wn=0.9432021594 rad/s  zeta=0.0360852417
+   roll tau=1.79536570 s   spiral tau=138.04240755 s
+   cond(A_lon) = 7.969183e+05
+
+boeing747_approach: alpha=0.098120406723 de=0.001281965976 thr=0.296129268942 |res|=5.879e-20
+   longitudinal  wn=0.1336783455 rad/s  zeta=0.0126848560
+   longitudinal  wn=0.8941771307 rad/s  zeta=0.5911203154
+   dutch roll    wn=0.7613362485 rad/s  zeta=0.1300029974
+   roll tau=0.82461215 s   spiral tau=27.19444401 s
+   cond(A_lon) = 5.759748e+04
+
+cherokee: alpha=0.000216050230 de=-0.000066975088 thr=0.658771282578 |res|=9.543e-18
+   longitudinal  wn=0.2490025461 rad/s  zeta=0.0660113530
+   longitudinal  wn=4.1433357131 rad/s  zeta=0.4755805461
+   dutch roll    wn=3.3890569832 rad/s  zeta=0.1048382753
+   roll tau=-51.59090028 s   spiral tau=0.35952734 s
+   cond(A_lon) = 7.710693e+03
+
+cessna172: alpha=0.031715068194 de=-0.035071524428 thr=0.820062972229 |res|=1.783e-15
+   longitudinal  wn=0.2082295076 rad/s  zeta=0.0665101668
+   longitudinal  wn=4.9986966814 rad/s  zeta=0.4795369058
+   dutch roll    wn=1.8738724179 rad/s  zeta=0.1146870542
+   roll tau=0.08817375 s   spiral tau=16.65155874 s
+   cond(A_lon) = 1.307456e+04
+
+
+### x64 turned OFF; every aircraft leaf cast to float32
+x64 now: False  jnp.zeros(3).dtype = float32
+
+=== float32 ===
+   aircraft leaf dtype check: mass float32, inertia float32
+
+boeing747
+   trim  f32: alpha=0.080917470157 de=-0.000443004887 thr=0.737646937370  |res|=2.3024e-12
+   trim  f64: alpha=0.080917499226 de=-0.000443029137 thr=0.737647037599  |res|=1.9330e-20
+   trim  ERR: dalpha=-2.907e-08 rad (-1.666e-06 deg) dde=+2.425e-08  dthr=-1.002e-07
+   A_lon dtype float32, cond = 7.969183e+05
+   lon mode 0: wn=0.0553189293 (f64 0.0553189351)  rel err 1.058e-07
+                zeta=0.0559555590 (f64 0.0559555008)  rel err 1.041e-06  abs err +5.826e-08
+   lon mode 1: wn=0.9507725239 (f64 0.9507725037)  rel err 2.124e-08
+                zeta=0.3425258994 (f64 0.3425258602)  rel err 1.144e-07  abs err +3.920e-08
+   dutch roll : wn=0.9432021976 (f64 0.9432021594) rel err 4.047e-08
+                zeta=0.0360852480 (f64 0.0360852417) rel err 1.756e-07  abs err +6.335e-09
+   roll tau   : 1.79536545 (f64 1.79536570)  rel err 1.384e-07
+   spiral tau : 138.04238892 (f64 138.04240755)  rel err 1.350e-07
+   aircraft leaf dtype check: mass float32, inertia float32
+
+boeing747_approach
+   trim  f32: alpha=0.098120398819 de=0.001281991485 thr=0.296129316092  |res|=9.3596e-12
+   trim  f64: alpha=0.098120406723 de=0.001281965976 thr=0.296129268942  |res|=5.8794e-20
+   trim  ERR: dalpha=-7.903e-09 rad (-4.528e-07 deg) dde=+2.551e-08  dthr=+4.715e-08
+   A_lon dtype float32, cond = 5.759748e+04
+   lon mode 0: wn=0.1336783320 (f64 0.1336783455)  rel err 1.015e-07
+                zeta=0.0126848817 (f64 0.0126848560)  rel err 2.026e-06  abs err +2.571e-08
+   lon mode 1: wn=0.8941771984 (f64 0.8941771307)  rel err 7.567e-08
+                zeta=0.5911203027 (f64 0.5911203154)  rel err 2.158e-08  abs err -1.275e-08
+   dutch roll : wn=0.7613362670 (f64 0.7613362485) rel err 2.433e-08
+                zeta=0.1300030202 (f64 0.1300029974) rel err 1.753e-07  abs err +2.279e-08
+   roll tau   : 0.82461208 (f64 0.82461215)  rel err 7.851e-08
+   spiral tau : 27.19444656 (f64 27.19444401)  rel err 9.393e-08
+   aircraft leaf dtype check: mass float32, inertia float32
+
+cherokee
+   trim  f32: alpha=0.000216039422 de=-0.000066971734 thr=0.658771216869  |res|=1.5600e-08
+   trim  f64: alpha=0.000216050230 de=-0.000066975088 thr=0.658771282578  |res|=9.5426e-18
+   trim  ERR: dalpha=-1.081e-08 rad (-6.193e-07 deg) dde=+3.354e-09  dthr=-6.571e-08
+   A_lon dtype float32, cond = 7.710692e+03
+   lon mode 0: wn=0.2490025461 (f64 0.2490025461)  rel err 4.088e-11
+                zeta=0.0660113543 (f64 0.0660113530)  rel err 2.012e-08  abs err +1.328e-09
+   lon mode 1: wn=4.1433362961 (f64 4.1433357131)  rel err 1.407e-07
+                zeta=0.4755806029 (f64 0.4755805461)  rel err 1.195e-07  abs err +5.683e-08
+   dutch roll : wn=3.3890571594 (f64 3.3890569832) rel err 5.200e-08
+                zeta=0.1048382819 (f64 0.1048382753) rel err 6.277e-08  abs err +6.581e-09
+   roll tau   : -51.59090805 (f64 -51.59090028)  rel err 1.506e-07
+   spiral tau : 0.35952726 (f64 0.35952734)  rel err 2.150e-07
+   aircraft leaf dtype check: mass float32, inertia float32
+
+cessna172
+   trim  f32: alpha=0.031715068966 de=-0.035071529448 thr=0.820062935352  |res|=9.6712e-07
+   trim  f64: alpha=0.031715068194 de=-0.035071524428 thr=0.820062972229  |res|=1.7830e-15
+   trim  ERR: dalpha=+7.722e-10 rad (+4.424e-08 deg) dde=-5.020e-09  dthr=-3.688e-08
+   A_lon dtype float32, cond = 1.307456e+04
+   lon mode 0: wn=0.2082295269 (f64 0.2082295076)  rel err 9.265e-08
+                zeta=0.0665101632 (f64 0.0665101668)  rel err 5.397e-08  abs err -3.590e-09
+   lon mode 1: wn=4.9986968040 (f64 4.9986966814)  rel err 2.454e-08
+                zeta=0.4795369208 (f64 0.4795369058)  rel err 3.123e-08  abs err +1.498e-08
+   dutch roll : wn=1.8738723993 (f64 1.8738724179) rel err 9.922e-09
+                zeta=0.1146870777 (f64 0.1146870542) rel err 2.045e-07  abs err +2.346e-08
+   roll tau   : 0.08817375 (f64 0.08817375)  rel err 7.482e-08
+   spiral tau : 16.65155602 (f64 16.65155874)  rel err 1.636e-07
+
+
+=== float32 6-DOF rollout / quaternion norm ===
+state dtypes: {'pos_ned': dtype('float32'), 'vel_body': dtype('float32'), 'quat': dtype('float32'), 'omega': dtype('float32')}
+  n=  1000  pos=[  4809.411      0.    -11899.725]  ||q||-1=+0.000e+00
+  n= 10000  pos=[ 50541.754      0.    -11823.366]  ||q||-1=+0.000e+00
+  n= 50000  pos=[253320.19       0.    -11684.331]  ||q||-1=-5.960e-08
+  NOTE: pos_ned carries ~12192 m; float32 ulp there is 9.7656e-04 m
