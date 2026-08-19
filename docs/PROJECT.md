@@ -26,8 +26,14 @@ session normally edits only the volatile ones.
 | complete or re-order planned work | §7 plan |
 | discover something that changes the approach | §8 open questions |
 
-Two rules carried from `CLAUDE.md` and enforced throughout the code:
+Three rules carried from `CLAUDE.md` and enforced throughout the code:
 
+- **Check that the tree you are testing is the tree you edited.** Every worktree shares the
+  main checkout's `.venv`, whose editable install maps `flightsim` to the **main checkout**
+  for the life of the install. Nothing warns you when that mapping wins — the tests import,
+  collect and pass, against code you did not change, and the result reads exactly like a
+  real one. Print `flightsim.__file__` before believing any run. §10 carries the one-line
+  check and the cases it catches.
 - **Flag, never invent.** Every number carries the table it came from. A parameter the
   source does not supply is named as a declared modelling choice, not given a plausible
   default. If you add a number here without a citation, you have broken the project.
@@ -2026,6 +2032,36 @@ What was deliberately not done.
 
 Python 3.10.11, `.venv` in the project root. All commands are run **from the project
 root**; the scripts import `flightsim` from the editable install, not from `scripts/`.
+
+### Before you trust a run, check which tree it imported
+
+This is the one failure mode here that produces **no error message at all.** Worktrees do
+not get their own `.venv`; they share the main checkout's, and that editable install's
+finder maps `flightsim` to the **main checkout's** `flightsim/` permanently. The finder is
+*appended* to `sys.meta_path`, so it is reached only once `sys.path` has already failed —
+and whether `sys.path` succeeds depends on how the process was started. Measured from a
+worktree, all four rows:
+
+| how it is run | what `import flightsim` resolves to |
+|---|---|
+| `.venv/Scripts/python.exe -m pytest`, cwd = **worktree root** | **the worktree.** `-m` puts cwd on `sys.path` first |
+| `pytest` / `pytest.exe`, cwd = worktree root | **the main checkout.** The console script does not put cwd on `sys.path`, and `flightsim/tests/conftest.py` imports `flightsim` before pytest's own insertion helps. `sys.path[0]` *is* the worktree by the time a test body runs, which is why this one looks fine and is not |
+| anything, cwd = **any other directory** — `notebooks/`, `scripts/` | **the main checkout** |
+| any of the above with `PYTHONPATH` set to the **absolute** worktree root | **the worktree** |
+
+So the documented `.venv/Scripts/python.exe -m pytest -q` is safe from the worktree root,
+and **nothing else in that table is.** The check costs one line, run from the directory you
+are about to run the suite from:
+
+```
+.venv/Scripts/python.exe -c "import flightsim; print(flightsim.__file__)"
+```
+
+If that path is not the tree you edited, everything downstream is about someone else's
+code: a passing suite, a green notebook gate, a sanity ladder that agrees with itself, and
+a measurement that lands in §4 under false provenance. A change that is *absent* from the
+tree under test fails in the safest possible way — the old behaviour is asserted and
+passes — which is precisely why it survives review.
 
 ### The entry points
 
