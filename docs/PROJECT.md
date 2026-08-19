@@ -283,6 +283,45 @@ that the seam reaches the equations of motion at all; without it every number
 in this table would be satisfied by a `load_model` that was computed and
 discarded.
 
+### The remediation repairs (session 16)
+
+Seven code changes, and the measurement that shows each was surgical. Every one is a
+repair to a defect the audit found; none is a change to the model's physics or its data.
+**No aerodynamic derivative was added, removed or altered.**
+
+| Check | Measured | Tolerance |
+|---|---|---|
+| **Whole-model regression: every mode and trim of all four aircraft, pre- vs post-remediation** | **42 of 44 scalars bit-identical**; the 2 that moved are the Cherokee's `roll_tau`/`spiral_tau`, the same two values swapped into the correct slots | `==` on the hex repr |
+| 747 phugoid ωn / ζ, short-period ωn / ζ across the whole pass | **bit-identical** (0.055319, 0.055956, 0.950773, 0.342526) | `==` |
+| `lateral_modes`, three stable-spiral aircraft, signed sort vs `key=abs` | **bit-identical** | `==` |
+| `lateral_modes`, Cherokee (unstable spiral) | roll **0.3595 s**, spiral **−51.59 s** — was returning them swapped | rel 0.02 |
+| Aerodynamic force **and** moment at exactly V = 0, all four aircraft | **exactly 0.0** — was 1.44 N (Cessna) to 170.73 N (747-approach) | `== 0.0` |
+| `load_factor` in free fall, aerodynamics **live** | **−0.0** exactly, matching the aero-zeroed control — was +7.0e-6 to +4.0e-4 | `== 0.0` |
+| Force/moment/coefficients at ‖v‖ ≥ 1 m/s, floor confined to the divisions | **81 of 81 sampled states bit-identical** | `==` on the hex repr |
+| `is_physical`, four registry aircraft at their own cruise conditions | all **pass** (the positive control) | `bool` |
+| `is_physical`, pinned 747 root at V = 471.8 m/s (throttle 567) | now **rejected** | `bool` |
+| `along_track_shear` vs `dU_x/dt` differentiated along a prescribed circular track | **0 to 5.6e-17** | abs 1e-15 |
+| `along_track_shear` with `accel_ned = 0` vs the straight-track expression it replaced | **bit-identical** — the reduction to Proctor Eq. (4) | `==` |
+| ψ̇ along both lee-wave legs and the microburst penetration, 77,036 samples | **identically 0.0**, so the new term contributes nothing to any published run | `== 0.0` |
+| `scripts/leewave.py` and `scripts/microburst.py` printed output across the change | **byte-identical** | `diff` |
+| Heading-rotation term, standard-rate turn one core radius above a Parks core | **ΔF = 0.1423** (single-core closed form `v₀ψ̇/g` = 0.1383) | abs 5e-4 |
+| `superpose()` with no fields | returns the zero field; superposing it is **bit-identical** to not superposing | `np.array_equal` |
+| Angular-momentum drift, re-measured for the comment that was wrong by a decade | **5.695769e-13** | 1e-11 |
+
+**The whole-model regression row is the one that matters** and it is the reason the mode
+table above is untouched. It was taken by extracting the tree at the commit before the
+remediation, running the same probe against both, and comparing hex representations —
+not by re-reading the numbers and finding them similar.
+
+**What was deliberately NOT repaired** is recorded in `docs/ASSUMPTIONS.md`, not here,
+because a bounded flaw left in place with its size stated is an assumption rather than a
+measurement: C9 (the lift-tilt energy seam), F5 (the strip quadrature at 9 stations), E6,
+E8, E9, F7, C10 and C11. `AUDIT.md` §1 carries the per-finding status.
+
+**One repair was made, measured and reverted**: `_B747_G`. See `ASSUMPTIONS.md` B5 — it
+moved 19 quantities on the 747 by ≤ 4.1e-6 and broke two bit-exact guards, and the flaw
+is smaller than the fix.
+
 ### 747 modes vs CR-2144
 
 | Mode | Model | Reference | Error |
@@ -309,6 +348,11 @@ the engine's own value, unchanged: the remediation pass added two ROWS, not two
 derivatives. `Aircraft` still carries no speed derivative (`Xu, Zu, Mu`) and no α̇
 derivative (`Zẇ, Mẇ`), and §5 still declares both families out of scope. Read the row
 labels literally.
+
+That is measured, not asserted. All four are **bit-identical** across the remediation —
+see the whole-model regression row in "The remediation repairs" above, which extracted
+the tree at the preceding commit and compared hex representations. The pass did change
+code, in seven places; none of it is on the path that produces these four numbers.
 
 The ≤1% figures below are an **attribution, computed in analysis**, and are not a state
 this code can be run in. `AUDIT.md` §2.3 patches the engine's own cruise plant matrix
