@@ -369,6 +369,92 @@ the same way.
 | Scope growth from defects found in existing code | Capped by Limitation 5 |
 | The 737 entry is later reused outside its band | **Not mitigated in code.** Documentation only — see Limitation 1 |
 
+## What changed during implementation
+
+Recorded as deltas rather than by rewriting the sections above, so the design
+record and what actually happened stay separable.
+
+### Findings the design did not anticipate
+
+**JSBSim's `do_linearization` is CLOSED-LOOP.** Its FCS is inside the exported model and nothing
+in the output says so. Against the bare airframe the lateral comparison reads as catastrophic —
+Dutch roll ζ 0.101 against 0.344, spiral 127.6 s against 16.7 s, a 664% disagreement — and the
+obvious conclusion is that this project's lateral dynamics are broken. They are not. 737.xml's yaw
+damper feeds yaw rate to the rudder with unit gain above M 0.11, geared by 0.35 rad, adding
+`ΔCnr = Cndr × 0.35 × 2V/b = −1.147` against a bare `Cnr` of −0.350. Folding that in gives ζ 0.338
+against 0.344 and spiral 16.61 s against 16.69 s. The pitch and roll channels have no feedback, so
+the longitudinal comparison needs no correction and lands at 0.04%. A second test asserts the
+correction is load-bearing, so it cannot quietly become wrong.
+
+**`run()` integrates as well as running the FCS.** At JSBSim's default 1/120 s step, a pitch-rate
+perturbation drifts α far enough to manufacture `CLq` = +4.60 where 737.xml defines none. The
+absent-derivative assertion caught it; the predicted artifact for that step is +4.57, so the
+assertion was right and the method was wrong. Settling on a 1e-6 s step leaves the FCS converged
+(pure gain blocks, no actuator lags) and drops the residual to 5.5e-4, now checked against a
+derived `CLa·dt/ci2vel` floor.
+
+**Adding an aircraft to `REGISTRY` is not free.** `GAINS` and `MANUAL_GAINS` must cover every
+entry or `fly.py` raises `KeyError`, and the tail-arm plausibility gate asserts an exact dict over
+the registry. Both were handled: the gains are derived rather than hand-tuned, and the 737 fails
+the plausibility gate for a cleaner reason than the light aircraft — `l_eff = −Cmq/CLq` and JSBSim
+defines no `CLq`, so the arm is genuinely undefined rather than implausible, and the strip path is
+structurally unavailable for it.
+
+**The roll loop could not be scaled from the 747's.** The 737 has 26× the roll authority but also
+far more of its own damping, so solving for the rate gain reproducing the 747's closed-loop
+damping gives `p_d` = −0.18 — negative, i.e. deliberately de-damping a well-behaved roll mode. The
+loop is sized from the 737's own dynamics instead.
+
+**Scripts in a worktree import the wrong tree.** `flightsim` is pip-installed editable against the
+main checkout, so `python scripts/foo.py` from a worktree silently runs the *other* tree's code —
+no error, just wrong answers. pytest is immune because it puts its rootdir first, which is exactly
+why a green suite did not catch it. Both scripts now insert their own tree ahead of the installed one.
+
+### Corrections to claims made above
+
+**`thrust_lapse` is 0.72, not 1.0.** The "Thrust model" section's claim that the CFM56 tracks
+`(ρ/ρ₀)^1.0` is true of the **full-power** `MilThrust` table, but the aircraft cruises at part
+throttle, where the idle/military blend lapses differently. Fitted at the trim throttle over
+25,000–35,000 ft the exponent is 0.7208, with a 1.79% residual. Fitting over 10,000–40,000 ft
+instead leaves 6.75%, so the fit is band-limited like everything else here. `max_thrust` likewise
+fits to ~11,700 lbf per engine against a 20,000 lbf rating, because flightsim's throttle map is
+linear and JSBSim's varies 4.3× across the range.
+
+**Layer 4's residual is layer 1's missing drag, not Dutch-roll phase.** The divergence is secular,
+not oscillatory. Integrating the drag terms flightsim has no home for over the recorded sideslip
+history predicts 1.015 m/s of the rudder kick's 1.516 m/s, and 0.002 m/s for the elevator doublet
+— which is why that case sits at the 0.409 m/s Earth-rotation floor. An earlier claim attributing
+it to accumulated Dutch-roll phase was wrong and is corrected in the test and the report.
+
+**The `(vt, α) → (u, w)` transform was unnecessary.** Eigenvalues are invariant under it, so the
+mode comparison needs no basis conversion and none can be got wrong.
+
+**Trajectory sampling had to go from 0.25 s to 0.05 s.** The consumer holds each control sample
+until the next, and the yaw damper moves the rudder continuously, so a coarse sample made the
+replay fly a stale rudder — worth 5.43 m/s on the rudder kick until the rate came up.
+
+**Layer 2's turn case is recorded, not compared.** `trim.trim` solves the wings-level problem only:
+its unknowns are `[alpha, elevator, throttle]`, with no bank. JSBSim's 30° banked solution is in the
+reference, so the comparison is one banked-trim solver away. The test asserts the gap rather than
+skipping, so adding one forces the comparison to be written.
+
+**Tolerances for `CD` and `Cm` became predictions rather than allowances.** Both are computed from
+737.xml's own table constants: the `CD` difference is asserted to *equal* the terms flightsim lacks
+(3.6e-4 worst residual, 2.9e-10 at the sideslip points), and `Cm` is bounded by its two identified
+mechanisms and separately asserted exact at the reference point (5.9e-7).
+
+### Results
+
+| Layer | Result |
+|---|---|
+| 1 coefficients | `CL` 5.5e-9, `CY` 1.6e-14, `Cl` 7.0e-6, `Cn` 1.7e-6; `CD`/`Cm` predicted to 3.6e-4 |
+| 2 trim | α 1.980° vs 1.965°, δe −0.05311 vs −0.05192 rad, thrust +1.04% |
+| 3 modes | short period wn 0.04% / ζ 0.02%; phugoid 3.3% / 1.1%; lateral all under 3.3% |
+| 4 trajectory | elevator doublet 0.410 m/s (floor 0.409); rudder kick 1.52 m/s |
+
+No defect was found in flightsim. Every disagreement traces to a documented model difference with a
+measured magnitude.
+
 ## Explicitly not done
 
 Ground reactions and the two runway scripts; flaps, spoilers and speedbrake; `CDbeta` and `CDde`;
