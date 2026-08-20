@@ -67,7 +67,8 @@ class Aircraft(NamedTuple):
     Cnda: Array
     Cndr: Array
 
-    # Propulsion: thrust = throttle * max_thrust * (rho/rho0)^thrust_lapse
+    # Propulsion:
+    #   thrust = throttle * max_thrust * (rho/rho0)^thrust_lapse * (1 + mach_ram M^2)
     max_thrust: Array  # N, sea-level static
     thrust_lapse: Array  # density-ratio exponent
 
@@ -75,6 +76,19 @@ class Aircraft(NamedTuple):
     elevator_limit: Array
     aileron_limit: Array
     rudder_limit: Array
+
+    # Compressor ram recovery: the thrust a turbofan gains from forward speed.
+    #
+    # Defaulted, and the default is neutral, so every aircraft defined before
+    # this field existed is bit-for-bit unchanged by it -- asserted in
+    # test_aero.test_mach_ram_defaults_to_neutral rather than trusted. Only the
+    # 737 sets it, because only the 737 has a reference engine to fit against:
+    # JSBSim's CFM56 gains +12% between M 0 and M 0.8 at 30,000 ft, which is
+    # large enough to read as a drag error in a trajectory comparison.
+    #
+    # It is a fit over roughly M 0.6-1.0 and does NOT capture the shallow dip
+    # the real table has around M 0.2. See the 737's docstring.
+    mach_ram: Array = jnp.array(0.0)
 
 
 def inertia_tensor(Ixx, Iyy, Izz, Ixz) -> Array:
@@ -843,9 +857,146 @@ def _cessna_172() -> Aircraft:
     )
 
 
+def _boeing_737() -> Aircraft:
+    """Boeing 737, linearised from JSBSim 1.3.1's own 737 model at cruise.
+
+    *** NOT A QUALIFIED SOURCE. NOT VALID AWAY FROM CRUISE. ***
+
+    737.xml's own fileheader says the model was built from public data,
+    technical reports, textbooks "and guesses"; that validation extends only to
+    the extent that it "seems to fly right"; and that it is for "educational and
+    entertainment purposes only". Nothing here supports any claim about a real
+    737, and none is made anywhere. This entry exists so that flightsim's solver
+    can be checked against an independent, mature engine fed the SAME
+    coefficients -- a disagreement is then a defect in one of the two
+    implementations, whatever the numbers describe. See
+    docs/superpowers/specs/2026-08-20-jsbsim-737-verification-design.md.
+
+    VALIDITY BAND: linearised about 30,000 ft, M 0.78, alpha 1.965 deg. Unlike
+    every other entry in REGISTRY -- linear derivative sets from CR-2144 and
+    Nelson, valid across the ordinary linear range -- this one is a local fit to
+    a NONLINEAR model, and it degrades away from that point in known ways:
+
+      - JSBSim's CL(alpha) is a table peaking at 1.20 near 13 deg and falling.
+        CL0 + CLa*alpha keeps climbing. Above about 10 deg this entry does not
+        merely lose accuracy: it has NO stall behaviour and reports lift the
+        source model does not have.
+      - CD0 here is the value at the trim alpha of a table running 0.021 at
+        0 deg to 0.042 at 15 deg, so drag is progressively under-predicted as
+        alpha departs from cruise. It also absorbs JSBSim's CDde term
+        (0.059*|de|), frozen at its trim elevator, which flightsim has no home
+        for -- so moving the elevator changes no drag here.
+      - max_thrust is NOT a sea-level static rating. JSBSim blends idle and
+        military thrust nonlinearly with throttle (thrust/throttle varies 4.3x
+        between throttle 0.2 and 1.0) while this model is linear in throttle,
+        so max_thrust and thrust_lapse are fitted AT THE TRIM THROTTLE over
+        25,000-35,000 ft. They reproduce JSBSim to 1.8% there and are wrong
+        outside it. mach_ram is fitted over M 0.6-1.0 and is wrong at low speed.
+      - sweep, t_over_c and kappa_airfoil are NOT 737 geometry -- 737.xml gives
+        neither sweep nor thickness. They are chosen to place this project's
+        Korn/Lock drag rise at the Mach where JSBSim's CDmach table leaves zero
+        (0.79), because a conventional kappa of 0.87 would otherwise add 0.0086
+        of wave drag where JSBSim has exactly none, a 32% error on this CD0.
+        Wave drag is UNTESTED by the comparison: at M 0.78 both engines give
+        exactly zero.
+
+    Nothing in the code prevents use outside the band. To work at another
+    condition, re-run scripts/gen_jsbsim_reference.py there; it is parameterised
+    for exactly that.
+
+    Derivatives are recovered by finite-differencing the RUNNING ENGINE, not
+    read from 737.xml, and the difference is not cosmetic: JSBSim applies aero
+    forces at the AERORP (x = 625 in) but takes moments about the CG
+    (x = 610.8 in), and that 0.096 cbar offset makes the engine's effective Cma
+    -1.0637 where the XML constant says -0.6. Reading the constants would have
+    built an aeroplane with 56% of the right pitch stiffness. The same offset
+    explains Clb (-0.144 against -0.09) and Cnb (+0.273 against +0.26), through
+    side force acting 4.925 ft above and 1.183 ft aft of the CG.
+
+    Cmq = -43.0 is likewise the EFFECTIVE value: it is JSBSim's Cmq of -27 plus
+    its Cmadot of -16, which folds in exactly because alphadot = q at this
+    condition. flightsim has no alphadot term, so carrying the sum is correct
+    for the short period and wrong for anything that separates the two.
+
+    Every literal below is reproduced by scripts/gen_jsbsim_reference.py and
+    cross-checked against the frozen reference in
+    test_jsbsim_737.test_737_matches_the_recovered_reference_entry.
+    """
+    # -- geometry and mass, from 737.xml's <metrics> and the engine's own
+    #    mass properties with the modelled fuel load aboard --
+    S = 1171.0 * FT2M**2  # ft^2
+    b = 94.7 * FT2M  # ft
+    c = 12.31 * FT2M  # ft
+    # slug-ft^2, as the engine reports them with fuel aboard -- NOT the bare
+    # <mass_balance> figures, which exclude the tanks. The Ixz sign convention
+    # is confirmed rather than assumed: 737.xml carries
+    # negated_crossproduct_inertia="true", the engine reports +19109.13, and
+    # inertia_tensor's own positive-forward-up convention negates it to the
+    # -25908.5 the reference records. Asserted in
+    # test_737_mass_and_inertia_match_the_engine.
+    inertia = inertia_tensor(
+        *(v * SLUG_FT2_TO_KG_M2 for v in (
+            591572.3456383009, 1539552.6887960227,
+            1986235.3649231757, 19109.131861384914,
+        ))
+    )
+    return Aircraft(
+        mass=jnp.array(107000.0 * LBF2N / G0),  # lb, engine total with fuel
+        inertia=inertia,
+        inertia_inv=jnp.linalg.inv(inertia),
+        S=jnp.array(S),
+        b=jnp.array(b),
+        c=jnp.array(c),
+        # CD0 absorbs everything at trim that is not induced drag; wave drag is
+        # zero at M 0.78 by construction.
+        CD0=jnp.array(0.02714061915829),
+        # Chosen so CL^2/(pi e AR) reproduces JSBSim's CDi = 0.043 CL^2 exactly.
+        e=jnp.array(0.966581789644),
+        AR=jnp.array(b * b / S),
+        # FITTED, not geometry -- see the docstring.
+        sweep=jnp.array(25.0 * DEG2RAD),
+        t_over_c=jnp.array(0.12),
+        kappa_airfoil=jnp.array(0.9872558124305),
+        # Intercepts solved so the model reproduces JSBSim's own coefficients
+        # AT the reference point, which is what "linearised about cruise" means.
+        CL0=jnp.array(0.1999999945286),
+        CLa=jnp.array(4.347826086957),
+        CLq=jnp.array(0.0),  # 737.xml defines none; measured 5.5e-4, the drift floor
+        CLde=jnp.array(0.2),
+        Cm0=jnp.array(-0.0107340365168),
+        Cma=jnp.array(-1.063727587718),
+        Cmq=jnp.array(-43.00016297427),  # Cmq + Cmadot; see the docstring
+        Cmde=jnp.array(-0.8943214622019),
+        CYb=jnp.array(-1.0),
+        CYp=jnp.array(0.0),  # 737.xml defines none
+        CYr=jnp.array(0.0),  # 737.xml defines none
+        CYdr=jnp.array(0.0),  # 737.xml defines none: rudder makes no side force
+        Clb=jnp.array(-0.1439596271454),
+        Clp=jnp.array(-0.4000000796561),
+        Clr=jnp.array(0.09000215413333),
+        Clda=jnp.array(0.07387000014111),  # Mach-scheduled in JSBSim; M 0.78 value
+        Cldr=jnp.array(0.01),
+        Cnb=jnp.array(0.2729605160489),
+        Cnp=jnp.array(0.0),  # 737.xml defines none
+        Cnr=jnp.array(-0.350004469464),
+        Cnda=jnp.array(0.0),  # 737.xml defines none
+        Cndr=jnp.array(-0.2),
+        # FITTED at the trim throttle over the cruise band -- see the docstring.
+        max_thrust=jnp.array(101375.4010746),
+        thrust_lapse=jnp.array(0.7207901171515),
+        # Deflection limits are 737.xml's aerosurface_scale ranges, so trim
+        # bounds here are the same bounds JSBSim's own FCS enforces.
+        elevator_limit=jnp.array(0.3),
+        aileron_limit=jnp.array(0.35),
+        rudder_limit=jnp.array(0.35),
+        mach_ram=jnp.array(0.2510939315992),
+    )
+
+
 REGISTRY: dict[str, Aircraft] = {
     "boeing747": _boeing_747(),
     "boeing747_approach": _boeing_747_approach(),
+    "boeing737": _boeing_737(),
     "cherokee": _cherokee_pa28_180(),
     "cessna172": _cessna_172(),
 }
@@ -856,6 +1007,16 @@ CRUISE: dict[str, dict[str, float]] = {
     # Table IX-2 is AT sea level. Flown a little above it for the microburst
     # work, which is a 3% density extrapolation rather than the 40,000 ft one.
     "boeing747_approach": {"altitude": 0.0, "airspeed": 165.0 * KT2MS},
+    # The condition the 737's derivatives were recovered at, and the ONLY one it
+    # is valid near -- see _boeing_737's docstring.
+    #
+    # The altitude is DENSITY-MATCHED, not nominal: JSBSim flies this at
+    # 30,000 ft, but flightsim's ISA uses geometric altitude where the standard
+    # uses geopotential, so its density there is 0.159% below JSBSim's. Since
+    # qbar is proportional to rho, running at a nominal 30,000 ft would put that
+    # bias on every force in the comparison. 9130.83 m is 43.22 ft lower and
+    # matches JSBSim's density to 1e-16 relative.
+    "boeing737": {"altitude": 9130.825908961, "airspeed": 236.5191917152},
     "cherokee": {"altitude": 4920.0 * FT2M, "airspeed": 50.0},
     "cessna172": {"altitude": 5000.0 * FT2M, "airspeed": 60.0},
 }

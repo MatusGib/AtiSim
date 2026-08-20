@@ -188,12 +188,25 @@ def aero_forces_moments(
     return force, moment
 
 
-def thrust_force(controls: Controls, ac: Aircraft, rho: Array) -> Array:
+def thrust_force(
+    controls: Controls, ac: Aircraft, rho: Array, mach: Array = 0.0
+) -> Array:
     """Body-axis thrust, assumed aligned with the body x axis.
 
     Deliberately not an engine model: throttle times maximum thrust, with a
-    density lapse. The exponent is 1 for a normally-aspirated piston and around
-    0.7-0.8 for a high-bypass turbofan.
+    density lapse and a ram term. The exponent is 1 for a normally-aspirated
+    piston and around 0.7-0.8 for a high-bypass turbofan.
+
+    `mach` is optional and defaults to zero, which switches the ram term off
+    entirely, so callers written before it existed keep their exact behaviour.
+    It is separate from `ac.mach_ram`: an aircraft with no ram coefficient is
+    unaffected at any Mach, and a caller with no Mach is unaffected by any
+    coefficient. Both have to be supplied for the term to act.
     """
-    magnitude = controls.throttle * ac.max_thrust * (rho / RHO0) ** ac.thrust_lapse
+    magnitude = (
+        controls.throttle
+        * ac.max_thrust
+        * (rho / RHO0) ** ac.thrust_lapse
+        * (1.0 + ac.mach_ram * mach**2)
+    )
     return jnp.array([magnitude, 0.0, 0.0])

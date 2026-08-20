@@ -61,11 +61,16 @@ def derivatives(
 
     altitude = -state.pos_ned[2]
     rho = density(altitude)
+    a_sound = speed_of_sound(altitude)
     force, moment = aero_forces_moments(
-        vel_rel, omega_rel, controls, ac, rho, speed_of_sound(altitude),
+        vel_rel, omega_rel, controls, ac, rho, a_sound,
         increment=increment,
     )
-    force = force + thrust_force(controls, ac, rho)
+    # Air-relative Mach, and unfloored for the same reason aero.py does not
+    # floor it: Mach is finite at V = 0, so a floor would report thrust the
+    # aircraft does not have.
+    mach = jnp.linalg.norm(vel_rel) / a_sound
+    force = force + thrust_force(controls, ac, rho, mach)
 
     gravity_body = dcm.T @ jnp.array([0.0, 0.0, G0])
 
@@ -212,7 +217,7 @@ def average_f_factor(
 
 
 def thrust_authority(
-    ac: Aircraft, trim_throttle: Array, altitude: Array
+    ac: Aircraft, trim_throttle: Array, altitude: Array, mach: Array = 0.0
 ) -> tuple[Array, Array]:
     """The (T - D)/W envelope in level flight: (full throttle, idle).
 
@@ -231,7 +236,15 @@ def thrust_authority(
     physical point rather than a discrepancy: thrust available falls with
     density while weight does not.
     """
-    available = ac.max_thrust * (density(altitude) / RHO0) ** ac.thrust_lapse
+    # `mach` defaults to zero, which switches the ram term off. Every existing
+    # caller is a lee-wave or microburst case flown by an aircraft with
+    # mach_ram = 0, so the term is identically 1 for them either way; the
+    # argument exists so a ram-carrying aircraft is not silently under-thrusted.
+    available = (
+        ac.max_thrust
+        * (density(altitude) / RHO0) ** ac.thrust_lapse
+        * (1.0 + ac.mach_ram * mach**2)
+    )
     drag = trim_throttle * available
     weight = ac.mass * G0
     return (available - drag) / weight, -drag / weight
