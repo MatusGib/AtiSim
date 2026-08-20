@@ -23,6 +23,26 @@ REF = jsbsim_ref.load()
 CRUISE_COND = REF.condition["cruise"]
 TRIM = REF.trim["longitudinal"]
 
+# The two recovery conditions. One reference point cannot distinguish a solver
+# that is right from one that is right in a single place -- PROJECT.md section 4
+# records this project's phugoid error moving from 17.8% to 0.4% between two
+# conditions with identical code -- so layers 1 and 2 run at both.
+CASES = {
+    "cruise": ("boeing737", jsbsim_ref.REFERENCE, "cruise"),
+    "approach": ("boeing737_approach",
+                 jsbsim_ref.REFERENCE.parent / "jsbsim_737_approach_reference.xml",
+                 "approach"),
+}
+_LOADED = {name: jsbsim_ref.load(path) for name, (_, path, _c) in CASES.items()}
+
+
+def case(name):
+    """(reference, condition, trim, aircraft) for one recovery condition."""
+    aircraft_name, _path, condition_name = CASES[name]
+    ref = _LOADED[name]
+    return (ref, ref.condition[condition_name], ref.trim["longitudinal"],
+            REGISTRY[aircraft_name])
+
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -51,15 +71,14 @@ def _flightsim_coefficients(point, ac):
     ]
 
 
-def _flightsim_trim():
+def _flightsim_trim(condition="cruise"):
     import jax.numpy as jnp
 
     from flightsim import trim as trim_mod
 
+    _ref, cond, _trim, ac = case(condition)
     x, residual = trim_mod.trim(
-        jnp.array(CRUISE_COND.airspeed),
-        jnp.array(CRUISE_COND.matched_altitude),
-        REGISTRY["boeing737"],
+        jnp.array(cond.airspeed), jnp.array(cond.matched_altitude), ac
     )
     return [float(v) for v in x], float(np.max(np.abs(np.asarray(residual))))
 
@@ -88,20 +107,28 @@ _CD_DE = 0.059
 _Z_ARM_OVER_CHORD = 4.925 / 12.31
 
 
-def _missing_drag(point):
-    """The CD difference flightsim's frozen CD0 cannot represent."""
+def _missing_drag(point, trim, ac):
+    """The CD difference flightsim's model cannot represent.
+
+    The sideslip term is no longer wholly missing -- flightsim now carries a
+    quadratic CD_beta -- so what remains is the difference between JSBSim's
+    linearly interpolated table and that quadratic. The two agree at the table's
+    0.26 rad breakpoint and diverge below it, which is deliberate: see the
+    CD_beta comment in aircraft.py.
+    """
     return (
-        (np.interp(point.alpha, *_CD0_ALPHA) - np.interp(TRIM.alpha, *_CD0_ALPHA))
-        + (np.interp(point.beta, *_CD_BETA) - np.interp(0.0, *_CD_BETA))
-        + _CD_DE * (abs(point.controls[0]) - abs(TRIM.elevator))
+        (np.interp(point.alpha, *_CD0_ALPHA) - np.interp(trim.alpha, *_CD0_ALPHA))
+        + (np.interp(point.beta, *_CD_BETA) - float(ac.CD_beta) * point.beta**2)
+        + _CD_DE * (abs(point.controls[0]) - abs(trim.elevator))
     )
 
 
+@pytest.mark.parametrize("condition", list(CASES))
 @pytest.mark.parametrize(
     "name,index,tol",
     [("CL", 0, 1e-7), ("CY", 2, 1e-10), ("Cl", 3, 5e-5), ("Cn", 5, 5e-5)],
 )
-def test_layer1_coefficients_with_no_model_difference_agree(name, index, tol):
+def test_layer1_coefficients_with_no_model_difference_agree(name, index, tol, condition):
     """The four coefficients both engines model the same way.
 
     These need no real tolerance beyond round-off. JSBSim's CL is a table, but
@@ -111,18 +138,20 @@ def test_layer1_coefficients_with_no_model_difference_agree(name, index, tol):
     above sit one to three orders above the measurement and would still catch a
     sign error or a bad non-dimensionalisation.
     """
-    ac = REGISTRY["boeing737"]
+    ref, _cond, _trim, ac = case(condition)
     worst, where = 0.0, None
-    for i, point in enumerate(REF.sweep):
+    for i, point in enumerate(ref.sweep):
         err = abs(_flightsim_coefficients(point, ac)[index] - point.coefficients[index])
         if err > worst:
             worst, where = err, i
     assert worst <= tol, (
-        f"{name}: worst |difference| {worst:.3e} > {tol:.1e} at sweep point {where}"
+        f"{condition}/{name}: worst |difference| {worst:.3e} > {tol:.1e} "
+        f"at sweep point {where}"
     )
 
 
-def test_layer1_drag_difference_is_exactly_the_terms_flightsim_lacks():
+@pytest.mark.parametrize("condition", list(CASES))
+def test_layer1_drag_difference_is_exactly_the_terms_flightsim_lacks(condition):
     """CD disagrees, and the disagreement is accounted for rather than allowed.
 
     flightsim has no CD0(alpha) variation, no CDbeta and no CDde. Subtracting
@@ -131,32 +160,35 @@ def test_layer1_drag_difference_is_exactly_the_terms_flightsim_lacks():
     prediction accounts for it to 2.9e-10; what remains anywhere is the
     second-order induced-drag difference.
     """
-    ac = REGISTRY["boeing737"]
+    ref, _cond, trim, ac = case(condition)
     worst, where = 0.0, None
-    for i, point in enumerate(REF.sweep):
+    for i, point in enumerate(ref.sweep):
         got = _flightsim_coefficients(point, ac)[1]
-        unexplained = abs((point.coefficients[1] - got) - _missing_drag(point))
+        unexplained = abs((point.coefficients[1] - got) - _missing_drag(point, trim, ac))
         if unexplained > worst:
             worst, where = unexplained, i
     assert worst <= 1e-3, (
-        f"CD difference beyond the known missing terms: {worst:.3e} at point {where}"
+        f"{condition}: CD difference beyond the known missing terms "
+        f"{worst:.3e} at point {where}"
     )
 
 
-def test_layer1_pitching_moment_is_exact_at_the_reference_point():
+@pytest.mark.parametrize("condition", list(CASES))
+def test_layer1_pitching_moment_is_exact_at_the_reference_point(condition):
     """Cm is a linearisation about trim, so at trim it must be exact.
 
     Sweep point 2 IS the trim condition. Measured difference there: 5.9e-7.
     This is the test that would catch a wrong Cm0 or Cma intercept, which the
     quadratic bound below deliberately cannot.
     """
-    ac = REGISTRY["boeing737"]
-    at_trim = min(REF.sweep, key=lambda p: abs(p.alpha - TRIM.alpha) + abs(p.beta))
+    ref, _cond, trim, ac = case(condition)
+    at_trim = min(ref.sweep, key=lambda p: abs(p.alpha - trim.alpha) + abs(p.beta))
     difference = abs(at_trim.coefficients[4] - _flightsim_coefficients(at_trim, ac)[4])
     assert difference < 1e-6, f"Cm at the reference point is off by {difference:.3e}"
 
 
-def test_layer1_pitching_moment_difference_stays_within_its_two_mechanisms():
+@pytest.mark.parametrize("condition", list(CASES))
+def test_layer1_pitching_moment_difference_stays_within_its_two_mechanisms(condition):
     """Cm's disagreement is second-order, and it has exactly two sources.
 
     Measured, it vanishes at trim (5.9e-7) and grows symmetrically either side
@@ -180,12 +212,12 @@ def test_layer1_pitching_moment_difference_stays_within_its_two_mechanisms():
     predicting the exact value would mean reimplementing JSBSim's moment
     build-up here and claiming more precision than is warranted.
     """
-    ac = REGISTRY["boeing737"]
+    ref, _cond, trim, ac = case(condition)
     CLa = float(ac.CLa)
-    for i, point in enumerate(REF.sweep):
+    for i, point in enumerate(ref.sweep):
         measured = abs(point.coefficients[4] - _flightsim_coefficients(point, ac)[4])
         bound = _Z_ARM_OVER_CHORD * (
-            abs(_missing_drag(point)) + CLa * (point.alpha - TRIM.alpha) ** 2
+            abs(_missing_drag(point, trim, ac)) + CLa * (point.alpha - trim.alpha) ** 2
         ) + 1e-5
         assert measured <= bound, (
             f"Cm difference {measured:.3e} exceeds the {bound:.3e} its two "
@@ -196,7 +228,8 @@ def test_layer1_pitching_moment_difference_stays_within_its_two_mechanisms():
 # ---------------------------------------------------------------------------
 # Layer 2 -- trim
 # ---------------------------------------------------------------------------
-def test_layer2_longitudinal_trim_matches():
+@pytest.mark.parametrize("condition", list(CASES))
+def test_layer2_longitudinal_trim_matches(condition):
     """Both engines' own trim algorithms, at the same condition.
 
     Measured: alpha 1.980 deg against JSBSim's 1.965, elevator -0.05311 against
@@ -206,23 +239,24 @@ def test_layer2_longitudinal_trim_matches():
     """
     from flightsim.atmosphere import RHO0, density
 
-    (alpha, elevator, throttle), residual = _flightsim_trim()
+    _ref, cond, expected, ac = case(condition)
+    (alpha, elevator, throttle), residual = _flightsim_trim(condition)
     assert residual < 1e-8, f"flightsim's own trim did not converge: {residual:.2e}"
-    assert abs(alpha - TRIM.alpha) < 5e-4, (
-        f"alpha {np.degrees(alpha):.5f} deg vs {np.degrees(TRIM.alpha):.5f} deg"
+    assert abs(alpha - expected.alpha) < 5e-4, (
+        f"{condition}: alpha {np.degrees(alpha):.5f} deg vs "
+        f"{np.degrees(expected.alpha):.5f} deg"
     )
-    assert abs(elevator - TRIM.elevator) < 2e-3
+    assert abs(elevator - expected.elevator) < 2e-3
 
-    ac = REGISTRY["boeing737"]
-    rho = float(density(CRUISE_COND.matched_altitude))
-    mach = CRUISE_COND.airspeed / CRUISE_COND.sound_speed
+    rho = float(density(cond.matched_altitude))
+    mach = cond.airspeed / cond.sound_speed
     thrust = (
         throttle
         * float(ac.max_thrust)
         * (rho / RHO0) ** float(ac.thrust_lapse)
         * (1.0 + float(ac.mach_ram) * mach**2)
     )
-    assert abs(thrust - TRIM.thrust) / TRIM.thrust < 0.02
+    assert abs(thrust - expected.thrust) / expected.thrust < 0.02
 
 
 def test_layer2_turn_trim_is_recorded_but_not_yet_comparable():

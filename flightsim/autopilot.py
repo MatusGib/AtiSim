@@ -401,6 +401,10 @@ GAINS: dict[str, Gains] = {
     "boeing747": BOEING747_GAINS,
     "boeing747_approach": BOEING747_APPROACH_GAINS,
     "boeing737": BOEING737_GAINS,
+    # Same airframe, half the speed and a sixth the altitude, so the loops
+    # see roughly the same dynamic pressure and the cruise set carries over.
+    # UNTUNED beyond that -- it holds and captures in the suite, nothing more.
+    "boeing737_approach": BOEING737_GAINS,
     "cherokee": CHEROKEE_GAINS,
     "cessna172": CESSNA172_GAINS,
 }

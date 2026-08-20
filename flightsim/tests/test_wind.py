@@ -209,7 +209,7 @@ def test_the_vortex_model_satisfies_the_wind_model_contract(test_aircraft):
         omega=jnp.zeros(3),
     )
     key = jax.random.PRNGKey(0)
-    wind_ned, omega_gust, wind_state, out_key = model(
+    wind_ned, omega_gust, wind_state, out_key, _ = model(
         wind.zero_wind_state(), state, key, jnp.array(0.02)
     )
     assert wind_ned.shape == (3,)
@@ -242,7 +242,7 @@ def test_the_vortex_produces_a_pitching_gust_at_the_core_edge():
         quat=euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
         omega=jnp.zeros(3),
     )
-    _, omega_gust, _, _ = model(
+    _, omega_gust, _, _, _ = model(
         wind.zero_wind_state(), state, jax.random.PRNGKey(0), jnp.array(0.02)
     )
     magnitude = CASE1_V0 / CASE1_R0  # rad/s, constant inside the core
@@ -624,7 +624,7 @@ def test_the_sampled_wind_model_matches_the_contract():
     )
     s = _level_state()
     key = jax.random.PRNGKey(0)
-    wind_ned, omega_gust, wind_state, out_key = model(
+    wind_ned, omega_gust, wind_state, out_key, _ = model(
         wind.zero_wind_state(), s, key, jnp.array(0.02)
     )
     assert wind_ned.shape == (3,)
@@ -841,10 +841,10 @@ def test_the_default_field_model_still_uses_the_analytic_gradient():
     s = _level_state(north=CASE1_R0)  # at the core edge, where they differ most
 
     key = jax.random.PRNGKey(0)
-    _, tangent_gust, _, _ = wind.field_model(field)(
+    _, tangent_gust, _, _, _ = wind.field_model(field)(
         wind.zero_wind_state(), s, key, jnp.array(0.02)
     )
-    _, fitted_gust, _, _ = wind.sampled_field_model(field, airframe.stations(ac))(
+    _, fitted_gust, _, _, _ = wind.sampled_field_model(field, airframe.stations(ac))(
         wind.zero_wind_state(), s, key, jnp.array(0.02)
     )
     assert not np.allclose(np.asarray(tangent_gust), np.asarray(fitted_gust)), (

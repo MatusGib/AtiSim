@@ -46,6 +46,7 @@ def test_only_the_two_747_configurations_pass_the_plausibility_gate():
         cessna172           0.8558 chords =   4.19 ft   FAIL
         cherokee            1.2802 chords =   6.72 ft   FAIL
         boeing737              inf chords                FAIL
+        boeing737_approach     inf chords                FAIL
 
     Both 747 sets come from CR-2144, whose transcription has been verified
     element by element against the source document. Both light-aircraft sets
@@ -72,6 +73,7 @@ def test_only_the_two_747_configurations_pass_the_plausibility_gate():
         "cessna172": False,
         "cherokee": False,
         "boeing737": False,
+        "boeing737_approach": False,
     }, f"gate outcome changed: {passes}"
 
 

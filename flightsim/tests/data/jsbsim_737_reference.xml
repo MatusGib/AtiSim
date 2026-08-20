@@ -25,10 +25,10 @@
     <bank>0.000000000000e+00</bank>
   </trim>
   <trim mode="turn">
-    <alpha>3.703863145792e-02</alpha>
-    <elevator>-5.722796035028e-02</elevator>
-    <throttle>7.750410236427e-01</throttle>
-    <thrust>5.108160308902e+04</thrust>
+    <alpha>4.706726800380e-02</alpha>
+    <elevator>-7.109147829206e-02</elevator>
+    <throttle>8.206150812446e-01</throttle>
+    <thrust>4.978839037322e+04</thrust>
     <bank>5.235987755983e-01</bank>
   </trim>
   <derivatives>

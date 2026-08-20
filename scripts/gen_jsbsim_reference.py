@@ -42,11 +42,32 @@ from flightsim.units import (  # noqa: E402
     FT2M, LBF2N, SLUG_FT2_TO_KG_M2, SLUG_FT3_TO_KG_M3,
 )
 
-OUT = ROOT / "flightsim" / "tests" / "data" / "jsbsim_737_reference.xml"
+DATA = ROOT / "flightsim" / "tests" / "data"
 
-# The condition everything is linearised about: JSBSim's own 737_test script.
+# The conditions to recover at. Everything below reads the module-level ALT_FT
+# and MACH, which `main` rebinds per condition -- that is what makes
+# re-recovering somewhere else a parameter change rather than a rewrite, which
+# the 737 entry's docstring promises.
+#
+# CRUISE is JSBSim's own 737_test condition. APPROACH exists because a single
+# reference point cannot distinguish a solver that is right from one that is
+# right at one place: PROJECT.md section 4 records this project's phugoid error
+# falling from 17.8% at M 0.80 / 40,000 ft to 0.4% at M 0.25 / sea level with
+# the same code and the same omissions, because compressibility drives the
+# missing terms. A second condition turns that inference into a measurement.
+CONDITIONS = {
+    "cruise": {"alt_ft": 30000.0, "mach": 0.78, "file": "jsbsim_737_reference.xml"},
+    # M 0.35 here is NOT trimmable -- JSBSim reports "wdot doesn't appear to be
+    # trimmable", because the lift needed at that speed runs the 737 up the
+    # nonlinear part of its CL table. M 0.40 trims cleanly at alpha 3.63 deg,
+    # against cruise's 1.97 deg, at a sixth the altitude and half the Mach.
+    "approach": {"alt_ft": 5000.0, "mach": 0.40,
+                 "file": "jsbsim_737_approach_reference.xml"},
+}
+
+OUT = DATA / CONDITIONS["cruise"]["file"]
 ALT_FT, MACH, GAMMA_DEG = 30000.0, 0.78, 0.0
-TURN_ALT_FT, TURN_VT_FPS, TURN_BANK_DEG = 25000.0, 750.0, 30.0
+TURN_BANK_DEG = 30.0
 
 # FCS gearings, from 737.xml's aerosurface_scale blocks. Used only to COMMAND a
 # deflection; the achieved deflection is always read back.
@@ -88,14 +109,18 @@ def _clean(fdm):
 
 
 def at_state(alpha_deg=0.0, beta_deg=0.0, p=0.0, q=0.0, r=0.0,
-             de=0.0, da=0.0, dr=0.0, alt_ft=ALT_FT, vt_fps=None):
+             de=0.0, da=0.0, dr=0.0, alt_ft=None, vt_fps=None):
     """Put JSBSim at a state and step it once so the aero outputs are populated.
 
     Commanded values are approximate by design: the FCS gears them and the yaw
     damper adds to them. `read_state` reports what actually happened.
     """
+    # Resolved here, NOT as a default argument: a default binds at definition
+    # time, so `build` rebinding the module globals would never reach it -- which
+    # silently ran the approach condition at the cruise altitude and produced an
+    # untrimmable 30,000 ft / M 0.40.
     fdm = new_fdm()
-    fdm["ic/h-sl-ft"] = alt_ft
+    fdm["ic/h-sl-ft"] = ALT_FT if alt_ft is None else alt_ft
     if vt_fps is None:
         fdm["ic/mach"] = MACH
     else:
@@ -163,7 +188,7 @@ def read_state(fdm):
     )
 
 
-def trimmed(mode, alt_ft=ALT_FT, vt_fps=None, bank_deg=0.0, latitude_deg=47.0):
+def trimmed(mode, alt_ft=None, vt_fps=None, bank_deg=0.0, latitude_deg=47.0):
     """JSBSim's own trim. mode 0 = longitudinal, 5 = steady turn.
 
     latitude_deg must be set BEFORE run_ic(): an ic/ property written after
@@ -172,7 +197,7 @@ def trimmed(mode, alt_ft=ALT_FT, vt_fps=None, bank_deg=0.0, latitude_deg=47.0):
     """
     fdm = new_fdm()
     fdm["ic/lat-gc-deg"] = latitude_deg
-    fdm["ic/h-sl-ft"] = alt_ft
+    fdm["ic/h-sl-ft"] = ALT_FT if alt_ft is None else alt_ft
     if vt_fps is None:
         fdm["ic/mach"] = MACH
     else:
@@ -485,7 +510,10 @@ def thrust_fit(throttle):
     # the band are recorded in the limitations, not fitted to.
     machs = np.array([0.60, 0.70, 0.78, 0.85, 0.95])
     T_m = np.array([thrust_at(ALT_FT, m, throttle) for m in machs])
-    alts = np.array([25000.0, 27500.0, 30000.0, 32500.0, 35000.0])
+    # The band BRACKETS the condition rather than being fixed at cruise. A band
+    # pinned to 25,000-35,000 ft left a 31.3% residual when fitting a 5,000 ft
+    # condition, because a single power law does not span that range.
+    alts = ALT_FT + np.array([-5000.0, -2500.0, 0.0, 2500.0, 5000.0])
     T_h = np.array([thrust_at(h, MACH, throttle) for h in alts])
     ratio = np.array([float(density(h * FT2M)) / 1.225 for h in alts])
 
@@ -576,9 +604,14 @@ def vec(a):
     return " ".join(f(v) for v in np.asarray(a).ravel())
 
 
-def main():
+def build(condition_name):
+    global ALT_FT, MACH, OUT
+    spec = CONDITIONS[condition_name]
+    ALT_FT, MACH = spec["alt_ft"], spec["mach"]
+    OUT = DATA / spec["file"]
     work = OUT.parent
     work.mkdir(parents=True, exist_ok=True)
+    print(f"===== {condition_name}: {ALT_FT:.0f} ft, M {MACH} =====")
 
     base = jsbsim.FGJSBBase()
     version = base.get_version()
@@ -596,7 +629,9 @@ def main():
             bank=0.0,
         ),
     }
-    turn = trimmed(5, alt_ft=TURN_ALT_FT, vt_fps=TURN_VT_FPS, bank_deg=TURN_BANK_DEG)
+    # Same altitude and Mach as the condition being built, so the turn case is a
+    # banked version of THIS point rather than of a fixed one.
+    turn = trimmed(5, bank_deg=TURN_BANK_DEG)
     trims["turn"] = dict(
         alpha=turn["aero/alpha-rad"], elevator=turn["fcs/elevator-pos-rad"],
         throttle=turn["fcs/throttle-cmd-norm[0]"],
@@ -717,7 +752,7 @@ def main():
     L.append("    <generator>scripts/gen_jsbsim_reference.py</generator>")
     L.append("  </provenance>")
 
-    L.append('  <condition name="cruise">')
+    L.append(f'  <condition name="{condition_name}">')
     L.append(f"    <altitude_m>{f(h_js)}</altitude_m>")
     L.append(f"    <matched_altitude_m>{f(h_match)}</matched_altitude_m>")
     L.append(f"    <density>{f(rho)}</density>")
@@ -795,4 +830,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import sys as _sys
+    wanted = _sys.argv[1:] or list(CONDITIONS)
+    for name in wanted:
+        build(name)

@@ -339,6 +339,7 @@ BOEING737_MANUAL = BOEING747_MANUAL._replace(
 MANUAL_GAINS: dict[str, ManualGains] = {
     "boeing747": BOEING747_MANUAL,
     "boeing737": BOEING737_MANUAL,
+    "boeing737_approach": BOEING737_MANUAL,
     "boeing747_approach": BOEING747_APPROACH_MANUAL,
     "cherokee": CHEROKEE_MANUAL,
     "cessna172": CESSNA172_MANUAL,
