@@ -839,6 +839,72 @@ Both Lanchester approximations reproduce the *size* of their own published error
 ωn 0.163028 vs 0.13391 is 1.217× against Caughey's stated "about 20 per cent", and
 ζ 0.0651 vs 0.01329 is 4.9× against his "a factor of almost 5".
 
+### Cross-code verification against JSBSim (session 17)
+
+The first comparison against another **executing** 6-DOF implementation rather than a
+published table. JSBSim 1.3.1 (build 1837, commit `3b25f25e`) is driven headless and its
+737 is used as an **engine**, never as a dataset: `737.xml` says of itself that it was
+built from public data "and guesses", validated only to the extent that it "seems to fly
+right", and is for "educational and entertainment purposes only". Feeding two codes the
+same coefficients makes the dataset's quality irrelevant — a disagreement is a defect in
+one of the two implementations. Design:
+`docs/superpowers/specs/2026-08-20-jsbsim-737-verification-design.md`.
+
+**Derivatives are recovered by finite-differencing the running engine, not read from the
+XML, and the difference is not cosmetic.** JSBSim applies aero forces at the AERORP
+(x = 625 in) and takes moments about the CG (x = 610.8 in):
+
+| | 737.xml | engine | why |
+|---|---|---|---|
+| Cmα | −0.600 | **−1.0637** | 77%; `CLa × 0.096 c̄`. Transcribing gives 56% of the right pitch stiffness |
+| Clβ | −0.090 | −0.1440 | side force 4.925 ft above the CG — closes to 0.15% |
+| Cnβ | +0.260 | +0.2730 | side force 1.183 ft aft of the CG — closes to 0.17% |
+| CLα | +4.3478 | +4.3478 | **exact** — no offset effect on lift |
+| Cmq | −27.0 | **−43.000** | = Cmq + Cmα̇ (−16); α̇ = q here, so they fold with coefficient one |
+
+| Layer | Result |
+|---|---|
+| 1 build-up | CL **5.5e-9**, CY **1.6e-14**, Cl 7.0e-6, Cn 1.7e-6 |
+| 1 CD, Cm | differ; **predicted** from 737.xml's own tables to 3.6e-4, and to **2.9e-10** at the sideslip points |
+| 2 trim | α 1.980° vs 1.965°, δe −0.05311 vs −0.05192 rad, thrust **+1.04%** |
+| 3 short period | ωn **0.040%**, ζ **0.019%** |
+| 3 phugoid | ωn 3.33%, ζ 1.13% |
+| 3 lateral | Dutch roll ζ 1.79%, roll TC 3.22%, spiral TC **0.50%** — after the yaw-damper correction below |
+| 4 trajectory | elevator doublet **0.410 m/s** over 20 s against a 0.409 m/s Earth-rotation floor; rudder kick 1.52 m/s |
+
+**No defect was found in flightsim.** Every disagreement traces to a documented model
+difference with a measured magnitude.
+
+**Three findings worth keeping.**
+
+*JSBSim's `do_linearization` is closed-loop and nothing says so.* Its FCS is inside the
+exported model. Against the bare airframe the lateral comparison reads as catastrophic —
+Dutch roll ζ 0.101 against 0.344, spiral **127.6 s against 16.7 s, a 664% disagreement** —
+and the natural conclusion is that this project's lateral dynamics are broken. The yaw
+damper feeds yaw rate to the rudder with unit gain above M 0.11 geared by 0.35 rad, adding
+`ΔCnr = Cndr × 0.35 × 2V/b = −1.147` against a bare Cnr of −0.350. Folding it in gives
+ζ 0.338 and spiral 16.61 s. Pitch and roll have no feedback, which is why the short period
+needed no correction at all.
+
+*flightsim's ISA uses geometric altitude where the standard uses geopotential.* Density runs
+0.159% low at 30,000 ft and 0.368% at 40,000 — a same-signed bias on every force in every
+layer, since q̄ ∝ ρ. Predicted temperature errors match measured ones to four decimal places.
+Neutralised for the comparison by matching on **density rather than altitude** (43.22 ft
+lower, agreeing to 1e-16); the underlying defect is pre-existing and filed rather than fixed
+here. **Anything altitude-dependent in this ledger carries it.**
+
+*Scripts run from a git worktree import the wrong tree.* `flightsim` is installed editable
+against the main checkout, so `python scripts/foo.py` from a worktree silently runs the other
+tree's code — no error, wrong answers. pytest is immune because it puts its rootdir first,
+which is precisely why a green suite did not catch it.
+
+The thrust model gained a **Mach ram term** (`+12.1%` from M 0 to M 0.8 on the CFM56, an 11%
+error at cruise that would read as a drag defect). The field defaults to neutral, so the 747,
+747-approach, Cherokee, Cessna and the synthetic fixture are **bit-for-bit unchanged** —
+asserted, not inspected.
+
+Report: `docs/summary/jsbsim-737-report.pdf`.
+
 ### The validated baseline — do not touch these tolerances
 
 `test_conservation.py`, `test_cr2144_modes.py`, `test_drag_polar.py`, `test_navion.py`,
