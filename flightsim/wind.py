@@ -11,6 +11,10 @@ Three things a turbulence model needs, all present here already:
               the span and chord is a rate, not just a velocity
   wind_state  the shaping filters that turn white noise into Dryden/von Karman
               spectra are dynamic systems and carry state between steps
+  alphadot_gust  the WIND-INDUCED angle-of-attack rate, rad/s. A gust changes
+              alpha without any pitch rate, and the tail's downwash lag makes
+              that a pitching moment (Stengel Eq. 3.4-26). Computed from the
+              same field Jacobian that produces omega_gust
 
 `wind_state` is not in the original plan's signature. It is here because a
 shaped-noise turbulence model cannot work without somewhere to keep its filter
@@ -29,6 +33,7 @@ import jax.numpy as jnp
 from jax import Array
 
 from flightsim import airframe
+from flightsim.aero import V_MIN
 from flightsim.aircraft import Aircraft
 from flightsim.state import State, quat_to_dcm
 from flightsim.units import FT2M
@@ -52,10 +57,10 @@ def zero_wind_state() -> WindState:
 
 def zero_wind(
     wind_state: WindState, state: State, key: Array, dt: float
-) -> tuple[Array, Array, WindState, Array]:
-    """Still air. Returns (wind_ned, omega_gust, wind_state, key)."""
+) -> tuple[Array, Array, WindState, Array, Array]:
+    """Still air. (wind_ned, omega_gust, wind_state, key, alphadot_gust)."""
     del state, dt
-    return jnp.zeros(3), jnp.zeros(3), wind_state, key
+    return jnp.zeros(3), jnp.zeros(3), wind_state, key, jnp.array(0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -600,6 +605,46 @@ def superpose(*fields):
     return combined
 
 
+def gust_alphadot(pos_ned: Array, quat: Array, vel_body: Array, field) -> Array:
+    """Wind-induced angle-of-attack rate, rad/s, from the field's own gradient.
+
+    The aircraft flying through a frozen field sees the wind change at a rate
+    given by the material derivative under the Taylor hypothesis,
+
+        d(wind_ned)/dt = J @ vel_ned,    J = d(wind_ned)/d(pos_ned)
+
+    which is the SAME Jacobian `gust_rates` already forms to produce
+    `omega_gust`. No new differentiation, no finite differencing, and a field
+    whose gradient is wrong is caught by the existing rate tests rather than
+    silently producing a wrong alphadot here.
+
+    Only the WIND part of alphadot is returned. The aircraft's own contribution
+    is implicit -- alphadot depends on wdot depends on the forces depend on
+    alphadot -- and stays folded into Cmq, which is exact whenever alphadot = q.
+    What is returned is precisely the part the aircraft's own motion cannot
+    produce: Stengel, Flight Dynamics 2nd ed. p.227, "a plunging aircraft
+    experiences non-zero alphadot with zero q".
+
+    Exact rather than small-angle: alpha = arctan2(w_rel, u_rel), so
+
+        alphadot = (u_rel * wdot_rel - w_rel * udot_rel) / (u_rel^2 + w_rel^2)
+
+    and the gust contributes -(d(wind_body)/dt) to the relative velocity.
+    """
+    dcm = quat_to_dcm(quat)  # body -> NED
+    vel_ned = dcm @ vel_body
+    wind_rate_ned = jax.jacfwd(field)(pos_ned) @ vel_ned
+    # Relative velocity falls as the wind rises, hence the sign.
+    rel_rate_body = -(dcm.T @ wind_rate_ned)
+
+    vel_rel = vel_body - dcm.T @ field(pos_ned)
+    u_rel, w_rel = vel_rel[0], vel_rel[2]
+    # aero.V_MIN, squared. The SAME constant rather than a second one with the
+    # same value: one NaN guard, one provenance entry, and it cannot drift.
+    denominator = jnp.maximum(u_rel**2 + w_rel**2, V_MIN**2)
+    return (u_rel * rel_rate_body[2] - w_rel * rel_rate_body[0]) / denominator
+
+
 def field_model(field):
     """Turn a position-only wind field into a `wind_model`.
 
@@ -620,7 +665,8 @@ def field_model(field):
         del dt
         wind_ned = field(state.pos_ned)
         omega_gust = gust_rates(state.pos_ned, state.quat, field)
-        return wind_ned, omega_gust, wind_state, key
+        alphadot = gust_alphadot(state.pos_ned, state.quat, state.vel_body, field)
+        return wind_ned, omega_gust, wind_state, key, alphadot
 
     return model
 
@@ -644,7 +690,8 @@ def sampled_field_model(field, stations):
         del dt
         wind_ned = field(state.pos_ned)
         omega_gust = sampled_rates(state.pos_ned, state.quat, field, stations)
-        return wind_ned, omega_gust, wind_state, key
+        alphadot = gust_alphadot(state.pos_ned, state.quat, state.vel_body, field)
+        return wind_ned, omega_gust, wind_state, key, alphadot
 
     return model
 

@@ -185,7 +185,7 @@ def _measure(
 
     def analyse(pos_ned, vel_body, quat, omega, controls):
         s = State(pos_ned=pos_ned, vel_body=vel_body, quat=quat, omega=omega)
-        wind_ned, omega_gust, _, _ = model(
+        wind_ned, omega_gust, _, _, _ = model(
             wind.zero_wind_state(), s, jax.random.PRNGKey(0), jnp.array(dt)
         )
         increment = None if load_model is None else load_model(s)

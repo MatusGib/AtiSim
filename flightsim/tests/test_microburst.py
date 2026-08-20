@@ -162,7 +162,7 @@ def test_the_microburst_satisfies_the_wind_model_contract():
     model = wind.microburst_model(a_burst())
     state = trim.trimmed_state(jnp.array(0.05), jnp.array(50.0), jnp.array(300.0))
     key = jax.random.PRNGKey(0)
-    wind_ned, omega_gust, _, out_key = model(
+    wind_ned, omega_gust, _, out_key, _ = model(
         wind.zero_wind_state(), state, key, jnp.array(0.01)
     )
     assert wind_ned.shape == (3,)

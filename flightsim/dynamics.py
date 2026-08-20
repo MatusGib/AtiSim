@@ -32,6 +32,7 @@ def derivatives(
     wind_ned: Array,
     omega_gust: Array,
     increment: CoeffIncrement | None = None,
+    alphadot_gust: Array = 0.0,
 ) -> State:
     """State derivative. Returns a State whose fields are time derivatives.
 
@@ -64,7 +65,7 @@ def derivatives(
     a_sound = speed_of_sound(altitude)
     force, moment = aero_forces_moments(
         vel_rel, omega_rel, controls, ac, rho, a_sound,
-        increment=increment,
+        increment=increment, alphadot_gust=alphadot_gust,
     )
     # Air-relative Mach, and unfloored for the same reason aero.py does not
     # floor it: Mach is finite at V = 0, so a floor would report thrust the

@@ -83,8 +83,14 @@ def coefficients(
     controls: Controls,
     ac: Aircraft,
     a_sound: Array,
+    alphadot_gust: Array = 0.0,
 ) -> tuple[Array, Array, Array, Array, Array, Array]:
     """(CL, CD, CY, Cl, Cm, Cn). Lift and drag wind-axis, the rest body-axis.
+
+    `alphadot_gust` is the WIND-INDUCED angle-of-attack rate only, in rad/s. It
+    defaults to zero, so every caller written before it existed is unchanged and
+    still air performs no extra arithmetic. See the Aircraft fields CLadot and
+    Cmadot for why the aircraft's own contribution is not included here.
 
     Speed of sound is passed rather than Mach so that the Mach used for wave
     drag is built from the same airspeed as dynamic pressure -- the TRUE one,
@@ -102,8 +108,13 @@ def coefficients(
 
     de, da, dr = controls.elevator, controls.aileron, controls.rudder
 
-    CL = ac.CL0 + ac.CLa * alpha + ac.CLq * q_hat + ac.CLde * de
-    Cm = ac.Cm0 + ac.Cma * alpha + ac.Cmq * q_hat + ac.Cmde * de
+    # Same non-dimensionalisation as q_hat: Stengel Eq. (3.4-25), (3.4-26).
+    alphadot_hat = alphadot_gust * ac.c / (2.0 * V)
+
+    CL = (ac.CL0 + ac.CLa * alpha + ac.CLq * q_hat + ac.CLde * de
+          + ac.CLadot * alphadot_hat)
+    Cm = (ac.Cm0 + ac.Cma * alpha + ac.Cmq * q_hat + ac.Cmde * de
+          + ac.Cmadot * alphadot_hat)
     # Parabolic core plus a lift-dependent compressibility rise.
     # Mach divides by the speed of sound, not by V, so it takes the true
     # airspeed. Below the floor this is unobservable either way -- M_crit is
@@ -113,6 +124,25 @@ def coefficients(
         ac.CD0
         + CL**2 / (jnp.pi * ac.e * ac.AR)
         + wave_drag(jnp.linalg.norm(vel_rel) / a_sound, CL, ac)
+        # Sideslip drag. QUADRATIC, and deliberately so: drag is an EVEN
+        # function of sideslip for a laterally symmetric airframe, so dCD/dbeta
+        # is identically zero at beta = 0 and the leading term is second order.
+        #
+        # That evenness is also why linear small-perturbation theory has no such
+        # derivative at all, and why no formula for it appears in this project's
+        # theory backbone -- adding it is a deliberate step outside the linear
+        # framework, not the filling of a gap in it. See the design spec's
+        # section 1, which records that the reference search came up empty and
+        # justifies the form by symmetry rather than by citation.
+        #
+        # JSBSim's 737 carries the same physics as a five-point table
+        # interpolated linearly through zero, which makes CD proportional to
+        # |beta| near the origin -- a kink, with a discontinuous slope at
+        # beta = 0. Measured: 1.007e-2 at 3 deg and 5.035e-3 at 1.5 deg, exactly
+        # half rather than a quarter. That is a coarse-table artifact and is NOT
+        # reproduced here, which is the one place this work declines to follow
+        # JSBSim.
+        + ac.CD_beta * beta**2
     )
 
     CY = ac.CYb * beta + ac.CYp * p_hat + ac.CYr * r_hat + ac.CYdr * dr
@@ -141,6 +171,7 @@ def aero_forces_moments(
     rho: Array,
     a_sound: Array,
     increment=None,
+    alphadot_gust: Array = 0.0,
 ) -> tuple[Array, Array]:
     """Body-axis aerodynamic force (N) and moment (N.m).
 
@@ -161,7 +192,9 @@ def aero_forces_moments(
     # Written as norm(...)**2 rather than dot(...) so that above the floor it is
     # the identical expression to the one this replaced, to the last bit.
     qbar = 0.5 * rho * jnp.linalg.norm(vel_rel) ** 2
-    CL, CD, CY, Cl, Cm, Cn = coefficients(vel_rel, omega_rel, controls, ac, a_sound)
+    CL, CD, CY, Cl, Cm, Cn = coefficients(
+        vel_rel, omega_rel, controls, ac, a_sound, alphadot_gust
+    )
     if increment is not None:
         CL = CL + increment.CL
         Cl = Cl + increment.Cl

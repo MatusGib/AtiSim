@@ -130,12 +130,24 @@ def step(
     default path adds nothing at all rather than adding four exact zeros.
     `load_model` is static, so this branch is resolved at trace time.
     """
-    wind_ned, omega_gust, wind_state, key = wind_model(sim.wind, sim.state, sim.key, dt)
+    # The wind contract gained an OPTIONAL fifth return, the wind-induced
+    # angle-of-attack rate. A model that does not produce one is unchanged and
+    # gets exactly 0.0, so `zero_wind` and every model written before this stay
+    # bit-identical rather than merely equivalent. The tuple length is static, so
+    # this branch resolves at trace time and costs nothing under jit.
+    produced = wind_model(sim.wind, sim.state, sim.key, dt)
+    if len(produced) == 5:
+        wind_ned, omega_gust, wind_state, key, alphadot_gust = produced
+    else:
+        wind_ned, omega_gust, wind_state, key = produced
+        alphadot_gust = 0.0
+
     applied = zero_increment() if load_model is None else load_model(sim.state)
     increment = None if load_model is None else applied
 
     def f(s: State) -> State:
-        return derivatives(s, controls, ac, wind_ned, omega_gust, increment=increment)
+        return derivatives(s, controls, ac, wind_ned, omega_gust,
+                           increment=increment, alphadot_gust=alphadot_gust)
 
     new_state = rk4_step(f, sim.state, dt)
     new_state = new_state._replace(quat=quat_normalize(new_state.quat))

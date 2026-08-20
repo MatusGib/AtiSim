@@ -91,7 +91,7 @@ def test_the_lee_wave_satisfies_the_wind_model_contract():
     model = wind.lee_wave_model(a_wave())
     state = trim.trimmed_state(jnp.array(0.05), jnp.array(V), jnp.array(H))
     key = jax.random.PRNGKey(0)
-    wind_ned, omega_gust, wind_state, out_key = model(
+    wind_ned, omega_gust, wind_state, out_key, _ = model(
         wind.zero_wind_state(), state, key, jnp.array(0.01)
     )
     assert wind_ned.shape == (3,)

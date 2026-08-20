@@ -90,6 +90,33 @@ class Aircraft(NamedTuple):
     # the real table has around M 0.2. See the 737's docstring.
     mach_ram: Array = jnp.array(0.0)
 
+    # Sideslip drag, CD += CD_beta * beta^2. Quadratic because drag is an even
+    # function of sideslip, so the linear term is identically zero at beta = 0.
+    # Linear small-perturbation theory therefore has no such derivative, which
+    # is why the sourced aircraft here carry none and the default is neutral.
+    # See docs/superpowers/specs/2026-08-20-model-fidelity-improvements-design.md
+    # section 1 -- including the fact that no reference in refs/ supplies a
+    # coefficient form, so this one rests on symmetry rather than on a citation.
+    CD_beta: Array = jnp.array(0.0)
+
+    # Angle-of-attack-rate derivatives, referred to alphadot_hat = alphadot*c/2V
+    # exactly as CLq and Cmq are referred to q_hat.
+    #
+    # Stengel, Flight Dynamics 2nd ed., Eq. (3.4-25) and (3.4-26): the flow over
+    # an aft tail is modified by the wing's downwash, and a change in wing lift
+    # convects downstream reaching the tail after l_ht/V, so the tail sees an
+    # increment proportional to alphadot.
+    #
+    # ONLY THE WIND-INDUCED PART OF alphadot IS APPLIED. The aircraft's own
+    # contribution is implicit -- alphadot depends on wdot depends on the forces
+    # depend on alphadot -- and remains folded into Cmq, which is exact whenever
+    # alphadot = q. The wind part is explicit, and it is the part the aircraft's
+    # own motion cannot produce: Stengel p.227, "a plunging aircraft experiences
+    # non-zero alphadot with zero q". That is the gust case, and it is where
+    # this project's turbulence and microburst work lives.
+    CLadot: Array = jnp.array(0.0)
+    Cmadot: Array = jnp.array(0.0)
+
 
 def inertia_tensor(Ixx, Iyy, Izz, Ixz) -> Array:
     """Body-axis inertia tensor.
@@ -990,6 +1017,108 @@ def _boeing_737() -> Aircraft:
         aileron_limit=jnp.array(0.35),
         rudder_limit=jnp.array(0.35),
         mach_ram=jnp.array(0.2510939315992),
+        # Sideslip drag. 737.xml's CDbeta table gives 0.05 at beta = 0.26 rad;
+        # 0.05/0.26^2 puts the quadratic through that breakpoint, which is where
+        # the table's author presumably placed a real number. Below it this
+        # gives LESS drag than the table -- 20% of it at 3 deg -- and that is
+        # deliberate: linear interpolation through zero makes the table's
+        # near-origin behaviour proportional to |beta|, which no symmetric
+        # airframe can produce. See the CD_beta field comment.
+        CD_beta=jnp.array(0.05 / 0.26**2),
+        # 737.xml PITCH/Cmadot. Applies to the WIND-induced alphadot only, so it
+        # is exactly zero in still air and does not disturb any result above;
+        # Cmq stays at the folded -43.0, which is what the aircraft's own motion
+        # needs. JSBSim's 737 defines no CLadot, so that stays zero -- physically
+        # inconsistent with carrying a Cmadot, but it is what the model says.
+        Cmadot=jnp.array(-16.0),
+    )
+
+
+def _boeing_737_approach() -> Aircraft:
+    """The same JSBSim 737, recovered at 5,000 ft and M 0.40 instead of cruise.
+
+    READ _boeing_737's DOCSTRING FIRST. Every caveat there applies here, with
+    the band moved: this set is linearised about alpha 3.63 deg rather than
+    1.97 deg, and is no more valid outside its own neighbourhood than that one
+    is outside its.
+
+    It exists because one reference point cannot distinguish a solver that is
+    correct from one that is correct in a single place. PROJECT.md section 4
+    records this project's phugoid error falling from 17.8% at M 0.80 to 0.4% at
+    M 0.25 with identical code, because compressibility drives the terms the
+    model omits. Comparing at a second, much lower Mach turns that from an
+    inference into a measurement against an independent engine.
+
+    What moves between the two sets is itself informative, and all of it is the
+    nonlinearity the linearisation is hiding:
+
+      Cmde   -0.894 -> -1.067   JSBSim schedules it on Mach
+      Clda   +0.0739 -> +0.0866  likewise
+      CD0    +0.0271 -> +0.0312  the CD0(alpha) table, read at a larger alpha
+      Cm0    -0.0107 -> -0.0141  the AERORP offset moment, at a larger alpha
+
+    What does NOT move is the check: CLa, CLde, CYb, Clp, Clr, Cnr, Cldr and
+    Cndr are identical to seven figures at both conditions, because 737.xml
+    defines them as constants. A solver bug that depended on flight condition
+    could not leave those unchanged while moving the others by the amounts the
+    tables predict.
+
+    M 0.35 was tried first and is NOT trimmable -- JSBSim reports "wdot doesn't
+    appear to be trimmable", because the lift needed there runs the aircraft up
+    the nonlinear part of its CL table.
+    """
+    S = 1171.0 * FT2M**2
+    b = 94.7 * FT2M
+    c = 12.31 * FT2M
+    inertia = inertia_tensor(
+        *(v * SLUG_FT2_TO_KG_M2 for v in (
+            591572.3456383009, 1539552.6887960227,
+            1986235.3649231757, 19109.131861384914,
+        ))
+    )
+    return Aircraft(
+        mass=jnp.array(107000.0 * LBF2N / G0),
+        inertia=inertia,
+        inertia_inv=jnp.linalg.inv(inertia),
+        S=jnp.array(S),
+        b=jnp.array(b),
+        c=jnp.array(c),
+        CD0=jnp.array(0.03118072854008),
+        e=jnp.array(0.966581789644),
+        AR=jnp.array(b * b / S),
+        sweep=jnp.array(25.0 * DEG2RAD),
+        t_over_c=jnp.array(0.12),
+        kappa_airfoil=jnp.array(1.002098775681),
+        CL0=jnp.array(0.199999990422),
+        CLa=jnp.array(4.347826086957),
+        CLq=jnp.array(0.0),
+        CLde=jnp.array(0.2),
+        Cm0=jnp.array(-0.01410600234594),
+        Cma=jnp.array(-1.056698452155),
+        Cmq=jnp.array(-43.00010942285),
+        Cmde=jnp.array(-1.067421875016),
+        CYb=jnp.array(-1.0),
+        CYp=jnp.array(0.0),
+        CYr=jnp.array(0.0),
+        CYdr=jnp.array(0.0),
+        Clb=jnp.array(-0.1443872849091),
+        Clp=jnp.array(-0.4000000832413),
+        Clr=jnp.array(0.09000112180091),
+        Clda=jnp.array(0.08660000011697),
+        Cldr=jnp.array(0.01),
+        Cnb=jnp.array(0.2730632232042),
+        Cnp=jnp.array(0.0),
+        Cnr=jnp.array(-0.3500025249519),
+        Cnda=jnp.array(0.0),
+        Cndr=jnp.array(-0.2),
+        max_thrust=jnp.array(82578.56222904),
+        thrust_lapse=jnp.array(0.9581403997535),
+        elevator_limit=jnp.array(0.3),
+        aileron_limit=jnp.array(0.35),
+        rudder_limit=jnp.array(0.35),
+        mach_ram=jnp.array(0.3345799618749),
+        CD_beta=jnp.array(0.05 / 0.26**2),
+        Cmadot=jnp.array(-16.0),
     )
 
 
@@ -997,6 +1126,7 @@ REGISTRY: dict[str, Aircraft] = {
     "boeing747": _boeing_747(),
     "boeing747_approach": _boeing_747_approach(),
     "boeing737": _boeing_737(),
+    "boeing737_approach": _boeing_737_approach(),
     "cherokee": _cherokee_pa28_180(),
     "cessna172": _cessna_172(),
 }
@@ -1017,6 +1147,9 @@ CRUISE: dict[str, dict[str, float]] = {
     # bias on every force in the comparison. 9130.83 m is 43.22 ft lower and
     # matches JSBSim's density to 1e-16 relative.
     "boeing737": {"altitude": 9130.825908961, "airspeed": 236.5191917152},
+    # The second recovery condition, 5,000 ft and M 0.40. Density-matched for
+    # the same reason, though the shift is only -1.45 ft this low down.
+    "boeing737_approach": {"altitude": 1523.558080263, "airspeed": 133.7577996784},
     "cherokee": {"altitude": 4920.0 * FT2M, "airspeed": 50.0},
     "cessna172": {"altitude": 5000.0 * FT2M, "airspeed": 60.0},
 }
