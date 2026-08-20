@@ -378,12 +378,20 @@ def test_layer4_trajectory_tracks(case, vel_tol, rate_tol):
     moves it 0.409 m/s over 20 s, so nothing below that is reachable even in
     principle. The elevator doublet measures 0.410 m/s -- the floor, exactly.
 
-    The rudder kick is looser at 1.52 m/s because it excites the Dutch roll,
-    whose frequency the two engines put 1.6% apart. Over 20 s at 2.1 rad/s that
-    is 0.67 rad of accumulated phase, which is what the residual is. An earlier
-    0.25 s sampling of the reference gave 5.43 m/s here purely because the
-    replay flew a stale rudder between samples; the reference is sampled at
-    0.05 s for that reason.
+    The rudder kick is looser at 1.52 m/s, and the reason is LAYER 1's missing
+    drag terms integrated over time rather than anything new. The divergence is
+    secular, not oscillatory: flightsim's u drifts steadily above JSBSim's,
+    which is a small persistent force difference and not a mode-frequency
+    mismatch. A rudder kick builds sideslip, JSBSim has a CDbeta table and
+    flightsim has no such term, so flightsim is under-dragged for as long as
+    beta is non-zero. Integrating that missing drag over the recorded beta
+    history predicts 1.015 m/s of the 1.52 m/s measured -- the dominant single
+    mechanism. The same calculation predicts 0.002 m/s for the elevator
+    doublet, which is why that case sits at the Earth-rotation floor instead.
+
+    An earlier 0.25 s sampling of the reference gave 5.43 m/s here purely
+    because the replay flew a stale rudder between samples while the yaw damper
+    moved continuously; the reference is sampled at 0.05 s for that reason.
     """
     import jax
     import jax.numpy as jnp
