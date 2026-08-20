@@ -53,6 +53,12 @@ class Trim(NamedTuple):
 
 
 class SweepPoint(NamedTuple):
+    # vel_body is the air-relative body velocity as JSBSim reported it.
+    # Driving flightsim with the VECTOR rather than with (V, alpha, beta)
+    # keeps the comparison independent of how either engine defines alpha
+    # and beta -- they agree to nine decimals, but this needs no such check.
+    vel_body: np.ndarray      # (3,) m/s
+    sound_speed: float        # m/s, JSBSim's at this point
     alpha: float
     beta: float
     rates: np.ndarray         # (3,) rad/s, body, air-relative
@@ -176,6 +182,8 @@ def load(path: Path = REFERENCE) -> Reference:
         trajectory=trajectory,
         sweep=[
             SweepPoint(
+                vel_body=_floats(p.get("vel_body")),
+                sound_speed=float(p.get("sound_speed")),
                 alpha=float(p.get("alpha")),
                 beta=float(p.get("beta")),
                 rates=_floats(p.get("rates")),

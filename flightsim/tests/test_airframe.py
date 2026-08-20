@@ -45,10 +45,18 @@ def test_only_the_two_747_configurations_pass_the_plausibility_gate():
         boeing747_approach  3.8519 chords = 105.19 ft   PASS
         cessna172           0.8558 chords =   4.19 ft   FAIL
         cherokee            1.2802 chords =   6.72 ft   FAIL
+        boeing737              inf chords                FAIL
 
     Both 747 sets come from CR-2144, whose transcription has been verified
     element by element against the source document. Both light-aircraft sets
     return arms far shorter than those airframes physically have.
+
+    The 737 fails for a different reason from the light aircraft, and a cleaner
+    one: l_eff/c is -Cmq/CLq, and JSBSim's 737 defines NO CLq at all, so the
+    ratio is a division by zero and the arm is genuinely undefined rather than
+    merely implausible. There is nothing to be salvaged by a better estimator --
+    the input does not exist -- so the strip path is structurally unavailable
+    for that aircraft and the gate refusing it is exactly right.
 
     WHAT THIS DOES NOT ESTABLISH is which side is at fault. It may be the source
     data -- PROJECT.md section 3 already records the Cessna's rudder set as
@@ -63,6 +71,7 @@ def test_only_the_two_747_configurations_pass_the_plausibility_gate():
         "boeing747_approach": True,
         "cessna172": False,
         "cherokee": False,
+        "boeing737": False,
     }, f"gate outcome changed: {passes}"
 
 

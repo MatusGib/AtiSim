@@ -129,6 +129,14 @@ def read_state(fdm):
     S, b, c = fdm["metrics/Sw-sqft"], fdm["metrics/bw-ft"], fdm["metrics/cbarw-ft"]
     qS = qbar * S
     return dict(
+        # The AIR-RELATIVE body velocity, recorded directly rather than as
+        # (V, alpha, beta) so the comparison never depends on the two engines
+        # defining alpha and beta the same way. (They do -- atan2(w,u) and
+        # asin(v/V), checked to nine decimals -- but a recorded vector cannot
+        # drift out of agreement later.)
+        vel_body=np.array([fdm["velocities/u-aero-fps"],
+                           fdm["velocities/v-aero-fps"],
+                           fdm["velocities/w-aero-fps"]]) * FT2M,
         alpha=fdm["aero/alpha-rad"],
         alphadot=fdm["aero/alphadot-rad_sec"],
         beta=fdm["aero/beta-rad"],
@@ -139,6 +147,7 @@ def read_state(fdm):
         da=fdm["fcs/left-aileron-pos-rad"],
         dr=fdm["fcs/rudder-pos-rad"],
         mach=fdm["velocities/mach"],
+        a_sound=fdm["atmosphere/a-fps"] * FT2M,
         vt=fdm["velocities/vt-fps"] * FT2M,
         bi2vel=fdm["aero/bi2vel"],
         ci2vel=fdm["aero/ci2vel"],
@@ -355,8 +364,14 @@ def kick(t, amplitude, start=1.0, width=1.0):
     return amplitude if start <= t < start + width else 0.0
 
 
-def fly(case, duration=20.0, dt=1.0 / 120.0, sample_every=0.25, latitude_deg=47.0):
+def fly(case, duration=20.0, dt=1.0 / 120.0, sample_every=0.05, latitude_deg=47.0):
     """Fly one prescribed-surface case and sample the state.
+
+    Sampled at 0.05 s, not the 0.25 s first tried. The consumer holds each
+    control sample until the next one, and the yaw damper moves the rudder
+    CONTINUOUSLY in response to yaw rate, so a coarse sample makes the replay
+    fly a stale rudder. That is a sampling artifact and it dominated the
+    rudder-kick divergence (5.43 m/s at 0.25 s) until the rate came up.
 
     The surface HISTORY is prescribed, not the stick: the rudder command is
     pre-compensated for the yaw damper each step so the achieved surface follows
@@ -742,6 +757,7 @@ def main():
     for s in sweep:
         L.append(
             f'    <point alpha="{f(s["alpha"])}" beta="{f(s["beta"])}" '
+            f'vel_body="{vec(s["vel_body"])}" sound_speed="{f(s["a_sound"])}" '
             f'rates="{vec([s["p"], s["q"], s["r"]])}" '
             f'controls="{vec([s["de"], s["da"], s["dr"]])}" '
             f'coefficients="{vec([s["CL"], s["CD"], s["CY"], s["Cl"], s["Cm"], s["Cn"]])}"/>'
