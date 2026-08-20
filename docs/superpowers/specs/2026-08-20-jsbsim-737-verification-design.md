@@ -91,7 +91,18 @@ and drag acting 4.93 ft above the CG contributes roughly +0.009 nose-up, for ≈
 | `scripts/gen_jsbsim_reference.py` | Drives JSBSim and writes the reference XML. **The only file that imports `jsbsim`** |
 | `flightsim/tests/data/jsbsim_737_reference.xml` | Frozen: trim point, recovered derivatives, A/B matrices, trajectory samples, tolerance derivations, JSBSim version and commit |
 | `flightsim/tests/test_jsbsim_737.py` | The four layers. Reads the XML. Never imports `jsbsim` |
+| `scripts/jsbsim_report.py` | Builds the results PDF |
+| `docs/summary/jsbsim-737-report.pdf` | Plots and tables of every layer's results |
 | `pyproject.toml` | New `ref = ["jsbsim"]` extra |
+
+The report follows the rule already written into `scripts/summary.py` and
+`scripts/turbulence_report.py`: **every number is either read from the reference XML or computed
+at build time by calling the project's own code. Nothing is typed in from memory.** A regression
+therefore changes a figure in the report rather than leaving a stale claim behind. Contents:
+the recovered derivative set against JSBSim's XML constants; per-coefficient error across the
+layer-1 sweep; trim comparison for both trim modes; mode eigenvalues on the complex plane for both
+engines; trajectory overlays with divergence envelopes; the thrust ram fit against the CFM56 table;
+and the input-condition matching evidence above.
 
 The `ref` extra follows the reasoning already written for `ui`: the simulator and every script in
 `scripts/` must keep working without it. The test suite gains no dependency on a compiled package,
@@ -148,6 +159,64 @@ low speed — see Limitation 7.
 
 With this in place the trajectory layer **verifies** thrust rather than prescribing it, and
 `max_thrust` stops being a registry number no layer asserts.
+
+## Matching the input conditions
+
+Checked before implementation, because a systematic offset in the *inputs* biases every layer at
+once and looks like a defect in the code.
+
+### Sign conventions: all sixteen agree, no flips needed
+
+Measured directly against JSBSim, not inferred from documentation:
+
+| Input | JSBSim behaviour | flightsim convention | Agree? |
+|---|---|---|---|
+| β > 0 | `v-fps` = +40.6, `aero/beta-rad` = +0.0523 | `beta = arcsin(v/V)`, relative wind from the right | yes |
+| β > 0 → side force | `fwy-aero` = −16424 (`CYb` = −1) | `CYb < 0` | yes |
+| β > 0 → roll, yaw | `l-aero` < 0, `n-aero` > 0 | `Clb < 0`, `Cnb > 0` | yes |
+| aileron > 0 | left = +0.175, right = −0.175, `l-aero` > 0 | δa positive → right-wing-down roll, `Clda > 0` | yes, mapping δa ≡ `left-aileron-pos-rad` |
+| rudder > 0 | `n-aero` < 0, `fwy-aero` = **0.0** | `Cndr < 0`, `CYdr > 0` | sign yes; JSBSim has **no** `CYdr` at all |
+| elevator > 0 | `m-aero` < 0, `fwz-aero` > 0 | δe positive TE-down, `Cmde < 0`, `CLde > 0` | yes |
+| wind-axis forces | `fwx`, `fwz` both > 0 at α = 5° | `CD`, `CL` positive | yes |
+
+The AERORP offset explains the lateral moments as well as the pitch ones: at β = 3°, side force
+acting 4.925 ft above the CG accounts for the roll moment to **0.15%** (−220388 predicted vs
+−220722 measured) and acting 1.183 ft aft of the CG accounts for the yaw moment to **0.17%**
+(422530 vs 423259). Recovering derivatives from the running engine therefore handles all three
+axes, not just pitch.
+
+### Atmosphere: one systematic error found, diagnosed, and neutralised
+
+flightsim's ISA and JSBSim's disagree, and the error grows with altitude:
+
+| altitude | 0 | 10,000 ft | 20,000 ft | 30,000 ft | 40,000 ft |
+|---|---|---|---|---|---|
+| density error | −0.0008% | −0.0158% | −0.0656% | **−0.1592%** | **−0.3677%** |
+
+**Cause, confirmed exactly:** the ISA is defined on *geopotential* altitude; `atmosphere.py` uses
+*geometric*. Predicted temperature errors from that hypothesis are −0.0035 / −0.0153 / −0.0373% at
+10/20/30k against measured −0.0035 / −0.0153 / −0.0373% — agreement to four decimal places. The
+implied 43 ft offset at 30,000 ft is recovered independently below.
+
+This matters because q̄ ∝ ρ, so a 0.16% density bias is a 0.16% bias on *every force in every
+layer*, in the same direction — precisely the systematic error that would be misread as a
+modelling defect. It consumes about 22% of the layer-2 trim tolerance on its own.
+
+**Neutralised by matching on density rather than on altitude.** Altitude is not itself an input to
+the physics; it enters only through ρ and a. The harness therefore solves for the geometric
+altitude at which flightsim's density equals JSBSim's, and runs flightsim there:
+
+| JSBSim altitude | flightsim altitude | shift | ρ error | a error |
+|---|---|---|---|---|
+| 30,000 ft | 29,956.78 ft | −43.22 ft | −0.159% → **2.4e-14** | −0.0185% → **+0.0002%** |
+| 40,000 ft | 39,923.36 ft | −76.64 ft | −0.368% → **3.9e-13** | +0.0001% → **+0.0001%** |
+
+Density matches to machine precision and the speed-of-sound residual improves by ~90×, to 2e-6
+relative — small enough that it cannot be confused with anything. The −43.22 ft shift is the
+geopotential correction, arrived at independently, which closes the diagnosis.
+
+The underlying geopotential/geometric difference is a defect in **existing** code and is therefore
+filed as a separate finding rather than fixed here, per Limitation 5.
 
 ## The four comparison layers
 
@@ -284,6 +353,10 @@ the same way.
 5. The linearisation state-ordering derivation holds against the structural rows of A.
 6. Every disagreement beyond tolerance is either fixed or documented with a measured magnitude.
 7. Limitation 1 appears in the `_boeing_737()` docstring, the `CRUISE` entry and the reference XML.
+8. Density agrees with JSBSim to better than 1e-10 relative at every compared condition, asserted
+   by the harness rather than assumed, so no layer carries a q̄ bias.
+9. `scripts/jsbsim_report.py` builds `docs/summary/jsbsim-737-report.pdf` from the reference XML and
+   live project code, with no number typed in from memory.
 
 ## Risks
 
