@@ -138,3 +138,37 @@ def test_thrust_lapses_with_density(test_aircraft):
     assert float(sea_level[0]) == pytest.approx(float(test_aircraft.max_thrust))
     assert float(altitude[0]) == pytest.approx(0.5 * float(test_aircraft.max_thrust))
     assert float(sea_level[1]) == 0.0 and float(sea_level[2]) == 0.0
+
+
+def test_mach_ram_defaults_to_neutral(test_aircraft):
+    """Aircraft defined before the ram term exists must be unaffected by it.
+
+    The field carries a default so that adding it changed no existing aircraft.
+    If that default ever moves off zero, every result in PROJECT.md section 4
+    shifts silently, so it is asserted rather than trusted.
+    """
+    assert float(test_aircraft.mach_ram) == 0.0
+    full = ZERO_CONTROLS._replace(throttle=jnp.array(1.0))
+    still = aero.thrust_force(full, test_aircraft, RHO0, jnp.array(0.0))
+    fast = aero.thrust_force(full, test_aircraft, RHO0, jnp.array(0.8))
+    assert float(still[0]) == float(fast[0])
+
+
+def test_mach_ram_raises_thrust_with_mach(test_aircraft):
+    """thrust = throttle * Fmax * (rho/rho0)^n * (1 + mach_ram * M^2)."""
+    ac = test_aircraft._replace(mach_ram=jnp.array(0.2))
+    full = ZERO_CONTROLS._replace(throttle=jnp.array(1.0))
+    still = aero.thrust_force(full, ac, RHO0, jnp.array(0.0))
+    fast = aero.thrust_force(full, ac, RHO0, jnp.array(0.5))
+    assert float(still[0]) == pytest.approx(float(ac.max_thrust))
+    # 1 + 0.2 * 0.25 = 1.05
+    assert float(fast[0]) == pytest.approx(1.05 * float(ac.max_thrust), rel=1e-12)
+
+
+def test_mach_ram_defaults_to_zero_mach_when_not_passed(test_aircraft):
+    """The argument is optional so pre-existing callers keep working unchanged."""
+    ac = test_aircraft._replace(mach_ram=jnp.array(0.2))
+    full = ZERO_CONTROLS._replace(throttle=jnp.array(1.0))
+    assert float(aero.thrust_force(full, ac, RHO0)[0]) == pytest.approx(
+        float(ac.max_thrust)
+    )
