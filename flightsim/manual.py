@@ -315,8 +315,30 @@ BOEING747_APPROACH_MANUAL = BOEING747_MANUAL._replace(
     rudder_authority=jnp.array(0.30),
 )
 
+# JSBSim's 737. UNTUNED -- nobody has flown it, and section 9 records that hand
+# tuning needs a human at the keyboard. These are derived by the same authority
+# rule the Cherokee's comment sets out, so that they are one decision rather
+# than three guesses:
+#
+#   elevator  1.955x the 747's pitch acceleration per radian, so 0.25 / 1.955
+#   aileron   26.3x the roll acceleration per radian, so 1.00 / 26.3
+#   rudder    kept at the 747's 0.15; JSBSim's 737 has Cndr -0.20 against the
+#             747's set, and no CYdr at all, so pedal yaws without any direct
+#             side force. Worth a human's judgement rather than a scale factor.
+#
+# trim_rate follows the same one-second-moves-a-quarter-of-full-stick rule as
+# the others. Full stick here is 0.13 * 17.2 deg (this aircraft's elevator limit
+# is 0.3 rad, not the 25 deg the other three share) = 2.23 deg -> 0.56 deg/s.
+BOEING737_MANUAL = BOEING747_MANUAL._replace(
+    elevator_authority=jnp.array(0.13),
+    aileron_authority=jnp.array(0.04),
+    rudder_authority=jnp.array(0.15),
+    trim_rate=jnp.array(0.56 * DEG2RAD),
+)
+
 MANUAL_GAINS: dict[str, ManualGains] = {
     "boeing747": BOEING747_MANUAL,
+    "boeing737": BOEING737_MANUAL,
     "boeing747_approach": BOEING747_APPROACH_MANUAL,
     "cherokee": CHEROKEE_MANUAL,
     "cessna172": CESSNA172_MANUAL,

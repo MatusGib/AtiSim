@@ -357,9 +357,50 @@ BOEING747_APPROACH_GAINS = BOEING747_GAINS._replace(
     spd_i=jnp.array(0.02),
 )
 
+# JSBSim's 737 at its recovery condition, 30,000 ft and M 0.78. DERIVED from
+# the 747's set rather than hand-tuned, because the two aircraft differ in ways
+# that can be measured instead of guessed at.
+#
+# PITCH is authority-scaled, the same rule the Cherokee's set follows. The 737
+# has 1.955x the 747's pitch acceleration per radian of elevator
+# (Mde -2.246 against -1.149), so theta_p, theta_i and q_d come down by that
+# factor.
+#
+# ROLL is NOT authority-scaled, and copying the 747's closed-loop response
+# outright is wrong here in an instructive way. The 737 has 26x the roll
+# acceleration per radian of aileron (Lda 3.713 against 0.141), but it also has
+# far more of its own roll damping (Lp -1.227 against -0.459). Solving for the
+# rate gain that reproduces the 747's closed-loop damping gives p_d = -0.18:
+# NEGATIVE, because the bare airframe is already better damped than the 747's
+# loop makes the 747. Feeding that back would mean deliberately de-damping a
+# well-behaved roll mode.
+#
+# So the loop is sized from the 737's own dynamics instead. With p_d = 0.10,
+# 2*zeta*wn = p_d*Lda - Lp = 1.598, and choosing zeta = 0.8 gives wn = 1.0 rad/s
+# and phi_p = wn^2/Lda = 0.27. phi_i keeps the 747's phi_i/phi_p ratio. The
+# result is a faster roll loop than the 747's 0.376 rad/s, which is what a
+# smaller, more responsive aeroplane should have.
+#
+# Measured: holds its trimmed altitude to 0.000 m over 60 s, captures a 150 m
+# altitude step to 0.82 m with no overshoot, and captures a 30 deg heading
+# change with no oscillation, peaking at 18.4 deg of bank.
+#
+# The altitude and speed loops keep the 747's numbers unchanged: both aircraft
+# cruise at essentially the same true airspeed (236.5 m/s against 235.9), so the
+# altitude-to-flight-path relationship those gains encode is the same.
+BOEING737_GAINS = BOEING747_GAINS._replace(
+    theta_p=jnp.array(1.125),
+    theta_i=jnp.array(0.230),
+    q_d=jnp.array(1.535),
+    phi_p=jnp.array(0.27),
+    phi_i=jnp.array(0.02),
+    p_d=jnp.array(0.10),
+)
+
 GAINS: dict[str, Gains] = {
     "boeing747": BOEING747_GAINS,
     "boeing747_approach": BOEING747_APPROACH_GAINS,
+    "boeing737": BOEING737_GAINS,
     "cherokee": CHEROKEE_GAINS,
     "cessna172": CESSNA172_GAINS,
 }
