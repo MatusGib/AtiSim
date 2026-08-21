@@ -407,21 +407,35 @@ def test_layer4_trajectory_tracks(case, vel_tol, rate_tol):
     JSBSim's recorded thrust at the initial condition and then held, as JSBSim
     holds it.
 
-    The floors here are physical rather than chosen. flightsim is flat-Earth and
-    non-rotating; running the same JSBSim case at latitude 0 against 47 deg
-    moves it 0.409 m/s over 20 s, so nothing below that is reachable even in
-    principle. The elevator doublet measures 0.410 m/s -- the floor, exactly.
+    The two cases differ by 3.6x, and they differ because they excite different
+    physics rather than because one is worse. Measured per component:
 
-    The rudder kick is looser at 1.52 m/s, and the reason is LAYER 1's missing
-    drag terms integrated over time rather than anything new. The divergence is
-    secular, not oscillatory: flightsim's u drifts steadily above JSBSim's,
-    which is a small persistent force difference and not a mode-frequency
-    mismatch. A rudder kick builds sideslip, JSBSim has a CDbeta table and
-    flightsim has no such term, so flightsim is under-dragged for as long as
-    beta is non-zero. Integrating that missing drag over the recorded beta
-    history predicts 1.015 m/s of the 1.52 m/s measured -- the dominant single
-    mechanism. The same calculation predicts 0.002 m/s for the elevator
-    doublet, which is why that case sits at the Earth-rotation floor instead.
+        elevator doublet   u 0.296   v 0.012   w 0.410     max |beta| 0.003 deg
+        rudder kick        u 1.462   v 1.234   w 0.522     max |beta| 2.909 deg
+
+    The doublet is purely longitudinal -- it produces essentially no sideslip,
+    so every lateral model difference is inert and the residual is a transient
+    in w. The kick excites sideslip and the Dutch roll, which is where the model
+    differences live: its v divergence is transient (1.234 peak, 0.105 by t=20)
+    and is the Dutch roll frequency difference, while its u divergence is
+    SECULAR, still growing at t=20, and is the sideslip drag flightsim
+    under-models.
+
+    NOT the Earth-rotation floor, which an earlier version of this docstring
+    claimed. Running the same JSBSim case at latitude 0 against 47 deg moves it
+    by u 0.403, v 0.012, w 0.067 -- so the floor is in u, and the doublet's
+    0.410 is in w. Those are different quantities that happen to be numerically
+    close, and matching them was a mistake. Compared per component, the
+    doublet's u divergence of 0.296 is BELOW the 0.403 floor, and its w
+    divergence of 0.410 is six times the 0.067 floor in that component, so the w
+    residual is real and needs its own explanation.
+
+    That explanation is the alphadot fold. Cmq carries Cmq + Cmadot, which is
+    exact only when alphadot = q; during the doublet the recorded histories give
+    max |alphadot - q| = 0.0122 rad/s, worth up to |dCm| = 0.0015, against
+    0.0186 for one degree of alpha. flightsim applies no alphadot term in still
+    air by design -- the term added here is wind-driven only -- so that
+    difference is unmodelled.
 
     An earlier 0.25 s sampling of the reference gave 5.43 m/s here purely
     because the replay flew a stale rudder between samples while the yaw damper

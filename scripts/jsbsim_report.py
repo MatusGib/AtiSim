@@ -534,32 +534,43 @@ y = para(fig, y,
          "loudly rather than silently comparing the wrong states. Modes are then compared "
          "on eigenvalues, which are invariant under the change of basis, so no conversion "
          "is needed and none can be got wrong.")
-ax = fig.add_axes([0.11, y - 0.25, 0.37, 0.23])
-for lam in np.linalg.eigvals(REF.linearization.longitudinal):
-    ax.plot(lam.real, lam.imag, "o", ms=9, mfc="none", mec=BLUE, mew=1.6)
-for wn, zeta in FS_LON:
-    r = -zeta * wn
-    i = wn * np.sqrt(max(1 - zeta**2, 0))
-    ax.plot([r, r], [i, -i], "x", color=RED, ms=7, mew=1.6)
-ax.axhline(0, color=RULE, lw=0.7); ax.axvline(0, color=RULE, lw=0.7)
-ax.plot([], [], "o", mfc="none", mec=BLUE, mew=1.6, label="JSBSim")
-ax.plot([], [], "x", color=RED, mew=1.6, label="flightsim")
-ax.legend(fontsize=7.5, frameon=False, loc="center left")
-ax.set_title("longitudinal eigenvalues", fontsize=9.5, color=INK)
-ax.set_xlabel("real", fontsize=8.5); ax.set_ylabel("imag", fontsize=8.5)
-ax.tick_params(labelsize=8)
-for s in ("top", "right"):
-    ax.spines[s].set_visible(False)
-ax3 = fig.add_axes([0.58, y - 0.25, 0.35, 0.23])
-ax3.bar([0, 1, 2], [FS_LAT_BARE[0][1], FS_LAT[0][1], JS_LAT[0][1]],
-        color=[RED, TEAL, BLUE], width=0.55)
-ax3.set_xticks([0, 1, 2])
-ax3.set_xticklabels(["bare", "+ damper", "JSBSim"], fontsize=8.5)
-ax3.set_title("Dutch roll damping ratio", fontsize=9.5, color=INK)
-ax3.tick_params(labelsize=8)
-for s in ("top", "right"):
-    ax3.spines[s].set_visible(False)
-y -= 0.315
+# TWO panels, at their own scales. A single plane cannot show both modes
+# honestly: the phugoid's real part is -0.003 against the short period's
+# -0.695, a factor of 229, so on one linear axis the phugoid lands ON the
+# imaginary axis and a marker wider than its distance from zero straddles it,
+# which reads as an unstable root. It is not one -- see the annotation.
+for k, (title, pair, ref_pair) in enumerate((
+        ("short period", FS_LON[1], JS_LON[1]),
+        ("phugoid", FS_LON[0], JS_LON[0]))):
+    ax = fig.add_axes([0.11 + k * 0.45, y - 0.25, 0.35, 0.23])
+    wn, zeta = pair
+    wr, zr = ref_pair
+    fr, fi = -zeta * wn, wn * np.sqrt(max(1 - zeta**2, 0))
+    jr, ji = -zr * wr, wr * np.sqrt(max(1 - zr**2, 0))
+    span = max(abs(fr), abs(jr)) * 1.9
+    ax.axvspan(-span, 0.0, color=TEAL, alpha=0.07)
+    ax.plot([jr, jr], [ji, -ji], "o", ms=9, mfc="none", mec=BLUE, mew=1.6,
+            label="JSBSim")
+    ax.plot([fr, fr], [fi, -fi], "x", color=RED, ms=7, mew=1.6, label="flightsim")
+    ax.axhline(0, color=RULE, lw=0.7)
+    ax.axvline(0, color=INK, lw=1.0)
+    ax.set_xlim(-span, span * 0.25)
+    ax.set_title(title, fontsize=9.5, color=INK)
+    ax.set_xlabel("real", fontsize=8.5)
+    if k == 0:
+        ax.set_ylabel("imag", fontsize=8.5)
+    # Legend ABOVE the axes: inside, its sample markers read as data points.
+    ax.legend(fontsize=7.5, frameon=False, ncol=2, loc="lower center",
+              bbox_to_anchor=(0.5, 1.06), handletextpad=0.4, columnspacing=1.2)
+    ax.set_ylim(-fi * 1.45, fi * 1.45)
+    ax.text(0.04, 0.06, "stable half-plane", transform=ax.transAxes, fontsize=7,
+            color=TEAL)
+    ax.text(0.5, -0.30, f"real part: {fr:+.5f} vs {jr:+.5f}",
+            transform=ax.transAxes, fontsize=7.5, color=MUTED, ha="center")
+    ax.tick_params(labelsize=8)
+    for sp in ("top", "right"):
+        ax.spines[sp].set_visible(False)
+y -= 0.345
 y = table(fig, y, [
     ("short period wn", f"{FS_LON[1][0]:.5f}", f"{JS_LON[1][0]:.5f}",
      f"{100 * abs(FS_LON[1][0] - JS_LON[1][0]) / JS_LON[1][0]:.3f}%"),
@@ -620,23 +631,24 @@ for k, (case, label) in enumerate((("elevator_doublet", "elevator doublet"),
         ax2.spines[s].set_visible(False)
 y -= 0.505
 y = para(fig, y,
-         "The floors here are physical rather than chosen. flightsim is flat-Earth and "
-         "non-rotating; running the same JSBSim case at latitude 0 against 47 degrees "
-         f"moves it {REF.diagnostics['coriolis_velocity_m_s']:.3f} m/s over 20 seconds, so "
-         "nothing below that is reachable even in principle. The elevator doublet comes in "
-         f"at {TRAJ['elevator_doublet']['dv'].max():.3f} m/s -- the floor, exactly. The "
-         f"rudder kick is looser at {TRAJ['rudder_kick']['dv'].max():.2f} m/s, and the "
-         "reason is layer 1's missing drag terms integrated over time rather than "
-         "anything new. The divergence is secular, not oscillatory: a rudder kick builds "
-         "sideslip, JSBSim has a CDbeta table and flightsim has no such term, so flightsim "
-         "is under-dragged for as long as beta is non-zero. Integrating that over the "
-         f"recorded beta history predicts {DRIFT['rudder_kick']:.3f} m/s of it. The same "
-         f"calculation gives {DRIFT['elevator_doublet']:.3f} m/s for the doublet, which is "
-         "why that case sits on the floor instead.")
-y = callout(fig, y, "A sampling artifact that looked like physics",
-            "Prescribing the surfaces at 0.25 s gave 5.43 m/s here. The yaw damper moves "
-            "the rudder CONTINUOUSLY, so a coarse sample makes the replay fly a stale one. "
-            "The reference is sampled at 0.05 s for that reason.", colour=AMBER)
+         "The two differ 3.6x because they excite different physics. The doublet "
+         "makes almost no sideslip (0.003 deg peak), so lateral model differences "
+         "are inert; the kick reaches 2.9 deg. Per component -- doublet u 0.296, "
+         "v 0.012, w 0.410; kick u 1.462, v 1.234, w 0.522 -- the kick's v is a "
+         "transient Dutch-roll phase difference and its u is secular sideslip drag.",
+         size=9.5)
+y = callout(fig, y, "A correction to an earlier version of this page",
+            "The doublet's 0.410 m/s was reported as being the Earth-rotation floor "
+            "exactly. It is not. The floor is 0.403 m/s in u; the doublet's 0.410 is "
+            "in w -- different quantities that happened to be close. The doublet's "
+            "u divergence of 0.296 is BELOW the floor; its w divergence is six "
+            "times the 0.067 floor in w. That w residual is the alphadot fold: "
+            "Cmq carries Cmq + Cmadot, exact only "
+            "when alphadot = q, and the recorded doublet reaches "
+            "|alphadot - q| = 0.0122 rad/s. Separately, sampling the surfaces at "
+            "0.25 s rather than 0.05 s gave 5.43 m/s on the kick, because the yaw "
+            "damper moves the rudder continuously and the replay flew a stale one.",
+            colour=RED)
 emit(fig, y)
 
 # ------------------------------------------------------------------ thrust

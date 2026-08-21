@@ -870,10 +870,30 @@ XML, and the difference is not cosmetic.** JSBSim applies aero forces at the AER
 | 3 short period | ωn **0.040%**, ζ **0.019%** |
 | 3 phugoid | ωn 3.33%, ζ 1.13% |
 | 3 lateral | Dutch roll ζ 1.79%, roll TC 3.22%, spiral TC **0.50%** — after the yaw-damper correction below |
-| 4 trajectory | elevator doublet **0.410 m/s** over 20 s against a 0.409 m/s Earth-rotation floor; rudder kick 1.52 m/s |
+| 4 trajectory | elevator doublet 0.410 m/s over 20 s, rudder kick 1.46 m/s — but see the correction below |
 
 **No defect was found in flightsim.** Every disagreement traces to a documented model
 difference with a measured magnitude.
+
+**A correction to the first reporting of layer 4.** The doublet's 0.410 m/s was recorded as being
+the Earth-rotation floor "exactly". It is not, and the error was comparing two different components.
+The floor is 0.403 m/s in **u**; the doublet's 0.410 is in **w**. Per component:
+
+| case | u | v | w | max \|β\| |
+|---|---|---|---|---|
+| elevator doublet | 0.296 | 0.012 | **0.410** | 0.003° |
+| rudder kick | **1.462** | 1.234 | 0.522 | 2.909° |
+| Coriolis floor (lat 0 vs 47) | 0.403 | 0.012 | 0.067 | — |
+
+So the doublet's **u** divergence is *below* the floor, and its **w** divergence is six times the
+floor in that component — a real residual needing its own explanation, which is the α̇ fold: `Cmq`
+carries `Cmq + Cmα̇`, exact only when α̇ = q, and the recorded doublet reaches
+\|α̇ − q\| = 0.0122 rad/s, worth \|ΔCm\| up to 0.0015 against 0.0186 for one degree of α.
+
+The two cases differ by 3.6× because they excite different physics, not because one is worse: the
+doublet is essentially sideslip-free so every lateral difference is inert, while the kick's **v**
+divergence is a transient Dutch-roll phase difference and its **u** divergence is secular sideslip
+drag.
 
 **Three findings worth keeping.**
 
