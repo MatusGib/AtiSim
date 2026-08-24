@@ -99,6 +99,26 @@ class Aircraft(NamedTuple):
     # coefficient form, so this one rests on symmetry rather than on a citation.
     CD_beta: Array = jnp.array(0.0)
 
+    # Profile-drag rise with incidence: CD += CD_alpha * alpha. LINEAR, and the
+    # asymmetry with CD_beta above is deliberate rather than an oversight.
+    #
+    # Drag is even about its minimum in BOTH variables. For sideslip the
+    # reference condition sits AT that minimum -- beta = 0 -- so a linear term
+    # would be a kink through the operating point, and the quadratic is the only
+    # defensible form. For incidence the reference sits well away from it, at
+    # alpha = 1.97 deg cruise and 3.63 deg approach, so the first-order Taylor
+    # term is exactly the right object for a model that is explicitly a
+    # linearisation about that point.
+    #
+    # It is therefore WRONG at negative alpha, where the true rise turns back
+    # up and this term keeps falling. That is the same cruise-local caveat the
+    # rest of the entry carries, not a new one.
+    #
+    # Without it the drag slope is the induced term alone -- measured, 0.1267
+    # against JSBSim's 0.2113 at cruise -- and with moments referred to the
+    # AERORP that error reaches the pitching moment through r x F.
+    CD_alpha: Array = jnp.array(0.0)
+
     # Angle-of-attack-rate derivatives, referred to alphadot_hat = alphadot*c/2V
     # exactly as CLq and Cmq are referred to q_hat.
     #
@@ -1006,7 +1026,10 @@ def _boeing_737() -> Aircraft:
         c=jnp.array(c),
         # CD0 absorbs everything at trim that is not induced drag; wave drag is
         # zero at M 0.78 by construction.
-        CD0=jnp.array(0.02714061915829),
+        CD0=jnp.array(0.02423738849922),
+        # The profile-drag rise 737.xml carries as its CD0(alpha) table,
+        # recovered from the engine as dCD/dalpha minus the induced part.
+        CD_alpha=jnp.array(0.08465218977423),
         # Chosen so CL^2/(pi e AR) reproduces JSBSim's CDi = 0.043 CL^2 exactly.
         e=jnp.array(0.966581789644),
         AR=jnp.array(b * b / S),
@@ -1116,7 +1139,10 @@ def _boeing_737_approach() -> Aircraft:
         S=jnp.array(S),
         b=jnp.array(b),
         c=jnp.array(c),
-        CD0=jnp.array(0.03118072854008),
+        CD0=jnp.array(0.02570062073226),
+        # The profile-drag rise 737.xml carries as its CD0(alpha) table,
+        # recovered from the engine as dCD/dalpha minus the induced part.
+        CD_alpha=jnp.array(0.08641089758596),
         e=jnp.array(0.966581789644),
         AR=jnp.array(b * b / S),
         sweep=jnp.array(25.0 * DEG2RAD),

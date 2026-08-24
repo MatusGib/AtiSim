@@ -143,6 +143,9 @@ def coefficients(
         # reproduced here, which is the one place this work declines to follow
         # JSBSim.
         + ac.CD_beta * beta**2
+        # Profile drag with incidence, linearised about the reference
+        # condition; CD0 carries the value at alpha = 0. See the field.
+        + ac.CD_alpha * alpha
     )
 
     CY = ac.CYb * beta + ac.CYp * p_hat + ac.CYr * r_hat + ac.CYdr * dr
