@@ -1010,16 +1010,28 @@ def _boeing_737() -> Aircraft:
     b = 94.7 * FT2M  # ft
     c = 12.31 * FT2M  # ft
     # slug-ft^2, as the engine reports them with fuel aboard -- NOT the bare
-    # <mass_balance> figures, which exclude the tanks. The Ixz sign convention
-    # is confirmed rather than assumed: 737.xml carries
-    # negated_crossproduct_inertia="true", the engine reports +19109.13, and
-    # inertia_tensor's own positive-forward-up convention negates it to the
-    # -25908.5 the reference records. Asserted in
-    # test_737_mass_and_inertia_match_the_engine.
+    # <mass_balance> figures, which exclude the tanks.
+    #
+    # Ixz is NEGATIVE here, and that is not a typo. The engine reports
+    # inertia/ixz-slugs_ft2 = +19109.13, but that property is already the TENSOR
+    # element, not the positive-forward-up product inertia_tensor takes -- so
+    # passing +19109.13 negates a value that 737.xml's own
+    # negated_crossproduct_inertia="true" had already accounted for, and flies
+    # the 737 with the cross-product term backwards. This was shipped that way
+    # and every layer passed: the sign is worth only 1.6-3.2% on the lateral
+    # modes, inside layer 3's tolerance, and the tensor was only ever checked
+    # against a reference generated from the same assumption.
+    #
+    # It is now established from the engine's BEHAVIOUR instead. 737.xml defines
+    # no Cnp and no CYp, so JSBSim's own linearisation gives d(rdot)/dp as pure
+    # inertia coupling, and that pins the sign at both recovery conditions:
+    # test_jsbsim_737_layers.test_inertia_cross_product_sign_matches_the_
+    # engines_own_coupling. Correcting it took the Dutch roll from 1.6/1.8% to
+    # 0.02/0.03% and the roll time constant from 3.2% to 0.00%.
     inertia = inertia_tensor(
         *(v * SLUG_FT2_TO_KG_M2 for v in (
             591572.3456383009, 1539552.6887960227,
-            1986235.3649231757, 19109.131861384914,
+            1986235.3649231757, -19109.131861384914,
         ))
     )
     return Aircraft(
@@ -1134,10 +1146,12 @@ def _boeing_737_approach() -> Aircraft:
     S = 1171.0 * FT2M**2
     b = 94.7 * FT2M
     c = 12.31 * FT2M
+    # Negative Ixz, for the reason spelled out in _boeing_737 -- same airframe,
+    # same fuel state, and the same check holds at this condition too.
     inertia = inertia_tensor(
         *(v * SLUG_FT2_TO_KG_M2 for v in (
             591572.3456383009, 1539552.6887960227,
-            1986235.3649231757, 19109.131861384914,
+            1986235.3649231757, -19109.131861384914,
         ))
     )
     return Aircraft(

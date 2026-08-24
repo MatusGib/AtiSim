@@ -293,6 +293,36 @@ for case in ("elevator_doublet", "rudder_kick"):
                       per_axis=np.max(np.abs(np.array(per_axis)), axis=0),
                       beta_max=np.degrees(beta_max))
 
+# --- the same replay at half the sample rate ---------------------------------
+# The reference is replayed zero-order-hold while JSBSim ran at 1/120 s, and
+# that hold is first order in the interval, so 2*f(h) - f(2h) is the divergence
+# with the replay's own contribution taken out. The first-order scaling is
+# asserted in test_layer4_hold_error_is_first_order_in_the_sample_interval.
+for case in ("elevator_doublet", "rudder_kick"):
+    samples = REF.trajectory[case][::2]
+    first = samples[0]
+    altitude = first.altitude + (COND.matched_altitude - COND.altitude)
+    rho = float(density(altitude))
+    mach = float(np.linalg.norm(first.vel_body)) / float(speed_of_sound(altitude))
+    throttle = first.thrust / (float(AC.max_thrust) * (rho / RHO0) ** float(AC.thrust_lapse)
+                               * (1.0 + float(AC.mach_ram) * mach**2))
+    sim = integrate.init_sim(
+        State(pos_ned=jnp.array([0.0, 0.0, -altitude]),
+              vel_body=jnp.array(first.vel_body),
+              quat=euler_to_quat(*(jnp.array(v) for v in first.euler)),
+              omega=jnp.array(first.omega)),
+        jax.random.PRNGKey(0))
+    coarse = []
+    for previous, current in zip(samples, samples[1:]):
+        c = Controls(elevator=jnp.array(previous.controls[0]),
+                     aileron=jnp.array(previous.controls[1]),
+                     rudder=jnp.array(previous.controls[2]),
+                     throttle=jnp.array(throttle))
+        sim = integrate.step(sim, c, jnp.array(current.t - previous.t), AC)
+        coarse.append(np.asarray(sim.state.vel_body) - current.vel_body)
+    TRAJ[case]["extrapolated"] = (
+        2.0 * TRAJ[case]["per_axis"] - np.max(np.abs(np.array(coarse)), axis=0))
+
 # --- the drag terms atisim lacks, integrated over each trajectory --------
 DRIFT = {}
 for case in ("elevator_doublet", "rudder_kick"):
@@ -416,6 +446,18 @@ y = callout(fig, y, "Neutralised by matching density, not altitude",
             "relative and the speed-of-sound residual improves about ninetyfold. The "
             "underlying defect is in pre-existing code and is filed separately.",
             colour=TEAL)
+
+_I = np.asarray(AC.inertia)
+_Lp = (float(AC.Clp) * 0.5 * COND.density * COND.airspeed**2 * float(AC.S) * float(AC.b)
+       * (float(AC.b) / (2.0 * COND.airspeed)))
+_pred = -_I[0, 2] * _Lp / (_I[0, 0] * _I[2, 2] - _I[0, 2] ** 2)
+y = callout(fig, y, "Inertia: the one convention that was assumed, and was wrong",
+            f"JSBSim's ixz property is the TENSOR ELEMENT, and negating it fed the two "
+            f"engines different airframes: 1.6-3.2% on the lateral modes, invisible inside "
+            f"layer 3 old 5%. With no Cnp and no CYp, d(rdot)/dp is pure inertia coupling, "
+            f"so the engine settles the sign: atisim predicts {_pred:+.5e}, JSBSim "
+            f"{REF.linearization.A[8][6]:+.5e}. It was the opposite sign.",
+            colour=AMBER)
 emit(fig, y)
 
 # ---------------------------------------------------------------- recovery
@@ -646,20 +688,22 @@ y = para(fig, y,
          f"difference is inert; the kick reaches {_k['beta_max']:.1f} deg. Per "
          f"component -- doublet u {_d['per_axis'][0]:.3f}, v {_d['per_axis'][1]:.3f}, "
          f"w {_d['per_axis'][2]:.3f}; kick u {_k['per_axis'][0]:.3f}, "
-         f"v {_k['per_axis'][1]:.3f}, w {_k['per_axis'][2]:.3f}. The kick's v is a "
-         f"transient Dutch-roll phase difference; its u is secular sideslip drag, "
-         f"which is layer 1's missing CDbeta integrated over time.",
+         f"v {_k['per_axis'][1]:.3f}, w {_k['per_axis'][2]:.3f}. Its u is secular "
+         f"sideslip drag, which is layer 1's missing CDbeta integrated over time.",
          size=9.5)
-y = callout(fig, y, "Read the rate, not the endpoint",
-            "This is an OPEN-LOOP comparison. Nothing holds the two engines together, "
-            "so any steady force difference integrates and the gap grows with time by "
-            "construction: 0.1% on thrust-minus-drag reaches 0.5 m/s in 20 seconds. "
-            "Growth is arithmetic, not instability -- layer 3 puts the modes within 1%. "
-            f"The floor is also per-axis, not scalar: u {_floor[0]:.3f}, "
-            f"w {_floor[2]:.3f} m/s. The doublet's u is "
-            f"{_d['per_axis'][0] / _floor[0]:.1f}x its floor and its w "
-            f"{_d['per_axis'][2] / _floor[2]:.0f}x, so flat-Earth explains most of the "
-            "u channel and almost none of the w.",
+y = callout(fig, y, "Most of that is the replay, not the model",
+            f"The replay holds each 0.05 s sample where JSBSim ran at 1/120 s. That "
+            f"hold is first order, so halving the rate and extrapolating removes it. "
+            f"What survives: doublet u {_d['extrapolated'][0]:.3f} / "
+            f"w {_d['extrapolated'][2]:.3f}, kick u {_k['extrapolated'][0]:.3f} / "
+            f"v {_k['extrapolated'][1]:+.3f} / w {_k['extrapolated'][2]:.3f} m/s. The "
+            f"kick's v goes PAST zero -- no resolvable lateral residual, and reading "
+            f"{_k['per_axis'][1]:.3f} as Dutch-roll phase is withdrawn. The rates do "
+            f"the same. Left are u, secular, and w, worth "
+            f"{np.degrees(_k['extrapolated'][2] / COND.airspeed):.3f} deg of "
+            f"equivalent alpha on the kick and "
+            f"{np.degrees(_d['extrapolated'][2] / COND.airspeed):.3f} on the doublet: "
+            f"the same angle at both conditions, and named rather than explained.",
             colour=TEAL)
 emit(fig, y)
 

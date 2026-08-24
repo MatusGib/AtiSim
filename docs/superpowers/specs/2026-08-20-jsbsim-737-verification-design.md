@@ -364,7 +364,7 @@ the same way.
 |---|---|
 | Axis/sign convention mismatch between JSBSim's wind-axis forces and this project's | Layer 1 sweeps each axis independently, so a sign error localises to one coefficient instead of cancelling in trim |
 | The FCS injects deflections not commanded | Read-back protocol; asserted each step in layer 4 |
-| `Ixz` sign convention | Established and asserted rather than assumed |
+| `Ixz` sign convention | ~~Established and asserted rather than assumed~~ — **this row was false; the risk landed.** See "Corrections to claims made above" |
 | JSBSim linearisation state order changes | Re-derived from structural rows at parse time; fails loudly |
 | Scope growth from defects found in existing code | Capped by Limitation 5 |
 | The 737 entry is later reused outside its band | **Not mitigated in code.** Documentation only — see Limitation 1 |
@@ -411,6 +411,23 @@ no error, just wrong answers. pytest is immune because it puts its rootdir first
 why a green suite did not catch it. Both scripts now insert their own tree ahead of the installed one.
 
 ### Corrections to claims made above
+
+**The `Ixz` risk row was false, and the section that raised it was right.** "Established and
+asserted rather than assumed" was never implemented. The generator picked `-ixz` for the
+off-diagonal, and the test that appears to check it compares AtiSim's tensor against a reference
+this same script wrote — one decision checked against a copy of itself. The pick was wrong:
+JSBSim's `inertia/ixz-slugs_ft2` is already the tensor element, so negating it fed the two engines
+different airframes for the whole comparison, worth 1.6–3.2% on the lateral modes and therefore
+invisible inside a 5% tolerance. Corrected in session 19 and now established from the engine's own
+`∂ṙ/∂p`, which is pure inertia coupling because 737.xml defines neither `Cnp` nor `CYp`. See
+PROJECT.md §4, "The Ixz sign, and what layer 4 was really measuring".
+
+**Layer 4's sampling was raised until the number looked acceptable, not until it converged.** The
+delta below records 0.25 s → 0.05 s cutting the rudder kick from 5.43 m/s, and stops there. A
+decimation study shows the hold error is first order and still dominant at 0.05 s: extrapolating it
+away removes the whole of the kick's lateral divergence and two thirds of the doublet's `w`. Both
+of the attributions recorded below — the kick's `v` as Dutch-roll phase, the doublet's `w` as the
+α̇ fold — were attributions of numbers that are mostly sampling, and are withdrawn.
 
 **`thrust_lapse` is 0.72, not 1.0.** The "Thrust model" section's claim that the CFM56 tracks
 `(ρ/ρ₀)^1.0` is true of the **full-power** `MilThrust` table, but the aircraft cruises at part
