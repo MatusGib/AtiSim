@@ -12,7 +12,7 @@ aerodynamics see air-relative quantities.
 import jax.numpy as jnp
 from jax import Array
 
-from flightsim.aero import aero_forces_moments, thrust_force
+from flightsim.aero import V_MIN, aero_forces_moments, thrust_force
 from flightsim.aircraft import Aircraft
 from flightsim.atmosphere import G0, RHO0, density, speed_of_sound
 from flightsim.loads import CoeffIncrement
@@ -63,19 +63,46 @@ def derivatives(
     altitude = -state.pos_ned[2]
     rho = density(altitude)
     a_sound = speed_of_sound(altitude)
-    force, moment = aero_forces_moments(
-        vel_rel, omega_rel, controls, ac, rho, a_sound,
-        increment=increment, alphadot_gust=alphadot_gust,
-    )
     # Air-relative Mach, and unfloored for the same reason aero.py does not
     # floor it: Mach is finite at V = 0, so a floor would report thrust the
     # aircraft does not have.
     mach = jnp.linalg.norm(vel_rel) / a_sound
-    force = force + thrust_force(controls, ac, rho, mach)
-
+    thrust = thrust_force(controls, ac, rho, mach)
     gravity_body = dcm.T @ jnp.array([0.0, 0.0, G0])
 
-    accel = force / ac.mass + gravity_body - jnp.cross(state.omega, state.vel_body)
+    def accelerate(alphadot):
+        f, m = aero_forces_moments(
+            vel_rel, omega_rel, controls, ac, rho, a_sound,
+            increment=increment, alphadot_gust=alphadot,
+        )
+        f = f + thrust
+        return f, m, f / ac.mass + gravity_body - jnp.cross(state.omega, state.vel_body)
+
+    # --- angle-of-attack rate, both halves -------------------------------
+    # The WIND half arrives as alphadot_gust and is explicit. The AIRCRAFT half
+    # is implicit -- alphadot depends on the acceleration, which depends on the
+    # forces, which depend on alphadot -- so it takes a pass to open the loop:
+    # evaluate the aero without it, read the acceleration that produces, and
+    # feed the resulting alphadot back in.
+    #
+    # d(vel_rel)/dt = d(vel_body)/dt - d(wind_body)/dt, and the second term is
+    # exactly what alphadot_gust already carries, so the two halves add without
+    # overlapping.
+    #
+    # ONE pass is EXACT whenever CLadot is zero, which it is for every aircraft
+    # in this registry: with no lift-due-to-alphadot there is no path from
+    # alphadot back to the vertical acceleration, and the "implicit" loop is not
+    # actually closed. With a non-zero CLadot the residual is O(B^2) where
+    # B = -qbar*S*CLadot*c / (2 m V^2) is the loop gain -- about 1e-3 for a
+    # transport, so O(1e-6) of a term that is itself a correction. If an
+    # aircraft ever carries a large CLadot, replace this with the closed-form
+    # 1/(1 - B) factor rather than more passes.
+    _, _, accel_open = accelerate(alphadot_gust)
+    u_rel, w_rel = vel_rel[0], vel_rel[2]
+    denominator = jnp.maximum(u_rel**2 + w_rel**2, V_MIN**2)
+    alphadot_aircraft = (u_rel * accel_open[2] - w_rel * accel_open[0]) / denominator
+
+    force, moment, accel = accelerate(alphadot_gust + alphadot_aircraft)
     omega_dot = ac.inertia_inv @ (
         moment - jnp.cross(state.omega, ac.inertia @ state.omega)
     )

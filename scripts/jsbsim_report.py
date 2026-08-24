@@ -272,6 +272,7 @@ for case in ("elevator_doublet", "rudder_kick"):
               omega=jnp.array(first.omega)),
         jax.random.PRNGKey(0))
     ts, fs_u, js_u, fs_r, js_r, dv = [], [], [], [], [], []
+    per_axis, beta_max = [], 0.0
     for previous, current in zip(samples, samples[1:]):
         c = Controls(elevator=jnp.array(previous.controls[0]),
                      aileron=jnp.array(previous.controls[1]),
@@ -284,8 +285,13 @@ for case in ("elevator_doublet", "rudder_kick"):
         fs_u.append(v[0]); js_u.append(current.vel_body[0])
         fs_r.append(o[2]); js_r.append(current.omega[2])
         dv.append(float(np.abs(v - current.vel_body).max()))
+        per_axis.append(v - current.vel_body)
+        beta_max = max(beta_max, abs(np.arcsin(
+            current.vel_body[1] / np.linalg.norm(current.vel_body))))
     TRAJ[case] = dict(t=np.array(ts), fs_u=np.array(fs_u), js_u=np.array(js_u),
-                      fs_r=np.array(fs_r), js_r=np.array(js_r), dv=np.array(dv))
+                      fs_r=np.array(fs_r), js_r=np.array(js_r), dv=np.array(dv),
+                      per_axis=np.max(np.abs(np.array(per_axis)), axis=0),
+                      beta_max=np.degrees(beta_max))
 
 # --- the drag terms flightsim lacks, integrated over each trajectory --------
 DRIFT = {}
@@ -613,7 +619,7 @@ for k, (case, label) in enumerate((("elevator_doublet", "elevator doublet"),
     ax.plot(d["t"], d["js_u"], color=BLUE, lw=1.6, label="JSBSim")
     ax.plot(d["t"], d["fs_u"], color=RED, lw=1.1, ls="--", label="flightsim")
     ax.set_ylabel("u, m/s", fontsize=8.5); ax.set_xlabel("t, s", fontsize=8.5)
-    ax.set_title(label, fontsize=9.5, color=INK)
+    ax.set_title(f"{label} - forward speed", fontsize=9.5, color=INK)
     ax.legend(fontsize=7.5, frameon=False)
     ax.tick_params(labelsize=8)
     for s in ("top", "right"):
@@ -625,30 +631,38 @@ for k, (case, label) in enumerate((("elevator_doublet", "elevator doublet"),
              fontsize=7, color=AMBER, va="bottom", ha="right")
     ax2.set_ylabel("|velocity difference|, m/s", fontsize=8.5)
     ax2.set_xlabel("t, s", fontsize=8.5)
-    ax2.set_title(f"worst {d['dv'].max():.3f} m/s", fontsize=9.5, color=INK)
+    ax2.set_title(f"{label} - divergence, worst {d['dv'].max():.3f} m/s",
+                  fontsize=9.5, color=INK)
     ax2.tick_params(labelsize=8)
     for s in ("top", "right"):
         ax2.spines[s].set_visible(False)
 y -= 0.505
+_d, _k = TRAJ["elevator_doublet"], TRAJ["rudder_kick"]
+_floor = [REF.diagnostics[f"coriolis_{a}_m_s"] for a in "uvw"]
 y = para(fig, y,
-         "The two differ 3.6x because they excite different physics. The doublet "
-         "makes almost no sideslip (0.003 deg peak), so lateral model differences "
-         "are inert; the kick reaches 2.9 deg. Per component -- doublet u 0.296, "
-         "v 0.012, w 0.410; kick u 1.462, v 1.234, w 0.522 -- the kick's v is a "
-         "transient Dutch-roll phase difference and its u is secular sideslip drag.",
+         f"The two cases differ by {_k['dv'].max() / _d['dv'].max():.1f}x because they "
+         f"excite different physics, not because either is unstable. The doublet "
+         f"holds sideslip at {_d['beta_max']:.3f} deg, so every lateral model "
+         f"difference is inert; the kick reaches {_k['beta_max']:.1f} deg. Per "
+         f"component -- doublet u {_d['per_axis'][0]:.3f}, v {_d['per_axis'][1]:.3f}, "
+         f"w {_d['per_axis'][2]:.3f}; kick u {_k['per_axis'][0]:.3f}, "
+         f"v {_k['per_axis'][1]:.3f}, w {_k['per_axis'][2]:.3f}. The kick's v is a "
+         f"transient Dutch-roll phase difference; its u is secular sideslip drag, "
+         f"which is layer 1's missing CDbeta integrated over time.",
          size=9.5)
-y = callout(fig, y, "A correction to an earlier version of this page",
-            "The doublet's 0.410 m/s was reported as being the Earth-rotation floor "
-            "exactly. It is not. The floor is 0.403 m/s in u; the doublet's 0.410 is "
-            "in w -- different quantities that happened to be close. The doublet's "
-            "u divergence of 0.296 is BELOW the floor; its w divergence is six "
-            "times the 0.067 floor in w. That w residual is the alphadot fold: "
-            "Cmq carries Cmq + Cmadot, exact only "
-            "when alphadot = q, and the recorded doublet reaches "
-            "|alphadot - q| = 0.0122 rad/s. Separately, sampling the surfaces at "
-            "0.25 s rather than 0.05 s gave 5.43 m/s on the kick, because the yaw "
-            "damper moves the rudder continuously and the replay flew a stale one.",
-            colour=RED)
+y = callout(fig, y, "Read the rate, not the endpoint",
+            "This is an OPEN-LOOP comparison. Nothing holds the two engines together, "
+            "so any steady force difference integrates and the gap grows with time by "
+            "construction: 0.1% on thrust-minus-drag at 236 m/s reaches 0.5 m/s in 20 "
+            "seconds on its own. Growth here is arithmetic, not instability -- layer 3 "
+            "puts the two engines' modes within about 1%. The Earth-rotation floor is "
+            f"per-axis, not scalar: u {_floor[0]:.3f}, v {_floor[1]:.3f}, "
+            f"w {_floor[2]:.3f} m/s. The doublet's u divergence of "
+            f"{_d['per_axis'][0]:.3f} is {_d['per_axis'][0] / _floor[0]:.1f}x its own "
+            f"floor, and its w of {_d['per_axis'][2]:.3f} is "
+            f"{_d['per_axis'][2] / _floor[2]:.0f}x the w floor -- so the flat-Earth "
+            "difference accounts for most of the u channel and almost none of the w.",
+            colour=TEAL)
 emit(fig, y)
 
 # ------------------------------------------------------------------ thrust
