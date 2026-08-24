@@ -772,7 +772,9 @@ y = callout(fig, y, "1. The 737 entry is valid only near cruise",
             "has NO stall behaviour and reports lift the source model does not have. CD0 "
             "is frozen at the trim value of a table running 0.021 to 0.042 over 0-15 deg. "
             "Flying it at 5,000 ft and 200 kt produces wrong numbers with nothing failing, "
-            "warning or logging. Documented in four places, deliberately not guarded.",
+            "warning or logging -- and it now says so: the entry carries its band in "
+            "valid_mach and valid_altitude, and checks.recovery_band gates a run "
+            "on it, measured in band widths outside.",
             colour=RED)
 rows = [
     ("2", "Two of the six shipped 737 reference scripts are unused. Both are ground-roll "

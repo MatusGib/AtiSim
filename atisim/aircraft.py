@@ -161,6 +161,23 @@ class Aircraft(NamedTuple):
     # this formulation 2.8e-17, the constant-Cma fold 1.6e-2.
     aero_ref: Array = jnp.zeros(3)
 
+    # The flight conditions this derivative set is supported at, as [lo, hi].
+    # NOT physics -- nothing in aero.py or dynamics.py reads either -- but the
+    # same kind of statement as the deflection limits above: a bound the model
+    # is only meaningful inside. `checks.recovery_band` gates a run on them.
+    #
+    # lo == hi means NO BAND IS DECLARED, which is the default and is what every
+    # aircraft from CR-2144 and Nelson carries. Those are linear derivative sets
+    # valid across the ordinary linear range, so a band would be inventing a
+    # bound their sources do not state. Only an entry that is a LOCAL FIT to a
+    # nonlinear model needs one, and so far that is the 737 alone.
+    #
+    # An undeclared band is reported as unchecked rather than as passing, for
+    # the reason `checks.KINDS` distinguishes a tripwire from a gate: a green
+    # tick for something nobody measured is worse than no tick.
+    valid_mach: Array = jnp.zeros(2)
+    valid_altitude: Array = jnp.zeros(2)  # m
+
 
 def inertia_tensor(Ixx, Iyy, Izz, Ixz) -> Array:
     """Body-axis inertia tensor.
@@ -971,9 +988,11 @@ def _boeing_737() -> Aircraft:
         Wave drag is UNTESTED by the comparison: at M 0.78 both engines give
         exactly zero.
 
-    Nothing in the code prevents use outside the band. To work at another
-    condition, re-run scripts/gen_jsbsim_reference.py there; it is parameterised
-    for exactly that.
+    Nothing STOPS use outside the band -- the entry still computes, and the
+    numbers are still wrong -- but it is no longer silent: valid_mach and
+    valid_altitude below carry the band and checks.recovery_band gates a run on
+    it. To work at another condition, re-run scripts/gen_jsbsim_reference.py
+    there; it is parameterised for exactly that.
 
     MOMENTS ARE REFERRED TO THE AERORP, not the CG -- see the aero_ref field.
     That is why Cma is -0.6, Clb is -0.09 and Cnb is +0.26: they are 737.xml's
@@ -1107,6 +1126,15 @@ def _boeing_737() -> Aircraft:
         # Body-axis vector from the CG to 737.xml's AERORP: 1.183 ft aft and
         # 4.925 ft above, read from the engine rather than transcribed.
         aero_ref=jnp.array([-0.3603476635514, 0.0, -1.500261682243]),
+        # The band the entry's own fits were made over, not a judgement about
+        # where it "probably still works". Both come from
+        # scripts/gen_jsbsim_reference.py's thrust_fit: the altitude fit samples
+        # ALT_FT +/- 5,000 ft, and the Mach fit samples 0.60 to 0.95. Outside
+        # them the thrust model is extrapolating, the CD0(alpha) and CL(alpha)
+        # tables the entry linearises have departed, and the wave-drag onset was
+        # placed at M 0.79 by construction rather than by physics.
+        valid_mach=jnp.array([0.60, 0.95]),
+        valid_altitude=jnp.array([25000.0 * FT2M, 35000.0 * FT2M]),
     )
 
 
@@ -1203,6 +1231,21 @@ def _boeing_737_approach() -> Aircraft:
         # Body-axis vector from the CG to 737.xml's AERORP: 1.183 ft aft and
         # 4.925 ft above, read from the engine rather than transcribed.
         aero_ref=jnp.array([-0.3603476635514, 0.0, -1.500261682243]),
+        # Altitude only, and the Mach half is DELIBERATELY LEFT UNDECLARED.
+        #
+        # gen_jsbsim_reference.thrust_fit brackets the altitude fit around the
+        # condition -- ALT_FT +/- 5,000 ft, so 0 to 10,000 ft here -- but its
+        # Mach samples are hard-coded at 0.60 to 0.95 and are NOT rebound per
+        # condition. This entry flies at M 0.40, below its own ram fit, so its
+        # mach_ram of 0.3346 is an extrapolation and the 0.28% residual recorded
+        # beside it describes M 0.60-0.95 rather than the condition in use.
+        #
+        # Declaring [0.60, 0.95] here would condemn the entry at its own
+        # recovery point; declaring a band down to 0.40 would invent one. So it
+        # stays undeclared and the check reports the Mach axis as unchecked,
+        # until the generator brackets MACH the way it already brackets ALT_FT
+        # and the reference is regenerated. Recorded in PROJECT.md section 4.
+        valid_altitude=jnp.array([0.0, 10000.0 * FT2M]),
     )
 
 

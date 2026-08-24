@@ -41,7 +41,7 @@ import numpy as np
 from atisim import dynamics
 from atisim.aero import air_data
 from atisim.aircraft import Aircraft
-from atisim.atmosphere import G0
+from atisim.atmosphere import G0, speed_of_sound
 from atisim.state import Controls, State, quat_to_dcm
 from atisim.units import RAD2DEG
 
@@ -428,6 +428,101 @@ def alpha_band(traj, field, window) -> AlphaBand:
 
 
 # ---------------------------------------------------------------------------
+# C10 -- the recovery band
+# ---------------------------------------------------------------------------
+def _excursion(x, lo, hi):
+    """How far outside [lo, hi], in band widths. Zero inside."""
+    return np.maximum(0.0, np.maximum(lo - x, x - hi)) / (hi - lo)
+
+
+def recovery_band(traj, ac: Aircraft) -> Check:
+    """Was this run flown where the aircraft's derivatives were recovered?
+
+    A DIFFERENT QUESTION FROM `alpha_band`, and both are needed. That one asks
+    whether alpha left the linear-aero range, which is a property of `aero.py`
+    and applies to every aircraft equally. This one asks whether the run left
+    the conditions one PARTICULAR derivative set was fitted at, which is a
+    property of the data and differs per aircraft. A 737 flown at 5,000 ft and
+    200 kt sits comfortably inside the alpha band and is still nonsense.
+
+    The 737 docstring says of exactly that case: "produces numbers that are
+    wrong without anything failing, warning or logging". The design that
+    recovered it declined a runtime guard and said so -- "Mitigation taken:
+    documentation only, deliberately". This is that guard, added after a
+    documented-but-unasserted Ixz convention turned out to be wrong for a whole
+    comparison. Documentation is not a check.
+
+    Measured in BAND WIDTHS rather than in Mach or metres, so the two axes are
+    one number and the number keeps meaning something for an aircraft whose band
+    is a different size. 0.0 is inside; 1.0 is one full band width outside.
+
+    Aircraft declaring no band get `report`, never a pass. See `Aircraft`.
+    """
+    mach_lo, mach_hi = (float(v) for v in ac.valid_mach)
+    alt_lo, alt_hi = (float(v) for v in ac.valid_altitude)
+    altitude = -np.asarray(traj.pos_ned)[:, 2]
+
+    vel_rel = jax.vmap(dynamics.relative_velocity)(
+        jnp.asarray(traj.vel_body), jnp.asarray(traj.quat), jnp.asarray(traj.wind_ned)
+    )
+    V, _, _ = jax.vmap(air_data)(vel_rel)
+    mach = np.asarray(V) / np.asarray(speed_of_sound(jnp.asarray(altitude)))
+
+    axes, worst = [], np.zeros(len(altitude))
+    if mach_hi > mach_lo:
+        out = _excursion(mach, mach_lo, mach_hi)
+        worst = np.maximum(worst, out)
+        axes.append(f"Mach {mach.min():.3f}-{mach.max():.3f} against "
+                    f"[{mach_lo:g}, {mach_hi:g}]")
+    if alt_hi > alt_lo:
+        out = _excursion(altitude, alt_lo, alt_hi)
+        worst = np.maximum(worst, out)
+        axes.append(f"altitude {altitude.min():.0f}-{altitude.max():.0f} m against "
+                    f"[{alt_lo:.0f}, {alt_hi:.0f}]")
+
+    if not axes:
+        return Check(
+            name="recovery band",
+            value=0.0,
+            tolerance=None,
+            kind="report",
+            passed=None,
+            detail=(
+                "this aircraft declares no recovery band, so nothing was checked. "
+                "Its derivatives are a linear set valid across the ordinary "
+                "linear range rather than a local fit, and its source states no "
+                "bound to check against."
+            ),
+            worst_index=None,
+        )
+
+    peak = int(worst.argmax())
+    inside = bool(worst[peak] <= 0.0)
+    where = (
+        "inside the recovery condition: " if inside
+        else f"{worst[peak]:.2f} band widths OUTSIDE the recovery condition: "
+    )
+    consequence = (
+        "" if inside
+        else " Out there the entry is extrapolating: no layer of the JSBSim "
+        "comparison measured it, and nothing else will notice."
+    )
+    unchecked = (
+        "" if len(axes) == 2
+        else " The other axis declares no band and was NOT checked."
+    )
+    return Check(
+        name="recovery band",
+        value=float(worst[peak]),
+        tolerance=0.0,
+        kind="gate",
+        passed=inside,
+        detail=where + "; ".join(axes) + "." + consequence + unchecked,
+        worst_index=peak,
+    )
+
+
+# ---------------------------------------------------------------------------
 # C9 -- lateral symmetry
 # ---------------------------------------------------------------------------
 
@@ -539,6 +634,12 @@ def run_checks(traj, ac: Aircraft, controls: Controls, field, window,
         trimmed_start(traj, ac, controls, field),
         energy_closure(traj, ac, field),
         alpha_band(traj, field, window).as_check(),
+        # Listed among the gates even though it degrades to `report` for an
+        # aircraft that declares no band. It belongs at the top either way: a
+        # reader needs to see "this run was outside the fit" and "nobody checked
+        # whether it was" in the same place, and burying the second among the
+        # reports is how the second reads as the first.
+        recovery_band(traj, ac),
         recorded_wind_matches_field(traj, field).as_check(),
     ]
     profile = energy_residual_profile(traj, ac, field)
