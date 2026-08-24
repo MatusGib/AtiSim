@@ -217,7 +217,17 @@ def aero_forces_moments(
         ]
     )
 
+    # About ac.aero_ref, which is the CG for every aircraft that leaves the
+    # field at its default zero.
     moment = qbar * ac.S * jnp.array([ac.b * Cl, ac.c * Cm, ac.b * Cn])
+    # Transfer to the CG: Stengel Eq. (2.4-68). The cross product is with the
+    # AERODYNAMIC force only -- thrust is added downstream in dynamics.py and
+    # carries its own line of action, which this model still places at the CG.
+    #
+    # jnp.cross of a zero vector is exact zero, so the default path adds an
+    # exact zero rather than a rounded one, and every pre-existing aircraft is
+    # bit-identical. Asserted in test_aerodynamic_reference_point.py.
+    moment = moment + jnp.cross(ac.aero_ref, force)
     return force, moment
 
 

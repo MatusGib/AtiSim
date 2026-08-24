@@ -19,7 +19,7 @@ rather than papered over.
 | 1 | Sideslip drag `CD_beta` | none found — see §1 | **flagged**, form derived from evenness |
 | 2 | α̇ derivatives `CLα̇`, `Cmα̇` | Stengel Eq. (3.4-25), (3.4-26) | verified |
 | 3 | Verification at a second condition | n/a — test coverage | — |
-| 4 | Aerodynamic reference point (AERORP) | Stengel Eq. (2.4-68), §2.4 | verified, **proposed not implemented** |
+| 4 | Aerodynamic reference point (AERORP) | Stengel Eq. (2.4-68), §2.4 | verified, **implemented** |
 
 Reference copies: `Flight_Dynamics_-_Second_Edition.pdf` (Stengel, *Flight Dynamics*, 2nd ed.,
 Princeton University Press, 2022 — already this project's theory backbone, cited by
@@ -151,7 +151,7 @@ The second condition is recorded in the same reference file under its own `<cond
 
 ---
 
-## 4. Aerodynamic reference point — PROPOSED, not implemented
+## 4. Aerodynamic reference point — IMPLEMENTED
 
 **Reference, verified.** Stengel §2.4, Eq. (2.4-66) through (2.4-70), pp. 109–111:
 
@@ -195,11 +195,61 @@ the α̇ term present, which is independent evidence for §2.
   recovered values, because the numbers then trace to a file rather than to a finite difference.
 - Layer 1's `Cm` bound stops being a two-mechanism estimate and becomes an equality.
 
-### Why it is proposed rather than done
+### What it actually did
 
-It changes the meaning of every moment coefficient in `Aircraft`, and the instruction for this
-round was items 1–3. The evidence above is what a go/no-go decision needs; the change itself is
-mechanical once taken.
+Implemented as `Aircraft.aero_ref`, a body-axis CG→reference vector defaulting to zero, with
+`moment += jnp.cross(ac.aero_ref, force)` in `aero_forces_moments`. Every pre-existing aircraft is
+bit-identical, because `jnp.cross` of a zero vector is an exact zero.
+
+The generator now refers JSBSim's moments back with `M_arp = M_cg − r × F` before differencing, so
+the derivatives are still *recovered from the running engine* rather than transcribed. They land on
+737.xml's own constants at **both** recovery conditions, which is the check that the referencing is
+right:
+
+| | recovered, AERORP | 737.xml | recovered, about the CG |
+|---|---|---|---|
+| `Cma` | **−0.599999** | −0.6 | −1.0637 (cruise), −1.0567 (approach) |
+| `Clb` | **−0.0899998** | −0.09 | −0.1440 |
+| `Cnb` | **+0.2599999** | +0.26 | +0.2730 |
+| `Cm0` | **−3.0e−08** | *no such term* | −0.0107 |
+| `Cmde` | **−0.849000** | −0.849 | −0.8943 |
+
+`Cma` is now the *same number at both conditions*, as a constant in the file should be; referred to
+the CG it was condition-dependent. `Cm0` turning out to be zero is the sharpest result — what
+looked like a pitching-moment offset was entirely the AERORP arm.
+
+**The pitch axis needed a least-squares fit, not central differences.** Setting α away from trim
+also sets α̇ (measured, `dα̇/dα` = −0.529 /s), which contaminates a differenced `Cma` by +0.067 —
+exactly the gap between the −0.5328 a difference gives and 737.xml's −0.600. Fitting
+`[1, α, q̂, α̇̂, δe]` over a crossed design separates them and recovers all five: `Cm0` ≈ 0,
+`Cma` −0.599999, `Cmq` −27.000, `Cmadot` −16.000, `Cmde` −0.849000, max residual 2e-11.
+
+α̇ and q are nearly collinear in any reachable state, so their **split** is ill-conditioned
+(condition number 1.9e8) while their **sum** is exact. The entry therefore carries the sum, folded,
+which is what flightsim needs.
+
+### What it exposed, and this is the important part
+
+Layer 1's lateral moments went from 7.0e-6 / 1.7e-6 to **1.1e-8 / 1.0e-8** — round-off. `Cm` agrees
+to **2.5e-11** once one bookkeeping term is accounted for.
+
+But the **short period went from 0.04% to 3.95%**, and the reason is that two errors had been
+cancelling:
+
+- the old `Cma` of −1.0637 was the α̇-contaminated central difference, not the −1.1309 truth;
+- flightsim has no aircraft-motion α̇ coupling, so its linearisation is missing exactly the term
+  that contamination stood in for.
+
+A wrong coefficient was compensating a missing term, and the modes agreed almost exactly as a
+result. With honest coefficients the gap is visible. **That is a better state to be in — the model
+is wrong in one identified place instead of right by cancellation — but it is not the same as being
+right.** Closing it means giving `derivatives` the implicit α̇ solve, which §2 lists as not done and
+which is now the clear next step.
+
+A smaller contribution, 0.6% of the 4%, is the drag error reaching the moment through `r × F`: with
+JSBSim's own force in the transfer the effective `Cma` is −1.1331 against the −1.1309 truth; with
+flightsim's it is −1.1666. AERORP makes the moment inherit the force error rather than absorbing it
+into a fitted constant, which is correct and is another reason the drag terms matter.
 
 ---
 
