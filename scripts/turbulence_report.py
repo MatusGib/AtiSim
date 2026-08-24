@@ -34,11 +34,11 @@ from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 import jax
 import jax.numpy as jnp
 
-import flightsim  # noqa: F401  -- enables x64 before any array is made
-from flightsim import airframe, provenance, wind
-from flightsim.aircraft import CRUISE, REGISTRY
-from flightsim.state import State, euler_to_quat
-from flightsim.units import FT2M
+import atisim  # noqa: F401  -- enables x64 before any array is made
+from atisim import airframe, provenance, wind
+from atisim.aircraft import CRUISE, REGISTRY
+from atisim.state import State, euler_to_quat
+from atisim.units import FT2M
 
 OUT = Path(sys.argv[1] if len(sys.argv) > 1 else "docs/summary/turbulence-report.pdf")
 
@@ -172,7 +172,7 @@ def emit(fig, y=None):
         )
     PAGES.append(fig)
     fig.text(0.92, 0.035, str(len(PAGES)), color=MUTED, fontsize=8.5, ha="right")
-    fig.text(0.08, 0.035, "JAX Flight Simulator - turbulence fidelity", color=MUTED,
+    fig.text(0.08, 0.035, "AtiSim - turbulence fidelity", color=MUTED,
              fontsize=8.5)
     PDF.savefig(fig)
     plt.close(fig)
@@ -312,7 +312,7 @@ y = para(fig, y, "A figure without its table has broken the project. That rule p
                  "found two errors in the published source they were being checked against.")
 
 y = callout(fig, y, "Provenance is now enforced, not just intended",
-            "Every constant carries a category in flightsim/provenance.py: SOURCED read from a "
+            "Every constant carries a category in atisim/provenance.py: SOURCED read from a "
             "cited table, DERIVED computed from sourced values by a stated relation, CALIBRATED "
             "fitted to reproduce a sourced number, DECLARED chosen and carrying a measured "
             "sensitivity. A test asserts that DERIVED chains name inputs that exist, are acyclic, "
@@ -894,7 +894,7 @@ y = para(fig, y, "R. K. Heffley and W. F. Jewell, Aircraft Handling Qualities Da
                  "printed p. 229; Table IX-4 longitudinal dimensional derivatives, p. 230; Table "
                  "IX-8 lateral dimensional derivatives, p. 234; Figure IX-1 flight conditions, "
                  "p. 212; Figure IX-2 general arrangement, p. 213. Tables IX-3, IX-4 and IX-8 were "
-                 "verified element by element against the transcription in flightsim/aircraft.py.")
+                 "verified element by element against the transcription in atisim/aircraft.py.")
 y = para(fig, y, "C. R. Hanke and D. R. Nordwall, The Simulation of a Jumbo Jet Transport Aircraft, "
                  "Volume II: Modeling Data, Boeing D6-30643-VOL-2 / NASA CR-114494, September 1970. "
                  "The document CR-2144 names as its sole 747 source. Its Summary of Areas and "

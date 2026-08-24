@@ -23,13 +23,13 @@ error, and that all underlying assumptions be well founded.
 
 | Artifact | What it is |
 |---|---|
-| `flightsim/verification.py` | **tier 0** — checks that take no aircraft data as a reference |
-| `flightsim/validation.py` | **tiers 1–2** — analytic laws and published worked examples; also now holds the linearisation, moved out of `tests/modes.py` (which is a re-export, so the two baseline mode files are untouched) |
-| `flightsim/tests/test_verification.py` | 8 tests |
-| `flightsim/tests/test_validation.py` | 14 tests |
+| `atisim/verification.py` | **tier 0** — checks that take no aircraft data as a reference |
+| `atisim/validation.py` | **tiers 1–2** — analytic laws and published worked examples; also now holds the linearisation, moved out of `tests/modes.py` (which is a re-export, so the two baseline mode files are untouched) |
+| `atisim/tests/test_verification.py` | 8 tests |
+| `atisim/tests/test_validation.py` | 14 tests |
 | `notebooks/solver-validation.ipynb` | thin front end, no arithmetic, run by `pytest --nbval-lax notebooks/` |
 | `docs/ASSUMPTIONS.md` | the assumption register, with a measured bound on each |
-| `flightsim/integrate.py` | `rk4_step` split out of `step`, bit-identically |
+| `atisim/integrate.py` | `rk4_step` split out of `step`, bit-identically |
 
 ### The answer on source vintage, which is worth carrying forward
 
@@ -105,7 +105,7 @@ the first (substituting `vel_rel` into the Coriolis term). It **structurally can
 the second, because a steady uniform wind has zero material derivative. This is the seam
 Dryden will load, so it should be closed before Dryden, not after.
 
-**Files:** Modify `flightsim/tests/test_verification.py`
+**Files:** Modify `atisim/tests/test_verification.py`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -129,7 +129,7 @@ def test_a_time_varying_uniform_wind_adds_no_spurious_force():
     gives a different displacement. Attitude and rates are the invariant.
     """
     import jax
-    from flightsim.state import quat_to_dcm
+    from atisim.state import quat_to_dcm
 
     W0 = jnp.array([9.0, -4.0, 0.0])
     OMEGA = 0.7  # rad/s, several times the phugoid, comparable to the short period
@@ -168,7 +168,7 @@ def test_a_time_varying_uniform_wind_adds_no_spurious_force():
 - [ ] **Step 2: Run it**
 
 ```bash
-PYTHONPATH=. $PY -m pytest flightsim/tests/test_verification.py -q -k time_varying
+PYTHONPATH=. $PY -m pytest atisim/tests/test_verification.py -q -k time_varying
 ```
 
 **Expect this to need thought, not to pass first time.** A spatially-uniform wind derived
@@ -194,7 +194,7 @@ question, or narrow it to whatever remains.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add flightsim/ docs/
+git add atisim/ docs/
 git commit -m "Close the other gust seam: a time-varying wind adds no spurious force"
 ```
 
@@ -206,7 +206,7 @@ Session 11 put the |α| bound in `validation.sweep`, which is where it was neede
 defect is in `trim.trim` — it returns α = −633° with a residual of 1.6e-15 and says nothing
 — and every other caller is equally exposed.
 
-**Files:** Modify `flightsim/trim.py`, `flightsim/tests/test_trim.py`
+**Files:** Modify `atisim/trim.py`, `atisim/tests/test_trim.py`
 
 - [ ] **Step 1: Decide the shape, because this one has a real trade-off**
 
@@ -304,16 +304,16 @@ is **the same order as the project's tightest agreements** (Dutch roll ωn 0.4%,
 
 Task 3 records the bias. This decides what to do about it.
 
-**Files:** `flightsim/atmosphere.py`, `flightsim/tests/test_atmosphere.py`, plus every
+**Files:** `atisim/atmosphere.py`, `atisim/tests/test_atmosphere.py`, plus every
 baseline that moves
 
 - [ ] **Step 1: Measure the blast radius first, before changing anything**
 
 ```bash
 PYTHONPATH=. $PY -c "
-import jax.numpy as jnp, numpy as np, flightsim
-from flightsim import trim, validation
-from flightsim.aircraft import REGISTRY, CRUISE
+import jax.numpy as jnp, numpy as np, atisim
+from atisim import trim, validation
+from atisim.aircraft import REGISTRY, CRUISE
 # how much do the 747 cruise modes move if g falls 0.383%?
 "
 ```

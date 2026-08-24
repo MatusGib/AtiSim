@@ -4,9 +4,9 @@
 
 **Goal:** Establish that the solver is arithmetically correct and that known coefficient changes produce known results, before any further modelling layer is added.
 
-**Architecture:** Two new flat modules beside the existing ones — `flightsim/verification.py` for checks that depend on no aircraft data at all, and `flightsim/validation.py` for checks against analytic laws and published worked examples. A Jupyter notebook is a thin front end that imports both and plots; it contains no arithmetic, and is executed by `nbval` as a required gate so it cannot drift. Design spec: `docs/superpowers/specs/2026-08-11-solver-validation-design.md`.
+**Architecture:** Two new flat modules beside the existing ones — `atisim/verification.py` for checks that depend on no aircraft data at all, and `atisim/validation.py` for checks against analytic laws and published worked examples. A Jupyter notebook is a thin front end that imports both and plots; it contains no arithmetic, and is executed by `nbval` as a required gate so it cannot drift. Design spec: `docs/superpowers/specs/2026-08-11-solver-validation-design.md`.
 
-**Tech Stack:** Python 3.10, JAX (float64 via `flightsim/__init__.py`), NumPy, SciPy, pytest, Jupyter + nbval.
+**Tech Stack:** Python 3.10, JAX (float64 via `atisim/__init__.py`), NumPy, SciPy, pytest, Jupyter + nbval.
 
 **Revision:** rev 2, after plan review. Every fix below is verified, not assumed — see "What review changed".
 
@@ -33,7 +33,7 @@ Also fixed: `to_imperial_matrix` missing two elements; A[2,1] reconstructed rath
 **Working directory** is the worktree root. **Every** command needs `PYTHONPATH=.` or the editable install resolves to the main checkout instead (PROJECT.md §10, "Environment notes"). The interpreter lives in the main checkout:
 
 ```bash
-PYTHONPATH=. "C:/Users/mateusz/UROP/Claude_Flight_Sim/.venv/Scripts/python.exe" -m pytest flightsim/tests -q
+PYTHONPATH=. "C:/Users/mateusz/UROP/Claude_Flight_Sim/.venv/Scripts/python.exe" -m pytest atisim/tests -q
 ```
 
 Shorthand below: `$PY` means `"C:/Users/mateusz/UROP/Claude_Flight_Sim/.venv/Scripts/python.exe"`.
@@ -51,13 +51,13 @@ Shorthand below: `$PY` means `"C:/Users/mateusz/UROP/Claude_Flight_Sim/.venv/Scr
 
 | File | Responsibility |
 |---|---|
-| `flightsim/integrate.py` (modify) | extract `rk4_step` so the stage weights can be tested on a problem with a closed-form solution |
-| `flightsim/trim.py` (modify) | expose the Newton start point as a module constant |
-| `flightsim/verification.py` (create) | tier 0: no aircraft data. Order of accuracy, Galilean invariance, torque-free rigid body, Newton convergence |
-| `flightsim/validation.py` (create) | tiers 1–2: plant matrices, axis transforms, published references, coefficient sweeps |
-| `flightsim/tests/modes.py` (modify) | becomes a re-export so `test_cr2144_modes.py` and `test_navion.py` are untouched |
-| `flightsim/tests/test_verification.py` (create) | tests for `verification.py` |
-| `flightsim/tests/test_validation.py` (create) | tests for `validation.py` |
+| `atisim/integrate.py` (modify) | extract `rk4_step` so the stage weights can be tested on a problem with a closed-form solution |
+| `atisim/trim.py` (modify) | expose the Newton start point as a module constant |
+| `atisim/verification.py` (create) | tier 0: no aircraft data. Order of accuracy, Galilean invariance, torque-free rigid body, Newton convergence |
+| `atisim/validation.py` (create) | tiers 1–2: plant matrices, axis transforms, published references, coefficient sweeps |
+| `atisim/tests/modes.py` (modify) | becomes a re-export so `test_cr2144_modes.py` and `test_navion.py` are untouched |
+| `atisim/tests/test_verification.py` (create) | tests for `verification.py` |
+| `atisim/tests/test_validation.py` (create) | tests for `validation.py` |
 | `notebooks/solver-validation.ipynb` (create) | narrative and figures only |
 | `pyproject.toml` (modify) | add `jupyter`, `nbval` to the dev extra |
 | `docs/PROJECT.md` (modify) | §3, §4, §5, §7, §9, §10 |
@@ -69,17 +69,17 @@ Shorthand below: `$PY` means `"C:/Users/mateusz/UROP/Claude_Flight_Sim/.venv/Scr
 `integrate.step` inlines RK4 around `derivatives`, so the stage weights cannot be exercised on a problem whose exact answer is known. Extract them. The refactor must change nothing, and the guard is a trajectory hash captured **before** the change and pinned as a constant afterwards.
 
 **Files:**
-- Modify: `flightsim/integrate.py:57-94`
-- Test: `flightsim/tests/test_verification.py`
+- Modify: `atisim/integrate.py:57-94`
+- Test: `atisim/tests/test_verification.py`
 
 - [ ] **Step 1: Capture the pre-refactor hash**
 
 ```bash
 PYTHONPATH=. $PY -c "
 import jax, jax.numpy as jnp, numpy as np, hashlib
-import flightsim
-from flightsim import trim, integrate
-from flightsim.aircraft import REGISTRY, CRUISE
+import atisim
+from atisim import trim, integrate
+from atisim.aircraft import REGISTRY, CRUISE
 ac = REGISTRY['boeing747']
 V, H = CRUISE['boeing747']['airspeed'], CRUISE['boeing747']['altitude']
 x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
@@ -95,7 +95,7 @@ print(hashlib.sha256(np.asarray(traj.vel_body).tobytes()).hexdigest())
 
 - [ ] **Step 2: Extract `rk4_step`**
 
-In `flightsim/integrate.py`, insert after `_axpy` (line 59):
+In `atisim/integrate.py`, insert after `_axpy` (line 59):
 
 ```python
 def rk4_step(f, x, dt):
@@ -106,7 +106,7 @@ def rk4_step(f, x, dt):
     conservation drift cannot distinguish a fourth-order scheme from a
     second-order one. `_axpy` maps over a pytree and an array is a leaf, so this
     also runs unchanged on a plain array right-hand side, which is what
-    flightsim/verification.py uses.
+    atisim/verification.py uses.
     """
     k1 = f(x)
     k2 = f(_axpy(x, k1, dt / 2))
@@ -132,7 +132,7 @@ Expected: **the identical hash**. If it differs, revert and redo — the extract
 
 - [ ] **Step 4: Pin the hash in a test**
 
-Create `flightsim/tests/test_verification.py`:
+Create `atisim/tests/test_verification.py`:
 
 ```python
 """Tier-0 verification: checks that depend on no aircraft data at all.
@@ -153,9 +153,9 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-import flightsim  # noqa: F401  -- enables x64 before any array is made
-from flightsim import integrate, trim, verification
-from flightsim.aircraft import CRUISE, REGISTRY
+import atisim  # noqa: F401  -- enables x64 before any array is made
+from atisim import integrate, trim, verification
+from atisim.aircraft import CRUISE, REGISTRY
 
 # Captured from the integrator BEFORE rk4_step was extracted from `step`
 # (plan Task 1, Step 1). This is the whole guard on that refactor: a test that
@@ -192,21 +192,21 @@ Replace `PASTE_THE_HASH_FROM_STEP_1_HERE` with the actual hash.
 - [ ] **Step 5: Run it**
 
 ```bash
-PYTHONPATH=. $PY -m pytest flightsim/tests/test_verification.py -q
+PYTHONPATH=. $PY -m pytest atisim/tests/test_verification.py -q
 ```
 Expected: 1 passed. (`verification` is imported but unused until Task 2; if that import fails, comment it out and restore it in Task 2.)
 
 - [ ] **Step 6: Full suite — nothing may move**
 
 ```bash
-PYTHONPATH=. $PY -m pytest flightsim/tests -q
+PYTHONPATH=. $PY -m pytest atisim/tests -q
 ```
 Expected: 296 passed, 1 skipped, plus the new test.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add flightsim/integrate.py flightsim/tests/test_verification.py
+git add atisim/integrate.py atisim/tests/test_verification.py
 git commit -m "Split the RK4 stage weights out of step, bit-identically"
 ```
 
@@ -215,12 +215,12 @@ git commit -m "Split the RK4 stage weights out of step, bit-identically"
 ## Task 2: Observed order of accuracy on a manufactured solution
 
 **Files:**
-- Create: `flightsim/verification.py`
-- Test: `flightsim/tests/test_verification.py`
+- Create: `atisim/verification.py`
+- Test: `atisim/tests/test_verification.py`
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `flightsim/tests/test_verification.py`:
+Append to `atisim/tests/test_verification.py`:
 
 ```python
 def test_rk4_is_fourth_order_on_a_problem_with_a_closed_form():
@@ -258,13 +258,13 @@ def test_rk4_is_fourth_order_on_a_problem_with_a_closed_form():
 - [ ] **Step 2: Run it and watch it fail**
 
 ```bash
-PYTHONPATH=. $PY -m pytest flightsim/tests/test_verification.py -q -k fourth_order
+PYTHONPATH=. $PY -m pytest atisim/tests/test_verification.py -q -k fourth_order
 ```
-Expected: FAIL — `ModuleNotFoundError: No module named 'flightsim.verification'`.
+Expected: FAIL — `ModuleNotFoundError: No module named 'atisim.verification'`.
 
 - [ ] **Step 3: Create the module**
 
-Create `flightsim/verification.py`:
+Create `atisim/verification.py`:
 
 ```python
 """Tier-0 verification: is the arithmetic right?
@@ -300,7 +300,7 @@ def fitted_order(dts, errors):
 - [ ] **Step 4: Run it and watch it pass**
 
 ```bash
-PYTHONPATH=. $PY -m pytest flightsim/tests/test_verification.py -q
+PYTHONPATH=. $PY -m pytest atisim/tests/test_verification.py -q
 ```
 Expected: 2 passed. The slope is **3.99982** on this sequence, so `abs=0.05` has ample margin.
 
@@ -309,7 +309,7 @@ Expected: 2 passed. The slope is **3.99982** on this sequence, so `abs=0.05` has
 - [ ] **Step 5: Commit**
 
 ```bash
-git add flightsim/verification.py flightsim/tests/test_verification.py
+git add atisim/verification.py atisim/tests/test_verification.py
 git commit -m "Assert RK4 is fourth-order, which nothing did before"
 ```
 
@@ -320,7 +320,7 @@ git commit -m "Assert RK4 is fourth-order, which nothing did before"
 The manufactured case isolates the stage weights. It cannot see a wind sample or control update applied at the wrong stage — the seam turbulence will lean on (PROJECT.md §2: "wind sampled once per step, held across the four stages").
 
 **Files:**
-- Test: `flightsim/tests/test_verification.py`
+- Test: `atisim/tests/test_verification.py`
 
 - [ ] **Step 1: Write the test**
 
@@ -351,14 +351,14 @@ def test_the_six_dof_rollout_is_fourth_order():
 - [ ] **Step 2: Run it**
 
 ```bash
-PYTHONPATH=. $PY -m pytest flightsim/tests/test_verification.py -q -k six_dof
+PYTHONPATH=. $PY -m pytest atisim/tests/test_verification.py -q -k six_dof
 ```
 Expected: PASS. Each distinct `dt` recompiles the jitted `rollout` (`n_steps` is static), so this takes tens of seconds. Do not shorten the sequence to speed it up.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add flightsim/tests/test_verification.py
+git add atisim/tests/test_verification.py
 git commit -m "Assert the order of accuracy through the real dynamics too"
 ```
 
@@ -367,7 +367,7 @@ git commit -m "Assert the order of accuracy through the real dynamics too"
 ## Task 4: Galilean invariance under a uniform horizontal wind
 
 **Files:**
-- Test: `flightsim/tests/test_verification.py`
+- Test: `atisim/tests/test_verification.py`
 
 - [ ] **Step 1: Write the test**
 
@@ -407,7 +407,7 @@ def test_a_uniform_horizontal_wind_only_translates_the_trajectory():
     state = trim.trimmed_state(x[0], jnp.array(V), jnp.array(H))
     controls = trim.trimmed_controls(x[1] + 0.01, x[2])
 
-    from flightsim.state import quat_to_dcm
+    from atisim.state import quat_to_dcm
 
     dcm = quat_to_dcm(state.quat)  # body -> NED
     shifted = state._replace(vel_body=state.vel_body + dcm.T @ W)
@@ -432,7 +432,7 @@ def test_a_uniform_horizontal_wind_only_translates_the_trajectory():
 - [ ] **Step 2: Run it**
 
 ```bash
-PYTHONPATH=. $PY -m pytest flightsim/tests/test_verification.py -q -k galilean or horizontal_wind
+PYTHONPATH=. $PY -m pytest atisim/tests/test_verification.py -q -k galilean or horizontal_wind
 ```
 
 If `-k` with `or` is awkward in the shell, run the file.
@@ -442,7 +442,7 @@ Expected: PASS. If it **fails**, that is a real finding about the wind path — 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add flightsim/tests/test_verification.py
+git add atisim/tests/test_verification.py
 git commit -m "Assert Galilean invariance, which still air could never show"
 ```
 
@@ -451,14 +451,14 @@ git commit -m "Assert Galilean invariance, which still air could never show"
 ## Task 5: Newton trim convergence is quadratic
 
 **Files:**
-- Modify: `flightsim/trim.py:97`, `flightsim/verification.py`
-- Test: `flightsim/tests/test_verification.py`
+- Modify: `atisim/trim.py:97`, `atisim/verification.py`
+- Test: `atisim/tests/test_verification.py`
 
-**Verified before writing this task:** `trim.trim`'s scan body (`flightsim/trim.py:99-104`) is the undamped Newton update `x - solve(jacfwd(residual), residual)` — no damping, no least squares. So the history below reproduces the solver rather than a different algorithm.
+**Verified before writing this task:** `trim.trim`'s scan body (`atisim/trim.py:99-104`) is the undamped Newton update `x - solve(jacfwd(residual), residual)` — no damping, no least squares. So the history below reproduces the solver rather than a different algorithm.
 
 - [ ] **Step 1: Expose the start point**
 
-In `flightsim/trim.py`, above `trim`, add:
+In `atisim/trim.py`, above `trim`, add:
 
 ```python
 # The Newton start point. A module constant rather than a literal inside `trim`
@@ -503,13 +503,13 @@ def test_the_trim_solve_converges_quadratically():
 - [ ] **Step 3: Run it and watch it fail**
 
 ```bash
-PYTHONPATH=. $PY -m pytest flightsim/tests/test_verification.py -q -k quadratic
+PYTHONPATH=. $PY -m pytest atisim/tests/test_verification.py -q -k quadratic
 ```
 Expected: FAIL — no attribute `newton_residual_history`.
 
 - [ ] **Step 4: Implement**
 
-Append to `flightsim/verification.py`:
+Append to `atisim/verification.py`:
 
 ```python
 def newton_residual_history(airspeed, altitude, ac, iterations=6):
@@ -523,7 +523,7 @@ def newton_residual_history(airspeed, altitude, ac, iterations=6):
     import jax
     import jax.numpy as jnp
 
-    from flightsim.trim import INITIAL_GUESS, residual
+    from atisim.trim import INITIAL_GUESS, residual
 
     x = INITIAL_GUESS
     history = [float(jnp.linalg.norm(residual(x, airspeed, altitude, ac)))]
@@ -538,15 +538,15 @@ def newton_residual_history(airspeed, altitude, ac, iterations=6):
 - [ ] **Step 5: Run the file, then the whole suite**
 
 ```bash
-PYTHONPATH=. $PY -m pytest flightsim/tests/test_verification.py -q
-PYTHONPATH=. $PY -m pytest flightsim/tests/test_trim.py -q
+PYTHONPATH=. $PY -m pytest atisim/tests/test_verification.py -q
+PYTHONPATH=. $PY -m pytest atisim/tests/test_trim.py -q
 ```
 Expected: both green. `test_trim.py` is a §4 baseline file and `trim.py` was just edited — if it moves, revert.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add flightsim/trim.py flightsim/verification.py flightsim/tests/test_verification.py
+git add atisim/trim.py atisim/verification.py atisim/tests/test_verification.py
 git commit -m "Assert the trim Newton solve converges quadratically"
 ```
 
@@ -557,12 +557,12 @@ git commit -m "Assert the trim Newton solve converges quadratically"
 PROJECT.md §4 records angular-momentum drift of 5.7e-13. That says the integrator is conservative, not that it is right — a scheme can conserve H exactly and traverse the polhode at the wrong rate.
 
 **Files:**
-- Modify: `flightsim/verification.py`
-- Test: `flightsim/tests/test_verification.py`
+- Modify: `atisim/verification.py`
+- Test: `atisim/tests/test_verification.py`
 
 - [ ] **Step 1: Implement the closed form, with its domain asserted**
 
-Append to `flightsim/verification.py`:
+Append to `atisim/verification.py`:
 
 ```python
 def torque_free_omega(I1, I2, I3, omega0, t):
@@ -644,9 +644,9 @@ def test_the_integrator_reproduces_torque_free_rotation():
     Section 4 records angular-momentum drift of 5.7e-13 over 60,000 steps. This
     checks the trajectory instead of the invariant.
     """
-    from flightsim.aircraft import inertia_tensor
-    from flightsim.state import State, euler_to_quat
-    from flightsim.tests.conftest import make_test_aircraft
+    from atisim.aircraft import inertia_tensor
+    from atisim.state import State, euler_to_quat
+    from atisim.tests.conftest import make_test_aircraft
 
     inertia = inertia_tensor(_I1, _I2, _I3, 0.0)
     zeroed = dict(
@@ -680,7 +680,7 @@ def test_the_integrator_reproduces_torque_free_rotation():
 - [ ] **Step 3: Run them**
 
 ```bash
-PYTHONPATH=. $PY -m pytest flightsim/tests/test_verification.py -q -k torque_free
+PYTHONPATH=. $PY -m pytest atisim/tests/test_verification.py -q -k torque_free
 ```
 Expected: 3 passed.
 
@@ -689,7 +689,7 @@ If the **first** fails, the closed form is mis-stated — fix `torque_free_omega
 - [ ] **Step 4: Commit**
 
 ```bash
-git add flightsim/verification.py flightsim/tests/test_verification.py
+git add atisim/verification.py atisim/tests/test_verification.py
 git commit -m "Check torque-free rotation against its closed form, branch guarded"
 ```
 
@@ -697,16 +697,16 @@ git commit -m "Check torque-free rotation against its closed form, branch guarde
 
 ## Task 7: Promote the linearisation into the package
 
-`flightsim/tests/modes.py` holds the only linearisation in the project and lives inside the test package, so the notebook cannot import it and Family C cannot reach the plant matrix — only the modes derived from it.
+`atisim/tests/modes.py` holds the only linearisation in the project and lives inside the test package, so the notebook cannot import it and Family C cannot reach the plant matrix — only the modes derived from it.
 
 **Files:**
-- Create: `flightsim/validation.py`
-- Modify: `flightsim/tests/modes.py`
-- Test: `flightsim/tests/test_validation.py`
+- Create: `atisim/validation.py`
+- Modify: `atisim/tests/modes.py`
+- Test: `atisim/tests/test_validation.py`
 
-- [ ] **Step 1: Create `flightsim/validation.py`**
+- [ ] **Step 1: Create `atisim/validation.py`**
 
-Move both functions from `flightsim/tests/modes.py` verbatim — including the docstring reasoning about the `r*cos(phi)*tan(theta0)` term — and add a matrix layer beneath.
+Move both functions from `atisim/tests/modes.py` verbatim — including the docstring reasoning about the `r*cos(phi)*tan(theta0)` term — and add a matrix layer beneath.
 
 ```python
 """Validation against analytic laws and published worked examples.
@@ -718,7 +718,7 @@ were 10% from the real aeroplane, this model must still reproduce CR-2144's own
 transfer-function factors from CR-2144's own derivatives. See the design spec,
 "Source qualification".
 
-Tier 0 -- the checks needing no aircraft data at all -- is flightsim/verification.py.
+Tier 0 -- the checks needing no aircraft data at all -- is atisim/verification.py.
 """
 
 from typing import NamedTuple
@@ -727,10 +727,10 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from flightsim.aircraft import Aircraft
-from flightsim.dynamics import derivatives
-from flightsim.state import Controls, State, euler_to_quat
-from flightsim.units import FT2M
+from atisim.aircraft import Aircraft
+from atisim.dynamics import derivatives
+from atisim.state import Controls, State, euler_to_quat
+from atisim.units import FT2M
 
 
 def longitudinal_matrix(ac, alpha, elevator, throttle, V, H):
@@ -813,33 +813,33 @@ def longitudinal_modes(ac, alpha, elevator, throttle, V, H):
     return modes_from_matrix(longitudinal_matrix(ac, alpha, elevator, throttle, V, H))
 ```
 
-Then append `lateral_modes` from `flightsim/tests/modes.py`, **unchanged**, docstring included.
+Then append `lateral_modes` from `atisim/tests/modes.py`, **unchanged**, docstring included.
 
-- [ ] **Step 2: Replace `flightsim/tests/modes.py` with a re-export**
+- [ ] **Step 2: Replace `atisim/tests/modes.py` with a re-export**
 
 ```python
 """Kept as an import shim.
 
-The linearisation moved to `flightsim.validation` so the notebook and the
+The linearisation moved to `atisim.validation` so the notebook and the
 validation module can reach the plant matrix itself, not only the modes derived
 from it. `test_cr2144_modes.py` and `test_navion.py` import from here and are
 deliberately untouched.
 """
 
-from flightsim.validation import lateral_modes, longitudinal_modes  # noqa: F401
+from atisim.validation import lateral_modes, longitudinal_modes  # noqa: F401
 ```
 
 - [ ] **Step 3: Run the WHOLE suite**
 
 ```bash
-PYTHONPATH=. $PY -m pytest flightsim/tests -q
+PYTHONPATH=. $PY -m pytest atisim/tests -q
 ```
 
 Not just the two obvious files. This is the change most likely to perturb the suite, and `test_cr2144_modes.py` / `test_navion.py` are §4 baseline files: if any value moves, revert and find out why.
 
 - [ ] **Step 4: Write the similarity-transform test**
 
-Create `flightsim/tests/test_validation.py`:
+Create `atisim/tests/test_validation.py`:
 
 ```python
 """Tier 1 and 2 validation: analytic laws, and published worked examples."""
@@ -848,10 +848,10 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-import flightsim  # noqa: F401
-from flightsim import trim, validation
-from flightsim.aircraft import CRUISE, REGISTRY
-from flightsim.units import FT2M
+import atisim  # noqa: F401
+from atisim import trim, validation
+from atisim.aircraft import CRUISE, REGISTRY
+from atisim.units import FT2M
 
 # Caughey Eq. (5.48): M = 0.25 at sea level. CR-2144 Table IX-2's header says
 # 165 KTAS = 278.49 ft/s, a 0.2% difference recorded in the design spec. Checks
@@ -894,14 +894,14 @@ def test_the_stability_axis_transform_is_a_similarity_transform():
 - [ ] **Step 5: Run it**
 
 ```bash
-PYTHONPATH=. $PY -m pytest flightsim/tests/test_validation.py -q
+PYTHONPATH=. $PY -m pytest atisim/tests/test_validation.py -q
 ```
 Expected: 1 passed.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add flightsim/validation.py flightsim/tests/modes.py flightsim/tests/test_validation.py
+git add atisim/validation.py atisim/tests/modes.py atisim/tests/test_validation.py
 git commit -m "Promote the linearisation out of the test package, and add the axis transform"
 ```
 
@@ -912,8 +912,8 @@ git commit -m "Promote the linearisation out of the test package, and add the ax
 Everything a test compares against lives here with its citation. Nothing is a bare literal in a test file.
 
 **Files:**
-- Modify: `flightsim/validation.py`
-- Test: `flightsim/tests/test_validation.py`
+- Modify: `atisim/validation.py`
+- Test: `atisim/tests/test_validation.py`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -934,13 +934,13 @@ def test_every_reference_carries_its_citation():
 - [ ] **Step 2: Run it and watch it fail**
 
 ```bash
-PYTHONPATH=. $PY -m pytest flightsim/tests/test_validation.py -q -k citation
+PYTHONPATH=. $PY -m pytest atisim/tests/test_validation.py -q -k citation
 ```
 Expected: FAIL — no attribute `REFERENCES`.
 
 - [ ] **Step 3: Implement**
 
-Append to `flightsim/validation.py`:
+Append to `atisim/validation.py`:
 
 ```python
 class Reference(NamedTuple):
@@ -1006,14 +1006,14 @@ CAUGHEY_A = np.array([
 - [ ] **Step 4: Run it and watch it pass**
 
 ```bash
-PYTHONPATH=. $PY -m pytest flightsim/tests/test_validation.py -q
+PYTHONPATH=. $PY -m pytest atisim/tests/test_validation.py -q
 ```
 Expected: 2 passed.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add flightsim/validation.py flightsim/tests/test_validation.py
+git add atisim/validation.py atisim/tests/test_validation.py
 git commit -m "Add the published reference table, citations enforced by a test"
 ```
 
@@ -1024,7 +1024,7 @@ git commit -m "Add the published reference table, citations enforced by a test"
 Three tests with **disjoint** responsibilities: elements the model contains, elements it does not, and the roots. No element is asserted twice.
 
 **Files:**
-- Test: `flightsim/tests/test_validation.py`
+- Test: `atisim/tests/test_validation.py`
 
 - [ ] **Step 1: Write the tests**
 
@@ -1105,14 +1105,14 @@ def test_the_approach_modes_match_caugheys_published_roots():
 - [ ] **Step 2: Run them**
 
 ```bash
-PYTHONPATH=. $PY -m pytest flightsim/tests/test_validation.py -q
+PYTHONPATH=. $PY -m pytest atisim/tests/test_validation.py -q
 ```
 Expected: 5 passed. Any tolerance that fails is a finding — report the measured value, do not widen.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add flightsim/tests/test_validation.py
+git add atisim/tests/test_validation.py
 git commit -m "Reproduce Caughey's plant matrix, and reconstruct the omitted terms"
 ```
 
@@ -1123,7 +1123,7 @@ git commit -m "Reproduce Caughey's plant matrix, and reconstruct the omitted ter
 Rewritten after review: the previous version asserted `ph_err < 0.0178`, which Task 9's `rel=0.01` already implies, so it added nothing. This computes **both** conditions and asserts their ratio, which is the actual claim.
 
 **Files:**
-- Test: `flightsim/tests/test_validation.py`
+- Test: `atisim/tests/test_validation.py`
 
 - [ ] **Step 1: Write the test**
 
@@ -1173,14 +1173,14 @@ def test_the_mode_error_is_an_order_of_magnitude_smaller_on_approach():
 - [ ] **Step 2: Run it**
 
 ```bash
-PYTHONPATH=. $PY -m pytest flightsim/tests/test_validation.py -q -k condition
+PYTHONPATH=. $PY -m pytest atisim/tests/test_validation.py -q -k condition
 ```
 Expected: PASS.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add flightsim/tests/test_validation.py
+git add atisim/tests/test_validation.py
 git commit -m "Pin the phugoid gap as condition-dependent, as a ratio"
 ```
 
@@ -1191,12 +1191,12 @@ git commit -m "Pin the phugoid gap as condition-dependent, as a ratio"
 One helper, used by every sweep. It re-trims per sample and asserts convergence, because a sweep that silently fails to trim reports modes for an aircraft that is not in equilibrium.
 
 **Files:**
-- Modify: `flightsim/validation.py`
-- Test: `flightsim/tests/test_validation.py`
+- Modify: `atisim/validation.py`
+- Test: `atisim/tests/test_validation.py`
 
 - [ ] **Step 1: Implement**
 
-Append to `flightsim/validation.py`:
+Append to `atisim/validation.py`:
 
 ```python
 TRIM_RESIDUAL_LIMIT = 1e-9
@@ -1216,7 +1216,7 @@ def sweep(ac, field, values, quantity, V, H):
 
     `quantity` takes (aircraft, alpha, elevator, throttle) and returns a float.
     """
-    from flightsim.trim import trim as solve_trim
+    from atisim.trim import trim as solve_trim
 
     out = []
     for v in values:
@@ -1248,14 +1248,14 @@ def test_the_sweep_helper_refuses_an_unconverged_trim():
 - [ ] **Step 3: Run it**
 
 ```bash
-PYTHONPATH=. $PY -m pytest flightsim/tests/test_validation.py -q -k unconverged
+PYTHONPATH=. $PY -m pytest atisim/tests/test_validation.py -q -k unconverged
 ```
 Expected: PASS. If the solve happens to converge for `CLa=1e-4`, pick a value that does not and say which in the docstring — the point is that the guard fires, not the particular number.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add flightsim/validation.py flightsim/tests/test_validation.py
+git add atisim/validation.py atisim/tests/test_validation.py
 git commit -m "Add the sweep helper, with per-sample trim convergence asserted"
 ```
 
@@ -1266,7 +1266,7 @@ git commit -m "Add the sweep helper, with per-sample trim convergence asserted"
 The review request read literally: change a coefficient, get a known result. The Lanchester rows are strongest because the size of the approximation's **error** is itself published.
 
 **Files:**
-- Test: `flightsim/tests/test_validation.py`
+- Test: `atisim/tests/test_validation.py`
 
 - [ ] **Step 1: Write the Lanchester tests**
 
@@ -1291,7 +1291,7 @@ def test_the_phugoid_frequency_follows_the_lanchester_law():
     of 1.2174. Matching the published SIZE of the approximation's error is far
     tighter than matching its trend.
     """
-    from flightsim.atmosphere import G0
+    from atisim.atmosphere import G0
 
     ac, alpha, de, thr, _ = _approach_trim()
     (ph_wn, _), _ = validation.longitudinal_modes(ac, alpha, de, thr, CAUGHEY_V, 0.0)
@@ -1403,7 +1403,7 @@ def test_the_dutch_roll_frequency_rises_with_weathercock_stability():
 - [ ] **Step 3: Run them**
 
 ```bash
-PYTHONPATH=. $PY -m pytest flightsim/tests/test_validation.py -q
+PYTHONPATH=. $PY -m pytest atisim/tests/test_validation.py -q
 ```
 Expected: all pass.
 
@@ -1414,7 +1414,7 @@ Two known risks, both to be **reported rather than tuned around**:
 - [ ] **Step 4: Commit**
 
 ```bash
-git add flightsim/tests/test_validation.py
+git add atisim/tests/test_validation.py
 git commit -m "Sweep drag, pitch stiffness, roll damping and weathercock stability"
 ```
 
@@ -1444,7 +1444,7 @@ dev = ["pytest", "pymupdf", "jupyter", "nbval"]
 Create `notebooks/solver-validation.ipynb` with these cells in order. **Every cell imports and calls — no arithmetic written inline**, so nothing here can disagree with the suite.
 
 1. *Markdown.* Title, the verification/validation split, and the source-qualification tier table from the design spec. State plainly that this validates the solver, not fidelity to a real 747.
-2. *Code.* `import flightsim; from flightsim import validation, verification, trim, integrate; from flightsim.aircraft import REGISTRY, CRUISE`.
+2. *Code.* `import atisim; from atisim import validation, verification, trim, integrate; from atisim.aircraft import REGISTRY, CRUISE`.
 3. *Markdown.* "Tier 0 — does the arithmetic work?"
 4. *Code.* The manufactured-solution refinement: print `verification.fitted_order(...)`, plot log error against log dt with a reference slope-4 line.
 5. *Code.* `verification.newton_residual_history(...)` as a table.
@@ -1472,7 +1472,7 @@ The project has **no CI configuration** (no `.github/`), so "executed in CI" mea
 
 ```toml
 [tool.pytest.ini_options]
-testpaths = ["flightsim/tests"]
+testpaths = ["atisim/tests"]
 ```
 
 `pyproject.toml` currently has no `[tool.pytest.ini_options]` table — verified — so this adds rather than duplicates. A duplicate table is a TOML parse error.

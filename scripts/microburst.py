@@ -23,10 +23,10 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
-import flightsim  # noqa: F401  -- enables x64
-from flightsim import dynamics, integrate, sensors, trim, wind
-from flightsim.aircraft import CRUISE, REGISTRY
-from flightsim.state import State, quat_to_dcm
+import atisim  # noqa: F401  -- enables x64
+from atisim import dynamics, integrate, sensors, trim, wind
+from atisim.aircraft import CRUISE, REGISTRY
+from atisim.state import State, quat_to_dcm
 
 # Proctor, Hinton & Bowles 2000. The FAA metric is the 1 km AVERAGE F, hazardous
 # above 0.1 with a must-alert threshold at 0.13 -- for JET TRANSPORTS. The same

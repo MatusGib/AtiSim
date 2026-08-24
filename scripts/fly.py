@@ -32,12 +32,12 @@ import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 
-import flightsim  # noqa: F401  -- enables x64 before any array is made
-from flightsim import autopilot as ap_mod
-from flightsim import integrate, manual as man, panel as panel_mod, trim, viz, wind
-from flightsim.aircraft import CRUISE, REGISTRY
-from flightsim.sensors import sense
-from flightsim.units import RAD2DEG
+import atisim  # noqa: F401  -- enables x64 before any array is made
+from atisim import autopilot as ap_mod
+from atisim import integrate, manual as man, panel as panel_mod, trim, viz, wind
+from atisim.aircraft import CRUISE, REGISTRY
+from atisim.sensors import sense
+from atisim.units import RAD2DEG
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--aircraft", default="boeing747", choices=sorted(REGISTRY))

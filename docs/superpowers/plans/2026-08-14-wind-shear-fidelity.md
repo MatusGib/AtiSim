@@ -27,8 +27,8 @@ PY="C:/Users/mateusz/UROP/Claude_Flight_Sim/.venv/Scripts/python.exe"
 
 Read these before Task 1. They are not obvious from the code.
 
-1. **`conftest.py` turns on `jax_debug_nans` for the whole suite.** Any NaN — including one inside a branch that is never used — fails the test. `jnp.where` evaluates *both* branches, so guard divisors before the `where`, not inside it. `flightsim/wind.py:131` shows the existing pattern.
-2. **Never `import jax.numpy` before `import flightsim`.** The package enables float64 on import, and it must happen before any array is created. Every test file starts with `import flightsim  # noqa: F401`.
+1. **`conftest.py` turns on `jax_debug_nans` for the whole suite.** Any NaN — including one inside a branch that is never used — fails the test. `jnp.where` evaluates *both* branches, so guard divisors before the `where`, not inside it. `atisim/wind.py:131` shows the existing pattern.
+2. **Never `import jax.numpy` before `import atisim`.** The package enables float64 on import, and it must happen before any array is created. Every test file starts with `import atisim  # noqa: F401`.
 3. **`PROJECT.md` §4 baselines are off-limits.** The five 747 mode values are frozen. If one moves, something real broke — do not "fix" the tolerance.
 4. **Every number needs a citation.** The project's standing rule. Phase 1 makes it enforceable; until then, follow it by hand.
 5. **The three existing gust-rate signs in `wind.gust_rates` are correct.** They were re-derived independently against Stengel eqs. 3.4-48, 3.4-50 and 3.4-52 (design §2b). Do not change them.
@@ -39,12 +39,12 @@ Read these before Task 1. They are not obvious from the code.
 
 | File | Responsibility | Status |
 |---|---|---|
-| `flightsim/provenance.py` | The ledger: every constant's category and citation, as data | **create** |
-| `flightsim/tests/test_provenance.py` | Enforces the ledger's five rules | **create** |
-| `flightsim/airframe.py` | Where on the airframe the field is sampled; derived tail arm; spanwise loading | **create** |
-| `flightsim/tests/test_airframe.py` | Tail-arm derivation, plausibility gate, loading calibration | **create** |
-| `flightsim/wind.py` | Gains `sampled_rates`, `sampled_field_model`, `strip_roll_moment`. **`gust_rates` is kept unchanged** as the reference implementation and the fallback | modify |
-| `flightsim/tests/test_wind.py` | Gains the reduction properties and the curvature measurement | modify |
+| `atisim/provenance.py` | The ledger: every constant's category and citation, as data | **create** |
+| `atisim/tests/test_provenance.py` | Enforces the ledger's five rules | **create** |
+| `atisim/airframe.py` | Where on the airframe the field is sampled; derived tail arm; spanwise loading | **create** |
+| `atisim/tests/test_airframe.py` | Tail-arm derivation, plausibility gate, loading calibration | **create** |
+| `atisim/wind.py` | Gains `sampled_rates`, `sampled_field_model`, `strip_roll_moment`. **`gust_rates` is kept unchanged** as the reference implementation and the fallback | modify |
+| `atisim/tests/test_wind.py` | Gains the reduction properties and the curvature measurement | modify |
 | `docs/ASSUMPTIONS.md` | §E2 gains its measured bound | modify |
 | `docs/PROJECT.md` | §2 records the new interface; §4 gains the new checks | modify |
 
@@ -55,12 +55,12 @@ Read these before Task 1. They are not obvious from the code.
 ### Task 1: Ledger data structure and its enforcing test
 
 **Files:**
-- Create: `flightsim/provenance.py`
-- Test: `flightsim/tests/test_provenance.py`
+- Create: `atisim/provenance.py`
+- Test: `atisim/tests/test_provenance.py`
 
 - [ ] **Step 1: Write the failing test**
 
-Create `flightsim/tests/test_provenance.py`:
+Create `atisim/tests/test_provenance.py`:
 
 ```python
 """The provenance ledger's own rules.
@@ -78,8 +78,8 @@ constant rather than only to published reference values.
 
 import pytest
 
-from flightsim import provenance
-from flightsim.provenance import LEDGER, Entry
+from atisim import provenance
+from atisim.provenance import LEDGER, Entry
 
 
 def test_every_entry_uses_one_of_the_four_categories():
@@ -135,14 +135,14 @@ def test_an_entry_with_an_unknown_category_is_rejected():
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-$PY -m pytest flightsim/tests/test_provenance.py -v
+$PY -m pytest atisim/tests/test_provenance.py -v
 ```
 
-Expected: collection error, `ModuleNotFoundError: No module named 'flightsim.provenance'`.
+Expected: collection error, `ModuleNotFoundError: No module named 'atisim.provenance'`.
 
 - [ ] **Step 3: Write the minimal implementation**
 
-Create `flightsim/provenance.py`:
+Create `atisim/provenance.py`:
 
 ```python
 """Where every constant in this model came from.
@@ -196,7 +196,7 @@ LEDGER: dict[str, Entry] = {}
 - [ ] **Step 4: Run the test to verify it passes**
 
 ```bash
-$PY -m pytest flightsim/tests/test_provenance.py -v
+$PY -m pytest atisim/tests/test_provenance.py -v
 ```
 
 Expected: 5 passed. The four loop-over-`LEDGER` tests pass vacuously on an empty ledger; Task 2 fills it.
@@ -204,7 +204,7 @@ Expected: 5 passed. The four loop-over-`LEDGER` tests pass vacuously on an empty
 - [ ] **Step 5: Commit**
 
 ```bash
-git add flightsim/provenance.py flightsim/tests/test_provenance.py
+git add atisim/provenance.py atisim/tests/test_provenance.py
 git commit -m "Add the provenance ledger and the rules it must satisfy"
 ```
 
@@ -213,14 +213,14 @@ git commit -m "Add the provenance ledger and the rules it must satisfy"
 ### Task 2: Populate the ledger for the constants this work touches
 
 **Files:**
-- Modify: `flightsim/provenance.py`
-- Modify: `flightsim/tests/test_provenance.py`
+- Modify: `atisim/provenance.py`
+- Modify: `atisim/tests/test_provenance.py`
 
 Scope note: the design (§5) says the ledger eventually covers every constant in `aircraft.py`, `atmosphere.py` and `wind.py`. That is a large retrofit and it is **not** in this plan. This task enters only the entries this work depends on, plus the test that stops the ledger from silently disagreeing with the code.
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `flightsim/tests/test_provenance.py`:
+Append to `atisim/tests/test_provenance.py`:
 
 ```python
 def test_the_747_reference_geometry_is_sourced_from_cr2144():
@@ -257,14 +257,14 @@ def test_the_calibrated_lift_slope_names_the_number_it_is_pinned_to():
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-$PY -m pytest flightsim/tests/test_provenance.py -v -k "cr2144 or tail_arm or loading_shape or lift_slope"
+$PY -m pytest atisim/tests/test_provenance.py -v -k "cr2144 or tail_arm or loading_shape or lift_slope"
 ```
 
 Expected: 4 failed with `KeyError: 'b747.S'`.
 
 - [ ] **Step 3: Write the implementation**
 
-Replace `LEDGER: dict[str, Entry] = {}` in `flightsim/provenance.py` with:
+Replace `LEDGER: dict[str, Entry] = {}` in `atisim/provenance.py` with:
 
 ```python
 # NASA CR-2144, Heffley & Jewell, "Aircraft Handling Qualities Data", December
@@ -354,7 +354,7 @@ LEDGER: dict[str, Entry] = {
 - [ ] **Step 4: Run the tests to verify they pass**
 
 ```bash
-$PY -m pytest flightsim/tests/test_provenance.py -v
+$PY -m pytest atisim/tests/test_provenance.py -v
 ```
 
 Expected: 9 passed.
@@ -362,7 +362,7 @@ Expected: 9 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add flightsim/provenance.py flightsim/tests/test_provenance.py
+git add atisim/provenance.py atisim/tests/test_provenance.py
 git commit -m "Enter the constants this work depends on into the ledger"
 ```
 
@@ -373,12 +373,12 @@ git commit -m "Enter the constants this work depends on into the ledger"
 ### Task 3: The derived effective tail arm and its plausibility gate
 
 **Files:**
-- Create: `flightsim/airframe.py`
-- Test: `flightsim/tests/test_airframe.py`
+- Create: `atisim/airframe.py`
+- Test: `atisim/tests/test_airframe.py`
 
 - [ ] **Step 1: Write the failing test**
 
-Create `flightsim/tests/test_airframe.py`:
+Create `atisim/tests/test_airframe.py`:
 
 ```python
 """Airframe sampling geometry.
@@ -394,10 +394,10 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-import flightsim  # noqa: F401  -- enables x64 before any array is made
-from flightsim import airframe
-from flightsim.aircraft import REGISTRY
-from flightsim.units import FT2M
+import atisim  # noqa: F401  -- enables x64 before any array is made
+from atisim import airframe
+from atisim.aircraft import REGISTRY
+from atisim.units import FT2M
 
 
 def test_the_derived_tail_arm_matches_the_hand_computation():
@@ -467,16 +467,16 @@ def test_the_derived_arms_take_their_recorded_values():
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-$PY -m pytest flightsim/tests/test_airframe.py -v
+$PY -m pytest atisim/tests/test_airframe.py -v
 ```
 
-Expected: collection error, `ModuleNotFoundError: No module named 'flightsim.airframe'`.
+Expected: collection error, `ModuleNotFoundError: No module named 'atisim.airframe'`.
 
 `REGISTRY` has exactly four keys, verified: `boeing747`, `boeing747_approach`, `cessna172`, `cherokee`. Note it is **`cherokee`**, not `piper_cherokee`.
 
 - [ ] **Step 3: Write the minimal implementation**
 
-Create `flightsim/airframe.py`:
+Create `atisim/airframe.py`:
 
 ```python
 """Where on the airframe the wind field is sampled.
@@ -492,14 +492,14 @@ tabulated. Longitudinally it is a tail arm, which is NOT tabulated for any
 aircraft this project holds -- so it is recovered from two derivatives that
 are.
 
-Provenance for every constant here is in flightsim/provenance.py, and a test
+Provenance for every constant here is in atisim/provenance.py, and a test
 asserts the two agree.
 """
 
 import jax.numpy as jnp
 from jax import Array
 
-from flightsim.aircraft import Aircraft
+from atisim.aircraft import Aircraft
 
 # Plausibility band on the derived tail arm, in mean chords. DECLARED, not
 # sourced -- see provenance.LEDGER["airframe.tail_arm_band"]. It brackets
@@ -543,7 +543,7 @@ def tail_arm_is_plausible(ac: Aircraft) -> bool:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 ```bash
-$PY -m pytest flightsim/tests/test_airframe.py -v
+$PY -m pytest atisim/tests/test_airframe.py -v
 ```
 
 Expected: 4 passed.
@@ -553,7 +553,7 @@ If `test_the_derived_tail_arm_lands_on_the_real_aircraft_geometry` fails, stop. 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add flightsim/airframe.py flightsim/tests/test_airframe.py
+git add atisim/airframe.py atisim/tests/test_airframe.py
 git commit -m "Derive the effective tail arm from Cmq and CLq, and gate it on plausibility"
 ```
 
@@ -562,12 +562,12 @@ git commit -m "Derive the effective tail arm from Cmq and CLq, and gate it on pl
 ### Task 4: Sample stations across the airframe
 
 **Files:**
-- Modify: `flightsim/airframe.py`
-- Modify: `flightsim/tests/test_airframe.py`
+- Modify: `atisim/airframe.py`
+- Modify: `atisim/tests/test_airframe.py`
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `flightsim/tests/test_airframe.py`:
+Append to `atisim/tests/test_airframe.py`:
 
 ```python
 def test_span_stations_cover_the_whole_span_symmetrically():
@@ -606,14 +606,14 @@ def test_station_counts_are_configurable_for_the_convergence_study():
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-$PY -m pytest flightsim/tests/test_airframe.py -v -k "stations"
+$PY -m pytest atisim/tests/test_airframe.py -v -k "stations"
 ```
 
-Expected: 3 failed with `AttributeError: module 'flightsim.airframe' has no attribute 'stations'`.
+Expected: 3 failed with `AttributeError: module 'atisim.airframe' has no attribute 'stations'`.
 
 - [ ] **Step 3: Write the implementation**
 
-Append to `flightsim/airframe.py`:
+Append to `atisim/airframe.py`:
 
 ```python
 from typing import NamedTuple
@@ -657,7 +657,7 @@ def stations(ac: Aircraft, n_span: int = N_SPAN, n_lon: int = N_LON) -> Stations
 - [ ] **Step 4: Run the tests to verify they pass**
 
 ```bash
-$PY -m pytest flightsim/tests/test_airframe.py -v
+$PY -m pytest atisim/tests/test_airframe.py -v
 ```
 
 Expected: 7 passed.
@@ -665,7 +665,7 @@ Expected: 7 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add flightsim/airframe.py flightsim/tests/test_airframe.py
+git add atisim/airframe.py atisim/tests/test_airframe.py
 git commit -m "Add airframe sample stations, spanning the span and the tail arm"
 ```
 
@@ -674,14 +674,14 @@ git commit -m "Add airframe sample stations, spanning the span and the tail arm"
 ### Task 5: `sampled_rates` — the least-squares fit
 
 **Files:**
-- Modify: `flightsim/wind.py`
-- Modify: `flightsim/tests/test_wind.py`
+- Modify: `atisim/wind.py`
+- Modify: `atisim/tests/test_wind.py`
 
 This is the core of A1. **`gust_rates` is not touched** — it stays as the reference implementation that Task 6 checks against.
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `flightsim/tests/test_wind.py`:
+Append to `atisim/tests/test_wind.py`:
 
 ```python
 # --- A1: sampled gradients ---------------------------------------------------
@@ -689,7 +689,7 @@ Append to `flightsim/tests/test_wind.py`:
 
 def _level_state(north=0.0, altitude=11278.0, u=236.0):
     """Wings-level, heading north, at altitude."""
-    from flightsim.state import State, euler_to_quat
+    from atisim.state import State, euler_to_quat
 
     return State(
         pos_ned=jnp.array([north, 0.0, -altitude]),
@@ -703,8 +703,8 @@ def test_a_uniform_field_produces_exactly_zero_sampled_rates():
     """Reduction property 1. A uniform field has no gradient, and a symmetric
     station set must return exactly zero rather than a small residual -- a
     residual here would be a spurious rolling input in still-ish air."""
-    from flightsim import airframe
-    from flightsim.aircraft import REGISTRY
+    from atisim import airframe
+    from atisim.aircraft import REGISTRY
 
     ac = REGISTRY["boeing747"]
     st = airframe.stations(ac)
@@ -720,8 +720,8 @@ def test_a_linear_field_reproduces_the_analytic_gradient_exactly():
     least-squares slope through samples of a linear function IS its exact
     slope, so for any field the current model handles correctly, A1 returns
     the identical answer. Every existing result is therefore unmoved."""
-    from flightsim import airframe
-    from flightsim.aircraft import REGISTRY
+    from atisim import airframe
+    from atisim.aircraft import REGISTRY
 
     ac = REGISTRY["boeing747"]
     st = airframe.stations(ac)
@@ -742,8 +742,8 @@ def test_the_vortex_core_gives_the_same_pitch_rate_as_the_tangent():
     field/model pairing that ASSUMPTIONS.md section E2 records: while the whole
     airframe is inside the core, a point sample plus a gradient is not an
     approximation at all."""
-    from flightsim import airframe
-    from flightsim.aircraft import REGISTRY
+    from atisim import airframe
+    from atisim.aircraft import REGISTRY
 
     ac = REGISTRY["boeing747"]
     st = airframe.stations(ac)
@@ -761,8 +761,8 @@ def test_a_curved_field_makes_the_secant_differ_from_the_tangent():
     centreline slope that is not the slope the wing integrates, and the two
     must therefore disagree. If this passes trivially, the fit is not being
     taken across the airframe at all."""
-    from flightsim import airframe
-    from flightsim.aircraft import REGISTRY
+    from atisim import airframe
+    from atisim.aircraft import REGISTRY
 
     ac = REGISTRY["boeing747"]
     st = airframe.stations(ac)
@@ -787,14 +787,14 @@ def test_a_curved_field_makes_the_secant_differ_from_the_tangent():
 - [ ] **Step 2: Run the tests to verify they fail**
 
 ```bash
-$PY -m pytest flightsim/tests/test_wind.py -v -k "sampled or uniform_field or linear_field or curved_field or vortex_core_gives"
+$PY -m pytest atisim/tests/test_wind.py -v -k "sampled or uniform_field or linear_field or curved_field or vortex_core_gives"
 ```
 
-Expected: failures with `AttributeError: module 'flightsim.wind' has no attribute 'sampled_rates'`.
+Expected: failures with `AttributeError: module 'atisim.wind' has no attribute 'sampled_rates'`.
 
 - [ ] **Step 3: Write the implementation**
 
-Add to `flightsim/wind.py`, directly below `gust_rates`:
+Add to `atisim/wind.py`, directly below `gust_rates`:
 
 ```python
 def _slope(coords: Array, values: Array) -> Array:
@@ -849,7 +849,7 @@ def sampled_rates(pos_ned: Array, quat: Array, field, stations) -> Array:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 ```bash
-$PY -m pytest flightsim/tests/test_wind.py -v
+$PY -m pytest atisim/tests/test_wind.py -v
 ```
 
 Expected: all pass, including the pre-existing vortex tests.
@@ -857,7 +857,7 @@ Expected: all pass, including the pre-existing vortex tests.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add flightsim/wind.py flightsim/tests/test_wind.py
+git add atisim/wind.py atisim/tests/test_wind.py
 git commit -m "Add sampled_rates: fit the gust gradient across the airframe, not at a point"
 ```
 
@@ -866,13 +866,13 @@ git commit -m "Add sampled_rates: fit the gust gradient across the airframe, not
 ### Task 6: Station-count convergence study
 
 **Files:**
-- Modify: `flightsim/tests/test_airframe.py`
+- Modify: `atisim/tests/test_airframe.py`
 
 `strip.n_stations` is DECLARED and the ledger says it is chosen by convergence. This task discharges that.
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `flightsim/tests/test_airframe.py`:
+Append to `atisim/tests/test_airframe.py`:
 
 ```python
 def test_the_default_station_count_has_converged():
@@ -886,9 +886,9 @@ def test_the_default_station_count_has_converged():
     """
     import jax.numpy as jnp
 
-    from flightsim import wind
-    from flightsim.state import State, euler_to_quat
-    from flightsim.units import FT2M
+    from atisim import wind
+    from atisim.state import State, euler_to_quat
+    from atisim.units import FT2M
 
     ac = REGISTRY["boeing747"]
     array = wind.VortexArray(
@@ -924,7 +924,7 @@ def test_the_default_station_count_has_converged():
 - [ ] **Step 2: Run the test**
 
 ```bash
-$PY -m pytest flightsim/tests/test_airframe.py::test_the_default_station_count_has_converged -v
+$PY -m pytest atisim/tests/test_airframe.py::test_the_default_station_count_has_converged -v
 ```
 
 Expected: PASS. Inside a Rankine core the field is linear, so the fit is exact at any station count and the movement is round-off.
@@ -934,7 +934,7 @@ If it FAILS, the defaults have not converged. Raise `N_SPAN`/`N_LON` in `airfram
 - [ ] **Step 3: Commit**
 
 ```bash
-git add flightsim/tests/test_airframe.py
+git add atisim/tests/test_airframe.py
 git commit -m "Discharge the station-count convergence study the ledger requires"
 ```
 
@@ -943,19 +943,19 @@ git commit -m "Discharge the station-count convergence study the ledger requires
 ### Task 7: Wire A1 into a wind model, and measure the E2 bound
 
 **Files:**
-- Modify: `flightsim/wind.py`
-- Modify: `flightsim/tests/test_wind.py`
+- Modify: `atisim/wind.py`
+- Modify: `atisim/tests/test_wind.py`
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `flightsim/tests/test_wind.py`:
+Append to `atisim/tests/test_wind.py`:
 
 ```python
 def test_the_sampled_wind_model_matches_the_contract():
     """Same signature as zero_wind and field_model, so it drops into
     integrate.step, autopilot and panel with no change to any of them."""
-    from flightsim import airframe
-    from flightsim.aircraft import REGISTRY
+    from atisim import airframe
+    from atisim.aircraft import REGISTRY
 
     ac = REGISTRY["boeing747"]
     array = single()
@@ -985,8 +985,8 @@ def test_the_curvature_correction_across_the_parks_core_is_measured():
     Asserted as a band rather than a value: the point is that the number exists
     and is recorded, not that it takes one particular value.
     """
-    from flightsim import airframe
-    from flightsim.aircraft import REGISTRY
+    from atisim import airframe
+    from atisim.aircraft import REGISTRY
 
     ac = REGISTRY["boeing747"]
     array = single()  # Parks Hannibal, r0 = 182.9 m
@@ -1009,14 +1009,14 @@ def test_the_curvature_correction_across_the_parks_core_is_measured():
 - [ ] **Step 2: Run the tests to verify they fail**
 
 ```bash
-$PY -m pytest flightsim/tests/test_wind.py -v -k "sampled_wind_model or curvature_correction"
+$PY -m pytest atisim/tests/test_wind.py -v -k "sampled_wind_model or curvature_correction"
 ```
 
-Expected: `AttributeError: module 'flightsim.wind' has no attribute 'sampled_field_model'` for the first; the second fails on the same import once it reaches `sampled_rates`.
+Expected: `AttributeError: module 'atisim.wind' has no attribute 'sampled_field_model'` for the first; the second fails on the same import once it reaches `sampled_rates`.
 
 - [ ] **Step 3: Write the implementation**
 
-Add to `flightsim/wind.py`, directly below `field_model`:
+Add to `atisim/wind.py`, directly below `field_model`:
 
 ```python
 def sampled_field_model(field, stations):
@@ -1046,7 +1046,7 @@ def sampled_field_model(field, stations):
 - [ ] **Step 4: Run the tests to verify they pass**
 
 ```bash
-$PY -m pytest flightsim/tests/test_wind.py -v -s -k "sampled_wind_model or curvature_correction or rankine_gradient"
+$PY -m pytest atisim/tests/test_wind.py -v -s -k "sampled_wind_model or curvature_correction or rankine_gradient"
 ```
 
 > **CORRECTION APPLIED DURING EXECUTION.** The test as drafted above normalised the correction by the local tangent and asserted it stayed under 50%. It measured **exactly 200%**, and investigation showed that is a real property of the field rather than a defect:
@@ -1070,7 +1070,7 @@ Expected: 3 passed, with the profile printed. **Record the printed profile — T
 - [ ] **Step 5: Run the whole suite**
 
 ```bash
-$PY -m pytest flightsim/tests/ -q
+$PY -m pytest atisim/tests/ -q
 ```
 
 Expected: all pass. Nothing so far changes any existing code path — `gust_rates` and `field_model` are untouched.
@@ -1078,7 +1078,7 @@ Expected: all pass. Nothing so far changes any existing code path — `gust_rate
 - [ ] **Step 6: Commit**
 
 ```bash
-git add flightsim/wind.py flightsim/tests/test_wind.py
+git add atisim/wind.py atisim/tests/test_wind.py
 git commit -m "Add sampled_field_model, and measure the E2 curvature bound at the core edge"
 ```
 
@@ -1091,12 +1091,12 @@ Phase 2 improves the estimator for three numbers. It still collapses the field t
 ### Task 8: Elliptic loading and its calibration to `Clp`
 
 **Files:**
-- Modify: `flightsim/airframe.py`
-- Modify: `flightsim/tests/test_airframe.py`
+- Modify: `atisim/airframe.py`
+- Modify: `atisim/tests/test_airframe.py`
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `flightsim/tests/test_airframe.py`:
+Append to `atisim/tests/test_airframe.py`:
 
 ```python
 def test_the_elliptic_chord_integrates_to_the_sourced_wing_area():
@@ -1151,14 +1151,14 @@ def test_the_strip_integral_reproduces_stengels_closed_form_for_a_rectangular_wi
 - [ ] **Step 2: Run the tests to verify they fail**
 
 ```bash
-$PY -m pytest flightsim/tests/test_airframe.py -v -k "elliptic or calibrated or stengel"
+$PY -m pytest atisim/tests/test_airframe.py -v -k "elliptic or calibrated or stengel"
 ```
 
 Expected: 2 failed with `AttributeError` on `elliptic_chord` / `calibrated_lift_slope`; the Stengel cross-check passes immediately since it uses only NumPy.
 
 - [ ] **Step 3: Write the implementation**
 
-Append to `flightsim/airframe.py`:
+Append to `atisim/airframe.py`:
 
 ```python
 def elliptic_chord(y: Array, ac: Aircraft) -> Array:
@@ -1215,7 +1215,7 @@ def calibrated_lift_slope(ac: Aircraft) -> Array:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 ```bash
-$PY -m pytest flightsim/tests/test_airframe.py -v
+$PY -m pytest atisim/tests/test_airframe.py -v
 ```
 
 Expected: all pass.
@@ -1223,7 +1223,7 @@ Expected: all pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add flightsim/airframe.py flightsim/tests/test_airframe.py
+git add atisim/airframe.py atisim/tests/test_airframe.py
 git commit -m "Add elliptic loading, calibrated so a rigid roll rate returns the sourced Clp"
 ```
 
@@ -1232,12 +1232,12 @@ git commit -m "Add elliptic loading, calibrated so a rigid roll rate returns the
 ### Task 9: `strip_roll_moment` — integrate the real field across the span
 
 **Files:**
-- Modify: `flightsim/wind.py`
-- Modify: `flightsim/tests/test_wind.py`
+- Modify: `atisim/wind.py`
+- Modify: `atisim/tests/test_wind.py`
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `flightsim/tests/test_wind.py`:
+Append to `atisim/tests/test_wind.py`:
 
 ```python
 # --- A2: strip integration ---------------------------------------------------
@@ -1247,8 +1247,8 @@ def test_a_rigid_roll_rate_through_the_strip_integral_returns_the_sourced_Clp():
     """The calibration target, asserted end to end through the real integral
     rather than through the closed form it was derived from. This is validation
     gate 3 in the design document."""
-    from flightsim import airframe
-    from flightsim.aircraft import REGISTRY
+    from atisim import airframe
+    from atisim.aircraft import REGISTRY
 
     ac = REGISTRY["boeing747"]
     st = airframe.stations(ac, n_span=2001, n_lon=9)
@@ -1260,8 +1260,8 @@ def test_a_rigid_roll_rate_through_the_strip_integral_returns_the_sourced_Clp():
 def test_a_uniform_vertical_gust_produces_no_rolling_moment():
     """A gust that is the same at both tips cannot roll the aircraft. If this
     fails, the integration weights are asymmetric."""
-    from flightsim import airframe
-    from flightsim.aircraft import REGISTRY
+    from atisim import airframe
+    from atisim.aircraft import REGISTRY
 
     ac = REGISTRY["boeing747"]
     st = airframe.stations(ac, n_span=2001, n_lon=9)
@@ -1277,8 +1277,8 @@ def test_a_linear_gust_gradient_matches_the_equivalent_rate_answer():
     same physics and must agree -- that is what makes the rate equivalence
     legitimate in the first place (Stengel eq. 3.4-48). They diverge only when
     the profile is curved, which is the next test."""
-    from flightsim import airframe
-    from flightsim.aircraft import REGISTRY
+    from atisim import airframe
+    from atisim.aircraft import REGISTRY
 
     ac = REGISTRY["boeing747"]
     st = airframe.stations(ac, n_span=2001, n_lon=9)
@@ -1299,8 +1299,8 @@ def test_a_curved_gust_profile_makes_the_strip_integral_differ_from_the_rate():
     centreline slope as no gust at all, yet it genuinely rolls the aircraft.
     The equivalent-rate treatment cannot represent that; the strip integral
     can."""
-    from flightsim import airframe
-    from flightsim.aircraft import REGISTRY
+    from atisim import airframe
+    from atisim.aircraft import REGISTRY
 
     ac = REGISTRY["boeing747"]
     st = airframe.stations(ac, n_span=2001, n_lon=9)
@@ -1316,14 +1316,14 @@ def test_a_curved_gust_profile_makes_the_strip_integral_differ_from_the_rate():
 - [ ] **Step 2: Run the tests to verify they fail**
 
 ```bash
-$PY -m pytest flightsim/tests/test_wind.py -v -k "strip"
+$PY -m pytest atisim/tests/test_wind.py -v -k "strip"
 ```
 
 Expected: 4 failed with `AttributeError` on `strip_roll_moment` / `strip_clp_from_rate`.
 
 - [ ] **Step 3: Write the implementation**
 
-Add to `flightsim/wind.py`, below `sampled_field_model`:
+Add to `atisim/wind.py`, below `sampled_field_model`:
 
 ```python
 def _strip_rolling_coefficient(ac: Aircraft, stations, incidence: Array) -> Array:
@@ -1340,7 +1340,7 @@ def _strip_rolling_coefficient(ac: Aircraft, stations, incidence: Array) -> Arra
     has infinite slope at the tips, where Gauss-Legendre on a low order does
     noticeably worse than simply using more stations.
     """
-    from flightsim import airframe
+    from atisim import airframe
 
     y = stations.span
     chord = airframe.elliptic_chord(y, ac)
@@ -1390,12 +1390,12 @@ def strip_roll_moment(
     return _strip_rolling_coefficient(ac, stations, w_gust / airspeed)
 ```
 
-Add `from flightsim.aircraft import Aircraft` to the imports at the top of `wind.py` if it is not already there. **Import `airframe` inside the function, not at module scope** — `airframe` imports from `aircraft`, and a top-level import here risks a cycle.
+Add `from atisim.aircraft import Aircraft` to the imports at the top of `wind.py` if it is not already there. **Import `airframe` inside the function, not at module scope** — `airframe` imports from `aircraft`, and a top-level import here risks a cycle.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 ```bash
-$PY -m pytest flightsim/tests/test_wind.py -v -k "strip"
+$PY -m pytest atisim/tests/test_wind.py -v -k "strip"
 ```
 
 Expected: 4 passed.
@@ -1403,7 +1403,7 @@ Expected: 4 passed.
 - [ ] **Step 5: Run the whole suite**
 
 ```bash
-$PY -m pytest flightsim/tests/ -q
+$PY -m pytest atisim/tests/ -q
 ```
 
 Expected: all pass.
@@ -1411,7 +1411,7 @@ Expected: all pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add flightsim/wind.py flightsim/tests/test_wind.py
+git add atisim/wind.py atisim/tests/test_wind.py
 git commit -m "Add strip_roll_moment: give each strip the gust at its own station"
 ```
 
@@ -1420,14 +1420,14 @@ git commit -m "Add strip_roll_moment: give each strip the gust at its own statio
 ### Task 10: Loading-shape sensitivity sweep
 
 **Files:**
-- Modify: `flightsim/airframe.py`
-- Modify: `flightsim/tests/test_airframe.py`
+- Modify: `atisim/airframe.py`
+- Modify: `atisim/tests/test_airframe.py`
 
 The ledger says the DECLARED shape carries a mandatory sensitivity. This task discharges it.
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `flightsim/tests/test_airframe.py`:
+Append to `atisim/tests/test_airframe.py`:
 
 ```python
 def test_all_three_loading_shapes_enclose_the_same_wing_area():
@@ -1454,8 +1454,8 @@ def test_the_loading_shape_sensitivity_is_measured_and_recorded():
     """
     import jax.numpy as jnp
 
-    from flightsim import wind
-    from flightsim.state import State, euler_to_quat
+    from atisim import wind
+    from atisim.state import State, euler_to_quat
 
     ac = REGISTRY["boeing747"]
     st = airframe.stations(ac, n_span=2001, n_lon=9)
@@ -1488,14 +1488,14 @@ def test_the_loading_shape_sensitivity_is_measured_and_recorded():
 - [ ] **Step 2: Run the tests to verify they fail**
 
 ```bash
-$PY -m pytest flightsim/tests/test_airframe.py -v -k "loading_shape"
+$PY -m pytest atisim/tests/test_airframe.py -v -k "loading_shape"
 ```
 
 Expected: failures with `AttributeError` on `LOADING_SHAPES` / `chord_distribution` / `loading_shape`.
 
 - [ ] **Step 3: Write the implementation**
 
-In `flightsim/airframe.py`, replace the body of `elliptic_chord`'s section by adding the following **after** `elliptic_chord` and **before** `calibrated_lift_slope`:
+In `atisim/airframe.py`, replace the body of `elliptic_chord`'s section by adding the following **after** `elliptic_chord` and **before** `calibrated_lift_slope`:
 
 ```python
 import contextlib
@@ -1562,7 +1562,7 @@ Then change `_strip_rolling_coefficient` in `wind.py` to use the active shape:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 ```bash
-$PY -m pytest flightsim/tests/test_airframe.py -v -s -k "loading_shape"
+$PY -m pytest atisim/tests/test_airframe.py -v -s -k "loading_shape"
 ```
 
 Expected: 2 passed, with the spread printed. **Record the printed spread — Task 13 writes it into the ledger's `strip.loading_shape` detail.**
@@ -1570,7 +1570,7 @@ Expected: 2 passed, with the spread printed. **Record the printed spread — Tas
 - [ ] **Step 5: Run the whole suite**
 
 ```bash
-$PY -m pytest flightsim/tests/ -q
+$PY -m pytest atisim/tests/ -q
 ```
 
 Expected: all pass. The default shape is unchanged, so Task 9's assertions still hold.
@@ -1578,7 +1578,7 @@ Expected: all pass. The default shape is unchanged, so Task 9's assertions still
 - [ ] **Step 6: Commit**
 
 ```bash
-git add flightsim/airframe.py flightsim/wind.py flightsim/tests/test_airframe.py
+git add atisim/airframe.py atisim/wind.py atisim/tests/test_airframe.py
 git commit -m "Add the loading-shape sensitivity sweep the ledger requires"
 ```
 
@@ -1587,11 +1587,11 @@ git commit -m "Add the loading-shape sensitivity sweep the ledger requires"
 ### Task 11: Regression gates — the frozen baselines must not move
 
 **Files:**
-- Modify: `flightsim/tests/test_wind.py`
+- Modify: `atisim/tests/test_wind.py`
 
 - [ ] **Step 1: Write the test**
 
-Append to `flightsim/tests/test_wind.py`:
+Append to `atisim/tests/test_wind.py`:
 
 ```python
 def test_nothing_added_by_this_work_moves_the_existing_wind_path():
@@ -1603,8 +1603,8 @@ def test_nothing_added_by_this_work_moves_the_existing_wind_path():
     PROJECT.md section 4's mode baselines are downstream of exactly this code,
     and they are off-limits to feature work.
     """
-    from flightsim import integrate, trim
-    from flightsim.aircraft import CRUISE, REGISTRY
+    from atisim import integrate, trim
+    from atisim.aircraft import CRUISE, REGISTRY
 
     ac = REGISTRY["boeing747"]
     v, h = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
@@ -1630,7 +1630,7 @@ def test_nothing_added_by_this_work_moves_the_existing_wind_path():
 - [ ] **Step 2: Run the test**
 
 ```bash
-$PY -m pytest flightsim/tests/test_wind.py::test_nothing_added_by_this_work_moves_the_existing_wind_path -v
+$PY -m pytest atisim/tests/test_wind.py::test_nothing_added_by_this_work_moves_the_existing_wind_path -v
 ```
 
 Expected: PASS.
@@ -1638,7 +1638,7 @@ Expected: PASS.
 - [ ] **Step 3: Run the full suite plus the notebook gate**
 
 ```bash
-$PY -m pytest flightsim/tests/ -q
+$PY -m pytest atisim/tests/ -q
 ```
 
 ```bash
@@ -1650,7 +1650,7 @@ Expected: both pass. The notebook is a required gate per `PROJECT.md` §10.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add flightsim/tests/test_wind.py
+git add atisim/tests/test_wind.py
 git commit -m "Assert the existing wind path is untouched by the additive work"
 ```
 
@@ -1665,7 +1665,7 @@ git commit -m "Assert the existing wind path is untouched by the additive work"
 - [ ] **Step 1: Gather the numbers**
 
 ```bash
-$PY -m pytest flightsim/tests/ -q -s -k "curvature_correction or loading_shape_sensitivity"
+$PY -m pytest atisim/tests/ -q -s -k "curvature_correction or loading_shape_sensitivity"
 ```
 
 Record: the E2 curvature correction at the core edge (Task 7), and the loading-shape spread (Task 10).
@@ -1687,7 +1687,7 @@ Ask the user to choose:
 
 **Files:**
 - Modify: `docs/ASSUMPTIONS.md`
-- Modify: `flightsim/provenance.py`
+- Modify: `atisim/provenance.py`
 - Modify: `docs/PROJECT.md`
 
 - [ ] **Step 1: Close `ASSUMPTIONS.md` §E2**
@@ -1718,7 +1718,7 @@ survived the assumption as long as they did.
 
 - [ ] **Step 2: Record the sensitivity in the ledger**
 
-In `flightsim/provenance.py`, extend the `strip.loading_shape` detail with the measured spread from Task 10:
+In `atisim/provenance.py`, extend the `strip.loading_shape` detail with the measured spread from Task 10:
 
 ```python
         "...spread reported. MEASURED: the spread across elliptic, uniform and "
@@ -1770,7 +1770,7 @@ Append a table to §4:
 - [ ] **Step 5: Verify the documents match the code**
 
 ```bash
-$PY -m pytest flightsim/tests/ -q
+$PY -m pytest atisim/tests/ -q
 ```
 
 ```bash
@@ -1780,7 +1780,7 @@ $PY -m pytest --nbval-lax notebooks/ -q
 Expected: both pass. Confirm no `<MEASURED>` placeholder remains:
 
 ```bash
-grep -rn "<MEASURED>" docs/ASSUMPTIONS.md docs/PROJECT.md flightsim/
+grep -rn "<MEASURED>" docs/ASSUMPTIONS.md docs/PROJECT.md atisim/
 ```
 
 Expected: no output.
@@ -1788,7 +1788,7 @@ Expected: no output.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add docs/ASSUMPTIONS.md docs/PROJECT.md flightsim/provenance.py
+git add docs/ASSUMPTIONS.md docs/PROJECT.md atisim/provenance.py
 git commit -m "Close ASSUMPTIONS E2 with its measured bound, and record the new checks"
 ```
 

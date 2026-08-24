@@ -10,13 +10,13 @@
 import jax.numpy as jnp
 import numpy as np
 
-import flightsim  # noqa: F401 -- has to be imported first, turns on float64
-from flightsim import trim, verification
-from flightsim.aero import aero_forces_moments, air_data, coefficients
-from flightsim.aircraft import CRUISE, REGISTRY, inertia_tensor
-from flightsim.atmosphere import G0, density, speed_of_sound
-from flightsim.dynamics import derivatives, load_factor, relative_velocity
-from flightsim.state import State, euler_to_quat, quat_to_dcm
+import atisim  # noqa: F401 -- has to be imported first, turns on float64
+from atisim import trim, verification
+from atisim.aero import aero_forces_moments, air_data, coefficients
+from atisim.aircraft import CRUISE, REGISTRY, inertia_tensor
+from atisim.atmosphere import G0, density, speed_of_sound
+from atisim.dynamics import derivatives, load_factor, relative_velocity
+from atisim.state import State, euler_to_quat, quat_to_dcm
 
 results = []
 n = 0

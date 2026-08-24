@@ -14,10 +14,10 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-import flightsim  # noqa: F401  -- enables x64 before any array is made
-from flightsim import viz
-from flightsim.manual import Mode
-from flightsim.units import RAD2DEG
+import atisim  # noqa: F401  -- enables x64 before any array is made
+from atisim import viz
+from atisim.manual import Mode
+from atisim.units import RAD2DEG
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("runs", type=Path, nargs="+", help=".npz files written by fly.py")

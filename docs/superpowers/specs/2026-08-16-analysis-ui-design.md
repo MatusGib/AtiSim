@@ -1,8 +1,8 @@
 # Analysis and plausibility-check UI — design
 
 **Status: IMPLEMENTED, session 15.** Written as a design against `a0d791d`
-(2026-08-15) and built out in the same session. `flightsim/checks.py`,
-`flightsim/analysis/{artifact,series,figures}.py`, `flightsim/apps/sweep.py`,
+(2026-08-15) and built out in the same session. `atisim/checks.py`,
+`atisim/analysis/{artifact,series,figures}.py`, `atisim/apps/sweep.py`,
 `integrate.logged_rollout`, and `scripts/vortex.py --artifacts`. Suite **434
 passed / 1 skipped**, up from 377.
 
@@ -63,7 +63,7 @@ performance claims.
 ## 0. Summary, and the five things measurement changed
 
 The recommendation is **Dash + Plotly**, with the framework confined to layout
-and callback wiring and every computed quantity living in `flightsim/`. That
+and callback wiring and every computed quantity living in `atisim/`. That
 follows the repo's own established protocol rather than inventing one: the
 notebook already holds no arithmetic, and session 13 exists entirely because
 session 12 broke that rule.
@@ -138,7 +138,7 @@ case, what I assumed — and each one changes a recommendation:
 
 **Two costs stated up front.** The design adds `pyarrow` and `dash`+`plotly` to
 a project whose entire dependency list is four packages, roughly tripling
-install weight; and it asks for a new `flightsim/checks.py` plus a run-artifact
+install weight; and it asks for a new `atisim/checks.py` plus a run-artifact
 writer, which is real engine work before any pixel is drawn. The alternative —
 a UI that computes its own numbers — is cheaper and is the failure mode §3
 argues hardest against.
@@ -178,8 +178,8 @@ discriminate:
 **Dash + Plotly**, subject to one architectural rule that matters more than the
 framework choice:
 
-> The framework imports `flightsim`. `flightsim` never imports the framework.
-> Every quantity the UI displays is computed by a function in `flightsim/` that
+> The framework imports `atisim`. `atisim` never imports the framework.
+> Every quantity the UI displays is computed by a function in `atisim/` that
 > is asserted by a test.
 
 This is not a new rule. `ASSUMPTIONS.md` states it verbatim for the notebook —
@@ -609,9 +609,9 @@ states the protocol; session 12 put two checks inside a test file instead of in
 that drift, with a worse blast radius, because a figure is more persuasive than
 a print.
 
-Concretely: a new **`flightsim/checks.py`**, tier-0 in the same sense as
+Concretely: a new **`atisim/checks.py`**, tier-0 in the same sense as
 `verification.py`, each check a function returning a typed result, each asserted
-by a test in `flightsim/tests/test_checks.py`, each serialised into the
+by a test in `atisim/tests/test_checks.py`, each serialised into the
 artifact.
 
 **The stated exception.** Three checks need a *second run* and therefore cannot
@@ -996,15 +996,15 @@ rotating the scene and then moving the slider does not reset the camera.** If
 this is discovered in an hour rather than after the data layer is built. *Verify:
 camera eye vector unchanged across ten slider moves.*
 
-**Step 1 — artifact writer.** `flightsim/analysis/artifact.py` with
+**Step 1 — artifact writer.** `atisim/analysis/artifact.py` with
 `write_run(path, traj, meta, checks)` and `read_run(path)`. Parquet + two JSON
 files, §5.4. *Verify: a round-trip test asserting bit-identical arrays and an
 exact metadata match; and that reading a run written by a different `git_sha`
 raises nothing but records the mismatch.*
 
-**Step 2 — three checks only.** `flightsim/checks.py` with C1 (quaternion norm),
+**Step 2 — three checks only.** `atisim/checks.py` with C1 (quaternion norm),
 C3 (energy closure), C8 (α band, windowed and whole-run). Each with a test in
-`flightsim/tests/test_checks.py`. Three, not eleven, because three is enough to
+`atisim/tests/test_checks.py`. Three, not eleven, because three is enough to
 establish the pattern and the eleventh adds nothing to the design's falsifiability.
 *Verify: each test asserts the measured value in this document — 2.22e-16,
 8.8e-4, 8.27°/11.39° — and each is falsified by injecting a defect, per
@@ -1016,15 +1016,15 @@ string; this is a restructuring, not new information. *Verify: the existing
 printed Δθ/Δn values are unchanged — 2.240°, −1.235 g — and `np.array_equal`
 against the in-memory arrays.*
 
-**Step 4 — three pure figure functions.** `flightsim/analysis/figures.py`:
+**Step 4 — three pure figure functions.** `atisim/analysis/figures.py`:
 `strip_stack(run) -> go.Figure`, `discriminator(runs) -> go.Figure`,
 `field_3d(run, scalar) -> go.Figure`. No Dash import. *Verify: each renders in a
 notebook cell from a saved run with no simulator in scope — the same standard
 `viz.load` already meets.*
 
-**Step 5 — the shell.** `flightsim/apps/sweep.py`, one callback:
+**Step 5 — the shell.** `atisim/apps/sweep.py`, one callback:
 `clickData → t*` fanning out to every panel.
-`python -m flightsim.apps.sweep runs/vortex-a0d791d-.../`
+`python -m atisim.apps.sweep runs/vortex-a0d791d-.../`
 *Verify: the sweep view of §7.1 renders inside the 2 MB payload budget — assert
 `len(fig.to_json())` per callback — and the one-click path of §7.2 works.*
 
@@ -1080,7 +1080,7 @@ the eleven checks. Each is additive and none of them can falsify the design.
    - **Where does it belong?** By the project's own protocol: a
      `verification.py` function, a test asserting the measured orders, then a
      notebook cell — and an `ASSUMPTIONS.md` §E4 entry recording that the order
-     half is now measured. Not in `flightsim/checks.py`, because it is a
+     half is now measured. Not in `atisim/checks.py`, because it is a
      property of the scheme rather than of a run.
 
 2. **What does the ensemble view look like?** §7 step 6 wants Fig. 8 with error
@@ -1168,7 +1168,7 @@ All **[M]** figures were produced by seven scripts, run against `a0d791d` with
 
 They live in the session scratchpad, not in the repository — they are
 measurements taken to write this document, not tests. **Anything from them that
-should not be allowed to rot belongs in `flightsim/checks.py` with a test, per
+should not be allowed to rot belongs in `atisim/checks.py` with a test, per
 §3.1 — except §0.5, which belongs in `verification.py` per §9.2.1.**
 
 **Three results were superseded during the work and are recorded rather than

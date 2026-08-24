@@ -25,9 +25,9 @@ PY="C:/Users/mateusz/UROP/Claude_Flight_Sim/.venv/Scripts/python.exe"
 Read these before Task 1. Every one has already cost time in this work.
 
 1. **`conftest.py` turns on `jax_debug_nans` for the whole suite.** `jnp.where` evaluates *both* branches, so guard divisors before the `where`, not inside it.
-2. **Never `import jax.numpy` before `import flightsim`.** Float64 must be enabled before any array exists.
+2. **Never `import jax.numpy` before `import atisim`.** Float64 must be enabled before any array exists.
 3. **`PROJECT.md` §4 baselines are frozen.** Five 747 mode values. If one moves, something real broke — do not adjust a tolerance.
-4. **A worktree needs `PYTHONPATH`.** The venv resolves `flightsim` to the main checkout. `pytest` gets this right via rootdir; a plain script run does not.
+4. **A worktree needs `PYTHONPATH`.** The venv resolves `atisim` to the main checkout. `pytest` gets this right via rootdir; a plain script run does not.
 5. **The full suite takes about 4m40s.** Budget for it; do not assume a 2-minute timeout is enough.
 6. **The gust incidence sign is `−w_g/V`, not `+w_g/V`.** A wing moving down gains incidence; air moving down past a stationary wing loses it. This was wrong once already and only the cross-treatment comparison caught it.
 
@@ -51,13 +51,13 @@ The increment is a small NamedTuple rather than a bare array, so a caller cannot
 
 | File | Responsibility | Status |
 |---|---|---|
-| `flightsim/loads.py` | `CoeffIncrement`, `zero_increment()`, and `strip_increment()` which builds one from a field | **create** |
-| `flightsim/tests/test_loads.py` | The increment's own behaviour and its zero case | **create** |
-| `flightsim/dynamics.py` | `derivatives`, `specific_force`, `load_factor` gain an optional increment | modify |
-| `flightsim/integrate.py` | `SimState` carries the applied increment; `step`/`rollout` take an optional `load_model` | modify |
-| `flightsim/tests/test_dynamics.py` | The zero-increment identity | modify |
-| `flightsim/tests/test_integrate.py` | Threading, and the bit-identical default | modify |
-| `flightsim/provenance.py` | No new constants — asserted, not assumed | modify (test only) |
+| `atisim/loads.py` | `CoeffIncrement`, `zero_increment()`, and `strip_increment()` which builds one from a field | **create** |
+| `atisim/tests/test_loads.py` | The increment's own behaviour and its zero case | **create** |
+| `atisim/dynamics.py` | `derivatives`, `specific_force`, `load_factor` gain an optional increment | modify |
+| `atisim/integrate.py` | `SimState` carries the applied increment; `step`/`rollout` take an optional `load_model` | modify |
+| `atisim/tests/test_dynamics.py` | The zero-increment identity | modify |
+| `atisim/tests/test_integrate.py` | Threading, and the bit-identical default | modify |
+| `atisim/provenance.py` | No new constants — asserted, not assumed | modify (test only) |
 | `docs/PROJECT.md`, `docs/ASSUMPTIONS.md` | Record the new path and re-measure the vortex point | modify |
 
 ---
@@ -67,12 +67,12 @@ The increment is a small NamedTuple rather than a bare array, so a caller cannot
 ### Task 1: `CoeffIncrement` and its zero
 
 **Files:**
-- Create: `flightsim/loads.py`
-- Test: `flightsim/tests/test_loads.py`
+- Create: `atisim/loads.py`
+- Test: `atisim/tests/test_loads.py`
 
 - [ ] **Step 1: Write the failing test**
 
-Create `flightsim/tests/test_loads.py`:
+Create `atisim/tests/test_loads.py`:
 
 ```python
 """Aerodynamic coefficient increments from distributed loads.
@@ -91,8 +91,8 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-import flightsim  # noqa: F401  -- enables x64 before any array is made
-from flightsim import loads
+import atisim  # noqa: F401  -- enables x64 before any array is made
+from atisim import loads
 
 
 def test_the_zero_increment_is_all_zeros_and_correctly_shaped():
@@ -142,14 +142,14 @@ def test_adding_zero_changes_nothing_exactly():
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-$PY -m pytest flightsim/tests/test_loads.py -v
+$PY -m pytest atisim/tests/test_loads.py -v
 ```
 
-Expected: collection error, `ModuleNotFoundError: No module named 'flightsim.loads'`.
+Expected: collection error, `ModuleNotFoundError: No module named 'atisim.loads'`.
 
 - [ ] **Step 3: Write the implementation**
 
-Create `flightsim/loads.py`:
+Create `atisim/loads.py`:
 
 ```python
 """Aerodynamic coefficient increments from distributed loads.
@@ -213,7 +213,7 @@ def add(a: CoeffIncrement, b: CoeffIncrement) -> CoeffIncrement:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 ```bash
-$PY -m pytest flightsim/tests/test_loads.py -v
+$PY -m pytest atisim/tests/test_loads.py -v
 ```
 
 Expected: 4 passed.
@@ -221,7 +221,7 @@ Expected: 4 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add flightsim/loads.py flightsim/tests/test_loads.py
+git add atisim/loads.py atisim/tests/test_loads.py
 git commit -m "Add CoeffIncrement: the seam distributed loads will enter through"
 ```
 
@@ -232,14 +232,14 @@ git commit -m "Add CoeffIncrement: the seam distributed loads will enter through
 ### Task 2: `derivatives` accepts an increment, defaulting to zero
 
 **Files:**
-- Modify: `flightsim/dynamics.py`
-- Modify: `flightsim/tests/test_dynamics.py`
+- Modify: `atisim/dynamics.py`
+- Modify: `atisim/tests/test_dynamics.py`
 
 **This is the highest-risk task in the plan.** `derivatives` is called by `trim`, `integrate`, `validation`, `verification` and `vortex_viz`. The signature change must be backward-compatible by default.
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `flightsim/tests/test_dynamics.py`:
+Append to `atisim/tests/test_dynamics.py`:
 
 ```python
 def test_a_zero_increment_is_bit_identical_to_not_passing_one(test_aircraft):
@@ -252,8 +252,8 @@ def test_a_zero_increment_is_bit_identical_to_not_passing_one(test_aircraft):
     """
     import jax.numpy as jnp
 
-    from flightsim import dynamics, loads
-    from flightsim.state import Controls, State, euler_to_quat
+    from atisim import dynamics, loads
+    from atisim.state import Controls, State, euler_to_quat
 
     state = State(
         pos_ned=jnp.array([0.0, 0.0, -2000.0]),
@@ -284,8 +284,8 @@ def test_a_rolling_increment_produces_a_rolling_acceleration(test_aircraft):
     happily if the increment were ignored entirely."""
     import jax.numpy as jnp
 
-    from flightsim import dynamics, loads
-    from flightsim.state import Controls, State, euler_to_quat
+    from atisim import dynamics, loads
+    from atisim.state import Controls, State, euler_to_quat
 
     state = State(
         pos_ned=jnp.array([0.0, 0.0, -2000.0]),
@@ -312,17 +312,17 @@ def test_a_rolling_increment_produces_a_rolling_acceleration(test_aircraft):
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-$PY -m pytest flightsim/tests/test_dynamics.py -v -k "zero_increment or rolling_increment"
+$PY -m pytest atisim/tests/test_dynamics.py -v -k "zero_increment or rolling_increment"
 ```
 
 Expected: 2 failed with `TypeError: derivatives() got an unexpected keyword argument 'increment'`.
 
 - [ ] **Step 3: Write the implementation**
 
-In `flightsim/dynamics.py`, add the import:
+In `atisim/dynamics.py`, add the import:
 
 ```python
-from flightsim.loads import CoeffIncrement, zero_increment
+from atisim.loads import CoeffIncrement, zero_increment
 ```
 
 Replace the `derivatives` signature and its aero call:
@@ -364,7 +364,7 @@ def derivatives(
     ...
 ```
 
-Then in `flightsim/aero.py`, thread the increment into `aero_forces_moments` only:
+Then in `atisim/aero.py`, thread the increment into `aero_forces_moments` only:
 
 ```python
 def aero_forces_moments(
@@ -400,7 +400,7 @@ Leave the rest of `aero_forces_moments` unchanged.
 - [ ] **Step 4: Run the tests to verify they pass**
 
 ```bash
-$PY -m pytest flightsim/tests/test_dynamics.py -v -k "zero_increment or rolling_increment"
+$PY -m pytest atisim/tests/test_dynamics.py -v -k "zero_increment or rolling_increment"
 ```
 
 Expected: 2 passed.
@@ -408,7 +408,7 @@ Expected: 2 passed.
 - [ ] **Step 5: Run the whole suite — this is the task that could break everything**
 
 ```bash
-$PY -m pytest flightsim/tests/ -q
+$PY -m pytest atisim/tests/ -q
 ```
 
 Expected: all pass, including every `PROJECT.md` §4 mode check. If a mode value has moved, **stop** — the zero-increment path is not bit-identical and the defaulting is wrong.
@@ -416,7 +416,7 @@ Expected: all pass, including every `PROJECT.md` §4 mode check. If a mode value
 - [ ] **Step 6: Commit**
 
 ```bash
-git add flightsim/dynamics.py flightsim/aero.py flightsim/tests/test_dynamics.py
+git add atisim/dynamics.py atisim/aero.py atisim/tests/test_dynamics.py
 git commit -m "Let derivatives accept a coefficient increment, defaulting to exact zero"
 ```
 
@@ -427,14 +427,14 @@ git commit -m "Let derivatives accept a coefficient increment, defaulting to exa
 ### Task 3: `strip_increment` — roll only, honestly labelled
 
 **Files:**
-- Modify: `flightsim/loads.py`
-- Modify: `flightsim/tests/test_loads.py`
+- Modify: `atisim/loads.py`
+- Modify: `atisim/tests/test_loads.py`
 
 **Scope note, and it matters.** `wind.strip_roll_moment` exists and is validated. There is no validated strip pitch or yaw integral. This task wires in **only** the rolling moment and leaves the other three channels at zero, because shipping an unvalidated pitch integral would be worse than shipping none.
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `flightsim/tests/test_loads.py`:
+Append to `atisim/tests/test_loads.py`:
 
 ```python
 def test_the_strip_increment_carries_roll_only_for_now():
@@ -448,9 +448,9 @@ def test_the_strip_increment_carries_roll_only_for_now():
     """
     import jax.numpy as jnp
 
-    from flightsim import airframe, loads, wind
-    from flightsim.aircraft import REGISTRY
-    from flightsim.state import State, euler_to_quat
+    from atisim import airframe, loads, wind
+    from atisim.aircraft import REGISTRY
+    from atisim.state import State, euler_to_quat
 
     ac = REGISTRY["boeing747"]
     st = airframe.stations(ac, n_span=201, n_lon=9)
@@ -478,9 +478,9 @@ def test_the_strip_increment_uses_air_relative_speed_not_ground_speed():
     design exists to avoid, and it would only show up in a headwind."""
     import jax.numpy as jnp
 
-    from flightsim import airframe, loads
-    from flightsim.aircraft import REGISTRY
-    from flightsim.state import State, euler_to_quat
+    from atisim import airframe, loads
+    from atisim.aircraft import REGISTRY
+    from atisim.state import State, euler_to_quat
 
     ac = REGISTRY["boeing747"]
     st = airframe.stations(ac, n_span=201, n_lon=9)
@@ -504,20 +504,20 @@ def test_the_strip_increment_uses_air_relative_speed_not_ground_speed():
 - [ ] **Step 2: Run the tests to verify they fail**
 
 ```bash
-$PY -m pytest flightsim/tests/test_loads.py -v -k "strip_increment"
+$PY -m pytest atisim/tests/test_loads.py -v -k "strip_increment"
 ```
 
-Expected: 2 failed with `AttributeError: module 'flightsim.loads' has no attribute 'strip_increment'`.
+Expected: 2 failed with `AttributeError: module 'atisim.loads' has no attribute 'strip_increment'`.
 
 - [ ] **Step 3: Write the implementation**
 
-Append to `flightsim/loads.py`:
+Append to `atisim/loads.py`:
 
 ```python
-from flightsim.aero import air_data
-from flightsim.aircraft import Aircraft
-from flightsim.dynamics import relative_velocity
-from flightsim.state import State
+from atisim.aero import air_data
+from atisim.aircraft import Aircraft
+from atisim.dynamics import relative_velocity
+from atisim.state import State
 
 
 def strip_increment(state: State, field, ac: Aircraft, stations) -> CoeffIncrement:
@@ -537,7 +537,7 @@ def strip_increment(state: State, field, ac: Aircraft, stations) -> CoeffIncreme
     error the air-relative design exists to prevent, and it would only reveal
     itself in a wind with a significant along-track component.
     """
-    from flightsim import wind  # local: wind imports airframe, which imports aircraft
+    from atisim import wind  # local: wind imports airframe, which imports aircraft
 
     wind_at_cg = field(state.pos_ned)
     vel_rel = relative_velocity(state.vel_body, state.quat, wind_at_cg)
@@ -552,7 +552,7 @@ def strip_increment(state: State, field, ac: Aircraft, stations) -> CoeffIncreme
 - [ ] **Step 4: Run the tests to verify they pass**
 
 ```bash
-$PY -m pytest flightsim/tests/test_loads.py -v
+$PY -m pytest atisim/tests/test_loads.py -v
 ```
 
 Expected: 6 passed.
@@ -562,7 +562,7 @@ If an `ImportError` about a circular import appears, the local `wind` import ins
 - [ ] **Step 5: Commit**
 
 ```bash
-git add flightsim/loads.py flightsim/tests/test_loads.py
+git add atisim/loads.py atisim/tests/test_loads.py
 git commit -m "Build a coefficient increment from the strip integral, roll only"
 ```
 
@@ -573,12 +573,12 @@ git commit -m "Build a coefficient increment from the strip integral, roll only"
 ### Task 4: `step` and `rollout` take an optional load model
 
 **Files:**
-- Modify: `flightsim/integrate.py`
-- Modify: `flightsim/tests/test_integrate.py`
+- Modify: `atisim/integrate.py`
+- Modify: `atisim/tests/test_integrate.py`
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `flightsim/tests/test_integrate.py`:
+Append to `atisim/tests/test_integrate.py`:
 
 ```python
 def test_omitting_the_load_model_is_bit_identical_to_today(test_aircraft):
@@ -589,8 +589,8 @@ def test_omitting_the_load_model_is_bit_identical_to_today(test_aircraft):
     import jax.numpy as jnp
     import numpy as np
 
-    from flightsim import integrate
-    from flightsim.state import Controls, State, euler_to_quat
+    from atisim import integrate
+    from atisim.state import Controls, State, euler_to_quat
 
     state = State(
         pos_ned=jnp.array([0.0, 0.0, -2000.0]),
@@ -622,8 +622,8 @@ def test_the_applied_increment_is_cached_on_the_sim_state(test_aircraft):
     import jax
     import jax.numpy as jnp
 
-    from flightsim import integrate, loads
-    from flightsim.state import Controls, State, euler_to_quat
+    from atisim import integrate, loads
+    from atisim.state import Controls, State, euler_to_quat
 
     state = State(
         pos_ned=jnp.array([0.0, 0.0, -2000.0]),
@@ -649,17 +649,17 @@ def test_the_applied_increment_is_cached_on_the_sim_state(test_aircraft):
 - [ ] **Step 2: Run the tests to verify they fail**
 
 ```bash
-$PY -m pytest flightsim/tests/test_integrate.py -v -k "load_model or cached_on_the_sim_state"
+$PY -m pytest atisim/tests/test_integrate.py -v -k "load_model or cached_on_the_sim_state"
 ```
 
 Expected: 2 failed — `TypeError` on the unexpected `load_model` argument, and `AttributeError` on `sim.increment`.
 
 - [ ] **Step 3: Write the implementation**
 
-In `flightsim/integrate.py`, add to the imports:
+In `atisim/integrate.py`, add to the imports:
 
 ```python
-from flightsim.loads import CoeffIncrement, zero_increment
+from atisim.loads import CoeffIncrement, zero_increment
 ```
 
 Extend `SimState` with one field, after `omega_gust`:
@@ -736,7 +736,7 @@ Add `load_model=None` to `rollout` and `batched_rollout`, both in the signature,
 - [ ] **Step 4: Run the tests to verify they pass**
 
 ```bash
-$PY -m pytest flightsim/tests/test_integrate.py -v
+$PY -m pytest atisim/tests/test_integrate.py -v
 ```
 
 Expected: all pass.
@@ -744,7 +744,7 @@ Expected: all pass.
 - [ ] **Step 5: Run the whole suite**
 
 ```bash
-$PY -m pytest flightsim/tests/ -q
+$PY -m pytest atisim/tests/ -q
 ```
 
 Expected: all pass. `SimState` gained a field, so anything constructing one positionally will fail here — fix those call sites rather than reordering the tuple.
@@ -752,7 +752,7 @@ Expected: all pass. `SimState` gained a field, so anything constructing one posi
 - [ ] **Step 6: Commit**
 
 ```bash
-git add flightsim/integrate.py flightsim/tests/test_integrate.py
+git add atisim/integrate.py atisim/tests/test_integrate.py
 git commit -m "Thread an optional load model through step and rollout"
 ```
 
@@ -761,12 +761,12 @@ git commit -m "Thread an optional load model through step and rollout"
 ### Task 5: A strip-flying convenience wrapper
 
 **Files:**
-- Modify: `flightsim/loads.py`
-- Modify: `flightsim/tests/test_loads.py`
+- Modify: `atisim/loads.py`
+- Modify: `atisim/tests/test_loads.py`
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `flightsim/tests/test_loads.py`:
+Append to `atisim/tests/test_loads.py`:
 
 ```python
 def test_the_strip_model_refuses_an_aircraft_that_fails_the_tail_arm_gate():
@@ -774,8 +774,8 @@ def test_the_strip_model_refuses_an_aircraft_that_fails_the_tail_arm_gate():
     not trustworthy. It must fire at construction, loudly, rather than silently
     producing numbers -- a run that quietly used a 0.856-chord tail arm would be
     very hard to spot afterwards."""
-    from flightsim import airframe, loads
-    from flightsim.aircraft import REGISTRY
+    from atisim import airframe, loads
+    from atisim.aircraft import REGISTRY
 
     for name in ("cessna172", "cherokee"):
         ac = REGISTRY[name]
@@ -785,8 +785,8 @@ def test_the_strip_model_refuses_an_aircraft_that_fails_the_tail_arm_gate():
 
 
 def test_the_strip_model_accepts_both_747_configurations():
-    from flightsim import loads
-    from flightsim.aircraft import REGISTRY
+    from atisim import loads
+    from atisim.aircraft import REGISTRY
 
     for name in ("boeing747", "boeing747_approach"):
         model = loads.strip_model(lambda p: p * 0.0, REGISTRY[name])
@@ -796,14 +796,14 @@ def test_the_strip_model_accepts_both_747_configurations():
 - [ ] **Step 2: Run the tests to verify they fail**
 
 ```bash
-$PY -m pytest flightsim/tests/test_loads.py -v -k "strip_model"
+$PY -m pytest atisim/tests/test_loads.py -v -k "strip_model"
 ```
 
-Expected: 2 failed with `AttributeError: module 'flightsim.loads' has no attribute 'strip_model'`.
+Expected: 2 failed with `AttributeError: module 'atisim.loads' has no attribute 'strip_model'`.
 
 - [ ] **Step 3: Write the implementation**
 
-Append to `flightsim/loads.py`:
+Append to `atisim/loads.py`:
 
 ```python
 def strip_model(field, ac: Aircraft, stations=None):
@@ -816,7 +816,7 @@ def strip_model(field, ac: Aircraft, stations=None):
     a run that quietly used a 0.856-chord tail arm would produce numbers that
     look ordinary and are not.
     """
-    from flightsim import airframe
+    from atisim import airframe
 
     if not airframe.tail_arm_is_plausible(ac):
         raise ValueError(
@@ -832,7 +832,7 @@ def strip_model(field, ac: Aircraft, stations=None):
 - [ ] **Step 4: Run the tests to verify they pass**
 
 ```bash
-$PY -m pytest flightsim/tests/test_loads.py -v
+$PY -m pytest atisim/tests/test_loads.py -v
 ```
 
 Expected: 8 passed.
@@ -840,7 +840,7 @@ Expected: 8 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add flightsim/loads.py flightsim/tests/test_loads.py
+git add atisim/loads.py atisim/tests/test_loads.py
 git commit -m "Add strip_model, gated on the aircraft having a plausible tail arm"
 ```
 
@@ -851,13 +851,13 @@ git commit -m "Add strip_model, gated on the aircraft having a plausible tail ar
 ### Task 6: Fly the vortex both ways and quantify the difference
 
 **Files:**
-- Modify: `flightsim/tests/test_wind.py`
+- Modify: `atisim/tests/test_wind.py`
 
 This is validation gates 7 and 9 from the design document, which the previous plan could not implement because nothing consumed the strip loads.
 
 - [ ] **Step 1: Write the test**
 
-Append to `flightsim/tests/test_wind.py`:
+Append to `atisim/tests/test_wind.py`:
 
 ```python
 def test_flying_the_parks_vortex_with_strip_loads_changes_the_trajectory():
@@ -869,8 +869,8 @@ def test_flying_the_parks_vortex_with_strip_loads_changes_the_trajectory():
     fixing a tolerance around it now would be asserting the answer before
     measuring it.
     """
-    from flightsim import airframe, integrate, loads, trim
-    from flightsim.aircraft import CRUISE, REGISTRY
+    from atisim import airframe, integrate, loads, trim
+    from atisim.aircraft import CRUISE, REGISTRY
 
     ac = REGISTRY["boeing747"]
     v, h = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
@@ -932,7 +932,7 @@ def test_the_rigid_rotation_structure_diagnostic_is_reported_per_field():
 - [ ] **Step 2: Run the tests**
 
 ```bash
-$PY -m pytest flightsim/tests/test_wind.py -v -s -k "strip_loads_changes or rigid_rotation_structure"
+$PY -m pytest atisim/tests/test_wind.py -v -s -k "strip_loads_changes or rigid_rotation_structure"
 ```
 
 Expected: 2 passed, with the position difference and both diagnostic ratios printed. **Record all three — Task 7 writes them into the documents.**
@@ -940,7 +940,7 @@ Expected: 2 passed, with the position difference and both diagnostic ratios prin
 - [ ] **Step 3: Commit**
 
 ```bash
-git add flightsim/tests/test_wind.py
+git add atisim/tests/test_wind.py
 git commit -m "Fly the Parks vortex both ways, and report the structure diagnostic"
 ```
 
@@ -1030,7 +1030,7 @@ wings-level. **Do not read the strip path as having fixed the vortex result.**
 - [ ] **Step 5: Verify no placeholders remain**
 
 ```bash
-grep -rn "<RECORDED>" docs/ flightsim/ scripts/
+grep -rn "<RECORDED>" docs/ atisim/ scripts/
 ```
 
 Expected: no output.
@@ -1038,7 +1038,7 @@ Expected: no output.
 - [ ] **Step 6: Full suite and notebook gate**
 
 ```bash
-$PY -m pytest flightsim/tests/ -q
+$PY -m pytest atisim/tests/ -q
 ```
 
 ```bash
@@ -1054,7 +1054,7 @@ PYTHONPATH=. $PY scripts/turbulence_report.py docs/summary/turbulence-report.pdf
 - [ ] **Step 8: Commit**
 
 ```bash
-git add scripts/vortex.py flightsim/vortex_viz.py docs/PROJECT.md docs/ASSUMPTIONS.md docs/summary/turbulence-report.pdf
+git add scripts/vortex.py atisim/vortex_viz.py docs/PROJECT.md docs/ASSUMPTIONS.md docs/summary/turbulence-report.pdf
 git commit -m "Fly the vortex with strip loads, and record what moved"
 ```
 

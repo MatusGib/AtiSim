@@ -1,4 +1,4 @@
-# JAX Flight Simulator — Design Spec
+# AtiSim — Design Spec
 
 Date: 2026-08-04
 
@@ -51,7 +51,7 @@ def step(state, controls, key, dt, ac) -> (State, key)
 ## Module structure
 
 ```
-flightsim/
+atisim/
   units.py        # conversion constants ONLY; no logic
   state.py        # State/Controls NamedTuples, quaternion utilities, x64 config
   atmosphere.py   # ISA density/temperature/pressure vs altitude

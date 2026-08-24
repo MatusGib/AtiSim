@@ -5,7 +5,7 @@ deliberately does not):
 
     python scripts/gen_jsbsim_reference.py
 
-Writes flightsim/tests/data/jsbsim_737_reference.xml. The test suite reads that
+Writes atisim/tests/data/jsbsim_737_reference.xml. The test suite reads that
 file and never imports jsbsim, so the suite runs anywhere and reference drift
 shows up in git diff. This is the ONLY file in the project that imports jsbsim.
 
@@ -37,12 +37,12 @@ from scipy.optimize import brentq
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from flightsim.atmosphere import density, speed_of_sound  # noqa: E402
-from flightsim.units import (  # noqa: E402
+from atisim.atmosphere import density, speed_of_sound  # noqa: E402
+from atisim.units import (  # noqa: E402
     FT2M, LBF2N, SLUG_FT2_TO_KG_M2, SLUG_FT3_TO_KG_M3,
 )
 
-DATA = ROOT / "flightsim" / "tests" / "data"
+DATA = ROOT / "atisim" / "tests" / "data"
 
 # The conditions to recover at. Everything below reads the module-level ALT_FT
 # and MACH, which `main` rebinds per condition -- that is what makes
@@ -78,7 +78,7 @@ SETTLE_DT = 1e-6
 
 # Derivatives 737.xml does not define at all. Asserted to measure zero rather
 # than assumed -- if JSBSim ever gains one, this fails loudly instead of
-# silently disagreeing with a flightsim entry that still carries 0.0.
+# silently disagreeing with a atisim entry that still carries 0.0.
 ABSENT = ("CLq", "CYp", "CYr", "CYdr", "Cnp", "Cnda")
 
 FT2 = FT2M**2
@@ -169,7 +169,7 @@ def read_state(fdm):
     Moment coefficients are referred to the AERORP, not the CG. JSBSim applies
     aero forces there and transfers to the CG with r x F (Stengel Eq. 2.4-68), so
     referring them back is what makes the recovered set a property of the
-    AIRFRAME rather than of one fuel state -- and it is what lets flightsim
+    AIRFRAME rather than of one fuel state -- and it is what lets atisim
     reproduce the moment exactly instead of to a linearisation residual.
     """
     qbar = fdm["aero/qbar-psf"]
@@ -206,7 +206,7 @@ def read_state(fdm):
         vt=fdm["velocities/vt-fps"] * FT2M,
         bi2vel=fdm["aero/bi2vel"],
         ci2vel=fdm["aero/ci2vel"],
-        # CL, CD, CY, Cl, Cm, Cn -- the same six flightsim's aero.coefficients
+        # CL, CD, CY, Cl, Cm, Cn -- the same six atisim's aero.coefficients
         # returns, in the same order and the same senses (verified in the spec's
         # sign-convention table).
         CL=fdm["forces/fwz-aero-lbs"] / qS,
@@ -283,7 +283,7 @@ def recover_pitch_axis(trim_alpha_deg, trim_de):
     nearly collinear in any reachable state, so their SPLIT is ill-conditioned
     even though their SUM is not. Measured, the fit puts Cmq at -27.041 and
     Cmadot at -15.959 -- each 0.041 from 737.xml's -27 and -16, equal and
-    opposite -- while the sum is -43.000000. flightsim needs the sum for
+    opposite -- while the sum is -43.000000. atisim needs the sum for
     still-air damping and uses the split only for the wind term, so the
     well-determined quantity is the one that carries weight.
     """
@@ -313,7 +313,7 @@ def recover(trim_alpha_deg, trim_de):
     lo, hi = central(None, "alpha_deg", 1.0, trim_alpha_deg, de=trim_de)
     d["CLa"] = _slope(lo, hi, "CL", "alpha")
     d["Cma"] = _slope(lo, hi, "Cm", "alpha")
-    d["CDa_engine"] = _slope(lo, hi, "CD", "alpha")  # recorded, no flightsim home
+    d["CDa_engine"] = _slope(lo, hi, "CD", "alpha")  # recorded, no atisim home
 
     # --- longitudinal: elevator ---
     lo, hi = central(None, "de", 0.02, trim_de, alpha_deg=trim_alpha_deg)
@@ -347,7 +347,7 @@ def recover(trim_alpha_deg, trim_de):
     d["Clr"] = (hi["Cl"] - lo["Cl"]) / dr_hat
     d["CYr"] = (hi["CY"] - lo["CY"]) / dr_hat
 
-    # --- aileron. flightsim's da is JSBSim's LEFT aileron position. ---
+    # --- aileron. atisim's da is JSBSim's LEFT aileron position. ---
     lo, hi = central(None, "da", 0.05, 0.0, **base)
     d["Clda"] = _slope(lo, hi, "Cl", "da")
     d["Cnda"] = _slope(lo, hi, "Cn", "da")
@@ -482,13 +482,13 @@ def fly(case, duration=20.0, dt=1.0 / 120.0, sample_every=0.05, latitude_deg=47.
 
     The surface HISTORY is prescribed, not the stick: the rudder command is
     pre-compensated for the yaw damper each step so the achieved surface follows
-    the schedule, and the achieved value is what gets recorded. flightsim is then
+    the schedule, and the achieved value is what gets recorded. atisim is then
     driven with the achieved deflections, so the FCS cannot contribute to any
     difference between the two engines.
     """
     fdm = trimmed(0, latitude_deg=latitude_deg)
     try:
-        fdm["simulation/gravity-model"] = 0  # constant g, matching flightsim
+        fdm["simulation/gravity-model"] = 0  # constant g, matching atisim
     except Exception:
         pass
     fdm.set_dt(dt)
@@ -534,7 +534,7 @@ def fly(case, duration=20.0, dt=1.0 / 120.0, sample_every=0.05, latitude_deg=47.
 def coriolis_contribution(case):
     """How much of any trajectory difference is Earth rotation, as a number.
 
-    Same case at latitude 0 and 47 degrees. flightsim is flat-Earth and
+    Same case at latitude 0 and 47 degrees. atisim is flat-Earth and
     non-rotating, so this bounds what it cannot reproduce even in principle.
     """
     a, _ = fly(case, latitude_deg=0.0)
@@ -546,7 +546,7 @@ def coriolis_contribution(case):
 
 
 # --------------------------------------------------------------------------
-# the flightsim entry: everything _boeing_737() needs, derived here so that
+# the atisim entry: everything _boeing_737() needs, derived here so that
 # every literal in aircraft.py traces to a line of this file's output
 # --------------------------------------------------------------------------
 def thrust_at(alt_ft, mach, throttle):
@@ -579,7 +579,7 @@ def thrust_fit(throttle):
     Fitted AT THE TRIM THROTTLE, not at the engine rating, because JSBSim blends
     idle and military thrust nonlinearly with throttle -- thrust/throttle runs
     from 22 kN at throttle 0.2 to 95 kN at 1.0, a factor of 4.3 -- while
-    flightsim's model is linear in throttle. A fit that reproduced the rating
+    atisim's model is linear in throttle. A fit that reproduced the rating
     would be wrong by 70% at the condition being compared.
 
     thrust_lapse comes out near 0.75 rather than the 1.0 the CFM56's MilThrust
@@ -620,7 +620,7 @@ def wave_drag_parameters(CL_trim, onset=0.79):
     """(sweep, t/c, kappa) placing this project's Korn/Lock rise at JSBSim's.
 
     737.xml gives NO sweep and NO thickness, so these cannot be read off. They
-    are chosen so that flightsim's M_crit lands on the Mach at which JSBSim's
+    are chosen so that atisim's M_crit lands on the Mach at which JSBSim's
     CDmach table leaves zero (0.79), because otherwise the two drag models
     disagree grossly at the comparison point: a conventional kappa of 0.87 with
     737-class geometry puts M_crit at 0.636 and adds 0.0086 of wave drag where
@@ -659,7 +659,7 @@ def aircraft_entry(fdm, d, at_trim, trim, rho, h_match):
     CL0 = at_trim["CL"] - d["CLa"] * a_t - d["CLde"] * de_t
     # Wave drag is zero at M 0.78 by construction, so CD0 absorbs everything
     # that is not induced -- including JSBSim's CDde term (0.059 |de|), which
-    # has no home in flightsim and is therefore frozen at its trim value.
+    # has no home in atisim and is therefore frozen at its trim value.
     # The drag slope JSBSim has and the induced term alone cannot supply. This
     # is 737.xml's CD0(alpha) table slope (0.0808) plus the CDde and
     # ground-effect residue, recovered from the engine rather than read off.
@@ -681,7 +681,7 @@ def aircraft_entry(fdm, d, at_trim, trim, rho, h_match):
         rudder_limit=RUDDER_RANGE, matched_altitude=h_match,
         airspeed=fdm["velocities/vt-fps"] * FT2M,
         # Cmq and Cmadot go in SEPARATELY, as the fit recovers them. They were
-        # folded into a single q term while flightsim applied alphadot for the
+        # folded into a single q term while atisim applied alphadot for the
         # wind only; now that dynamics.derivatives resolves the aircraft's own
         # alphadot too, folding would apply Cmadot twice.
         **{k: v for k, v in d.items() if k not in ABSENT and k != "CDa_engine"},
@@ -781,7 +781,7 @@ def build(condition_name):
         raise SystemExit(
             f"derivatives 737.xml does not define measured above the {floor:.2e} "
             f"settling-drift floor: {bad}\n"
-            "flightsim's entry carries 0.0 for these; the comparison would be "
+            "atisim's entry carries 0.0 for these; the comparison would be "
             "wrong. Either JSBSim's model changed or the recovery is picking up "
             "cross-coupling."
         )
@@ -791,9 +791,9 @@ def build(condition_name):
           f"{max(abs(v) for v in absent.values()):.2e})")
 
 
-    # --- the flightsim entry ---
+    # --- the atisim entry ---
     entry = aircraft_entry(lon, d, at_trim, trims["longitudinal"], rho, h_match)
-    print("\nflightsim aircraft entry:")
+    print("\natisim aircraft entry:")
     for k in sorted(entry):
         print(f"  {k:26s} {entry[k]:+.9g}")
     print(f"\nthrust fit residuals: {entry['thrust_mach_residual']*100:.2f}% over "
@@ -892,7 +892,7 @@ def build(condition_name):
         L.append(
             f'    <point alpha="{f(s["alpha"])}" beta="{f(s["beta"])}" '
             # alphadot is recorded because setting a state away from trim also
-            # sets it, and flightsim applies Cmadot to the WIND part of alphadot
+            # sets it, and atisim applies Cmadot to the WIND part of alphadot
             # only. Without this the layer-1 Cm difference is unexplainable; with
             # it, it is predicted exactly.
             f'alphadot="{f(s["alphadot"])}" ci2vel="{f(s["ci2vel"])}" '

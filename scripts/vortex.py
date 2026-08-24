@@ -18,13 +18,13 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
-import flightsim  # noqa: F401  -- enables x64
-from flightsim import trim, vortex_viz, wind
-from flightsim.aircraft import CRUISE, REGISTRY
-from flightsim.panel import ALPHA_INVALID_DEG, ALPHA_LINEAR_DEG
-from flightsim.units import RAD2DEG
-from flightsim.wind import PARKS_CASES as CASES
-from flightsim.wind import UPDRAFT_SECONDS, UPDRAFT_W0
+import atisim  # noqa: F401  -- enables x64
+from atisim import trim, vortex_viz, wind
+from atisim.aircraft import CRUISE, REGISTRY
+from atisim.panel import ALPHA_INVALID_DEG, ALPHA_LINEAR_DEG
+from atisim.units import RAD2DEG
+from atisim.wind import PARKS_CASES as CASES
+from atisim.wind import UPDRAFT_SECONDS, UPDRAFT_W0
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--case", default="hannibal", choices=sorted(CASES))
@@ -179,8 +179,8 @@ if args.artifacts:
     # The artifact carries what the PNG footer carries, as data rather than as
     # text. Everything below is already assembled above for `provenance`; this is
     # a restructuring, not new information.
-    from flightsim import checks
-    from flightsim.analysis import artifact
+    from atisim import checks
+    from atisim.analysis import artifact
 
     common = dict(
         aircraft_key=args.aircraft,

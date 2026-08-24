@@ -16,7 +16,7 @@ independent of any aircraft's data. The conservation-drift rows are the only ent
 and drift is a weak proxy: an integrator can conserve angular momentum beautifully and still be
 second-order accurate when it claims to be fourth.
 
-The end state: a tested `flightsim/validation.py`, a notebook front end over it, and three families
+The end state: a tested `atisim/validation.py`, a notebook front end over it, and three families
 of check — code verification, coefficient sensitivity against analytic laws, and reproduction of
 published worked examples.
 
@@ -100,8 +100,8 @@ checked against the book, not assumed from secondary sources.
 ## Architecture
 
 ```
-flightsim/validation.py          # all arithmetic; tested like any other module
-flightsim/tests/test_validation.py
+atisim/validation.py          # all arithmetic; tested like any other module
+atisim/tests/test_validation.py
 notebooks/solver-validation.ipynb  # narrative, plots, no arithmetic
 ```
 

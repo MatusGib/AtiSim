@@ -1,10 +1,10 @@
-# JAX Flight Simulator — project record
+# AtiSim — project record
 
 A 6-DOF fixed-wing flight-dynamics core in JAX, built as a foundation for turbulence
 modelling. This document is the standing record: what exists, what is validated, what is
 known-broken, and what happens next.
 
-**Last updated:** session 11 (verifying the solver, and correcting what §5 claimed).
+**Last updated:** session 18 (the AtiSim rename, and correcting five stale claims).
 
 **To run any of it, see §10.**
 
@@ -29,10 +29,10 @@ session normally edits only the volatile ones.
 Three rules carried from `CLAUDE.md` and enforced throughout the code:
 
 - **Check that the tree you are testing is the tree you edited.** Every worktree shares the
-  main checkout's `.venv`, whose editable install maps `flightsim` to the **main checkout**
+  main checkout's `.venv`, whose editable install maps `atisim` to the **main checkout**
   for the life of the install. Nothing warns you when that mapping wins — the tests import,
   collect and pass, against code you did not change, and the result reads exactly like a
-  real one. Print `flightsim.__file__` before believing any run. §10 carries the one-line
+  real one. Print `atisim.__file__` before believing any run. §10 carries the one-line
   check and the cases it catches.
 - **Flag, never invent.** Every number carries the table it came from. A parameter the
   source does not supply is named as a declared modelling choice, not given a plausible
@@ -80,7 +80,7 @@ without a core rewrite. Both have now been exercised and both held.
 | `panel.py` | live cockpit, instruments, `Stick`, `LiveSim`, `run_live` | basic T + test overlay; takes a `wind_model` and a `field_range` |
 | `viz.py` | `Trajectory`, `Recorder`, `derived`, `post_flight` | the log and the post-flight figure only; no simulator needed to read a run |
 | **`checks.py`** | **tier 3 — RUN checks**: `quaternion_norm`, `field_divergence`, `energy_closure`, `energy_residual_profile`, `trimmed_start`, `alpha_band`, `lateral_symmetry`, `recorded_wind_matches_field`, `run_checks` | `verification`/`validation` ask whether the MODEL is right, once, in the suite. This asks whether ONE RUN is sensible, every time one is flown. Each check carries a `kind`: **gate** (can and does fail), **tripwire** (has never fired — renders as a number and the word, never a green tick), **report** (a number with no honest threshold). Every check has a **negative control** in `test_checks.py` |
-| **`analysis/`** | `artifact.py` (run artifacts: Parquet + `meta.json` + `checks.json`, and `rebuild_field`), `series.py` (every plotted channel), `figures.py` (pure Plotly figures) | needs the **`ui` extra**. Imports `flightsim`, never the reverse. Nothing in `flightsim/` proper imports it, so the simulator and every script keep working without it |
+| **`analysis/`** | `artifact.py` (run artifacts: Parquet + `meta.json` + `checks.json`, and `rebuild_field`), `series.py` (every plotted channel), `figures.py` (pure Plotly figures) | needs the **`ui` extra**. Imports `atisim`, never the reverse. Nothing in `atisim/` proper imports it, so the simulator and every script keep working without it |
 | **`apps/`** | `sweep.py` — the Dash analysis UI | **the only package that imports Dash, and it computes nothing.** It never runs the simulator either: `n_steps` is a `static_argname`, so every distinct dt pays a fresh 0.6–0.9 s compile and a panel whose contents depend on machine warmth is not a check |
 | `vortex_viz.py` | encounter analysis and the Fig. 8 figure | air-relative throughout; deliberately separate from `viz.py`. `fly` for a wind field with fixed controls, `manoeuvre` for an elevator schedule at zero wind; both go through `_measure`, so the three Fig. 8 points cannot drift apart |
 
@@ -129,7 +129,7 @@ rigid-rotation self-consistency test that found them. **Read it before changing 
    switched over — §4's frozen baselines sit downstream of it.
 
 4. **Constants carry their provenance, and the ledger's reach is bounded.**
-   `flightsim/provenance.py` classifies each entry as SOURCED, DERIVED, CALIBRATED or
+   `atisim/provenance.py` classifies each entry as SOURCED, DERIVED, CALIBRATED or
    DECLARED, and `test_provenance.py` enforces that DERIVED chains name inputs that exist,
    are acyclic, and bottom out in something sourced. **This document used to add "a
    constant added without a ledger entry fails the build", and that was not true**: every
@@ -742,7 +742,7 @@ measuring a difference of trajectories at 40,000 ft has this ceiling.
 
 `ASSUMPTIONS.md` §A2 records that `G0 = 9.80665` is **+0.383% high** at the 747's cruise
 altitude. Session 11 reasoned from Lanchester that this threatened every sub-0.5% claim.
-This is the measurement that was made instead of the change: `flightsim.dynamics.G0`
+This is the measurement that was made instead of the change: `atisim.dynamics.G0`
 replaced by `g(h) = g₀(R/(R+h))²`, the aircraft **re-trimmed**, and all five modes
 recomputed. Tolerances are the ones each mode is actually asserted to in
 `test_cr2144_modes.py`.
@@ -841,6 +841,14 @@ Both Lanchester approximations reproduce the *size* of their own published error
 
 ### Cross-code verification against JSBSim (session 17)
 
+> **Partly superseded by "Model fidelity from the JSBSim comparison (session 18)" below.**
+> This entry was written at commit `1dcc5d4`, before four further commits changed the model.
+> Its framing, its three findings and its layer-1/2 results still hold. **Superseded rows:**
+> the derivative table (moments are now referred to the AERORP, so the entry carries
+> 737.xml's own constants), `Cmq` (unfolded), layer 1's lateral figures, layer 3's short
+> period and phugoid, and layer 4's divergences. Superseded, not deleted, per this
+> document's own rule -- the numbers below were true of the code at the time.
+
 The first comparison against another **executing** 6-DOF implementation rather than a
 published table. JSBSim 1.3.1 (build 1837, commit `3b25f25e`) is driven headless and its
 737 is used as an **engine**, never as a dataset: `737.xml` says of itself that it was
@@ -872,7 +880,7 @@ XML, and the difference is not cosmetic.** JSBSim applies aero forces at the AER
 | 3 lateral | Dutch roll ζ 1.79%, roll TC 3.22%, spiral TC **0.50%** — after the yaw-damper correction below |
 | 4 trajectory | elevator doublet 0.410 m/s over 20 s, rudder kick 1.46 m/s — but see the correction below |
 
-**No defect was found in flightsim.** Every disagreement traces to a documented model
+**No defect was found in AtiSim.** Every disagreement traces to a documented model
 difference with a measured magnitude.
 
 **A correction to the first reporting of layer 4.** The doublet's 0.410 m/s was recorded as being
@@ -906,14 +914,14 @@ damper feeds yaw rate to the rudder with unit gain above M 0.11 geared by 0.35 r
 ζ 0.338 and spiral 16.61 s. Pitch and roll have no feedback, which is why the short period
 needed no correction at all.
 
-*flightsim's ISA uses geometric altitude where the standard uses geopotential.* Density runs
+*AtiSim's ISA uses geometric altitude where the standard uses geopotential.* Density runs
 0.159% low at 30,000 ft and 0.368% at 40,000 — a same-signed bias on every force in every
 layer, since q̄ ∝ ρ. Predicted temperature errors match measured ones to four decimal places.
 Neutralised for the comparison by matching on **density rather than altitude** (43.22 ft
 lower, agreeing to 1e-16); the underlying defect is pre-existing and filed rather than fixed
 here. **Anything altitude-dependent in this ledger carries it.**
 
-*Scripts run from a git worktree import the wrong tree.* `flightsim` is installed editable
+*Scripts run from a git worktree import the wrong tree.* `atisim` is installed editable
 against the main checkout, so `python scripts/foo.py` from a worktree silently runs the other
 tree's code — no error, wrong answers. pytest is immune because it puts its rootdir first,
 which is precisely why a green suite did not catch it.
@@ -924,6 +932,71 @@ error at cruise that would read as a drag defect). The field defaults to neutral
 asserted, not inspected.
 
 Report: `docs/summary/jsbsim-737-report.pdf`.
+
+### Model fidelity from the JSBSim comparison (session 18)
+
+Five model changes arising from session 17, and one sequence worth reading as a whole.
+Design: `docs/superpowers/specs/2026-08-20-model-fidelity-improvements-design.md`.
+
+| Change | What it is |
+|---|---|
+| `aero_ref` | Body-axis CG→AERORP vector; `moment += r × F` in `aero_forces_moments`. Zero for every other aircraft, so `jnp.cross` adds an exact zero |
+| `CD_beta` | Sideslip drag, **quadratic**. JSBSim's own table is linear-interpolated through zero, which makes CD ∝ \|β\| at the origin — a coarse-table artifact no symmetric airframe can produce, and the one place this work declines to follow JSBSim |
+| `CD_alpha` | Profile-drag slope with incidence, linear because the reference sits away from drag's minimum in α — where β sits **at** it |
+| `CLadot`/`Cmadot` | α̇ derivatives, Stengel Eq. (3.4-25)/(3.4-26). `dynamics.derivatives` now resolves the aircraft's own α̇ as well as the wind's, so the 737 carries a **bare** `Cmq` = −27.0 with `Cmadot` = −16.0 separate |
+| second condition | `boeing737_approach`, recovered at 5,000 ft / M 0.40, α 3.63° against cruise's 1.97° |
+
+**Referring moments to the AERORP lets the entry carry 737.xml's own constants.** Recovered
+about the AERORP the finite difference lands on the file: `Cma` −0.599999 against −0.600,
+`Clb` −0.0899998 against −0.090, `Cnb` +0.2599999 against +0.260, `Cmde` −0.849000 against
+−0.849. `Cm0` comes out at −3.0e−08 against **no such term in the file** — what read as a
+pitching-moment offset was entirely the AERORP arm. Referred to the CG these were −1.1309,
+−0.1440, +0.2730 and depended on the fuel state.
+
+The pitch axis needs a **least-squares fit over a crossed design**, not central differences:
+setting α away from trim also sets α̇ (`dα̇/dα` = −0.529 /s), which contaminates a differenced
+`Cma` by +0.067. The fit separates `Cm0`, `Cma`, `Cmq`, `Cmadot`, `Cmde` with max residual
+2e-11. Their **sum** is exact and their **split** is conditioned at 1.9e8, so the split is the
+softer number.
+
+Measured after all five changes (this tree, both conditions):
+
+| Layer | cruise | approach |
+|---|---|---|
+| 1 `CL` / `CY` | 5.5e-9 / 1.6e-14 | 9.6e-9 / 1.4e-14 |
+| 1 `Cl` / `Cn` | **1.1e-8 / 1.0e-8** (was 7.0e-6 / 1.7e-6) | 1.4e-8 / 1.0e-8 |
+| 1 `CD` / `Cm` | 8.0e-3 / 5.2e-3 raw — **predicted** from 737.xml's tables, not defects | 8.0e-3 / 9.5e-3 |
+| 2 trim | α 1.9807°, δe −0.053362 rad, throttle 0.77950 | — |
+| 3 short period | **ωn 0.04%, ζ 0.03%** | 0.08% / 0.08% |
+| 3 phugoid | ωn 6.58%, ζ 3.44% | 3.4% |
+| 4 doublet | 0.5584 m/s (u 0.507, v 0.012, w 0.558) | — |
+| 4 rudder kick | 1.5663 m/s (u 1.566, v 1.245, w 0.558) | — |
+
+**The short period went 0.04% → 3.95% → 1.30% → 0.04%, and only the last is honest.** The
+first came from an α̇-contaminated `Cma` of −1.0637 standing in for a coupling the model did
+not have — two errors cancelling. AERORP referencing fixed the coefficient and left the
+missing term exposed (3.95%); resolving the aircraft's own α̇ supplied it (1.30%); `CD_alpha`
+closed the rest (0.04%, now at **both** conditions). The first and last are the same number
+and mean opposite things.
+
+**This is the argument for AERORP referencing, made by measurement.** Referring moments to
+the AERORP makes the pitching moment inherit the force error through `r × F` instead of
+absorbing it into a fitted `Cma`. A drag slope of 0.1267 against JSBSim's 0.2113 could then
+no longer hide, and fixing it moved the short period by 1.3%. The CG-referenced model would
+have shown nothing — it had a coefficient free to absorb exactly that error.
+
+**Layer 4 got worse, and that is not a contradiction.** The doublet moved 0.483 → 0.558 m/s.
+Trajectory divergence is set by total drag along the path; the slope at one point and the
+integral over the path are independently adjustable, so improving the slope does not have to
+improve the integral. Both cases remain inside their derived tolerances (0.6 and 2.0 m/s).
+
+**Still open, and named rather than absorbed:** the phugoid at 6.58%, which is a slow
+drag-and-thrust energy exchange against a thrust model still linear in throttle where
+JSBSim's varies 4.3× across the range; `CDde` (JSBSim's `0.059·|δe|`, frozen into `CD0` at
+the trim elevator, so moving the elevator changes no drag here); Mach scheduling of `Cmde`
+and `Clda`, which is why one aeroplane needs two registry entries; banked trim, where layer
+2's turn case is recorded but not compared; and `wave_drag`, which the comparison does not
+test at all because both engines give exactly zero at M 0.78.
 
 ### The validated baseline — do not touch these tolerances
 
@@ -1417,6 +1490,55 @@ protocol with a linear and a table implementation. That was the option not taken
   interactive rate has still not been re-taken since the re-layout.
 
 ## 9. Session log
+
+### Session 18 — the AtiSim rename, and correcting five stale claims
+
+**The project is now AtiSim.** The import package is `atisim`, the distribution is `atisim`,
+and the display name in the docs and generated reports is **AtiSim**. 1,510 occurrences
+across 156 tracked files, plus `git mv flightsim atisim` and
+`docs/summary/flightsim-summary.pdf` to `atisim-summary.pdf`.
+
+**Two categories were deliberately left at the old name**, because renaming them would
+falsify a record rather than update one:
+
+- **`audit/` in full** — 67 files. The evidence `.md` files quote captured stdout, the logs
+  *are* captured stdout, and `G-archaeology.md` names the real branch
+  `claude/flightsim-sweep-ui-graphs-d4d036`, which still exists under that name. Decisively,
+  `audit_evidence/E-falsification-scripts/common.py` hard-codes a `sys.path.insert` pointing
+  at the **main checkout**, which still contains `flightsim/`. Renaming those imports would
+  have broken scripts that currently work.
+- **`FIX_PROMPT.md` and `analysis-ui-investigation-prompt.md`** — archived prompts, tracked
+  as records by commit `78ca398`. What was asked is not editable after the fact.
+
+**The rename turns this project's worst failure mode into a loud one.** §10's table records
+that a wrong-tree import resolves silently to the main checkout with no error at all. The
+editable install still maps `flightsim`, and nothing installs `atisim`, so on this branch
+that same mistake now raises `ModuleNotFoundError`. Measured, not assumed. It reverts to the
+old hazard the moment anyone runs `pip install -e .` under the new name — §10 carries both.
+
+**Five stale claims corrected**, all of the same kind: a documented fact that a later commit
+made false, with nothing failing to mark it.
+
+| Where | Claimed | Actually |
+|---|---|---|
+| `aircraft.py` x2, `aero.py` x1 | α̇ is applied for the **wind only** and `Cmq` stays folded at −43.0 | `dynamics.derivatives` resolves the aircraft's own α̇ too (commit `cb23a9e`); the 737 carries a **bare** `Cmq` = −27.0 |
+| fidelity spec, "Outcome" + "Explicitly not done" | item 4 (AERORP) and the α̇ solve are **not done** | both were done, in `fdbeff2` and `cb23a9e`; §4 and §5 of that same spec describe them |
+| §4 ledger, session 17 | derivative table, layer 1 lateral, layer 3, layer 4 | written at `1dcc5d4`, before four commits changed all of them — superseded above, not deleted |
+| layer-4 test docstring | doublet u 0.296 / w 0.410; Coriolis floor u 0.403, v 0.012 | measured u 0.507 / w 0.558; the reference's own diagnostics say u 0.409, v 0.028 |
+| §10 | `pytest -q` runs **322 tests** | **626 passed, 1 skipped**, ~8 min |
+
+`pyproject.toml` also gained the `ref = ["jsbsim"]` extra its own design spec's architecture
+table has claimed since `f04bfac` and which was never added. `scripts/gen_jsbsim_reference.py`
+is confirmed the only file importing `jsbsim`.
+
+**Still missing, and not invented here:** session 17 has a §4 ledger entry but **no §9 session
+log entry**, which this document's own update rules require. Writing one retroactively would
+be fabricating a record of work this session did not do, so it is flagged instead.
+
+**Deliberately not done:** none of §4's "still open" items — the phugoid's 6.58% against a
+throttle-linear thrust model, `CDde`, Mach scheduling, banked trim, or a condition above
+M 0.8 that would test `wave_drag` at all. This session changed no physics; the suite is
+626 passed / 1 skipped before and after, which is what makes that claim checkable.
 
 ### Session 16 — remediation: fixing what the audit found, and not fixing the rest
 
@@ -2117,30 +2239,43 @@ What was deliberately not done.
 ## 10. Running it
 
 Python 3.10.11, `.venv` in the project root. All commands are run **from the project
-root**; the scripts import `flightsim` from the editable install, not from `scripts/`.
+root**; the scripts import `atisim` from the editable install, not from `scripts/`.
 
 ### Before you trust a run, check which tree it imported
 
 This is the one failure mode here that produces **no error message at all.** Worktrees do
 not get their own `.venv`; they share the main checkout's, and that editable install's
-finder maps `flightsim` to the **main checkout's** `flightsim/` permanently. The finder is
+finder maps `atisim` to the **main checkout's** `atisim/` permanently. The finder is
 *appended* to `sys.meta_path`, so it is reached only once `sys.path` has already failed —
 and whether `sys.path` succeeds depends on how the process was started. Measured from a
 worktree, all four rows:
 
-| how it is run | what `import flightsim` resolves to |
+| how it is run | what `import atisim` resolves to |
 |---|---|
 | `.venv/Scripts/python.exe -m pytest`, cwd = **worktree root** | **the worktree.** `-m` puts cwd on `sys.path` first |
-| `pytest` / `pytest.exe`, cwd = worktree root | **the main checkout.** The console script does not put cwd on `sys.path`, and `flightsim/tests/conftest.py` imports `flightsim` before pytest's own insertion helps. `sys.path[0]` *is* the worktree by the time a test body runs, which is why this one looks fine and is not |
+| `pytest` / `pytest.exe`, cwd = worktree root | **the main checkout.** The console script does not put cwd on `sys.path`, and `atisim/tests/conftest.py` imports `atisim` before pytest's own insertion helps. `sys.path[0]` *is* the worktree by the time a test body runs, which is why this one looks fine and is not |
 | anything, cwd = **any other directory** — `notebooks/`, `scripts/` | **the main checkout** |
 | any of the above with `PYTHONPATH` set to the **absolute** worktree root | **the worktree** |
 
 So the documented `.venv/Scripts/python.exe -m pytest -q` is safe from the worktree root,
-and **nothing else in that table is.** The check costs one line, run from the directory you
+and **nothing else in that table is.**
+
+> **The `atisim` rename changes this, and for the better — read this before trusting the
+> table above.** The table describes the package when it was called `flightsim`. The editable
+> install still maps **`flightsim`** to the main checkout, and nothing installs `atisim`, so on
+> this branch every row that used to resolve silently to the main checkout now raises
+> `ModuleNotFoundError: No module named 'atisim'` instead. Measured, from `C:/Users/mateusz`:
+> `import atisim` raises `ModuleNotFoundError`; `import flightsim` still returns
+> `.../Claude_Flight_Sim/flightsim/__init__.py`.
+>
+> **The failure mode that produced no error message now produces one.** That holds only until
+> someone runs `pip install -e .` from a tree carrying the new name, which re-creates exactly
+> the old hazard under the new spelling — at which point this table applies again verbatim.
+> The one-line check below is still the thing to run, and is now spelled `atisim`. The check costs one line, run from the directory you
 are about to run the suite from:
 
 ```
-.venv/Scripts/python.exe -c "import flightsim; print(flightsim.__file__)"
+.venv/Scripts/python.exe -c "import atisim; print(atisim.__file__)"
 ```
 
 If that path is not the tree you edited, everything downstream is about someone else's
@@ -2156,9 +2291,9 @@ several sessions, which is the drift §4's rules exist to prevent.
 
 | Command | What it does |
 |---|---|
-| `.venv/Scripts/python.exe -m pytest -q` | 322 tests, 1 skipped. The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `flightsim/tests`. |
+| `.venv/Scripts/python.exe -m pytest -q` | 626 passed, 1 skipped, ~8 min (measured session 18; the 322 this row used to claim was stale by several sessions). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. |
 | `.venv/Scripts/python.exe scripts/sanity.py` | **The ladder, for a reader who does not yet trust the model.** Twelve cases from degenerate inputs upward — zero the wind, zero a coefficient so a motion becomes impossible, then signs, then hand-computable numbers, then structural properties. Every expected value is derived by hand in the source and printed beside the model's answer, so it is read rather than trusted. Ends with the item 08 convention probe, which is a measurement rather than a pass/fail. |
-| `.venv/Scripts/python.exe -m pytest --nbval-lax notebooks/ -q` | **The second gate.** Executes `notebooks/solver-validation.ipynb` so it cannot rot. Needs the `dev` extra (`jupyter`, `nbval`). Deliberately *not* in `testpaths` and `--nbval-lax` is deliberately *not* in `addopts`: that would make every `pytest` run fail with "unrecognized arguments" wherever nbval is absent. **Run it from a worktree with an ABSOLUTE `PYTHONPATH`** — nbval starts the kernel with its cwd in `notebooks/`, so a relative `PYTHONPATH=.` resolves to the wrong directory and `flightsim` silently loads from the main checkout. |
+| `.venv/Scripts/python.exe -m pytest --nbval-lax notebooks/ -q` | **The second gate.** Executes `notebooks/solver-validation.ipynb` so it cannot rot. Needs the `dev` extra (`jupyter`, `nbval`). Deliberately *not* in `testpaths` and `--nbval-lax` is deliberately *not* in `addopts`: that would make every `pytest` run fail with "unrecognized arguments" wherever nbval is absent. **Run it from a worktree with an ABSOLUTE `PYTHONPATH`** — nbval starts the kernel with its cwd in `notebooks/`, so a relative `PYTHONPATH=.` resolves to the wrong directory and `atisim` silently loads from the main checkout. |
 | `.venv/Scripts/python.exe scripts/checkpoint.py` | 747 only, no flags. Trim residuals, 60 s fixed-control hold, longitudinal modes against CR-2144 Table IX-5. |
 | `.venv/Scripts/python.exe scripts/tune.py --aircraft cherokee` | Autopilot step responses for one aircraft. Exits non-zero on failure, so it is usable as a gate. |
 | `.venv/Scripts/python.exe scripts/fly.py --aircraft cherokee --save runs/a.npz` | Interactive flight, basic-T cockpit plus a flight-test overlay. |
@@ -2168,8 +2303,8 @@ several sessions, which is the drift §4's rules exist to prevent.
 | `.venv/Scripts/python.exe scripts/leewave.py --png runs/lw.png` | Flies the 747 through a Doyle et al. lee wave and compares the Bowles F-factor against the aircraft's own `(T−D)/W`. Prints both of the source's flight legs and which of them the engines can cover. |
 | `.venv/Scripts/python.exe scripts/analyse.py runs/a.npz` | Replays a saved `.npz`. Accepts several files; `--png DIR` writes instead of showing. |
 | `.venv/Scripts/python.exe scripts/vortex.py --artifacts runs/analysis` | The same run, **also written as a run artifact per encounter** — Parquet series plus `meta.json` and `checks.json`. Prints `checks ok` or names the checks that failed. Needs the `ui` extra. Until this flag existed, every number in §4's encounter tables came from a run that did not survive the script that produced it. |
-| `.venv/Scripts/python.exe -m flightsim.apps.sweep runs/analysis` | **The analysis UI.** Sweep view per run — provenance header with caveats, check badges, the causal strip stack, the 3D field with the trajectory through it, Fig. 8, and n_z-vs-α — plus a shared time cursor: click any strip and every panel, the 3D marker and the readout move to that sample together. Needs the `ui` extra (`pip install -e .[ui]`). |
-| `.venv/Scripts/python.exe scripts/summary.py docs/summary/flightsim-summary.pdf docs/summary/panel.png` | Rebuilds the plain-English summary PDF (14 pages). The parts that are *computed* cannot drift from the code — the vortex figures call `wind.vortex_wind`, and the aircraft table reads `CRUISE`. **The prose and the summary statistics are literals and can**: the test and line counts were stale by session 7, and four page cross-references were wrong by session 8. The page numbers are now generated from `PAGE_ORDER` with a build-time count check; the statistics are still literals. Re-run it after anything that changes those. |
+| `.venv/Scripts/python.exe -m atisim.apps.sweep runs/analysis` | **The analysis UI.** Sweep view per run — provenance header with caveats, check badges, the causal strip stack, the 3D field with the trajectory through it, Fig. 8, and n_z-vs-α — plus a shared time cursor: click any strip and every panel, the 3D marker and the readout move to that sample together. Needs the `ui` extra (`pip install -e .[ui]`). |
+| `.venv/Scripts/python.exe scripts/summary.py docs/summary/atisim-summary.pdf docs/summary/panel.png` | Rebuilds the plain-English summary PDF (14 pages). The parts that are *computed* cannot drift from the code — the vortex figures call `wind.vortex_wind`, and the aircraft table reads `CRUISE`. **The prose and the summary statistics are literals and can**: the test and line counts were stale by session 7, and four page cross-references were wrong by session 8. The page numbers are now generated from `PAGE_ORDER` with a build-time count check; the statistics are still literals. Re-run it after anything that changes those. |
 
 ### The documents, and which question each answers
 
@@ -2279,9 +2414,9 @@ and passes its tests, but no result should be quoted from it.
 ### Library use, without any script
 
 ```python
-import flightsim                                   # enables x64 — import first
-from flightsim import trim, integrate, autopilot as ap
-from flightsim.aircraft import REGISTRY, CRUISE
+import atisim                                   # enables x64 — import first
+from atisim import trim, integrate, autopilot as ap
+from atisim.aircraft import REGISTRY, CRUISE
 
 ac = REGISTRY["boeing747"]
 V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
