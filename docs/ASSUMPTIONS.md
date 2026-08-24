@@ -78,7 +78,7 @@ Lanchester gives `ωn_phugoid = √2·g/u₀`, so a gravity error should map **1
 frequency. Session 11 reasoned from that to a warning covering every mode. **Session 12
 measured it instead, and the warning was too strong.**
 
-**Bound, measured session 12** — `flightsim.dynamics.G0` replaced by `g(h)`, re-trimmed,
+**Bound, measured session 12** — `atisim.dynamics.G0` replaced by `g(h)`, re-trimmed,
 all five modes recomputed. §4's tolerance is the one each mode is actually asserted to:
 
 | Mode at 747 cruise | g = 9.80665 | g(h) = 9.76922 | Movement | §4 tolerance | Consumed |
@@ -578,7 +578,7 @@ crossing. Asserted by `test_the_curvature_correction_across_the_parks_core_is_me
 across the span — a profile that bends rather than ramps — is carried only by
 `wind.strip_roll_moment`, and its accuracy rests on a DECLARED spanwise loading shape. The two
 physically defensible shapes agree to **2.6%**; including a uniform distribution as a bracket
-widens that to **49.7%**. See `flightsim/provenance.py`, `strip.loading_shape`.
+widens that to **49.7%**. See `atisim/provenance.py`, `strip.loading_shape`.
 
 **Session 14: the strip path is now flyable.** The correction measured above is no longer
 only a diagnostic — `loads.strip_model` feeds strip-integrated rolling moments into the
@@ -1027,9 +1027,9 @@ be interrogated, and review specifically asked for an interface where problems w
 answers could be run by hand.
 
 **What makes it evidence rather than decoration is the division of labour.** The notebook
-contains **no arithmetic**. Every number it displays is computed by `flightsim.verification`
-or `flightsim.validation`, and every one of those numbers is also asserted by a test in
-`flightsim/tests/`. So the notebook cannot drift from the code, and it cannot quietly
+contains **no arithmetic**. Every number it displays is computed by `atisim.verification`
+or `atisim.validation`, and every one of those numbers is also asserted by a test in
+`atisim/tests/`. So the notebook cannot drift from the code, and it cannot quietly
 disagree with the suite. `pytest --nbval-lax notebooks/` executes it as a required gate, so
 a notebook that stops working fails the build rather than rotting.
 

@@ -29,7 +29,7 @@ Princeton University Press, 2022 — already this project's theory backbone, cit
 
 ## 1. Sideslip drag — the reference could not be found, and that is informative
 
-**Measured need.** Integrating the drag terms flightsim lacks over the recorded sideslip history
+**Measured need.** Integrating the drag terms AtiSim lacks over the recorded sideslip history
 accounts for **1.015 m/s of the rudder kick's 1.516 m/s** velocity divergence over 20 s. It is the
 single largest contributor to that case.
 
@@ -39,7 +39,7 @@ single largest contributor to that case.
 
 That absence is not an oversight in the text. **Linear small-perturbation theory has no `CDβ`,
 because drag is an even function of sideslip**: `∂CD/∂β = 0` at β = 0 identically, by symmetry of a
-laterally symmetric airframe. The leading term is second order, `∝ β²`. So flightsim's linear
+laterally symmetric airframe. The leading term is second order, `∝ β²`. So AtiSim's linear
 model is *correct within its own framework* to omit it, and adding it is a deliberate step outside
 that framework rather than the filling of a gap.
 
@@ -226,7 +226,7 @@ exactly the gap between the −0.5328 a difference gives and 737.xml's −0.600.
 
 α̇ and q are nearly collinear in any reachable state, so their **split** is ill-conditioned
 (condition number 1.9e8) while their **sum** is exact. The entry therefore carries the sum, folded,
-which is what flightsim needs.
+which is what AtiSim needs.
 
 ### What it exposed, and this is the important part
 
@@ -237,7 +237,7 @@ But the **short period went from 0.04% to 3.95%**, and the reason is that two er
 cancelling:
 
 - the old `Cma` of −1.0637 was the α̇-contaminated central difference, not the −1.1309 truth;
-- flightsim has no aircraft-motion α̇ coupling, so its linearisation is missing exactly the term
+- AtiSim has no aircraft-motion α̇ coupling, so its linearisation is missing exactly the term
   that contamination stood in for.
 
 A wrong coefficient was compensating a missing term, and the modes agreed almost exactly as a
@@ -248,7 +248,7 @@ which is now the clear next step.
 
 A smaller contribution, 0.6% of the 4%, is the drag error reaching the moment through `r × F`: with
 JSBSim's own force in the transfer the effective `Cma` is −1.1331 against the −1.1309 truth; with
-flightsim's it is −1.1666. AERORP makes the moment inherit the force error rather than absorbing it
+AtiSim's it is −1.1666. AERORP makes the moment inherit the force error rather than absorbing it
 into a fitted constant, which is correct and is another reason the drag terms matter.
 
 ---
@@ -264,13 +264,19 @@ into a fitted constant, which is correct and is another reason the drag terms ma
 
 ## Outcome
 
+**This section was written after items 1-3 and is SUPERSEDED by §4 and §5 below, which
+were appended later.** It is left standing rather than rewritten, per the convention the
+verification spec uses: the record of what was true at each step stays separable from the
+final state. Read §4, §5 and "Explicitly not done" for what actually shipped -- item 4 and
+the aircraft-motion α̇ solve were both subsequently done, and `CD_alpha` was added on top.
+
 Items 1, 2 and 3 are implemented; item 4 is not. Measured after the change:
 
 | | result |
 |---|---|
 | Existing aircraft | bit-for-bit unchanged; both new fields default neutral, asserted |
 | Sideslip drag | even in beta to 1e-12, quadratic to 1e-9, meets JSBSim's table at its 0.26 rad breakpoint |
-| Angle-of-attack rate | exactly zero in still air and under a uniform wind; correct sign and magnitude in a gradient; reaches pitch rate through the real integrator |
+| Angle-of-attack rate | the GUST half is exactly zero in still air and under a uniform wind; correct sign and magnitude in a gradient; reaches pitch rate through the real integrator. (The aircraft's own half, added later in §5's sequence, is not zero in still air -- see `Aircraft.Cmadot`) |
 | Second condition | 5,000 ft / M 0.40, alpha 3.63 deg against cruise's 1.97 deg. Layers 1 and 2 pass at both |
 
 **What moves between the two conditions is itself the check.** `Cmde` -0.894 to -1.067 and
@@ -296,7 +302,7 @@ errors:
 Added after item 4, because item 4 is what made it visible.
 
 `CD_alpha`, a linear profile-drag rise with incidence, recovered from the engine as
-`dCD/dα − 2·CL·CLa/(π·e·AR)` — the total drag slope minus the induced part flightsim already had.
+`dCD/dα − 2·CL·CLa/(π·e·AR)` — the total drag slope minus the induced part AtiSim already had.
 Measured 0.0847 (cruise) and 0.0864 (approach) against 737.xml's CD0 table slope of 0.0808, the
 excess being the CDde and ground-effect residue.
 
@@ -338,5 +344,14 @@ slope does not have to improve the integral.
 
 ## Explicitly not done
 
-Item 4. The aircraft-motion part of α̇ (the `1/(1 − Zẇ)` implicit solve). Spool dynamics, stall,
-and banked trim — all previously identified, none in this round.
+**Corrected after the fact.** This list named item 4 and the aircraft-motion α̇ solve, and both
+were then done — item 4 in §4, the α̇ solve in the sequence §5 records, where it is the step
+that took the short period from 3.95% to 1.30%. The α̇ solve is a one-pass opening of the loop
+rather than the closed-form `1/(1 − Zẇ)` factor, which is exact for every aircraft in this
+registry because all of them carry `CLadot = 0`; `dynamics.derivatives` records the residual for
+the case where one does not.
+
+Genuinely not done, and still open: spool dynamics, stall, and banked trim — all previously
+identified, none in this round. Also `CDde` (JSBSim's `0.059·|δe|`, absorbed into `CD0` at the
+trim elevator), Mach scheduling of `Cmde` and `Clda`, and a recovery condition above M 0.8,
+which is the only thing that would test `wave_drag` at all.

@@ -4,7 +4,7 @@
 
 **Goal:** Turn the live flying path into a basic-T cockpit with a flight-test overlay, flyable through a cited wind field, with a proportional stick and working pitch trim.
 
-**Architecture:** Two new sensor groups in `sensors.py` fed by a factored `dynamics.specific_force`; the live cockpit extracted from `viz.py` into `flightsim/panel.py` and rebuilt as small instrument units around a `Readout` bundle; `wind_model` threaded through `run_live`/`LiveSim` into `integrate.step`; a ramped `Stick` in the panel and a trim axis in `manual.py`.
+**Architecture:** Two new sensor groups in `sensors.py` fed by a factored `dynamics.specific_force`; the live cockpit extracted from `viz.py` into `atisim/panel.py` and rebuilt as small instrument units around a `Readout` bundle; `wind_model` threaded through `run_live`/`LiveSim` into `integrate.step`; a ramped `Stick` in the panel and a trim axis in `manual.py`.
 
 **Tech Stack:** Python 3.10, JAX (x64), matplotlib (Agg in tests, TkAgg live), pytest.
 
@@ -13,7 +13,7 @@
 **Run everything from the project root**, not from the worktree, or the editable install resolves to the main checkout (PROJECT.md §10). Test command throughout:
 
 ```bash
-.venv/Scripts/python.exe -m pytest flightsim/tests -q
+.venv/Scripts/python.exe -m pytest atisim/tests -q
 ```
 
 ---
@@ -22,19 +22,19 @@
 
 | File | Change | Responsibility |
 |---|---|---|
-| `flightsim/dynamics.py` | modify | `specific_force` added; `load_factor` becomes a one-line wrapper |
-| `flightsim/sensors.py` | modify | `AirData.vertical_speed`; new `Accelerations` + `accelerometers` |
-| `flightsim/wind.py` | modify | cited case constants move in from `scripts/vortex.py` |
-| `flightsim/panel.py` | **create** | live cockpit, instrument units, `Stick`, `LiveSim`, `run_live` |
-| `flightsim/viz.py` | modify | keeps `Trajectory`, `Recorder`, `save`/`load`, `derived`, `post_flight` only |
-| `flightsim/manual.py` | modify | `PilotInput.trim`, `ManualGains.trim_rate`, `trim_here` |
+| `atisim/dynamics.py` | modify | `specific_force` added; `load_factor` becomes a one-line wrapper |
+| `atisim/sensors.py` | modify | `AirData.vertical_speed`; new `Accelerations` + `accelerometers` |
+| `atisim/wind.py` | modify | cited case constants move in from `scripts/vortex.py` |
+| `atisim/panel.py` | **create** | live cockpit, instrument units, `Stick`, `LiveSim`, `run_live` |
+| `atisim/viz.py` | modify | keeps `Trajectory`, `Recorder`, `save`/`load`, `derived`, `post_flight` only |
+| `atisim/manual.py` | modify | `PilotInput.trim`, `ManualGains.trim_rate`, `trim_here` |
 | `scripts/fly.py` | modify | `--wind`, `--lead-in`, `--sharpness`; builds the field and the range callable |
 | `scripts/vortex.py` | modify | imports the case constants instead of defining them |
-| `flightsim/tests/test_panel.py` | **create** | live-panel tests moved from `test_viz.py`, plus the new ones |
-| `flightsim/tests/test_viz.py` | modify | keeps log / `derived` / `post_flight` tests |
-| `flightsim/tests/test_dynamics.py` | modify | `specific_force` force check |
-| `flightsim/tests/test_sensors.py` | modify | vertical speed, accelerometers |
-| `flightsim/tests/test_manual.py` | modify | trim axis, `trim_here` |
+| `atisim/tests/test_panel.py` | **create** | live-panel tests moved from `test_viz.py`, plus the new ones |
+| `atisim/tests/test_viz.py` | modify | keeps log / `derived` / `post_flight` tests |
+| `atisim/tests/test_dynamics.py` | modify | `specific_force` force check |
+| `atisim/tests/test_sensors.py` | modify | vertical speed, accelerometers |
+| `atisim/tests/test_manual.py` | modify | trim axis, `trim_here` |
 
 **Off limits** (PROJECT.md §4 validated baseline): `test_conservation.py`, `test_cr2144_modes.py`, `test_drag_polar.py`, `test_navion.py`, `test_trim.py`. If one of these fails, stop and report — do not adjust a tolerance.
 
@@ -43,12 +43,12 @@
 ## Task 1: `dynamics.specific_force`
 
 **Files:**
-- Modify: `flightsim/dynamics.py:62-90`
-- Test: `flightsim/tests/test_dynamics.py`
+- Modify: `atisim/dynamics.py:62-90`
+- Test: `atisim/tests/test_dynamics.py`
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `flightsim/tests/test_dynamics.py`. This mirrors the existing
+Append to `atisim/tests/test_dynamics.py`. This mirrors the existing
 `test_load_factor_matches_the_aerodynamic_and_thrust_force_directly` but asserts all three
 components, so it pins `n_x` and `n_y`, which nothing has ever checked.
 
@@ -60,8 +60,8 @@ def test_specific_force_matches_the_forces_in_all_three_axes(test_aircraft):
     about to drive the slip indicator, so a wrong sign there would be a display
     that is confidently backwards.
     """
-    from flightsim.aero import aero_forces_moments, thrust_force
-    from flightsim.atmosphere import density, speed_of_sound
+    from atisim.aero import aero_forces_moments, thrust_force
+    from atisim.atmosphere import density, speed_of_sound
 
     s = level_state(u=60.0, altitude=2000.0)._replace(omega=jnp.array([0.1, 0.2, -0.05]))
     controls = Controls(
@@ -97,14 +97,14 @@ def test_load_factor_is_the_negated_z_component_of_specific_force(test_aircraft)
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-.venv/Scripts/python.exe -m pytest flightsim/tests/test_dynamics.py -q -k specific_force
+.venv/Scripts/python.exe -m pytest atisim/tests/test_dynamics.py -q -k specific_force
 ```
 
-Expected: FAIL, `AttributeError: module 'flightsim.dynamics' has no attribute 'specific_force'`.
+Expected: FAIL, `AttributeError: module 'atisim.dynamics' has no attribute 'specific_force'`.
 
 - [ ] **Step 3: Implement**
 
-Replace `flightsim/dynamics.py:62-90` with the following. The long docstring moves to
+Replace `atisim/dynamics.py:62-90` with the following. The long docstring moves to
 `specific_force` because that is where the inversion argument now lives; `load_factor` keeps a short
 one naming its convention.
 
@@ -157,7 +157,7 @@ def load_factor(
 - [ ] **Step 4: Run the tests to verify they pass, including the two existing ones unchanged**
 
 ```bash
-.venv/Scripts/python.exe -m pytest flightsim/tests/test_dynamics.py -q
+.venv/Scripts/python.exe -m pytest atisim/tests/test_dynamics.py -q
 ```
 
 Expected: PASS. The two pre-existing `test_load_factor_*` tests must pass **with no edits** — that
@@ -166,7 +166,7 @@ is the regression guard on the factoring.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add flightsim/dynamics.py flightsim/tests/test_dynamics.py
+git add atisim/dynamics.py atisim/tests/test_dynamics.py
 git commit -m "Factor load_factor into specific_force"
 ```
 
@@ -175,12 +175,12 @@ git commit -m "Factor load_factor into specific_force"
 ## Task 2: Vertical speed and the accelerometer package
 
 **Files:**
-- Modify: `flightsim/sensors.py`
-- Test: `flightsim/tests/test_sensors.py`
+- Modify: `atisim/sensors.py`
+- Test: `atisim/tests/test_sensors.py`
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `flightsim/tests/test_sensors.py`.
+Append to `atisim/tests/test_sensors.py`.
 
 ```python
 def test_vertical_speed_is_inertial_and_matches_the_ned_velocity(trimmed):
@@ -225,20 +225,20 @@ def test_accelerometers_report_the_specific_force_with_load_factor_sign(trimmed)
     assert abs(float(n.n_y)) < 1e-6
 ```
 
-Add whatever imports the file is missing at the top: `from flightsim import dynamics, sensors`,
-`from flightsim.aircraft import REGISTRY`, `from flightsim.state import euler_to_quat, quat_to_dcm`.
+Add whatever imports the file is missing at the top: `from atisim import dynamics, sensors`,
+`from atisim.aircraft import REGISTRY`, `from atisim.state import euler_to_quat, quat_to_dcm`.
 
 - [ ] **Step 2: Run to verify they fail**
 
 ```bash
-.venv/Scripts/python.exe -m pytest flightsim/tests/test_sensors.py -q -k "vertical_speed or accelerometers"
+.venv/Scripts/python.exe -m pytest atisim/tests/test_sensors.py -q -k "vertical_speed or accelerometers"
 ```
 
 Expected: FAIL — `AirData` has no `vertical_speed`, `sensors` has no `accelerometers`.
 
 - [ ] **Step 3: Implement**
 
-In `flightsim/sensors.py`, extend the module docstring's sensor table with two entries:
+In `atisim/sensors.py`, extend the module docstring's sensor table with two entries:
 
 ```
     vertical_speed          barometric VSI. INERTIAL. It measures the rate of
@@ -255,8 +255,8 @@ In `flightsim/sensors.py`, extend the module docstring's sensor table with two e
 Add the import and the field:
 
 ```python
-from flightsim.dynamics import relative_velocity, specific_force
-from flightsim.state import State, quat_to_dcm, quat_to_euler
+from atisim.dynamics import relative_velocity, specific_force
+from atisim.state import State, quat_to_dcm, quat_to_euler
 
 
 class AirData(NamedTuple):
@@ -322,13 +322,13 @@ def accelerometers(
     return Accelerations(n_x=n[0], n_y=n[1], n_z=-n[2])
 ```
 
-Add `from flightsim.aircraft import Aircraft` and `from flightsim.state import Controls` to the
+Add `from atisim.aircraft import Aircraft` and `from atisim.state import Controls` to the
 imports.
 
 - [ ] **Step 4: Run the full suite**
 
 ```bash
-.venv/Scripts/python.exe -m pytest flightsim/tests -q
+.venv/Scripts/python.exe -m pytest atisim/tests -q
 ```
 
 Expected: PASS. `test_still_air_sensing_is_unchanged` must still hold to atol 1e-12 — it constructs
@@ -338,7 +338,7 @@ Expected: PASS. `test_still_air_sensing_is_unchanged` must still hold to atol 1e
 - [ ] **Step 5: Commit**
 
 ```bash
-git add flightsim/sensors.py flightsim/tests/test_sensors.py
+git add atisim/sensors.py atisim/tests/test_sensors.py
 git commit -m "Add vertical speed and the accelerometer package to sensors"
 ```
 
@@ -347,12 +347,12 @@ git commit -m "Add vertical speed and the accelerometer package to sensors"
 ## Task 3: Move the cited case data into `wind.py`
 
 **Files:**
-- Modify: `flightsim/wind.py`, `scripts/vortex.py`
+- Modify: `atisim/wind.py`, `scripts/vortex.py`
 
 - [ ] **Step 1: Add the constants to `wind.py`**
 
 Immediately after the `VortexArray` class, so the identified values sit beside the type they
-parameterise. `FT2M` must be imported from `flightsim.units` — check whether it already is.
+parameterise. `FT2M` must be imported from `atisim.units` — check whether it already is.
 
 ```python
 # The two cases Parks et al. 1985 identifies, J. Aircraft 22(2) pp. 127-128.
@@ -381,7 +381,7 @@ Delete the `CASES`, `UPDRAFT_W0` and `UPDRAFT_SECONDS` definitions (currently at
 `scripts/vortex.py:22-29`) and their comments, and import instead:
 
 ```python
-from flightsim.wind import PARKS_CASES as CASES, UPDRAFT_SECONDS, UPDRAFT_W0
+from atisim.wind import PARKS_CASES as CASES, UPDRAFT_SECONDS, UPDRAFT_W0
 ```
 
 `FT2M` may now be unused in `scripts/vortex.py`. Remove it from the import line if so, and nothing
@@ -399,7 +399,7 @@ other number means the constants were transcribed wrong. Delete `runs/plan-task3
 - [ ] **Step 4: Run the suite**
 
 ```bash
-.venv/Scripts/python.exe -m pytest flightsim/tests -q
+.venv/Scripts/python.exe -m pytest atisim/tests -q
 ```
 
 Expected: PASS.
@@ -407,7 +407,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add flightsim/wind.py scripts/vortex.py
+git add atisim/wind.py scripts/vortex.py
 git commit -m "Move the cited vortex and updraft constants into wind.py"
 ```
 
@@ -416,14 +416,14 @@ git commit -m "Move the cited vortex and updraft constants into wind.py"
 ## Task 4: Thread the wind model through the live loop
 
 **Files:**
-- Modify: `flightsim/viz.py` (`LiveSim.__init__`, `LiveSim.advance`, `run_live`)
-- Test: `flightsim/tests/test_viz.py`
+- Modify: `atisim/viz.py` (`LiveSim.__init__`, `LiveSim.advance`, `run_live`)
+- Test: `atisim/tests/test_viz.py`
 
 Done before the panel split so that the split (Task 5) is a pure move with no behaviour change.
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `flightsim/tests/test_viz.py`.
+Append to `atisim/tests/test_viz.py`.
 
 ```python
 def test_a_live_run_through_a_wind_field_differs_from_still_air(trimmed, targets):
@@ -433,7 +433,7 @@ def test_a_live_run_through_a_wind_field_differs_from_still_air(trimmed, targets
     accepted and ignored -- the exact shape of latent bugs (a) and (b), which
     survived three sessions because nothing flew through a non-zero field.
     """
-    from flightsim import wind as wind_mod
+    from atisim import wind as wind_mod
 
     def fly(wind_model):
         state, controls = trimmed
@@ -474,7 +474,7 @@ is the actual invariant:
 
 ```python
 def test_the_live_loop_in_still_air_is_untouched_by_the_wind_plumbing(trimmed, targets):
-    from flightsim import wind as wind_mod
+    from atisim import wind as wind_mod
 
     def fly(**kwargs):
         state, controls = trimmed
@@ -495,17 +495,17 @@ def test_the_live_loop_in_still_air_is_untouched_by_the_wind_plumbing(trimmed, t
 - [ ] **Step 2: Run to verify they fail**
 
 ```bash
-.venv/Scripts/python.exe -m pytest flightsim/tests/test_viz.py -q -k "wind_field or wind_plumbing"
+.venv/Scripts/python.exe -m pytest atisim/tests/test_viz.py -q -k "wind_field or wind_plumbing"
 ```
 
 Expected: FAIL — `LiveSim.__init__` got an unexpected keyword argument `wind_model`.
 
 - [ ] **Step 3: Implement**
 
-In `flightsim/viz.py`, add the import:
+In `atisim/viz.py`, add the import:
 
 ```python
-from flightsim.wind import zero_wind
+from atisim.wind import zero_wind
 ```
 
 `LiveSim.__init__` gains two keyword arguments after `max_steps_per_frame`:
@@ -545,7 +545,7 @@ with a comment saying why:
 - [ ] **Step 4: Run the suite**
 
 ```bash
-.venv/Scripts/python.exe -m pytest flightsim/tests -q
+.venv/Scripts/python.exe -m pytest atisim/tests -q
 ```
 
 Expected: PASS.
@@ -553,22 +553,22 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add flightsim/viz.py flightsim/tests/test_viz.py
+git add atisim/viz.py atisim/tests/test_viz.py
 git commit -m "Thread a wind model through the live flying loop"
 ```
 
 ---
 
-## Task 5: Split the live panel into `flightsim/panel.py`
+## Task 5: Split the live panel into `atisim/panel.py`
 
 A **pure move**. No behaviour changes, no renames, no reformatting. Doing this separately is what
 makes Task 6's diff readable: if the panel breaks, it broke in the re-layout, not in the move.
 
 **Files:**
-- Create: `flightsim/panel.py`, `flightsim/tests/test_panel.py`
-- Modify: `flightsim/viz.py`, `flightsim/tests/test_viz.py`, `scripts/fly.py`
+- Create: `atisim/panel.py`, `atisim/tests/test_panel.py`
+- Modify: `atisim/viz.py`, `atisim/tests/test_viz.py`, `scripts/fly.py`
 
-- [ ] **Step 1: Create `flightsim/panel.py`**
+- [ ] **Step 1: Create `atisim/panel.py`**
 
 Move, verbatim: `KEYMAP`, `TOGGLE_KEY`, `HELP`, the `_BG`/`_FG`/`_SKY`/`_GROUND`/`_SYMBOL`/`_TRACE`
 colour constants, `PITCH_SPAN_DEG`, `_HORIZON_L`, `_push`, `_horizon_frame`, `_quad`, `_ladder`,
@@ -588,16 +588,16 @@ import numpy as np
 from matplotlib.animation import FuncAnimation
 from matplotlib.patches import Polygon
 
-from flightsim import manual as man
-from flightsim.aircraft import Aircraft
-from flightsim.autopilot import Gains, Targets, wrap_pi
-from flightsim.integrate import SimState, step
-from flightsim.manual import Controller, ManualGains, Mode, PilotInput
-from flightsim.sensors import sense
-from flightsim.state import Controls
-from flightsim.units import RAD2DEG
-from flightsim.viz import Recorder, Trajectory
-from flightsim.wind import zero_wind
+from atisim import manual as man
+from atisim.aircraft import Aircraft
+from atisim.autopilot import Gains, Targets, wrap_pi
+from atisim.integrate import SimState, step
+from atisim.manual import Controller, ManualGains, Mode, PilotInput
+from atisim.sensors import sense
+from atisim.state import Controls
+from atisim.units import RAD2DEG
+from atisim.viz import Recorder, Trajectory
+from atisim.wind import zero_wind
 ```
 
 - [ ] **Step 2: Strip `viz.py` back**
@@ -613,7 +613,7 @@ and the post-flight figure only), `Trajectory`, `save`, `load`, `Recorder`, `Der
 - [ ] **Step 3: Update `scripts/fly.py`**
 
 ```python
-from flightsim import integrate, manual as man, panel as panel_mod, trim, viz
+from atisim import integrate, manual as man, panel as panel_mod, trim, viz
 ```
 ```python
 traj = panel_mod.run_live(
@@ -623,7 +623,7 @@ traj = panel_mod.run_live(
 
 - [ ] **Step 4: Split the tests**
 
-Create `flightsim/tests/test_panel.py` with the module docstring, the `matplotlib.use("Agg")`
+Create `atisim/tests/test_panel.py` with the module docstring, the `matplotlib.use("Agg")`
 preamble, the fixtures (`_close_figures`, `trimmed`, `targets`, `live`), `press`, `release`, and
 these tests moved verbatim from `test_viz.py`: the five horizon-geometry tests, the four keyboard
 tests, `test_the_stick_reaches_the_plant`, the three `LiveSim` timing tests, the two `_retime` tests
@@ -641,7 +641,7 @@ Change their imports from `viz.Panel` / `viz.LiveSim` / `viz.PITCH_SPAN_DEG` to 
 - [ ] **Step 5: Run the suite and check the count**
 
 ```bash
-.venv/Scripts/python.exe -m pytest flightsim/tests -q
+.venv/Scripts/python.exe -m pytest atisim/tests -q
 ```
 
 Expected: PASS, and the collected count must be **exactly what it was before the move** — a pure move
@@ -650,8 +650,8 @@ neither adds nor loses a test. Note the number.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add flightsim/panel.py flightsim/viz.py flightsim/tests/test_panel.py flightsim/tests/test_viz.py scripts/fly.py
-git commit -m "Move the live cockpit into flightsim/panel.py"
+git add atisim/panel.py atisim/viz.py atisim/tests/test_panel.py atisim/tests/test_viz.py scripts/fly.py
+git commit -m "Move the live cockpit into atisim/panel.py"
 ```
 
 ---
@@ -659,12 +659,12 @@ git commit -m "Move the live cockpit into flightsim/panel.py"
 ## Task 6: Re-lay-out the panel as a basic T with a test overlay
 
 **Files:**
-- Modify: `flightsim/panel.py`
-- Test: `flightsim/tests/test_panel.py`
+- Modify: `atisim/panel.py`
+- Test: `atisim/tests/test_panel.py`
 
 - [ ] **Step 1: Add the `Readout` and `FieldRange` types**
 
-In `flightsim/panel.py`, above `Panel`:
+In `atisim/panel.py`, above `Panel`:
 
 ```python
 class FieldRange(NamedTuple):
@@ -730,7 +730,7 @@ VSI_SPAN: dict[str, float] = {"boeing747": 20.0, "cherokee": 10.0, "cessna172": 
 
 - [ ] **Step 3: Write the failing instrument tests**
 
-Append to `flightsim/tests/test_panel.py`. These drive instruments directly, which is the point of
+Append to `atisim/tests/test_panel.py`. These drive instruments directly, which is the point of
 the unit shape.
 
 ```python
@@ -829,7 +829,7 @@ first, and only then flip `SLIP_SPAN`'s sign convention, recording the correctio
 - [ ] **Step 5: Run to verify they fail**
 
 ```bash
-.venv/Scripts/python.exe -m pytest flightsim/tests/test_panel.py -q -k "vsi or alpha_band or load_factor_gauge or ball"
+.venv/Scripts/python.exe -m pytest atisim/tests/test_panel.py -q -k "vsi or alpha_band or load_factor_gauge or ball"
 ```
 
 Expected: FAIL — `Panel` has no `aircraft_name`, no `vsi`, no `alpha_gauge`, no `nz_gauge`, no `slip`.
@@ -1186,7 +1186,7 @@ cover every new axes instead:
 - [ ] **Step 8: Run the suite**
 
 ```bash
-.venv/Scripts/python.exe -m pytest flightsim/tests -q
+.venv/Scripts/python.exe -m pytest atisim/tests -q
 ```
 
 Expected: PASS.
@@ -1194,7 +1194,7 @@ Expected: PASS.
 - [ ] **Step 9: Commit**
 
 ```bash
-git add flightsim/panel.py flightsim/tests/test_panel.py
+git add atisim/panel.py atisim/tests/test_panel.py
 git commit -m "Re-lay-out the panel as a basic T with a flight-test overlay"
 ```
 
@@ -1203,8 +1203,8 @@ git commit -m "Re-lay-out the panel as a basic T with a flight-test overlay"
 ## Task 7: Proportional stick
 
 **Files:**
-- Modify: `flightsim/panel.py`
-- Test: `flightsim/tests/test_panel.py`
+- Modify: `atisim/panel.py`
+- Test: `atisim/tests/test_panel.py`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1260,14 +1260,14 @@ def test_the_stick_ramps_per_physics_step_not_per_frame(trimmed, targets):
 - [ ] **Step 2: Run to verify they fail**
 
 ```bash
-.venv/Scripts/python.exe -m pytest flightsim/tests/test_panel.py -q -k stick
+.venv/Scripts/python.exe -m pytest atisim/tests/test_panel.py -q -k stick
 ```
 
 Expected: FAIL — `Panel` has no `stick`.
 
 - [ ] **Step 3: Implement**
 
-In `flightsim/panel.py`:
+In `atisim/panel.py`:
 
 ```python
 # How fast a hand moves a spring-centred stick: full travel in 0.4 s. A DECLARED
@@ -1336,7 +1336,7 @@ The test above calls `live.panel.stick.step(live.dt)` with one argument — chan
 - [ ] **Step 4: Run the suite**
 
 ```bash
-.venv/Scripts/python.exe -m pytest flightsim/tests -q
+.venv/Scripts/python.exe -m pytest atisim/tests -q
 ```
 
 Expected: PASS. `test_opposite_keys_cancel_and_unknown_keys_are_ignored` and
@@ -1346,7 +1346,7 @@ Expected: PASS. `test_opposite_keys_cancel_and_unknown_keys_are_ignored` and
 - [ ] **Step 5: Commit**
 
 ```bash
-git add flightsim/panel.py flightsim/tests/test_panel.py
+git add atisim/panel.py atisim/tests/test_panel.py
 git commit -m "Ramp the keyboard stick, once per physics step"
 ```
 
@@ -1355,12 +1355,12 @@ git commit -m "Ramp the keyboard stick, once per physics step"
 ## Task 8: Pitch trim
 
 **Files:**
-- Modify: `flightsim/manual.py`, `flightsim/panel.py`
-- Test: `flightsim/tests/test_manual.py`, `flightsim/tests/test_panel.py`
+- Modify: `atisim/manual.py`, `atisim/panel.py`
+- Test: `atisim/tests/test_manual.py`, `atisim/tests/test_panel.py`
 
 - [ ] **Step 1: Write the failing tests**
 
-In `flightsim/tests/test_manual.py`:
+In `atisim/tests/test_manual.py`:
 
 ```python
 def test_trim_moves_where_a_released_stick_settles():
@@ -1406,7 +1406,7 @@ real signature rather than inventing a helper:
     )
 ```
 
-In `flightsim/tests/test_panel.py`, the test that shows the payoff:
+In `atisim/tests/test_panel.py`, the test that shows the payoff:
 
 ```python
 def test_trim_here_then_hands_off_holds_altitude(live):
@@ -1432,7 +1432,7 @@ def test_trim_here_then_hands_off_holds_altitude(live):
 - [ ] **Step 2: Run to verify they fail**
 
 ```bash
-.venv/Scripts/python.exe -m pytest flightsim/tests/test_manual.py flightsim/tests/test_panel.py -q -k trim
+.venv/Scripts/python.exe -m pytest atisim/tests/test_manual.py atisim/tests/test_panel.py -q -k trim
 ```
 
 Expected: FAIL — `PilotInput` has no `trim`, `manual` has no `trim_here`.
@@ -1505,7 +1505,7 @@ CHEROKEE_MANUAL = ManualGains(..., trim_rate=jnp.array(0.37 * DEG2RAD))
 CESSNA172_MANUAL = ManualGains(..., trim_rate=jnp.array(0.50 * DEG2RAD))
 ```
 
-`manual.py` needs `from flightsim.units import DEG2RAD`.
+`manual.py` needs `from atisim.units import DEG2RAD`.
 
 - [ ] **Step 4: Implement the panel side**
 
@@ -1544,7 +1544,7 @@ The status block gains the trim position:
 - [ ] **Step 5: Run the suite**
 
 ```bash
-.venv/Scripts/python.exe -m pytest flightsim/tests -q
+.venv/Scripts/python.exe -m pytest atisim/tests -q
 ```
 
 Expected: PASS. If `test_neutral_stick_from_trim_holds_the_trimmed_condition` fails, the trim sign is
@@ -1553,7 +1553,7 @@ inverted — a `PilotInput` with `trim=0.0` must leave the reference untouched t
 - [ ] **Step 6: Commit**
 
 ```bash
-git add flightsim/manual.py flightsim/panel.py flightsim/tests/test_manual.py flightsim/tests/test_panel.py
+git add atisim/manual.py atisim/panel.py atisim/tests/test_manual.py atisim/tests/test_panel.py
 git commit -m "Add pitch trim and a trim-here key"
 ```
 
@@ -1562,8 +1562,8 @@ git commit -m "Add pitch trim and a trim-here key"
 ## Task 9: `fly.py` flags and the field-range readout
 
 **Files:**
-- Modify: `scripts/fly.py`, `flightsim/panel.py`
-- Test: `flightsim/tests/test_panel.py`
+- Modify: `scripts/fly.py`, `atisim/panel.py`
+- Test: `atisim/tests/test_panel.py`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1571,7 +1571,7 @@ git commit -m "Add pitch trim and a trim-here key"
 def test_the_vortex_range_is_zero_at_a_core_and_closes_northbound():
     """The cores are infinite east-west lines, so the distance is a north
     distance and there is no bearing to report."""
-    from flightsim.state import State
+    from atisim.state import State
 
     array = wind_mod.VortexArray(
         north=jnp.array([1000.0, 2000.0]), down=jnp.array([-12192.0, -12192.0]),
@@ -1598,7 +1598,7 @@ def test_the_vortex_range_is_zero_at_a_core_and_closes_northbound():
 - [ ] **Step 2: Run to verify it fails**
 
 ```bash
-.venv/Scripts/python.exe -m pytest flightsim/tests/test_panel.py -q -k vortex_range
+.venv/Scripts/python.exe -m pytest atisim/tests/test_panel.py -q -k vortex_range
 ```
 
 Expected: FAIL — `panel` has no `vortex_range`.
@@ -1733,7 +1733,7 @@ Update the module docstring's key list to include `[ ] t`, and note that `--wind
 - [ ] **Step 5: Run the suite and fly it**
 
 ```bash
-.venv/Scripts/python.exe -m pytest flightsim/tests -q
+.venv/Scripts/python.exe -m pytest atisim/tests -q
 ```
 
 Then, interactively — this is the only step a test cannot cover:
@@ -1749,7 +1749,7 @@ goes red, the encounter is outside the model's linear range and PROJECT.md §7 a
 - [ ] **Step 6: Commit**
 
 ```bash
-git add scripts/fly.py flightsim/panel.py flightsim/tests/test_panel.py
+git add scripts/fly.py atisim/panel.py atisim/tests/test_panel.py
 git commit -m "Fly through a cited wind field, with a field-range readout"
 ```
 
@@ -1796,7 +1796,7 @@ Record the final test count.
 - [ ] **Step 5: Final full run**
 
 ```bash
-.venv/Scripts/python.exe -m pytest flightsim/tests -q
+.venv/Scripts/python.exe -m pytest atisim/tests -q
 ```
 
 Expected: PASS, with the count recorded in §9.

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Verify flightsim's aero build-up, trim solver, linearisation and integrator against JSBSim 1.3.1 by driving both engines with the same coefficients at the same conditions, and report the result as a PDF.
+**Goal:** Verify AtiSim's aero build-up, trim solver, linearisation and integrator against JSBSim 1.3.1 by driving both engines with the same coefficients at the same conditions, and report the result as a PDF.
 
 **Architecture:** A generator script drives JSBSim and freezes its outputs into a reference XML. Tests read only that XML, so the suite never imports `jsbsim`. A `_boeing_737()` registry entry is built from derivatives recovered by finite-differencing the running engine — not read from `737.xml`, because JSBSim applies forces at the AERORP and takes moments about the CG, which changes `Cma` from −0.6 to −1.064.
 
@@ -16,13 +16,13 @@
 
 | File | Responsibility |
 |---|---|
-| `flightsim/aircraft.py` (modify) | `mach_ram` field; `_boeing_737()`; `REGISTRY`/`CRUISE` entries |
-| `flightsim/aero.py` (modify, ~line 198) | Apply the Mach ram factor to thrust |
-| `flightsim/dynamics.py` (modify, ~line 234) | Same factor in the available-thrust path |
-| `flightsim/jsbsim_ref.py` (create) | Parse the reference XML into typed records. **No `jsbsim` import.** Shared by tests and report |
+| `atisim/aircraft.py` (modify) | `mach_ram` field; `_boeing_737()`; `REGISTRY`/`CRUISE` entries |
+| `atisim/aero.py` (modify, ~line 198) | Apply the Mach ram factor to thrust |
+| `atisim/dynamics.py` (modify, ~line 234) | Same factor in the available-thrust path |
+| `atisim/jsbsim_ref.py` (create) | Parse the reference XML into typed records. **No `jsbsim` import.** Shared by tests and report |
 | `scripts/gen_jsbsim_reference.py` (create) | Drive JSBSim, write the XML. **The only file importing `jsbsim`** |
-| `flightsim/tests/data/jsbsim_737_reference.xml` (create) | Frozen reference data |
-| `flightsim/tests/test_jsbsim_737.py` (create) | The four comparison layers |
+| `atisim/tests/data/jsbsim_737_reference.xml` (create) | Frozen reference data |
+| `atisim/tests/test_jsbsim_737.py` (create) | The four comparison layers |
 | `scripts/jsbsim_report.py` (create) | Build the results PDF |
 | `pyproject.toml` (modify) | `ref = ["jsbsim"]` extra |
 
@@ -34,11 +34,11 @@ through one parser rather than two, and so a schema change breaks in one place.
 ### Task 1: Mach ram factor in the thrust model
 
 **Files:**
-- Modify: `flightsim/aircraft.py` (the `Aircraft` NamedTuple; the propulsion comment at ~line 70)
-- Modify: `flightsim/aero.py:198`
-- Modify: `flightsim/dynamics.py:234`
-- Modify: `flightsim/tests/test_conservation.py:26`
-- Test: `flightsim/tests/test_aero.py`
+- Modify: `atisim/aircraft.py` (the `Aircraft` NamedTuple; the propulsion comment at ~line 70)
+- Modify: `atisim/aero.py:198`
+- Modify: `atisim/dynamics.py:234`
+- Modify: `atisim/tests/test_conservation.py:26`
+- Test: `atisim/tests/test_aero.py`
 
 Measured basis (spec, "Thrust model"): the CFM56's `MilThrust` table at M=0 tracks `(ρ/ρ₀)^1.0`
 to 0.6% up to 30,000 ft, so the altitude law is already right. The gap is Mach: at 30,000 ft the
@@ -46,7 +46,7 @@ ratio to M=0 runs 1.000 / 0.954 / 0.960 / 1.016 / 1.121 / 1.277 at M = 0 / 0.2 /
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `flightsim/tests/test_aero.py`:
+Append to `atisim/tests/test_aero.py`:
 
 ```python
 def test_mach_ram_defaults_to_neutral(test_aircraft):
@@ -56,7 +56,7 @@ def test_mach_ram_defaults_to_neutral(test_aircraft):
 
 def test_mach_ram_raises_thrust_with_mach():
     """thrust = throttle * Fmax * (rho/rho0)^n * (1 + mach_ram * M^2)."""
-    from flightsim.tests.conftest import make_test_aircraft
+    from atisim.tests.conftest import make_test_aircraft
     ac = make_test_aircraft()._replace(
         mach_ram=jnp.array(0.2), thrust_lapse=jnp.array(0.0)
     )
@@ -73,15 +73,15 @@ def test_mach_ram_raises_thrust_with_mach():
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `python -m pytest flightsim/tests/test_aero.py -k mach_ram -v`
+Run: `python -m pytest atisim/tests/test_aero.py -k mach_ram -v`
 Expected: FAIL — `AttributeError: 'Aircraft' object has no attribute 'mach_ram'`.
 
-Note: the second test names `aero.thrust_body`. Read `flightsim/aero.py` around line 198 first and
+Note: the second test names `aero.thrust_body`. Read `atisim/aero.py` around line 198 first and
 use whatever that function is actually called; adjust the test to the real name before running.
 
 - [ ] **Step 3: Add the field**
 
-In `flightsim/aircraft.py`, update the propulsion comment and add the field **last** in the
+In `atisim/aircraft.py`, update the propulsion comment and add the field **last** in the
 `Aircraft` NamedTuple (a defaulted field must follow all non-defaulted ones):
 
 ```python
@@ -100,7 +100,7 @@ In `flightsim/aircraft.py`, update the propulsion comment and add the field **la
 
 - [ ] **Step 4: Apply it in both thrust paths**
 
-`flightsim/aero.py:198` becomes:
+`atisim/aero.py:198` becomes:
 
 ```python
     mach = V / a_sound
@@ -113,7 +113,7 @@ In `flightsim/aircraft.py`, update the propulsion comment and add the field **la
 Read the surrounding lines first — `V`, `rho` and `a_sound` must already be in scope, and `mach`
 may already be computed. Do not introduce a second Mach.
 
-`flightsim/dynamics.py:234` becomes:
+`atisim/dynamics.py:234` becomes:
 
 ```python
     available = (
@@ -127,21 +127,21 @@ function has no airspeed at all, leave it alone and record why in the commit mes
 
 - [ ] **Step 5: Add the field name to the conservation field list**
 
-`flightsim/tests/test_conservation.py:26` — append `"mach_ram"` to the tuple of field names.
+`atisim/tests/test_conservation.py:26` — append `"mach_ram"` to the tuple of field names.
 
 - [ ] **Step 6: Run the new tests, then the whole suite**
 
-Run: `python -m pytest flightsim/tests/test_aero.py -k mach_ram -v`
+Run: `python -m pytest atisim/tests/test_aero.py -k mach_ram -v`
 Expected: PASS.
 
-Run: `python -m pytest flightsim/tests -q`
+Run: `python -m pytest atisim/tests -q`
 Expected: PASS, same count as before plus 2. **Any pre-existing test that changes value is a
 failure of the neutral default and must be fixed, not accepted.**
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add flightsim/aircraft.py flightsim/aero.py flightsim/dynamics.py flightsim/tests/test_aero.py flightsim/tests/test_conservation.py
+git add atisim/aircraft.py atisim/aero.py atisim/dynamics.py atisim/tests/test_aero.py atisim/tests/test_conservation.py
 git commit -m "Give thrust the Mach ram term it was missing"
 ```
 
@@ -150,14 +150,14 @@ git commit -m "Give thrust the Mach ram term it was missing"
 ### Task 2: Reference XML parser
 
 **Files:**
-- Create: `flightsim/jsbsim_ref.py`
-- Test: `flightsim/tests/test_jsbsim_737.py` (first tests only)
+- Create: `atisim/jsbsim_ref.py`
+- Test: `atisim/tests/test_jsbsim_737.py` (first tests only)
 
 Written before the generator so the schema is fixed by its reader.
 
 - [ ] **Step 1: Define the schema and parser**
 
-`flightsim/jsbsim_ref.py`:
+`atisim/jsbsim_ref.py`:
 
 ```python
 """Reader for the frozen JSBSim reference data.
@@ -181,7 +181,7 @@ REFERENCE = Path(__file__).parent / "tests" / "data" / "jsbsim_737_reference.xml
 class Condition(NamedTuple):
     name: str
     altitude_m: float        # what JSBSim was run at
-    matched_altitude_m: float  # what flightsim must be run at, for equal density
+    matched_altitude_m: float  # what atisim must be run at, for equal density
     density: float           # kg/m^3, JSBSim's
     sound_speed: float       # m/s, JSBSim's
     airspeed: float          # m/s true
@@ -325,7 +325,7 @@ def load(path: Path = REFERENCE) -> Reference:
 - [ ] **Step 2: Commit the parser**
 
 ```bash
-git add flightsim/jsbsim_ref.py
+git add atisim/jsbsim_ref.py
 git commit -m "Read the frozen reference through one parser, not two"
 ```
 
@@ -336,7 +336,7 @@ git commit -m "Read the frozen reference through one parser, not two"
 **Files:**
 - Create: `scripts/gen_jsbsim_reference.py`
 - Modify: `pyproject.toml`
-- Creates: `flightsim/tests/data/jsbsim_737_reference.xml`
+- Creates: `atisim/tests/data/jsbsim_737_reference.xml`
 
 The only file importing `jsbsim`. Structure it as small functions so re-recovering at a different
 condition is a parameter change (spec, Limitation 1 mitigation).
@@ -356,7 +356,7 @@ ref = ["jsbsim"]
 Requirements, each of which is a spec clause:
 
 1. `matched_altitude(rho_target)` — `scipy.optimize.brentq` on
-   `flightsim.atmosphere.density(h) - rho_target`, bracket ±300 m. **Assert the residual is
+   `atisim.atmosphere.density(h) - rho_target`, bracket ±300 m. **Assert the residual is
    below 1e-10 relative** (success criterion 8).
 2. `trim(mode)` — `simulation/do_simple_trim` for mode 0 (longitudinal) and mode 5 (turn).
 3. `recover_derivatives()` — central differences about trim. Perturb α, β, p, q, r, δe, δa, δr;
@@ -382,7 +382,7 @@ Requirements, each of which is a spec clause:
 - [ ] **Step 3: Generate and inspect**
 
 Run: `python scripts/gen_jsbsim_reference.py`
-Expected: writes `flightsim/tests/data/jsbsim_737_reference.xml`, prints the recovered derivative
+Expected: writes `atisim/tests/data/jsbsim_737_reference.xml`, prints the recovered derivative
 table, and prints `density match residual: <1e-10`.
 
 Sanity-check against the values measured during brainstorming before trusting anything:
@@ -392,16 +392,16 @@ Sanity-check against the values measured during brainstorming before trusting an
 - [ ] **Step 4: Verify byte-stability**
 
 ```bash
-cp flightsim/tests/data/jsbsim_737_reference.xml /tmp/ref1.xml
+cp atisim/tests/data/jsbsim_737_reference.xml /tmp/ref1.xml
 python scripts/gen_jsbsim_reference.py
-diff /tmp/ref1.xml flightsim/tests/data/jsbsim_737_reference.xml && echo "byte-stable"
+diff /tmp/ref1.xml atisim/tests/data/jsbsim_737_reference.xml && echo "byte-stable"
 ```
 Expected: `byte-stable` (success criterion 2).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add scripts/gen_jsbsim_reference.py flightsim/tests/data/jsbsim_737_reference.xml pyproject.toml
+git add scripts/gen_jsbsim_reference.py atisim/tests/data/jsbsim_737_reference.xml pyproject.toml
 git commit -m "Recover the 737 from the running engine, not from its XML"
 ```
 
@@ -410,8 +410,8 @@ git commit -m "Recover the 737 from the running engine, not from its XML"
 ### Task 4: The 737 registry entry
 
 **Files:**
-- Modify: `flightsim/aircraft.py`
-- Test: `flightsim/tests/test_jsbsim_737.py`
+- Modify: `atisim/aircraft.py`
+- Test: `atisim/tests/test_jsbsim_737.py`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -434,7 +434,7 @@ def test_737_zeroes_the_derivatives_jsbsim_lacks():
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `python -m pytest flightsim/tests/test_jsbsim_737.py -k 737_matches -v`
+Run: `python -m pytest atisim/tests/test_jsbsim_737.py -k 737_matches -v`
 Expected: FAIL — `KeyError: 'boeing737'`.
 
 - [ ] **Step 3: Write `_boeing_737()`**
@@ -482,7 +482,7 @@ Then `REGISTRY["boeing737"] = _boeing_737()` and:
 ```python
     # JSBSim 737 cruise: the condition the derivatives were recovered at. The
     # altitude is the DENSITY-MATCHED one, 43 ft below JSBSim's 30,000 ft,
-    # because flightsim's ISA uses geometric altitude where the standard uses
+    # because atisim's ISA uses geometric altitude where the standard uses
     # geopotential. Running at a nominal 30,000 ft would put a 0.16% bias on
     # every force. See the spec, "Matching the input conditions".
     "boeing737": {"altitude": <matched_altitude_m>, "airspeed": <V_si>},
@@ -490,18 +490,18 @@ Then `REGISTRY["boeing737"] = _boeing_737()` and:
 
 - [ ] **Step 4: Run the tests**
 
-Run: `python -m pytest flightsim/tests/test_jsbsim_737.py -v`
+Run: `python -m pytest atisim/tests/test_jsbsim_737.py -v`
 Expected: PASS.
 
 - [ ] **Step 5: Confirm nothing else moved**
 
-Run: `python -m pytest flightsim/tests -q`
+Run: `python -m pytest atisim/tests -q`
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add flightsim/aircraft.py flightsim/tests/test_jsbsim_737.py
+git add atisim/aircraft.py atisim/tests/test_jsbsim_737.py
 git commit -m "Add the 737, and say plainly where it stops being valid"
 ```
 
@@ -510,13 +510,13 @@ git commit -m "Add the 737, and say plainly where it stops being valid"
 ### Task 5: Layer 1 — coefficients
 
 **Files:**
-- Modify: `flightsim/tests/test_jsbsim_737.py`
+- Modify: `atisim/tests/test_jsbsim_737.py`
 
 - [ ] **Step 1: Write the test**
 
 ```python
 def test_layer1_coefficients_match_across_the_sweep():
-    """flightsim's build-up against JSBSim's, at identical read-back states."""
+    """atisim's build-up against JSBSim's, at identical read-back states."""
     ref = jsbsim_ref.load()
     cond = ref.condition["cruise"]
     ac = REGISTRY["boeing737"]
@@ -548,7 +548,7 @@ from the module docstring, not verified.
 
 - [ ] **Step 2: Run**
 
-Run: `python -m pytest flightsim/tests/test_jsbsim_737.py -k layer1 -v`
+Run: `python -m pytest atisim/tests/test_jsbsim_737.py -k layer1 -v`
 
 If it fails, **do not widen the tolerance.** Localise: a constant offset in one coefficient is a
 sign or reference-point error; growth with |α| is the linearisation residual and should already be
@@ -557,7 +557,7 @@ in the derived tolerance; growth with a rate is a non-dimensionalisation error (
 - [ ] **Step 3: Commit**
 
 ```bash
-git add flightsim/tests/test_jsbsim_737.py
+git add atisim/tests/test_jsbsim_737.py
 git commit -m "Compare the build-up coefficient by coefficient"
 ```
 
@@ -566,7 +566,7 @@ git commit -m "Compare the build-up coefficient by coefficient"
 ### Task 6: Layer 2 — trim
 
 **Files:**
-- Modify: `flightsim/tests/test_jsbsim_737.py`
+- Modify: `atisim/tests/test_jsbsim_737.py`
 
 - [ ] **Step 1: Write the test**
 
@@ -593,8 +593,8 @@ return a `.thrust`. If it cannot do a banked trim, keep the longitudinal case, m
 - [ ] **Step 2: Run, then commit**
 
 ```bash
-python -m pytest flightsim/tests/test_jsbsim_737.py -k layer2 -v
-git add flightsim/tests/test_jsbsim_737.py
+python -m pytest atisim/tests/test_jsbsim_737.py -k layer2 -v
+git add atisim/tests/test_jsbsim_737.py
 git commit -m "Trim both engines at the same point and compare"
 ```
 
@@ -603,7 +603,7 @@ git commit -m "Trim both engines at the same point and compare"
 ### Task 7: Layer 3 — modes
 
 **Files:**
-- Modify: `flightsim/tests/test_jsbsim_737.py`
+- Modify: `atisim/tests/test_jsbsim_737.py`
 
 - [ ] **Step 1: Write the test**
 
@@ -634,8 +634,8 @@ a random matrix first — a wrong transform silently produces plausible numbers.
 - [ ] **Step 3: Run, then commit**
 
 ```bash
-python -m pytest flightsim/tests/test_jsbsim_737.py -k layer3 -v
-git add flightsim/tests/test_jsbsim_737.py
+python -m pytest atisim/tests/test_jsbsim_737.py -k layer3 -v
+git add atisim/tests/test_jsbsim_737.py
 git commit -m "Compare the linearisations where the modes live"
 ```
 
@@ -644,7 +644,7 @@ git commit -m "Compare the linearisations where the modes live"
 ### Task 8: Layer 4 — trajectory
 
 **Files:**
-- Modify: `flightsim/tests/test_jsbsim_737.py`
+- Modify: `atisim/tests/test_jsbsim_737.py`
 
 - [ ] **Step 1: Write the test**
 
@@ -673,8 +673,8 @@ rather than physics.
 - [ ] **Step 2: Run, then commit**
 
 ```bash
-python -m pytest flightsim/tests/test_jsbsim_737.py -k layer4 -v
-git add flightsim/tests/test_jsbsim_737.py
+python -m pytest atisim/tests/test_jsbsim_737.py -k layer4 -v
+git add atisim/tests/test_jsbsim_737.py
 git commit -m "Fly both engines through the same doublet"
 ```
 
@@ -724,12 +724,12 @@ git commit -m "Report what the comparison actually found"
 
 - [ ] **Step 1: Full suite with JSBSim importable**
 
-Run: `python -m pytest flightsim/tests -q`
+Run: `python -m pytest atisim/tests -q`
 
 - [ ] **Step 2: Prove the suite does not need JSBSim** (success criterion 1)
 
 ```bash
-python -c "import sys; sys.modules['jsbsim']=None; import pytest; sys.exit(pytest.main(['flightsim/tests','-q']))"
+python -c "import sys; sys.modules['jsbsim']=None; import pytest; sys.exit(pytest.main(['atisim/tests','-q']))"
 ```
 Expected: PASS. If anything imports `jsbsim`, this fails — that is the point.
 

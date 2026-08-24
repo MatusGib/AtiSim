@@ -1,5 +1,5 @@
 [project]
-name = "flightsim"
+name = "atisim"
 version = "0.1.0"
 description = "JAX 6-DOF fixed-wing flight dynamics"
 requires-python = ">=3.10"
@@ -10,20 +10,26 @@ dev = ["pytest", "pymupdf", "jupyter", "nbval"]
 # The analysis UI. A SEPARATE extra rather than a runtime dependency: the
 # simulator and every script in scripts/ must keep working without it, and
 # `pyarrow` alone is a ~90 MB wheel against a four-package runtime list.
-# flightsim/checks.py and flightsim/analysis/artifact.py need pyarrow;
-# flightsim/analysis/figures.py needs plotly; only flightsim/apps needs dash.
+# atisim/checks.py and atisim/analysis/artifact.py need pyarrow;
+# atisim/analysis/figures.py needs plotly; only atisim/apps needs dash.
 ui = ["dash", "plotly", "pyarrow"]
+# The cross-code reference engine, for REGENERATING the JSBSim comparison only.
+# Same reasoning as `ui`: scripts/gen_jsbsim_reference.py is the ONLY file that
+# imports jsbsim, the tests read the frozen XML instead, and the suite must stay
+# runnable without a compiled extension. See
+# docs/superpowers/specs/2026-08-20-jsbsim-737-verification-design.md.
+ref = ["jsbsim"]
 
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["flightsim*"]
+include = ["atisim*"]
 
 [tool.pytest.ini_options]
 # notebooks/ is deliberately NOT here. It needs --nbval-lax, and putting that in
 # addopts would make every pytest run fail with "unrecognized arguments" wherever
 # nbval is not installed -- including any install without the dev extra. The
 # notebook is a separate gate command; see PROJECT.md section 10.
-testpaths = ["flightsim/tests"]
+testpaths = ["atisim/tests"]

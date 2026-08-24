@@ -7,12 +7,12 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-import flightsim  # noqa: F401  -- enables x64
-from flightsim import integrate, trim
-from flightsim.aircraft import CRUISE, REGISTRY
-from flightsim.dynamics import derivatives
-from flightsim.state import Controls, State, euler_to_quat
-from flightsim.units import RAD2DEG
+import atisim  # noqa: F401  -- enables x64
+from atisim import integrate, trim
+from atisim.aircraft import CRUISE, REGISTRY
+from atisim.dynamics import derivatives
+from atisim.state import Controls, State, euler_to_quat
+from atisim.units import RAD2DEG
 
 NAME = "boeing747"
 ac = REGISTRY[NAME]

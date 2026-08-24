@@ -6,7 +6,7 @@ Run from the project root:
 
 SAME RULE AS scripts/summary.py AND scripts/turbulence_report.py. Every number
 in this document is either read from the frozen reference
-(flightsim/tests/data/jsbsim_737_reference.xml, written by
+(atisim/tests/data/jsbsim_737_reference.xml, written by
 scripts/gen_jsbsim_reference.py from JSBSim itself) or computed here by calling
 the project's own code. Nothing is typed in from memory. The one exception is
 the column of 737.xml's own <function> constants on the recovery page, which is
@@ -34,18 +34,18 @@ from matplotlib.patches import FancyBboxPatch
 import jax
 import jax.numpy as jnp
 
-# THIS tree, not whichever one is pip-installed. `flightsim` is installed
+# THIS tree, not whichever one is pip-installed. `atisim` is installed
 # editable against the main checkout, so a script run from a worktree silently
 # imports the OTHER tree's code and reports on it -- no error, just the wrong
 # answers. pytest happens to be immune because it puts its rootdir first.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import flightsim  # noqa: E402, F401  -- enables x64 before any array is made
-from flightsim import aero, integrate, jsbsim_ref, trim, validation  # noqa: E402
-from flightsim.aircraft import REGISTRY  # noqa: E402
-from flightsim.atmosphere import RHO0, density, speed_of_sound  # noqa: E402
-from flightsim.state import Controls, State, euler_to_quat  # noqa: E402
-from flightsim.units import FT2M  # noqa: E402
+import atisim  # noqa: E402, F401  -- enables x64 before any array is made
+from atisim import aero, integrate, jsbsim_ref, trim, validation  # noqa: E402
+from atisim.aircraft import REGISTRY  # noqa: E402
+from atisim.atmosphere import RHO0, density, speed_of_sound  # noqa: E402
+from atisim.state import Controls, State, euler_to_quat  # noqa: E402
+from atisim.units import FT2M  # noqa: E402
 
 OUT = Path(sys.argv[1] if len(sys.argv) > 1 else "docs/summary/jsbsim-737-report.pdf")
 
@@ -162,7 +162,7 @@ def emit(fig, y=None):
         )
     PAGES.append(fig)
     fig.text(0.92, 0.035, str(len(PAGES)), color=MUTED, fontsize=8.5, ha="right")
-    fig.text(0.08, 0.035, "JAX Flight Simulator - JSBSim cross-code verification",
+    fig.text(0.08, 0.035, "AtiSim - JSBSim cross-code verification",
              color=MUTED, fontsize=8.5)
     PDF.savefig(fig)
     plt.close(fig)
@@ -187,7 +187,7 @@ def geopotential(h):
 ATMOS = []
 for h_ft in ATMOS_ALTS_FT:
     h = h_ft * FT2M
-    # JSBSim uses geopotential altitude; flightsim's ISA uses geometric. This
+    # JSBSim uses geopotential altitude; atisim's ISA uses geometric. This
     # reproduces JSBSim's density without importing it, and is checked against
     # the recorded 30,000 ft value below.
     rho_js = float(density(geopotential(h)))
@@ -293,7 +293,7 @@ for case in ("elevator_doublet", "rudder_kick"):
                       per_axis=np.max(np.abs(np.array(per_axis)), axis=0),
                       beta_max=np.degrees(beta_max))
 
-# --- the drag terms flightsim lacks, integrated over each trajectory --------
+# --- the drag terms atisim lacks, integrated over each trajectory --------
 DRIFT = {}
 for case in ("elevator_doublet", "rudder_kick"):
     total, previous = 0.0, REF.trajectory[case][0].t
@@ -325,7 +325,7 @@ ax.add_patch(FancyBboxPatch((0.0, 0.0), 1, 1, boxstyle="square,pad=0",
                             transform=ax.transAxes, facecolor=WASH, edgecolor="none"))
 ax.text(0.086, 0.70, "CROSS-CODE VERIFICATION", color=BLUE, fontsize=9,
         fontweight="bold", transform=ax.transAxes)
-ax.text(0.086, 0.52, "flightsim against JSBSim", color=INK, fontsize=27,
+ax.text(0.086, 0.52, "atisim against JSBSim", color=INK, fontsize=27,
         fontweight="bold", transform=ax.transAxes)
 ax.text(0.086, 0.36, "via the Boeing 737, at 30,000 ft and M 0.78", color=MUTED,
         fontsize=13, transform=ax.transAxes)
@@ -336,7 +336,7 @@ y = para(fig, y,
          "aerodynamic build-up, the trim solve, the linearisation, and a 20-second "
          "integration. A disagreement is then a defect in one of the two codes.")
 y = callout(fig, y, "What this claims",
-            "flightsim's aero build-up, trim solver, linearisation and integrator agree "
+            "atisim's aero build-up, trim solver, linearisation and integrator agree "
             "with an independent, mature engine when both are fed the same coefficients "
             "at the same state.", colour=TEAL)
 y = callout(fig, y, "What this does NOT claim",
@@ -401,7 +401,7 @@ for s in ("top", "right"):
     ax2.spines[s].set_visible(False)
 y -= 0.255
 y = para(fig, y,
-         "flightsim's ISA uses GEOMETRIC altitude where the standard is defined on "
+         "atisim's ISA uses GEOMETRIC altitude where the standard is defined on "
          "GEOPOTENTIAL altitude, so its density runs low, and the error grows with height "
          f"to {abs(ATMOS[3][1]):.3f}% at 30,000 ft and {abs(ATMOS[4][1]):.3f}% at 40,000. "
          "Dynamic pressure is proportional to density, so that is a same-signed bias on "
@@ -409,7 +409,7 @@ y = para(fig, y,
 y = callout(fig, y, "Neutralised by matching density, not altitude",
             "Altitude is not itself an input to the physics; it enters only through "
             "density and the speed of sound. The harness solves for the geometric altitude "
-            f"at which flightsim's density equals JSBSim's -- {COND.matched_altitude:.2f} m, "
+            f"at which atisim's density equals JSBSim's -- {COND.matched_altitude:.2f} m, "
             f"{(COND.matched_altitude - COND.altitude) / FT2M:.2f} ft below the nominal "
             "30,000 ft, which is exactly the geopotential correction arrived at "
             f"independently. Density then agrees to {COND.density_match_residual:.1e} "
@@ -446,7 +446,7 @@ y = callout(fig, y, "Why this decided the whole design",
             "side-force-times-arm arithmetic.", colour=AMBER)
 y = heading(fig, y, "Six derivatives that are absent, and asserted to be")
 y = para(fig, y,
-         "737.xml defines no CLq, CYp, CYr, CYdr, Cnp or Cnda. flightsim carries 0.0 for "
+         "737.xml defines no CLq, CYp, CYr, CYdr, Cnp or Cnda. atisim carries 0.0 for "
          "each, which is agreement rather than approximation: both engines then compute "
          "the same thing. The generator MEASURES all six rather than assuming them, "
          "against a derived floor. That assertion earned its keep: at JSBSim's default "
@@ -461,7 +461,7 @@ emit(fig, y)
 fig = page("Layer 1 - the aerodynamic build-up", kicker="33 sweep points")
 y = 0.86
 y = para(fig, y,
-         "flightsim's aero.coefficients against JSBSim's forces and moments at identical "
+         "atisim's aero.coefficients against JSBSim's forces and moments at identical "
          "read-back states, sweeping alpha, beta, all three rates and all three surfaces. "
          "Driven by the recorded body-axis velocity VECTOR rather than by (V, alpha, "
          "beta), so the comparison cannot depend on how either engine defines alpha and "
@@ -484,13 +484,13 @@ y = para(fig, y,
          "and CY, Cl and Cn are linear in every swept variable in both engines.")
 y = heading(fig, y, "CD and Cm disagree, and the disagreement is accounted for")
 y = para(fig, y,
-         "flightsim has no CD0(alpha) variation, no CDbeta and no CDde; its CD0 is those "
+         "atisim has no CD0(alpha) variation, no CDbeta and no CDde; its CD0 is those "
          "three frozen at trim. Subtracting their predicted departure from trim leaves "
          f"{L1_CD_UNEXPLAINED:.1e} worst case. At the sideslip points, where the raw "
          f"difference is largest at {L1_WORST['CD']:.1e}, the prediction accounts for it "
          "to 2.9e-10.")
 y = callout(fig, y, "A prediction, not an allowance",
-            "The test asserts that the difference EQUALS the terms flightsim is known to "
+            "The test asserts that the difference EQUALS the terms atisim is known to "
             "lack, computed from 737.xml's own table constants. That is a stronger "
             "statement than a tolerance: a real defect would have to disguise itself as a "
             "known missing term to survive. Cm's residual is separately shown to be "
@@ -513,7 +513,7 @@ y = table(fig, y, [
      f"{100 * (FS_THRUST - TRIM.thrust) / TRIM.thrust:+.3f}%"),
     ("throttle", f"{FS_THROTTLE:.6f}", f"{TRIM.throttle:.6f}", ""),
 ], [0.20, 0.20, 0.20, 0.20],
-    header=("", "flightsim", "JSBSim", "difference"), mono_cols=(1, 2, 3))
+    header=("", "atisim", "JSBSim", "difference"), mono_cols=(1, 2, 3))
 y = para(fig, y,
          "The thrust difference is the linear-throttle approximation plus the ram fit "
          "residual. JSBSim blends idle and military thrust nonlinearly with throttle -- "
@@ -557,7 +557,7 @@ for k, (title, pair, ref_pair) in enumerate((
     ax.axvspan(-span, 0.0, color=TEAL, alpha=0.07)
     ax.plot([jr, jr], [ji, -ji], "o", ms=9, mfc="none", mec=BLUE, mew=1.6,
             label="JSBSim")
-    ax.plot([fr, fr], [fi, -fi], "x", color=RED, ms=7, mew=1.6, label="flightsim")
+    ax.plot([fr, fr], [fi, -fi], "x", color=RED, ms=7, mew=1.6, label="atisim")
     ax.axhline(0, color=RULE, lw=0.7)
     ax.axvline(0, color=INK, lw=1.0)
     ax.set_xlim(-span, span * 0.25)
@@ -591,7 +591,7 @@ y = table(fig, y, [
     ("spiral TC, s", f"{FS_LAT[2]:.4f}", f"{JS_LAT[2]:.4f}",
      f"{100 * abs(FS_LAT[2] - JS_LAT[2]) / JS_LAT[2]:.2f}%"),
 ], [0.20, 0.18, 0.18, 0.18],
-    header=("", "flightsim", "JSBSim", "difference"), mono_cols=(1, 2, 3))
+    header=("", "atisim", "JSBSim", "difference"), mono_cols=(1, 2, 3))
 y = callout(fig, y, "JSBSim's linearisation is CLOSED-LOOP",
             "Nothing in its output says so. 737.xml's yaw damper feeds yaw rate to the "
             "rudder with unit gain above M 0.11, geared by 0.35 rad. Against the BARE "
@@ -617,7 +617,7 @@ for k, (case, label) in enumerate((("elevator_doublet", "elevator doublet"),
     d = TRAJ[case]
     ax = fig.add_axes([0.11, y - 0.19 - k * 0.235, 0.37, 0.17])
     ax.plot(d["t"], d["js_u"], color=BLUE, lw=1.6, label="JSBSim")
-    ax.plot(d["t"], d["fs_u"], color=RED, lw=1.1, ls="--", label="flightsim")
+    ax.plot(d["t"], d["fs_u"], color=RED, lw=1.1, ls="--", label="atisim")
     ax.set_ylabel("u, m/s", fontsize=8.5); ax.set_xlabel("t, s", fontsize=8.5)
     ax.set_title(f"{label} - forward speed", fontsize=9.5, color=INK)
     ax.legend(fontsize=7.5, frameon=False)
@@ -667,7 +667,7 @@ emit(fig, y)
 fig = page("The thrust model", kicker="what had to change")
 y = 0.86
 y = para(fig, y,
-         "flightsim's thrust was throttle x maximum x density-ratio^n, with no Mach "
+         "atisim's thrust was throttle x maximum x density-ratio^n, with no Mach "
          "dependence at all. JSBSim's CFM56 gains 12.1% between M 0 and M 0.8 at 30,000 "
          "ft. At the M 0.78 cruise point that is an 11% thrust error, which in a "
          "trajectory comparison appears as a slow speed divergence indistinguishable from "
@@ -706,7 +706,7 @@ y = callout(fig, y, "Two things the measurement corrected",
             "the fitted lapse at the cruise throttle is 0.72, not 1.0, because that table "
             "is full power and the idle-to-military blend at a part-throttle setting "
             "lapses differently. And max_thrust fits to about 11,700 lbf per engine "
-            "against a 20,000 lbf rating, because flightsim's throttle map is linear and "
+            "against a 20,000 lbf rating, because atisim's throttle map is linear and "
             "JSBSim's is not. Neither number means what its name suggests here.",
             colour=AMBER)
 y = para(fig, y,
@@ -732,7 +732,7 @@ y = callout(fig, y, "1. The 737 entry is valid only near cruise",
             colour=RED)
 rows = [
     ("2", "Two of the six shipped 737 reference scripts are unused. Both are ground-roll "
-          "cases and flightsim has no landing-gear model, so they are unmodellable rather "
+          "cases and atisim has no landing-gear model, so they are unmodellable rather "
           "than merely out of scope."),
     ("3", "The frozen reference can go stale silently. The suite reads the checked-in XML "
           "and never imports JSBSim, which is what makes it portable; a JSBSim release "

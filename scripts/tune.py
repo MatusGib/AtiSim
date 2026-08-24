@@ -10,14 +10,14 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-import flightsim  # noqa: F401
-from flightsim import autopilot as ap_mod
-from flightsim import integrate, trim
-from flightsim.aero import air_data
-from flightsim.aircraft import CRUISE, REGISTRY
-from flightsim.sensors import sense
-from flightsim.state import quat_to_euler
-from flightsim.units import RAD2DEG
+import atisim  # noqa: F401
+from atisim import autopilot as ap_mod
+from atisim import integrate, trim
+from atisim.aero import air_data
+from atisim.aircraft import CRUISE, REGISTRY
+from atisim.sensors import sense
+from atisim.state import quat_to_euler
+from atisim.units import RAD2DEG
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--aircraft", default="boeing747", choices=sorted(REGISTRY))

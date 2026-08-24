@@ -15,7 +15,7 @@ JSBSim 1.3.1 is installed as a Python extension (GitHub build 1837, commit
 headless and is fully drivable through its property tree. This spec uses it as an independent
 reference **engine** — not as a reference **dataset**.
 
-**What this claims:** flightsim's aerodynamic build-up, trim solver, linearisation and integrator
+**What this claims:** AtiSim's aerodynamic build-up, trim solver, linearisation and integrator
 agree with an independent, mature 6-DOF engine when both are fed the same coefficients at the same
 state.
 
@@ -29,8 +29,8 @@ state.
 | Aero mapping | **Linearise at cruise.** Recover equivalent constant derivatives by finite-differencing JSBSim about its own trimmed cruise point; assert agreement in a stated neighbourhood. |
 | Comparison depth | **Four layers**: coefficients, trim, modes, trajectory. |
 | Where the data lives | **Hard-coded `_boeing_737()` in project style, plus a frozen reference XML** of JSBSim's own outputs. Tests never import `jsbsim`. |
-| On disagreement | **Diagnose and report; fix only unambiguous flightsim defects.** Nothing changes on JSBSim's authority alone. |
-| Thrust model | **Add a Mach ram term to flightsim** rather than prescribing thrust into the trajectory layer. |
+| On disagreement | **Diagnose and report; fix only unambiguous AtiSim defects.** Nothing changes on JSBSim's authority alone. |
+| Thrust model | **Add a Mach ram term to AtiSim** rather than prescribing thrust into the trajectory layer. |
 
 ## Source qualification
 
@@ -74,7 +74,7 @@ Measured, at 30,000 ft / M 0.78:
 | `CLa` | +4.3478 /rad (table slope) | +4.3478 /rad | Exact — no offset effect on lift |
 | `CLde` | +0.200 /rad | +0.2000 /rad | Exact |
 
-flightsim applies aero forces at the CG. Transcribing `Cmalpha = −0.6` would therefore have
+AtiSim applies aero forces at the CG. Transcribing `Cmalpha = −0.6` would therefore have
 produced a 737 with 56% of the correct pitch stiffness, and the resulting mode mismatch would have
 been indistinguishable from a defect in `dynamics.py`. Recovering from the running engine folds the
 offset in automatically and is the only mapping that is correct by construction.
@@ -87,10 +87,10 @@ and drag acting 4.93 ft above the CG contributes roughly +0.009 nose-up, for ≈
 
 | Path | Contents |
 |---|---|
-| `flightsim/aircraft.py` | `_boeing_737()`, `REGISTRY["boeing737"]`, `CRUISE["boeing737"]`. Existing style: literal numbers, unit conversions, per-line provenance |
+| `atisim/aircraft.py` | `_boeing_737()`, `REGISTRY["boeing737"]`, `CRUISE["boeing737"]`. Existing style: literal numbers, unit conversions, per-line provenance |
 | `scripts/gen_jsbsim_reference.py` | Drives JSBSim and writes the reference XML. **The only file that imports `jsbsim`** |
-| `flightsim/tests/data/jsbsim_737_reference.xml` | Frozen: trim point, recovered derivatives, A/B matrices, trajectory samples, tolerance derivations, JSBSim version and commit |
-| `flightsim/tests/test_jsbsim_737.py` | The four layers. Reads the XML. Never imports `jsbsim` |
+| `atisim/tests/data/jsbsim_737_reference.xml` | Frozen: trim point, recovered derivatives, A/B matrices, trajectory samples, tolerance derivations, JSBSim version and commit |
+| `atisim/tests/test_jsbsim_737.py` | The four layers. Reads the XML. Never imports `jsbsim` |
 | `scripts/jsbsim_report.py` | Builds the results PDF |
 | `docs/summary/jsbsim-737-report.pdf` | Plots and tables of every layer's results |
 | `pyproject.toml` | New `ref = ["jsbsim"]` extra |
@@ -124,7 +124,7 @@ positive-forward-up sense and negates it internally. The implementation must est
 convention the reported +19109.1 is in and assert it, rather than pick one.
 
 **Six derivatives are absent from JSBSim's 737** — `CLq`, `CYp`, `CYr`, `CYdr`, `Cnp`, `Cnda` — so
-flightsim gets 0.0 for each. This is agreement, not approximation: both engines then compute the
+AtiSim gets 0.0 for each. This is agreement, not approximation: both engines then compute the
 same thing. The generator **asserts the finite difference returns zero** for all six rather than
 assuming it, converting six silent-mismatch risks into six checks. Note in particular that
 JSBSim's 737 has `Cndr` and `Cldr` but **no `CYdr`**: rudder produces yaw and roll moments but no
@@ -136,10 +136,10 @@ Induced drag: JSBSim uses `CDi = 0.043·CL²`. Setting `e` so that `CL²/(π·e�
 ## Thrust model — adding a Mach ram term
 
 Measured during brainstorming: the CFM56's `MilThrust` table at M = 0 tracks `(ρ/ρ₀)^1.0` to within
-0.6% up to 30,000 ft (2.2% at 40–50k). flightsim's existing `throttle · Fmax · (ρ/ρ₀)^n` already
+0.6% up to 30,000 ft (2.2% at 40–50k). AtiSim's existing `throttle · Fmax · (ρ/ρ₀)^n` already
 reproduces JSBSim's **altitude** behaviour with `thrust_lapse = 1.0` and no change whatever.
 
-The genuine gap is **Mach**, which flightsim has none of. At 30,000 ft, normalised to M = 0:
+The genuine gap is **Mach**, which AtiSim has none of. At 30,000 ft, normalised to M = 0:
 
 | Mach | 0.0 | 0.2 | 0.4 | 0.6 | 0.8 | 1.0 |
 |---|---|---|---|---|---|---|
@@ -169,7 +169,7 @@ once and looks like a defect in the code.
 
 Measured directly against JSBSim, not inferred from documentation:
 
-| Input | JSBSim behaviour | flightsim convention | Agree? |
+| Input | JSBSim behaviour | AtiSim convention | Agree? |
 |---|---|---|---|
 | β > 0 | `v-fps` = +40.6, `aero/beta-rad` = +0.0523 | `beta = arcsin(v/V)`, relative wind from the right | yes |
 | β > 0 → side force | `fwy-aero` = −16424 (`CYb` = −1) | `CYb < 0` | yes |
@@ -187,7 +187,7 @@ axes, not just pitch.
 
 ### Atmosphere: one systematic error found, diagnosed, and neutralised
 
-flightsim's ISA and JSBSim's disagree, and the error grows with altitude:
+AtiSim's ISA and JSBSim's disagree, and the error grows with altitude:
 
 | altitude | 0 | 10,000 ft | 20,000 ft | 30,000 ft | 40,000 ft |
 |---|---|---|---|---|---|
@@ -204,9 +204,9 @@ modelling defect. It consumes about 22% of the layer-2 trim tolerance on its own
 
 **Neutralised by matching on density rather than on altitude.** Altitude is not itself an input to
 the physics; it enters only through ρ and a. The harness therefore solves for the geometric
-altitude at which flightsim's density equals JSBSim's, and runs flightsim there:
+altitude at which AtiSim's density equals JSBSim's, and runs AtiSim there:
 
-| JSBSim altitude | flightsim altitude | shift | ρ error | a error |
+| JSBSim altitude | AtiSim altitude | shift | ρ error | a error |
 |---|---|---|---|---|
 | 30,000 ft | 29,956.78 ft | −43.22 ft | −0.159% → **2.4e-14** | −0.0185% → **+0.0002%** |
 | 40,000 ft | 39,923.36 ft | −76.64 ft | −0.368% → **3.9e-13** | +0.0001% → **+0.0001%** |
@@ -223,7 +223,7 @@ filed as a separate finding rather than fixed here, per Limitation 5.
 Common protocol, forced by a finding: JSBSim's FCS **injects control deflections that were never
 commanded**. With zero rudder command at M 0.78, `fcs/rudder-pos-rad` reads 0.0035 — the
 scheduled-gain yaw damper, active above M 0.11. Therefore every layer **reads back** JSBSim's
-actual α, β, rates and surface positions and feeds *those* to flightsim. Commanded values are never
+actual α, β, rates and surface positions and feeds *those* to AtiSim. Commanded values are never
 assumed to have taken effect.
 
 ### Layer 1 — coefficients
@@ -259,7 +259,7 @@ after the `(vt, α) → (u, w)` transform, on eigenvalues.
   asserts `fcs/rudder-pos-rad` hits target each step. This neutralises the FCS without modifying
   the stock model.
 - **Thrust is verified, not prescribed**, with throttle held at its trim value.
-- **Earth-model differences are measured, not absorbed.** flightsim is flat-Earth with constant
+- **Earth-model differences are measured, not absorbed.** AtiSim is flat-Earth with constant
   g = 9.80665; JSBSim is WGS-84 with inverse-square gravity — a 0.28% g difference at 30,000 ft
   (9.779 vs 9.807) plus Coriolis ≈ 0.025 m/s² at 47° latitude. JSBSim's gravity model is set to
   constant-g, and the residual Coriolis contribution is quantified by running lat 0° against
@@ -267,7 +267,7 @@ after the `(vt, α) → (u, w)` transform, on eigenvalues.
 
 ### Tolerances
 
-Derived, not tuned. flightsim's 737 is a linearisation, so it matches exactly only at the reference
+Derived, not tuned. AtiSim's 737 is a linearisation, so it matches exactly only at the reference
 point; away from it the residual is dominated by known nonlinearities (the `CD0(α)` table
 curvature, the `CL(α)` table rolling over). Each tolerance is set to that analytically-computed
 residual plus margin.
@@ -308,7 +308,7 @@ parameter change rather than a rewrite.
 
 ### 2. Two of the six shipped 737 reference scripts are not used
 
-`B737_Runway.xml` and `b737_runway_new.xml` are ground-roll cases. flightsim has no landing-gear or
+`B737_Runway.xml` and `b737_runway_new.xml` are ground-roll cases. AtiSim has no landing-gear or
 ground-reaction model, so they are unmodellable rather than merely out of scope. The report states
 this explicitly rather than quietly presenting four-of-six as complete coverage.
 
@@ -344,7 +344,7 @@ the same way.
 
 ## Success criteria
 
-1. `pytest flightsim/tests/test_jsbsim_737.py` passes **with JSBSim not installed**.
+1. `pytest atisim/tests/test_jsbsim_737.py` passes **with JSBSim not installed**.
 2. `python scripts/gen_jsbsim_reference.py` reproduces the checked-in XML byte-for-byte on a machine
    with JSBSim 1.3.1.
 3. The existing suite stays green, and the four pre-existing aircraft plus the `conftest` fixture
@@ -405,7 +405,7 @@ far more of its own damping, so solving for the rate gain reproducing the 747's 
 damping gives `p_d` = −0.18 — negative, i.e. deliberately de-damping a well-behaved roll mode. The
 loop is sized from the 737's own dynamics instead.
 
-**Scripts in a worktree import the wrong tree.** `flightsim` is pip-installed editable against the
+**Scripts in a worktree import the wrong tree.** `atisim` is pip-installed editable against the
 main checkout, so `python scripts/foo.py` from a worktree silently runs the *other* tree's code —
 no error, just wrong answers. pytest is immune because it puts its rootdir first, which is exactly
 why a green suite did not catch it. Both scripts now insert their own tree ahead of the installed one.
@@ -417,11 +417,11 @@ why a green suite did not catch it. Both scripts now insert their own tree ahead
 throttle, where the idle/military blend lapses differently. Fitted at the trim throttle over
 25,000–35,000 ft the exponent is 0.7208, with a 1.79% residual. Fitting over 10,000–40,000 ft
 instead leaves 6.75%, so the fit is band-limited like everything else here. `max_thrust` likewise
-fits to ~11,700 lbf per engine against a 20,000 lbf rating, because flightsim's throttle map is
+fits to ~11,700 lbf per engine against a 20,000 lbf rating, because AtiSim's throttle map is
 linear and JSBSim's varies 4.3× across the range.
 
 **Layer 4's residual is layer 1's missing drag, not Dutch-roll phase.** The divergence is secular,
-not oscillatory. Integrating the drag terms flightsim has no home for over the recorded sideslip
+not oscillatory. Integrating the drag terms AtiSim has no home for over the recorded sideslip
 history predicts 1.015 m/s of the rudder kick's 1.516 m/s, and 0.002 m/s for the elevator doublet
 — which is why that case sits at the 0.409 m/s Earth-rotation floor. An earlier claim attributing
 it to accumulated Dutch-roll phase was wrong and is corrected in the test and the report.
@@ -439,7 +439,7 @@ reference, so the comparison is one banked-trim solver away. The test asserts th
 skipping, so adding one forces the comparison to be written.
 
 **Tolerances for `CD` and `Cm` became predictions rather than allowances.** Both are computed from
-737.xml's own table constants: the `CD` difference is asserted to *equal* the terms flightsim lacks
+737.xml's own table constants: the `CD` difference is asserted to *equal* the terms AtiSim lacks
 (3.6e-4 worst residual, 2.9e-10 at the sideslip points), and `Cm` is bounded by its two identified
 mechanisms and separately asserted exact at the reference point (5.9e-7).
 
@@ -452,7 +452,7 @@ mechanisms and separately asserted exact at the reference point (5.9e-7).
 | 3 modes | short period wn 0.04% / ζ 0.02%; phugoid 3.3% / 1.1%; lateral all under 3.3% |
 | 4 trajectory | elevator doublet 0.410 m/s (floor 0.409); rudder kick 1.52 m/s |
 
-No defect was found in flightsim. Every disagreement traces to a documented model difference with a
+No defect was found in AtiSim. Every disagreement traces to a documented model difference with a
 measured magnitude.
 
 ## Explicitly not done

@@ -32,7 +32,7 @@ display, joystick/gamepad input, re-tuning `ManualGains`, and anything touching 
 | Live wind | **Plumbed, with a display.** `--wind` on `fly.py`, wind and gust rate on the panel. |
 | Input | **Keyboard, proportional, plus trim.** Held keys ramp; pitch trim on two keys plus a trim-here key. |
 | `ManualGains` | **Not re-tuned this session.** The ramp delivers fine control on its own; re-tuning is hand work verifiable only by flying, and `test_manual.py`'s response tests are too loose to pin it. |
-| Code structure | **New `flightsim/panel.py`.** `viz.py` is 791 lines doing three jobs; this work would take it past 1100. |
+| Code structure | **New `atisim/panel.py`.** `viz.py` is 791 lines doing three jobs; this work would take it past 1100. |
 | Slip indicator | **Lateral specific force `n_y`, not β.** A ball is a pendulum. See below. |
 | AoA red band | **A declared modelling constant**, cited to PROJECT.md §7, not to a source table. |
 
@@ -93,7 +93,7 @@ goes red during implementation and the constant flips.
 
 ## Panel
 
-`flightsim/panel.py` takes the live cockpit and `LiveSim`. `viz.py` keeps `Trajectory`, `Recorder`,
+`atisim/panel.py` takes the live cockpit and `LiveSim`. `viz.py` keeps `Trajectory`, `Recorder`,
 `save`/`load`, `derived` and `post_flight` — the log and the post-flight figure, which is one job.
 
 ### Layout

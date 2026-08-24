@@ -2,7 +2,7 @@
 
 Run from the project root:
 
-    .venv/Scripts/python.exe scripts/summary.py         docs/summary/flightsim-summary.pdf docs/summary/panel.png
+    .venv/Scripts/python.exe scripts/summary.py         docs/summary/atisim-summary.pdf docs/summary/panel.png
 
 Every number in the document is either taken from a cited source document, taken
 from docs/PROJECT.md section 4 (where it was measured against a test), or
@@ -21,10 +21,10 @@ from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 
 import jax.numpy as jnp
-import flightsim  # noqa: F401
-from flightsim import wind
-from flightsim.aircraft import CRUISE, REGISTRY
-from flightsim.units import FT2M, RAD2DEG
+import atisim  # noqa: F401
+from atisim import wind
+from atisim.aircraft import CRUISE, REGISTRY
+from atisim.units import FT2M, RAD2DEG
 
 OUT = Path(sys.argv[1])
 PANEL_PNG = Path(sys.argv[2])
@@ -124,7 +124,7 @@ def table(fig, y, rows, widths, header=None, size=8.6, rowh=0.0175, mono_cols=()
 
 def footer(fig, n):
     fig.text(0.92, 0.035, str(n), color=MUTED, fontsize=8.5, ha="right")
-    fig.text(0.08, 0.035, "JAX Flight Simulator — project summary", color=MUTED, fontsize=8.5)
+    fig.text(0.08, 0.035, "AtiSim — project summary", color=MUTED, fontsize=8.5)
 
 
 PAGES = []
@@ -189,7 +189,7 @@ with PdfPages(OUT) as pdf:
     ax = fig.add_axes([0, 0.62, 1, 0.38]); ax.set_axis_off()
     ax.add_patch(FancyBboxPatch((0, 0), 1, 1, boxstyle="square,pad=0",
                                 transform=ax.transAxes, facecolor="#12263a", lw=0))
-    ax.text(0.08, 0.70, "JAX Flight Simulator", transform=ax.transAxes,
+    ax.text(0.08, 0.70, "AtiSim", transform=ax.transAxes,
             color="white", fontsize=31, fontweight="bold")
     ax.text(0.08, 0.56, "What the project is, what it proves, and what it does not",
             transform=ax.transAxes, color="#9fc0dd", fontsize=13)
@@ -818,7 +818,7 @@ with PdfPages(OUT) as pdf:
     fig = page(pdf, "Running it, and how fast it goes", "Practicalities")
     y = 0.865
     rows = [
-        ("python -m pytest flightsim/tests -q", "All 260 tests. The only complete statement of\nwhat works."),
+        ("python -m pytest atisim/tests -q", "All 260 tests. The only complete statement of\nwhat works."),
         ("python scripts/fly.py", "Fly it yourself, in still air."),
         ("python scripts/fly.py --wind hannibal", "Fly into the 1985 vortex array."),
         ("python scripts/vortex.py", "Run the turbulence analysis and draw the figure."),
@@ -966,7 +966,7 @@ with PdfPages(OUT) as pdf:
     check_pagination()
 
     info = pdf.infodict()
-    info["Title"] = "JAX Flight Simulator - project summary"
+    info["Title"] = "AtiSim - project summary"
     info["Subject"] = "Plain-English summary with cited sources"
 
 print(f"wrote {OUT}  ({len(PAGES)} pages)")
