@@ -459,6 +459,43 @@ def linearization(work_dir):
 # --------------------------------------------------------------------------
 # trajectory
 # --------------------------------------------------------------------------
+def assert_inertia(A, inertia, Clp, rho, V, S, b):
+    """Check the tensor's cross-product SIGN against the engine's own coupling.
+
+    The magnitudes are read straight off the engine and cannot be wrong; the
+    sign is a convention, and a convention is exactly what a generator should
+    not be free to assume. Writing it into the reference and then having the
+    tests compare atisim's tensor to that reference checks a transcription,
+    not a convention -- both sides descend from this file.
+
+    737.xml defines neither Cnp nor CYp, so roll rate produces no yaw moment and
+    no side force, which leaves the engine's yaw-rate response to roll rate as
+    pure inertia coupling and makes L_p the same about the CG and the AERORP:
+
+        d(rdot)/dp = -Jxz * L_p / (Ixx*Izz - Jxz^2)
+
+    The p column of A is also immune to the yaw damper, which feeds r. So this
+    is a clean, one-term identity, and it is off by a factor of exactly -1 if
+    the sign is wrong -- which is how the error was eventually found.
+    """
+    Ixx, Izz, Jxz = inertia[0, 0], inertia[2, 2], inertia[0, 2]
+    Lp = Clp * 0.5 * rho * V**2 * S * b * (b / (2.0 * V))
+    predicted = -Jxz * Lp / (Ixx * Izz - Jxz**2)
+    measured = A[8][6]  # [vt, alpha, theta, q, beta, phi, p, psi, r, ...]
+    error = abs(predicted - measured) / abs(measured)
+    if error > 1e-6:
+        raise SystemExit(
+            f"the inertia cross-product term disagrees with JSBSim's own "
+            f"linearisation: predicted d(rdot)/dp = {predicted:.6e}, engine "
+            f"says {measured:.6e} ({error:.1%} out).\n"
+            "A factor of -1 means the Ixz sign convention above is wrong. "
+            "Anything else means Cnp or CYp is no longer absent, and the "
+            "identity this check rests on no longer holds."
+        )
+    print(f"inertia cross-product sign confirmed against A[rdot, p] "
+          f"({measured:+.6e}, {error:.1e} relative)")
+
+
 def doublet(t, amplitude, start=1.0, width=2.0):
     if start <= t < start + width:
         return amplitude
@@ -747,10 +784,18 @@ def build(condition_name):
     print(f"density match residual: {residual:.3e}  (altitude shift "
           f"{(h_match - h_js) / FT2M:+.2f} ft)")
 
+    # inertia/ixz-slugs_ft2 is the TENSOR ELEMENT, not the positive-forward-up
+    # product inertia. It goes in as reported. Negating it here -- which is what
+    # this line used to do, on the reasoning that 737.xml carries
+    # negated_crossproduct_inertia="true" -- negates a value the engine has
+    # already resolved, and flew the 737 with its cross-product term backwards
+    # through an entire comparison without any layer noticing. `assert_inertia`
+    # below now settles the sign against the engine instead of against this
+    # comment.
     inertia = np.array([
-        [lon["inertia/ixx-slugs_ft2"], 0.0, -lon["inertia/ixz-slugs_ft2"]],
+        [lon["inertia/ixx-slugs_ft2"], 0.0, lon["inertia/ixz-slugs_ft2"]],
         [0.0, lon["inertia/iyy-slugs_ft2"], 0.0],
-        [-lon["inertia/ixz-slugs_ft2"], 0.0, lon["inertia/izz-slugs_ft2"]],
+        [lon["inertia/ixz-slugs_ft2"], 0.0, lon["inertia/izz-slugs_ft2"]],
     ]) * SLUG_FT2_TO_KG_M2
 
     # --- derivatives ---
@@ -828,6 +873,7 @@ def build(condition_name):
     # --- linearisation ---
     A, B, x0, u0 = linearization(work)
     print("linearisation state ordering re-derived and confirmed")
+    assert_inertia(A, inertia, d["Clp"], rho, entry["airspeed"], entry["S"], entry["b"])
 
     # --- trajectories ---
     trajectories = {}

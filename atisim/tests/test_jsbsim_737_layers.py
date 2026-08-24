@@ -4,11 +4,13 @@ Split from test_jsbsim_737.py, which establishes that the registry entry is the
 one the generator recovered. This file asks the actual question: does atisim
 compute the same answers as an independent engine given the same coefficients?
 
-Every tolerance here is DERIVED and its derivation is in the docstring beside
-it. Where the two models genuinely differ, the difference is predicted from
-JSBSim's own table constants and the prediction is asserted -- which is a
-stronger statement than allowing a tolerance, because a real defect would have
-to disguise itself as a known missing term to survive.
+Every tolerance here carries its reasoning in the docstring beside it, and says
+which kind it is. Layer 1's CD and Cm bounds are PREDICTIONS, computed from
+737.xml's own table constants -- a stronger statement than an allowance, because
+a real defect would have to disguise itself as a known missing term to survive.
+Layer 4's backstops are ALLOWANCES and are labelled as such rather than dressed
+up; the predictive statements about layer 4 live in the two tests that separate
+the replay artifact from the model difference.
 
 Design: docs/superpowers/specs/2026-08-20-jsbsim-737-verification-design.md
 """
@@ -91,6 +93,110 @@ def _modes_from(A):
             wn = abs(lam)
             out.append((wn, -lam.real / wn))
     return sorted(out)
+
+
+def _replay(ac, ref, cond, manoeuvre, decimate=1):
+    """Fly JSBSim's recorded surface history and return the worst divergence.
+
+    Returns (per-component worst |dv| as a (3,) array, worst |domega|).
+
+    `decimate` thins the reference before replaying it. The consumer holds each
+    control sample until the next one, so decimating coarsens the zero-order
+    hold and nothing else -- which is what makes the sampling artifact separable
+    from the model difference. See
+    test_layer4_what_survives_the_hold_is_two_residuals_and_no_more.
+    """
+    import jax
+    import jax.numpy as jnp
+
+    from atisim import integrate
+    from atisim.atmosphere import RHO0, density, speed_of_sound
+    from atisim.state import Controls, State, euler_to_quat
+
+    samples = ref.trajectory[manoeuvre][::decimate]
+    first = samples[0]
+    # The same density-matching shift the rest of the comparison uses.
+    altitude = first.altitude + (cond.matched_altitude - cond.altitude)
+    rho = float(density(altitude))
+    mach = float(np.linalg.norm(first.vel_body)) / float(speed_of_sound(altitude))
+    throttle = first.thrust / (
+        float(ac.max_thrust)
+        * (rho / RHO0) ** float(ac.thrust_lapse)
+        * (1.0 + float(ac.mach_ram) * mach**2)
+    )
+
+    sim = integrate.init_sim(
+        State(
+            pos_ned=jnp.array([0.0, 0.0, -altitude]),
+            vel_body=jnp.array(first.vel_body),
+            quat=euler_to_quat(*(jnp.array(v) for v in first.euler)),
+            omega=jnp.array(first.omega),
+        ),
+        jax.random.PRNGKey(0),
+    )
+    worst_vel, worst_rate = np.zeros(3), 0.0
+    for previous, current in zip(samples, samples[1:]):
+        controls = Controls(
+            elevator=jnp.array(previous.controls[0]),
+            aileron=jnp.array(previous.controls[1]),
+            rudder=jnp.array(previous.controls[2]),
+            throttle=jnp.array(throttle),
+        )
+        sim = integrate.step(sim, controls, jnp.array(current.t - previous.t), ac)
+        worst_vel = np.maximum(worst_vel, np.abs(
+            np.asarray(sim.state.vel_body) - current.vel_body))
+        worst_rate = max(worst_rate, float(
+            np.abs(np.asarray(sim.state.omega) - current.omega).max()))
+    return worst_vel, worst_rate
+
+
+# ---------------------------------------------------------------------------
+# Layer 0 -- the inputs, checked against the engine rather than against
+#            another copy of the same decision
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("condition", list(CASES))
+def test_inertia_cross_product_sign_matches_the_engines_own_coupling(condition):
+    """The Ixz SIGN, established by the engine's behaviour instead of assumed.
+
+    `test_737_mass_and_inertia_match_the_engine` compares atisim's tensor to
+    the reference XML's -- but both descend from one line of
+    gen_jsbsim_reference.py, so it catches a transcription slip and cannot catch
+    a wrong convention. Nothing else in the comparison could either: the sign
+    moves the lateral modes by only 1.6-3.2%, well inside layer 3's tolerance.
+
+    JSBSim's own linearisation settles it, because 737.xml defines neither Cnp
+    nor CYp. With no yaw moment from roll rate and no side force from it either
+    -- so the CG and AERORP references agree on L_p -- the engine's yaw-rate
+    response to roll rate is PURE INERTIA COUPLING:
+
+        d(rdot)/dp = -Jxz * L_p / (Ixx*Izz - Jxz^2)
+
+    where Jxz is the off-diagonal of the tensor as atisim actually flies it, so
+    this reads the convention off the matrix rather than off a spelling of it.
+    The p column is also immune to the yaw damper, which feeds r, not p.
+
+    Measured: JSBSim's A[rdot, p] is +1.180789e-02 at cruise; the shipped tensor
+    predicted -1.180789e-02, right in magnitude to seven digits and wrong in
+    sign. A[pdot, p] agrees at -1.227332e+00 either way, which is what localises
+    the disagreement to the sign and not to L_p or the determinant.
+    """
+    ref, cond, _trim, ac = case(condition)
+    # The identity holds only because both of these are absent from 737.xml.
+    assert abs(ref.absent["Cnp"]) < 1e-5, "a real Cnp would break the identity"
+    assert abs(ref.absent["CYp"]) < 1e-5, "a real CYp would move L_p to the CG"
+
+    P, R = 6, 8  # [vt, alpha, theta, q, beta, phi, p, psi, r, lat, lon, h]
+    inertia = np.asarray(ac.inertia)
+    Ixx, Izz, Jxz = inertia[0, 0], inertia[2, 2], inertia[0, 2]
+    qbar = 0.5 * cond.density * cond.airspeed**2
+    Lp = (float(ac.Clp) * qbar * float(ac.S) * float(ac.b)
+          * (float(ac.b) / (2.0 * cond.airspeed)))
+
+    predicted = -Jxz * Lp / (Ixx * Izz - Jxz**2)
+    assert predicted == pytest.approx(ref.linearization.A[R][P], rel=1e-6), (
+        f"{condition}: atisim's inertia predicts d(rdot)/dp = {predicted:.6e}, "
+        f"JSBSim's linearisation says {ref.linearization.A[R][P]:.6e}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -351,10 +457,16 @@ def test_layer3_lateral_modes_match_once_the_yaw_damper_is_accounted_for():
         dCnr = Cndr * 0.35 * 2V/b = -1.147   (against a bare Cnr of -0.350)
         dClr = Cldr * 0.35 * 2V/b = +0.057
 
-    and folding those in gives zeta 0.338 against 0.344 and spiral 16.61 s
-    against 16.69 s. The pitch and roll channels have no such feedback -- they
+    and folding those in gives zeta 0.34402 against 0.34410 and spiral 16.653 s
+    against 16.691 s. The pitch and roll channels have no such feedback -- they
     are summers and gearing only -- which is why the longitudinal comparison
     needs no correction at all and lands at 0.04%.
+
+    Those figures are AFTER the Ixz sign correction. With the sign as originally
+    shipped they read 0.33803 and 16.647 -- a 1.76% Dutch-roll damping error
+    that looked like an ordinary model difference and was in fact the tensor
+    being fed to the two engines differing. See
+    test_inertia_cross_product_sign_matches_the_engines_own_coupling.
     """
     import jax.numpy as jnp
 
@@ -380,14 +492,28 @@ def test_layer3_lateral_modes_match_once_the_yaw_damper_is_accounted_for():
     wn_ref, zeta_ref = abs(pair), -pair.real / abs(pair)
     roll_ref, spiral_ref = -1.0 / reals[0], -1.0 / reals[-1]
 
-    assert abs(wn - wn_ref) / wn_ref < 5e-2, f"dutch roll wn {wn:.5f} vs {wn_ref:.5f}"
-    assert abs(zeta - zeta_ref) / zeta_ref < 5e-2, (
+    # These were 5e-2 across the board, and that is how a wrong Ixz sign worth
+    # 1.6-3.2% survived a whole comparison. With the sign taken from the
+    # engine's own coupling instead, three of the four land at round-off and the
+    # tolerances can say so. Measured: 0.022%, 0.025%, 0.0034%, 0.228%.
+    #
+    # 1e-3 for the oscillatory pair and the roll mode: both are dominated by
+    # terms the two engines now share exactly, so what is left is the difference
+    # between JSBSim's finite-differenced linearisation and this project's
+    # jacfwd one.
+    assert abs(wn - wn_ref) / wn_ref < 1e-3, f"dutch roll wn {wn:.5f} vs {wn_ref:.5f}"
+    assert abs(zeta - zeta_ref) / zeta_ref < 1e-3, (
         f"dutch roll zeta {zeta:.5f} vs {zeta_ref:.5f}"
     )
-    assert abs(roll_tc - roll_ref) / roll_ref < 5e-2, (
+    assert abs(roll_tc - roll_ref) / roll_ref < 1e-3, (
         f"roll TC {roll_tc:.5f} s vs {roll_ref:.5f} s"
     )
-    assert abs(spiral_tc - spiral_ref) / spiral_ref < 5e-2, (
+    # The spiral gets 5e-3, five times the others, because it is the one mode
+    # where the two reductions are not the same problem: this project takes a
+    # 4-state [v, p, r, phi] split holding u, w and theta fixed, JSBSim's block
+    # is [beta, phi, p, psi, r] carved out of the full 12-state model, and the
+    # spiral is a near-zero eigenvalue where that difference has room to show.
+    assert abs(spiral_tc - spiral_ref) / spiral_ref < 5e-3, (
         f"spiral TC {spiral_tc:.4f} s vs {spiral_ref:.4f} s"
     )
 
@@ -415,11 +541,29 @@ def test_layer3_bare_airframe_would_fail_without_the_damper_correction():
 # ---------------------------------------------------------------------------
 # Layer 4 -- trajectory
 # ---------------------------------------------------------------------------
-@pytest.mark.parametrize(
-    "case,vel_tol,rate_tol",
-    [("elevator_doublet", 0.6, 0.01), ("rudder_kick", 2.0, 0.02)],
-)
-def test_layer4_trajectory_tracks(case, vel_tol, rate_tol):
+# Worst |dv| and |domega| allowed per (manoeuvre, condition), m/s and rad/s.
+# These are BACKSTOPS, and are labelled as such rather than dressed up as
+# predictions: a coarse guard against a regression in the integrator, set at the
+# measured worst plus about a fifth. The sharp statements about what layer 4
+# actually measures are the two tests below this one, which separate the replay
+# artifact from the model difference and bound each on its own terms.
+#
+# The cruise velocity pair keeps the values it already had rather than the ones
+# the rule above would give -- 0.60 is tighter than 0.558 plus a fifth, and a
+# tolerance is not widened just to make it uniform. Every rate tolerance came
+# DOWN: the old 0.01 and 0.02 admitted twice what either manoeuvre produces, and
+# the rate divergence is now known to be entirely replay artifact.
+_LAYER4_BACKSTOP = {
+    ("elevator_doublet", "cruise"): (0.60, 0.006),
+    ("elevator_doublet", "approach"): (0.55, 0.005),
+    ("rudder_kick", "cruise"): (2.00, 0.016),
+    ("rudder_kick", "approach"): (1.00, 0.008),
+}
+
+
+@pytest.mark.parametrize("condition", list(CASES))
+@pytest.mark.parametrize("manoeuvre", ("elevator_doublet", "rudder_kick"))
+def test_layer4_trajectory_tracks(manoeuvre, condition):
     """Integrate 20 s on JSBSim's own prescribed surface history.
 
     The surfaces are the ACHIEVED deflections JSBSim recorded, not commands, so
@@ -427,96 +571,154 @@ def test_layer4_trajectory_tracks(case, vel_tol, rate_tol):
     JSBSim's recorded thrust at the initial condition and then held, as JSBSim
     holds it.
 
-    The two cases differ by 3.6x, and they differ because they excite different
-    physics rather than because one is worse. Measured per component:
+    The two manoeuvres differ because they excite different physics, not because
+    one is worse. Measured per component, at both recovery conditions:
 
-        elevator doublet   u 0.507   v 0.012   w 0.558     max |beta| 0.003 deg
-        rudder kick        u 1.566   v 1.245   w 0.558     max |beta| 2.909 deg
+        cruise   doublet  u 0.507  v 0.012  w 0.558   max |beta| 0.003 deg
+        cruise   kick     u 1.556  v 0.933  w 0.573   max |beta| 2.909 deg
+        approach doublet  u 0.437  v 0.008  w 0.261
+        approach kick     u 0.818  v 0.345  w 0.252
 
-    Those figures are AFTER the fidelity changes (CD_beta, CD_alpha, alphadot,
-    AERORP). Before them the doublet read u 0.296 / w 0.410 and the kick
-    u 1.462 / w 1.234; the doublet's worst moved 0.483 -> 0.558. Trajectory
-    divergence is set by total drag along the path, not by its slope at one
-    point, and the two are independently adjustable -- so improving the slope
-    did not have to improve the integral, and did not.
+    THIS TEST IS A BACKSTOP, and its tolerances are allowances rather than
+    predictions -- see _LAYER4_BACKSTOP. What these numbers mean is settled by
+    the two tests below, which split each of them into the part that is the
+    replay's zero-order hold and the part that is the model. Before that split
+    the doublet's w was attributed to the alphadot fold and the kick's v to a
+    Dutch-roll phase difference; both attributions were of numbers that are
+    mostly sampling, and both are withdrawn there.
 
-    The doublet is purely longitudinal -- it produces essentially no sideslip,
-    so every lateral model difference is inert and the residual is a transient
-    in w. The kick excites sideslip and the Dutch roll, which is where the model
-    differences live: its v divergence is transient (1.234 peak, 0.105 by t=20)
-    and is the Dutch roll frequency difference, while its u divergence is
-    SECULAR, still growing at t=20, and is the sideslip drag atisim
-    under-models.
+    The kick's cruise v figure also moved from 1.245 to 0.933 when the Ixz sign
+    was corrected, which is a quarter of it, and was being reported as a model
+    difference before that.
 
-    NOT the Earth-rotation floor, which an earlier version of this docstring
-    claimed. Running the same JSBSim case at latitude 0 against 47 deg moves it
-    by u 0.409, v 0.028, w 0.067 -- read from the reference's own diagnostics,
-    so the floor is in u, and the doublet's
-    0.410 is in w. Those are different quantities that happen to be numerically
-    close, and matching them was a mistake. Compared per component, the
-    doublet's u divergence of 0.507 is close to the 0.409 floor, and its w
-    divergence of 0.558 is eight times the 0.067 floor in that component, so the
-    w residual is real and needs its own explanation.
-
-    That explanation is the alphadot fold. Cmq carries Cmq + Cmadot, which is
-    exact only when alphadot = q; during the doublet the recorded histories give
-    max |alphadot - q| = 0.0122 rad/s, worth up to |dCm| = 0.0015, against
-    0.0186 for one degree of alpha. atisim applies no alphadot term in still
-    air by design -- the term added here is wind-driven only -- so that
-    difference is unmodelled.
-
-    An earlier 0.25 s sampling of the reference gave 5.43 m/s here purely
-    because the replay flew a stale rudder between samples while the yaw damper
+    An earlier 0.25 s sampling gave 5.43 m/s on the kick purely because the
+    replay flew a stale rudder between samples while the yaw damper
     moved continuously; the reference is sampled at 0.05 s for that reason.
     """
-    import jax
-    import jax.numpy as jnp
+    ref, cond, _trim, ac = case(condition)
+    vel_tol, rate_tol = _LAYER4_BACKSTOP[(manoeuvre, condition)]
+    worst, worst_rate = _replay(ac, ref, cond, manoeuvre)
 
-    from atisim import integrate
-    from atisim.atmosphere import RHO0, density, speed_of_sound
-    from atisim.state import Controls, State, euler_to_quat
-
-    ac = REGISTRY["boeing737"]
-    samples = REF.trajectory[case]
-    first = samples[0]
-    # The same density-matching shift the rest of the comparison uses.
-    altitude = first.altitude + (CRUISE_COND.matched_altitude - CRUISE_COND.altitude)
-    rho = float(density(altitude))
-    mach = float(np.linalg.norm(first.vel_body)) / float(speed_of_sound(altitude))
-    throttle = first.thrust / (
-        float(ac.max_thrust)
-        * (rho / RHO0) ** float(ac.thrust_lapse)
-        * (1.0 + float(ac.mach_ram) * mach**2)
-    )
-
-    sim = integrate.init_sim(
-        State(
-            pos_ned=jnp.array([0.0, 0.0, -altitude]),
-            vel_body=jnp.array(first.vel_body),
-            quat=euler_to_quat(*(jnp.array(v) for v in first.euler)),
-            omega=jnp.array(first.omega),
-        ),
-        jax.random.PRNGKey(0),
-    )
-    worst_vel = worst_rate = 0.0
-    for previous, current in zip(samples, samples[1:]):
-        controls = Controls(
-            elevator=jnp.array(previous.controls[0]),
-            aileron=jnp.array(previous.controls[1]),
-            rudder=jnp.array(previous.controls[2]),
-            throttle=jnp.array(throttle),
-        )
-        sim = integrate.step(sim, controls, jnp.array(current.t - previous.t), ac)
-        worst_vel = max(worst_vel, float(
-            np.abs(np.asarray(sim.state.vel_body) - current.vel_body).max()))
-        worst_rate = max(worst_rate, float(
-            np.abs(np.asarray(sim.state.omega) - current.omega).max()))
-
-    coriolis = REF.diagnostics["coriolis_velocity_m_s"]
-    assert worst_vel <= vel_tol, (
-        f"{case}: worst velocity divergence {worst_vel:.4f} m/s > {vel_tol} "
-        f"(the Earth-rotation floor alone is {coriolis:.4f} m/s)"
+    coriolis = ref.diagnostics["coriolis_velocity_m_s"]
+    assert worst.max() <= vel_tol, (
+        f"{manoeuvre}/{condition}: worst velocity divergence {worst.max():.4f} m/s "
+        f"> {vel_tol} (u {worst[0]:.4f}, v {worst[1]:.4f}, w {worst[2]:.4f}; the "
+        f"Earth-rotation floor alone is {coriolis:.4f} m/s)"
     )
     assert worst_rate <= rate_tol, (
-        f"{case}: worst angular-rate divergence {worst_rate:.6f} rad/s > {rate_tol}"
+        f"{manoeuvre}/{condition}: worst angular-rate divergence "
+        f"{worst_rate:.6f} rad/s > {rate_tol}"
+    )
+
+
+@pytest.mark.parametrize("condition", list(CASES))
+@pytest.mark.parametrize("manoeuvre", ("elevator_doublet", "rudder_kick"))
+def test_layer4_hold_error_is_first_order_in_the_sample_interval(manoeuvre, condition):
+    """The reference is replayed zero-order-hold, and that costs something.
+
+    JSBSim ran at 1/120 s with the yaw damper moving the rudder continuously;
+    the reference is sampled at 0.05 s and the replay holds each sample until
+    the next. So part of what layer 4 reports is the hold, not the model. This
+    was known -- 0.25 s sampling put the rudder kick at 5.43 m/s -- but the
+    sampling was then raised until the number looked acceptable rather than
+    until the two parts were separated.
+
+    Decimating the reference separates them, because decimation coarsens the
+    hold and changes nothing else. A zero-order hold is first order in the
+    interval, so the artifact must halve when the interval halves while a
+    genuine model difference must not move at all.
+
+    Measured order on the most sensitive component, from 0.05 / 0.10 / 0.20 s:
+    1.04, 1.01 at cruise and 1.02, 1.02 at approach. Asserting 1.8-2.2 instead
+    fails all four, which is what shows this measures the hold rather than
+    restating arithmetic.
+
+    This test is what licenses the Richardson extrapolation in
+    test_layer4_model_difference_is_confined_to_forward_speed. If the order
+    stopped being one, that extrapolation would stop being valid and this fails
+    first.
+    """
+    ref, cond, _trim, ac = case(condition)
+    f = {k: _replay(ac, ref, cond, manoeuvre, decimate=k)[0] for k in (1, 2, 4)}
+    # The component the hold actually moves; for the doublet that is w, for the
+    # kick v. Chosen by measurement rather than named, so it cannot go stale.
+    i = int(np.argmax(np.abs(f[2] - f[1])))
+    order = np.log2((f[4][i] - f[2][i]) / (f[2][i] - f[1][i]))
+    assert 0.8 < order < 1.4, (
+        f"{manoeuvre}/{condition}: hold error scales as dt^{order:.2f}, not dt. "
+        "The Richardson extrapolation in the next test is no longer valid."
+    )
+
+
+@pytest.mark.parametrize("condition", list(CASES))
+@pytest.mark.parametrize("manoeuvre", ("elevator_doublet", "rudder_kick"))
+def test_layer4_what_survives_the_hold_is_two_residuals_and_no_more(manoeuvre, condition):
+    """Extrapolate the hold away and layer 4 resolves into four statements.
+
+    This is what layer 4 actually measures, and it is sharper than the single
+    worst-component number it used to report. Extrapolating the first-order hold
+    to dt -> 0 with 2*f(h) - f(2h), per component, at both conditions:
+
+        cruise   doublet  u 0.507 -> 0.507   v  0.012   w 0.558 -> 0.172
+        cruise   kick     u 1.556 -> 1.561   v  0.933 -> -0.125   w 0.573 -> 0.530
+        approach doublet  u 0.437 -> 0.435   v  0.008   w 0.261 -> 0.092
+        approach kick     u 0.818 -> 0.820   v  0.345 -> -0.057   w 0.252 -> 0.253
+
+    ARTIFACT, not model: the v divergence and the angular rates extrapolate to
+    zero or past it. The rudder kick's headline was mostly the replay flying a
+    stale rudder while JSBSim's yaw damper moved continuously; underneath it the
+    two engines agree on the lateral channel to within the replay's own
+    resolution. Reporting 0.93 m/s of Dutch-roll disagreement would have been
+    reporting the sampling.
+
+    REAL, and secular: u. It does not move with the interval and it is still
+    growing at t = 20 s. That is the drag-and-thrust difference the ledger
+    already names -- part of it is the 0.409 m/s Earth-rotation floor, which
+    sits in u too.
+
+    REAL, and transient: w. It peaks with the sideslip excursion -- the kick
+    reaches -0.573 m/s at t = 2.66 s against a beta peak of 2.9 deg -- and
+    decays to a third of that by t = 20, so it is not an integration defect.
+    Divided by airspeed it is nearly the SAME ANGLE at both conditions,
+
+        doublet  0.0416 deg / 0.0395 deg      kick  0.128 deg / 0.108 deg
+
+    across a 1.77x change in speed and a 6x change in altitude, which is the
+    signature of a coefficient-level difference rather than anything that
+    accumulates. It is bounded here and named, not explained: no term has been
+    identified that predicts it, and this test is the record of that.
+
+    The transverse bounds are set against the Earth-rotation floor the reference
+    records for each component, because that floor is what atisim cannot
+    reproduce even in principle, being flat-Earth and non-rotating. The
+    multiples are margin, and are called margin.
+    """
+    ref, cond, _trim, ac = case(condition)
+    f = {k: _replay(ac, ref, cond, manoeuvre, decimate=k) for k in (1, 2)}
+    extrapolated = 2.0 * f[1][0] - f[2][0]
+    rate = 2.0 * f[1][1] - f[2][1]
+    floor = np.array([ref.diagnostics[f"coriolis_{a}_m_s"] for a in "uvw"])
+
+    # -- the two that must vanish with the hold --
+    assert extrapolated[1] <= 4.0 * floor[1], (
+        f"{manoeuvre}/{condition}: the v divergence extrapolates to "
+        f"{extrapolated[1]:.4f} m/s rather than to the {floor[1]:.4f} m/s "
+        "Earth-rotation floor, so the lateral channel now carries a model "
+        "difference the replay artifact used to hide"
+    )
+    assert rate <= 1e-3, (
+        f"{manoeuvre}/{condition}: angular-rate divergence extrapolates to "
+        f"{rate:.5f} rad/s rather than to zero"
+    )
+
+    # -- the two that must not --
+    assert extrapolated[0] > 0.5 * f[1][0][0], (
+        f"{manoeuvre}/{condition}: the u divergence moved with the sample "
+        "interval, so it is not the secular difference it is reported as"
+    )
+    equivalent_alpha = np.degrees(extrapolated[2] / cond.airspeed)
+    assert equivalent_alpha <= 0.2, (
+        f"{manoeuvre}/{condition}: the w residual is {equivalent_alpha:.4f} deg "
+        f"of equivalent alpha ({extrapolated[2]:.4f} m/s), past the 0.2 deg this "
+        "comparison has measured at both conditions"
     )

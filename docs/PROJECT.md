@@ -848,6 +848,10 @@ Both Lanchester approximations reproduce the *size* of their own published error
 > 737.xml's own constants), `Cmq` (unfolded), layer 1's lateral figures, layer 3's short
 > period and phugoid, and layer 4's divergences. Superseded, not deleted, per this
 > document's own rule -- the numbers below were true of the code at the time.
+>
+> **Also superseded by "The Ixz sign, and what layer 4 was really measuring (session 19)":**
+> layer 3's `3 lateral` row and every layer 4 figure, including the per-component table and
+> its attributions. The 737 was flown with the wrong `Ixz` sign throughout this entry.
 
 The first comparison against another **executing** 6-DOF implementation rather than a
 published table. JSBSim 1.3.1 (build 1837, commit `3b25f25e`) is driven headless and its
@@ -997,6 +1001,99 @@ the trim elevator, so moving the elevator changes no drag here); Mach scheduling
 and `Clda`, which is why one aeroplane needs two registry entries; banked trim, where layer
 2's turn case is recorded but not compared; and `wave_drag`, which the comparison does not
 test at all because both engines give exactly zero at M 0.78.
+
+### The Ixz sign, and what layer 4 was really measuring (session 19)
+
+Two findings from an outside evaluation of the session 17–18 comparison. Both are cases of
+the same thing: a number the comparison reported as a model difference that was not one.
+
+**AtiSim's 737 was flown with the wrong `Ixz` sign, through the whole comparison.** JSBSim
+reports `inertia/ixz-slugs_ft2` = +19109.13, and the generator negated it on the reasoning
+that 737.xml carries `negated_crossproduct_inertia="true"`. That property is already the
+**tensor element**; negating it again fed the two engines different airframes.
+
+The design named this exact risk — "`Ixz` sign needs care, not assumption… establish which
+convention the reported +19109.1 is in and **assert it**, rather than pick one" — and the
+risk table recorded it as mitigated. It was not. The only guard,
+`test_737_mass_and_inertia_match_the_engine`, compares AtiSim's tensor against the
+reference XML's, and both descend from one line of `gen_jsbsim_reference.py`. Flipping the
+sign fails **that test alone**; every physics layer stays green.
+
+*Settled from the engine's own behaviour instead.* 737.xml defines neither `Cnp` nor `CYp`,
+so roll rate makes no yaw moment and no side force — which leaves JSBSim's own
+`∂ṙ/∂p` as pure inertia coupling, and makes `L_p` the same about the CG and the AERORP:
+
+| | cruise |
+|---|---|
+| JSBSim `A[ṙ, p]` | **+1.180789e-02** |
+| as shipped | **−1.180789e-02** |
+| sign corrected | **+1.180789e-02** |
+| `A[ṗ, p]`, sign-independent control | −1.227332e+00 both ways, matching JSBSim exactly |
+
+Right in magnitude to seven digits and wrong in sign, at **both** recovery conditions. The
+p column is also immune to the yaw damper, which feeds r. Now asserted in
+`test_inertia_cross_product_sign_matches_the_engines_own_coupling`.
+
+**Supersedes session 17's `3 lateral` row and session 18's lateral figures.** With the sign
+right, the lateral comparison is as sharp as the longitudinal one:
+
+| | JSBSim | as shipped | corrected |
+|---|---|---|---|
+| Dutch roll ωn | 2.11920 | 2.08487 (1.62%) | **2.11966 (0.02%)** |
+| Dutch roll ζ | 0.34410 | 0.33803 (1.76%) | **0.34402 (0.03%)** |
+| roll TC | 0.82845 | 0.80179 (3.22%) | **0.82847 (0.003%)** |
+| spiral TC | 16.69112 | 16.64702 (0.26%) | 16.65300 (0.23%) |
+
+Layer 3's lateral tolerances go from a blanket 5% to **1e-3**, with 5e-3 for the spiral —
+the one mode where the two reductions are genuinely different problems. A 5% tolerance is
+how a 1.6% defect survives.
+
+**Layer 4 was partly measuring its own replay.** The reference is sampled at 0.05 s and
+replayed zero-order-hold while JSBSim ran at 1/120 s. That this mattered was known — 0.25 s
+sampling put the rudder kick at 5.43 m/s — but the rate was then raised until the number
+looked acceptable rather than until the two parts were separated. Decimating the reference
+separates them, because decimation coarsens the hold and changes nothing else. Measured
+order on the most sensitive component: **1.04, 1.01** at cruise and **1.02, 1.02** at
+approach — first order, as a hold must be. Asserting 1.8–2.2 instead fails all four.
+
+Extrapolating the hold to Δt → 0 with `2·f(h) − f(2h)`:
+
+| | u | v | w |
+|---|---|---|---|
+| cruise doublet | 0.507 → 0.507 | 0.012 | 0.558 → **0.172** |
+| cruise kick | 1.556 → 1.561 | 0.933 → **−0.125** | 0.573 → 0.530 |
+| approach doublet | 0.437 → 0.435 | 0.008 | 0.261 → **0.092** |
+| approach kick | 0.818 → 0.820 | 0.345 → **−0.057** | 0.252 → 0.253 |
+
+**Withdrawn:** the kick's v divergence read as "a transient Dutch-roll phase difference",
+and the doublet's w read as the α̇ fold. The v channel and the angular rates extrapolate to
+zero or past it — they are the replay, and underneath them the two engines agree on the
+lateral channel to within the replay's own resolution. The kick's cruise v had also already
+fallen from 1.245 to 0.933 on the `Ixz` correction alone, so what was being reported as
+Dutch-roll physics was a wrong inertia term plus a sampling artifact.
+
+**What is real.** `u`, which does not move with the interval and is still growing at
+t = 20 s — the secular drag-and-thrust difference, part of it the 0.409 m/s Earth-rotation
+floor, which sits in `u` too. And `w`, which peaks with the sideslip excursion (−0.573 m/s
+at t = 2.66 s against a β peak of 2.9°) and decays to a third by t = 20. Divided by
+airspeed, `w` is nearly the **same angle** at both conditions — doublet 0.0416° / 0.0395°,
+kick 0.128° / 0.108° — across a 1.77× change in speed and 6× in altitude, which is the
+signature of a coefficient-level difference rather than anything that accumulates. **Named,
+not explained:** no term has been identified that predicts it.
+
+**Layer 4 now runs at both recovery conditions**, which layers 1 and 2 already did. Its
+tolerances are labelled **backstops** — allowances, not predictions — and the predictive
+statements live in the two tests that do the extrapolation. Fed the cruise entry at the
+approach condition the new cells read 9.7 and 10.0 m/s against 0.55 and 1.00, so they
+constrain something.
+
+**Still open, and unchanged by this session:** layer 3 runs at cruise only, and the approach
+phugoid ζ is out by **13.72%** (0.04850 against 0.05621) with no test asserting it — the
+largest disagreement anywhere in the comparison, and it would fail the 10% the cruise
+phugoid test applies. Session 18's approach column reads "3.4%", which is ωn alone. Also
+unchanged: the reference XML still carries no `<tolerances>` block, so the design's promise
+that a widened tolerance shows up as a mismatch with its recorded derivation is still only
+half-built.
 
 ### The validated baseline — do not touch these tolerances
 
