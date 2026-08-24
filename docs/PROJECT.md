@@ -1087,6 +1087,42 @@ statements live in the two tests that do the extrapolation. Fed the cruise entry
 approach condition the new cells read 9.7 and 10.0 m/s against 0.55 and 1.00, so they
 constrain something.
 
+**The validity guard the recovery design declined is now built.** `_boeing_737`'s docstring
+says flying it at 5,000 ft and 200 kt "produces numbers that are wrong without anything
+failing, warning or logging", and the design chose documentation over a runtime guard —
+"Mitigation taken: documentation only, deliberately". After a documented-but-unasserted
+`Ixz` convention turned out to be wrong for a whole comparison, that trade no longer holds.
+
+`Aircraft` gains `valid_mach` and `valid_altitude`, both `[lo, hi]` and both defaulting to
+`lo == hi`, meaning **no band declared** — so every CR-2144 and Nelson entry is untouched,
+and asserted to be: `test_the_recovery_band_reaches_no_force` checks all six coefficients
+are bit-for-bit unmoved by the fields. `checks.recovery_band` gates on them, measuring the
+excursion in **band widths** so Mach and altitude are one number:
+
+| run | verdict |
+|---|---|
+| `boeing737` at its recovery point | gate, **pass**, 0.000 |
+| `boeing737` at 5,000 ft / 200 kt | gate, **FAIL, 2.00 band widths** |
+| `boeing737_approach` at its point | gate, pass, and says the Mach axis was not checked |
+| `boeing747` | **report**, not a pass — no band declared, so nothing was checked |
+
+The bands are the entry's own fit ranges, not a judgement about where it probably still
+works: `thrust_fit` samples altitude at the recovery point ±5,000 ft and Mach at 0.60–0.95.
+An aircraft that declares no band gets `report`, never a green tick — the same reasoning
+`Check.kind` already applies to tripwires. It is separate from `alpha_band`, which asks
+about `aero.py`'s linear range and applies to every aircraft equally; a 737 at 5,000 ft and
+200 kt sits comfortably inside the alpha band and is still nonsense.
+
+**A gap the guard exposed while it was being written.** `gen_jsbsim_reference.thrust_fit`
+brackets its altitude samples around the condition — the comment there records learning that
+lesson — but its **Mach samples are hard-coded at 0.60–0.95 and are not rebound per
+condition**. The approach entry flies at **M 0.40**, below its own ram fit, so its
+`mach_ram` of 0.3346 is an extrapolation and the 0.28% residual recorded beside it describes
+M 0.60–0.95 rather than the condition in use. Declaring `[0.60, 0.95]` for that entry would
+condemn it at its own recovery point, and inventing a lower bound would be inventing; so its
+Mach half is left undeclared and the check says so out loud. The fix is one line in the
+generator plus a regeneration, which needs JSBSim installed.
+
 **Still open, and unchanged by this session:** layer 3 runs at cruise only, and the approach
 phugoid ζ is out by **13.72%** (0.04850 against 0.05621) with no test asserting it — the
 largest disagreement anywhere in the comparison, and it would fail the 10% the cruise

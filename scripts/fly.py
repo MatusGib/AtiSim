@@ -34,7 +34,7 @@ import matplotlib.pyplot as plt
 
 import atisim  # noqa: F401  -- enables x64 before any array is made
 from atisim import autopilot as ap_mod
-from atisim import integrate, manual as man, panel as panel_mod, trim, viz, wind
+from atisim import checks, integrate, manual as man, panel as panel_mod, trim, viz, wind
 from atisim.aircraft import CRUISE, REGISTRY
 from atisim.sensors import sense
 from atisim.units import RAD2DEG
@@ -117,6 +117,13 @@ traj = panel_mod.run_live(
 )
 
 print(f"\nflew {traj.t[-1]:.1f} s, {len(traj.t)} steps")
+
+# Where the flight WENT, not where it started -- every run starts at CRUISE, so
+# a startup check would pass by construction and say nothing. An entry that is a
+# local fit can be flown out of its band in the first thirty seconds.
+_band = checks.recovery_band(traj, ac)
+if _band.passed is False:
+    print(f"  RECOVERY BAND: {_band.detail}")
 if args.save is not None:
     args.save.parent.mkdir(parents=True, exist_ok=True)
     viz.save(traj, args.save)

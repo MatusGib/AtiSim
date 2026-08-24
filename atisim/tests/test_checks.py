@@ -16,6 +16,7 @@ import atisim  # noqa: F401  -- enables x64 before any array is made
 from atisim import checks, integrate, trim, viz, wind
 from atisim.aircraft import CRUISE, REGISTRY
 from atisim.manual import Mode
+from atisim.units import FT2M, KT2MS
 from atisim.wind import PARKS_CASES
 
 AIRCRAFT = "boeing747"
@@ -351,3 +352,64 @@ def test_the_report_is_json_serialisable(parks_run):
     )
     text = json.dumps([c.as_dict() for c in report])
     assert json.loads(text)[0]["name"]
+
+
+# ---------------------------------------------------------------------------
+# C10 -- the recovery band
+# ---------------------------------------------------------------------------
+def _level_run(altitude_m, airspeed_ms, n=40):
+    """A synthetic straight-and-level run at one altitude and speed.
+
+    Built rather than flown because the band check reads only position and
+    air-relative speed, and a real rollout would make the test depend on trim
+    converging at conditions deliberately chosen to be far outside the model's
+    range -- which is the thing under test, not a precondition of it.
+    """
+    quat = np.tile(np.array([1.0, 0.0, 0.0, 0.0]), (n, 1))
+    return viz.Trajectory(
+        t=np.linspace(0.0, 1.0, n),
+        pos_ned=np.stack([np.zeros(n), np.zeros(n),
+                          np.full(n, -altitude_m)], axis=1),
+        vel_body=np.stack([np.full(n, airspeed_ms), np.zeros(n), np.zeros(n)], axis=1),
+        quat=quat,
+        omega=np.zeros((n, 3)),
+        controls=np.zeros((n, 4)),
+        mode=np.zeros(n, dtype=int),
+        wind_ned=np.zeros((n, 3)),
+        omega_gust=np.zeros((n, 3)),
+    )
+
+
+def test_an_aircraft_flown_at_its_recovery_point_is_inside_its_band():
+    ac = REGISTRY["boeing737"]
+    c = checks.recovery_band(
+        _level_run(CRUISE["boeing737"]["altitude"], CRUISE["boeing737"]["airspeed"]), ac
+    )
+    assert c.kind == "gate"
+    assert c.passed is True
+    assert c.value == 0.0
+
+
+def test_the_recovery_band_condemns_a_run_outside_it():
+    """Negative control: Limitation 1's own example, 5,000 ft and 200 kt.
+
+    The 737 docstring says flying it there "produces numbers that are wrong
+    without anything failing, warning or logging". This is the thing that
+    logs.
+    """
+    ac = REGISTRY["boeing737"]
+    c = checks.recovery_band(_level_run(5000.0 * FT2M, 200.0 * KT2MS), ac)
+    assert c.kind == "gate"
+    assert c.passed is False
+    assert c.value > 1.0
+
+
+def test_an_aircraft_with_no_declared_band_is_reported_not_passed():
+    """A green tick for an unchecked thing is the failure this module exists to
+    avoid -- the same reasoning as the tripwire kind."""
+    ac = REGISTRY["boeing747"]
+    c = checks.recovery_band(
+        _level_run(CRUISE["boeing747"]["altitude"], CRUISE["boeing747"]["airspeed"]), ac
+    )
+    assert c.kind == "report"
+    assert c.passed is None

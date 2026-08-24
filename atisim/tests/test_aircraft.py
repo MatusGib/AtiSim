@@ -400,3 +400,42 @@ def test_every_aircraft_holds_its_trimmed_condition_for_60_s(named):
     speed = np.linalg.norm(np.asarray(hist.vel_body), axis=1)
     assert np.abs(altitude - H).max() < 1.0, name
     assert np.abs(speed - V).max() < 0.5, name
+
+
+def test_a_recovery_band_is_declared_only_where_one_was_measured():
+    """The band is a fit range, so only an entry that IS a fit may carry one.
+
+    Every other entry is a linear derivative set from CR-2144 or Nelson, valid
+    across the ordinary linear range. Giving those a band would be inventing a
+    bound their sources do not state -- and a wrong bound gates real runs.
+    """
+    for name in EVERY:
+        ac = REGISTRY[name]
+        banded = float(ac.valid_altitude[1]) > float(ac.valid_altitude[0])
+        assert banded == name.startswith("boeing737"), name
+    # The approach entry's Mach half is deliberately absent; see its comment.
+    assert float(REGISTRY["boeing737"].valid_mach[1]) > 0.0
+    assert float(REGISTRY["boeing737_approach"].valid_mach[1]) == 0.0
+
+
+def test_the_recovery_band_reaches_no_force():
+    """It is metadata. Moving it must change no coefficient, bit for bit.
+
+    Asserted rather than trusted for the same reason `mach_ram`'s neutrality is:
+    a field on `Aircraft` that quietly entered the build-up would shift every
+    number in PROJECT.md section 4 with nothing to show for it.
+    """
+    from atisim import aero
+    from atisim.state import Controls
+
+    ac = REGISTRY["boeing737"]
+    moved = ac._replace(valid_mach=jnp.array([0.0, 9.0]),
+                        valid_altitude=jnp.array([0.0, 99000.0]))
+    controls = Controls(elevator=jnp.array(-0.05), aileron=jnp.array(0.02),
+                        rudder=jnp.array(0.01), throttle=jnp.array(0.7))
+    args = (jnp.array([236.0, 3.0, 8.0]), jnp.array([0.01, 0.02, 0.03]),
+            controls)
+    before = aero.coefficients(*args, ac, jnp.array(303.0))
+    after = aero.coefficients(*args, moved, jnp.array(303.0))
+    for b, a in zip(before, after):
+        assert float(b) == float(a)

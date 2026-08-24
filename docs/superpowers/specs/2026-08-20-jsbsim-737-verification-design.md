@@ -299,6 +299,8 @@ specific and known:
 
 **Consequence:** flying `boeing737` at, say, 5,000 ft and 200 kt produces numbers that are wrong
 without anything failing, warning or logging. Nothing in the code prevents this.
+**Superseded in session 19:** `checks.recovery_band` now gates a run on the entry's
+own fit range, carried on `Aircraft` as `valid_mach` and `valid_altitude`.
 
 **Mitigation taken:** documentation only, deliberately — no runtime guard is built. The recovery
 condition and the validity band are recorded in the `_boeing_737()` docstring, in the `CRUISE`
