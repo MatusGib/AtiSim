@@ -77,7 +77,7 @@
     <value name="Cma">-5.999990738310e-01</value>
     <value name="Cmadot">-1.599977957545e+01</value>
     <value name="Cmde">-8.490000019392e-01</value>
-    <value name="Cmq">-4.300000000031e+01</value>
+    <value name="Cmq">-2.700022042486e+01</value>
     <value name="Cnb">2.599999111519e-01</value>
     <value name="Cndr">-2.000000000000e-01</value>
     <value name="Cnr">-3.500042584340e-01</value>
@@ -954,5 +954,8 @@
     <pitch_fit_condition>1.945196654832e+08</pitch_fit_condition>
     <pitch_fit_residual>2.161172629744e-11</pitch_fit_residual>
     <coriolis_velocity_m_s>4.092273599658e-01</coriolis_velocity_m_s>
+    <coriolis_u_m_s>4.092273599658e-01</coriolis_u_m_s>
+    <coriolis_v_m_s>2.797256631154e-02</coriolis_v_m_s>
+    <coriolis_w_m_s>6.740420794158e-02</coriolis_w_m_s>
   </diagnostics>
 </jsbsim_reference>

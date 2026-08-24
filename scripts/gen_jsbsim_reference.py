@@ -540,8 +540,9 @@ def coriolis_contribution(case):
     a, _ = fly(case, latitude_deg=0.0)
     b, _ = fly(case, latitude_deg=47.0)
     n = min(len(a), len(b))
-    return max(float(np.max(np.abs(a[i]["vel_body"] - b[i]["vel_body"])))
-               for i in range(n))
+    per_component = np.max(np.abs(np.array([a[i]["vel_body"] - b[i]["vel_body"]
+                                            for i in range(n)])), axis=0)
+    return float(np.max(per_component)), per_component
 
 
 # --------------------------------------------------------------------------
@@ -674,15 +675,11 @@ def aircraft_entry(fdm, d, at_trim, trim, rho, h_match):
         elevator_limit=ELEVATOR_RANGE, aileron_limit=AILERON_RANGE,
         rudder_limit=RUDDER_RANGE, matched_altitude=h_match,
         airspeed=fdm["velocities/vt-fps"] * FT2M,
-        **{k: v for k, v in d.items() if k not in ABSENT and k != "CDa_engine"
-           and k != "Cmq"},
-        # FOLDED, deliberately. The fit separates Cmq = -27.000 from
-        # Cmadot = -16.000, but flightsim applies alphadot for the WIND only, so
-        # in still air its q term has to carry both -- which is exact whenever
-        # alphadot = q. The sum is also the well-determined quantity: the two are
-        # nearly collinear in any reachable state, so the split carries ~0.04 of
-        # uncertainty while the sum is exact to machine precision.
-        Cmq=d["Cmq"] + d["Cmadot"],
+        # Cmq and Cmadot go in SEPARATELY, as the fit recovers them. They were
+        # folded into a single q term while flightsim applied alphadot for the
+        # wind only; now that dynamics.derivatives resolves the aircraft's own
+        # alphadot too, folding would apply Cmadot twice.
+        **{k: v for k, v in d.items() if k not in ABSENT and k != "CDa_engine"},
     )
 
 
@@ -833,8 +830,9 @@ def build(condition_name):
         samples, miss = fly(case)
         trajectories[case] = samples
         print(f"{case}: {len(samples)} samples, worst rudder miss {miss:.2e} rad")
-    coriolis = coriolis_contribution("rudder_kick")
-    print(f"coriolis contribution (lat 0 vs 47): {coriolis:.4f} m/s")
+    coriolis, coriolis_uvw = coriolis_contribution("rudder_kick")
+    print(f"coriolis contribution (lat 0 vs 47): {coriolis:.4f} m/s "
+          f"(u {coriolis_uvw[0]:.4f}, v {coriolis_uvw[1]:.4f}, w {coriolis_uvw[2]:.4f})")
 
     # --- write ---
     L = []
@@ -922,6 +920,8 @@ def build(condition_name):
     for k in sorted(diagnostics):
         L.append(f"    <{k}>{f(diagnostics[k])}</{k}>")
     L.append(f'    <coriolis_velocity_m_s>{f(coriolis)}</coriolis_velocity_m_s>')
+    for axis, value in zip("uvw", coriolis_uvw):
+        L.append(f'    <coriolis_{axis}_m_s>{f(value)}</coriolis_{axis}_m_s>')
     L.append("  </diagnostics>")
     L.append("</jsbsim_reference>")
 

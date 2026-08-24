@@ -967,20 +967,13 @@ def _boeing_737() -> Aircraft:
     +0.067 and was what made the pre-AERORP recovery read -1.0637 instead of the
     alphadot-free -1.1309.
 
-    Cmq = -43.0 is a deliberate FOLD of JSBSim's Cmq (-27.000) and Cmadot
-    (-16.000), which the fit separates. flightsim applies Cmadot to the WIND
-    part of alphadot only, so its q term has to carry both -- exact whenever
-    alphadot = q. The sum is also the well-determined quantity: the two are
-    nearly collinear in any reachable state, so the fit pins the sum to machine
-    precision and the split only to about 0.04.
-
-    KNOWN CONSEQUENCE. flightsim has no aircraft-motion alphadot coupling, so
-    its short period comes out 4% high against JSBSim's linearisation, which
-    does have one. That gap used to be invisible: the contaminated Cma above
-    cancelled it almost exactly, and the modes agreed to 0.04%. Honest
-    coefficients make the missing term visible instead of compensated, which is
-    the better state to be in but is not the same as being right. Closing it
-    means giving `derivatives` the implicit alphadot solve.
+    Cmq (-27.000) and Cmadot (-16.000) go in SEPARATELY, as 737.xml defines
+    them and as the fit recovers them. They were folded into a single q term
+    while flightsim applied alphadot for the wind only; dynamics.derivatives now
+    resolves the aircraft's own alphadot as well, so folding would apply Cmadot
+    twice. Note the fit pins their SUM to machine precision and the split only to
+    about 0.04, because alphadot and q are nearly collinear in any reachable
+    state -- so the split is the softer of the two numbers.
 
     Every literal below is reproduced by scripts/gen_jsbsim_reference.py and
     cross-checked against the frozen reference in
@@ -1029,7 +1022,7 @@ def _boeing_737() -> Aircraft:
         CLde=jnp.array(0.2),
         Cm0=jnp.array(-2.956611522467e-08),
         Cma=jnp.array(-0.599999073831),
-        Cmq=jnp.array(-43.00000000031),  # Cmq + Cmadot; see the docstring
+        Cmq=jnp.array(-27.00022042486),  # Cmq + Cmadot; see the docstring
         Cmde=jnp.array(-0.8490000019392),
         CYb=jnp.array(-1.0),
         CYp=jnp.array(0.0),  # 737.xml defines none
@@ -1135,7 +1128,7 @@ def _boeing_737_approach() -> Aircraft:
         CLde=jnp.array(0.2),
         Cm0=jnp.array(-2.057942546435e-05),
         Cma=jnp.array(-0.5996582506232),
-        Cmq=jnp.array(-43.0000000644),
+        Cmq=jnp.array(-27.03541066755),
         Cmde=jnp.array(-1.020000001599),
         CYb=jnp.array(-1.0),
         CYp=jnp.array(0.0),
