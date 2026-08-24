@@ -148,11 +148,41 @@ def at_state(alpha_deg=0.0, beta_deg=0.0, p=0.0, q=0.0, r=0.0,
     return fdm
 
 
+def aero_reference_offset(fdm):
+    """Body-axis vector from the CG to the AERORP, in metres.
+
+    JSBSim's structural frame is x AFT, y right, z UP; body axes are x forward,
+    y right, z DOWN. So x and z negate and y does not. Both points are read from
+    the engine rather than transcribed, so a model with a different reference
+    point or fuel state needs no change here.
+    """
+    return np.array([
+        -(fdm["metrics/aero-rp-x-in"] - fdm["inertia/cg-x-in"]),
+        +(fdm["metrics/aero-rp-y-in"] - fdm["inertia/cg-y-in"]),
+        -(fdm["metrics/aero-rp-z-in"] - fdm["inertia/cg-z-in"]),
+    ]) * 0.0254
+
+
 def read_state(fdm):
-    """Everything the comparison needs, in SI, read back from the engine."""
+    """Everything the comparison needs, in SI, read back from the engine.
+
+    Moment coefficients are referred to the AERORP, not the CG. JSBSim applies
+    aero forces there and transfers to the CG with r x F (Stengel Eq. 2.4-68), so
+    referring them back is what makes the recovered set a property of the
+    AIRFRAME rather than of one fuel state -- and it is what lets flightsim
+    reproduce the moment exactly instead of to a linearisation residual.
+    """
     qbar = fdm["aero/qbar-psf"]
     S, b, c = fdm["metrics/Sw-sqft"], fdm["metrics/bw-ft"], fdm["metrics/cbarw-ft"]
     qS = qbar * S
+    # Undo JSBSim's own transfer: M_arp = M_cg - r x F, in imperial to match the
+    # properties, then non-dimensionalised below.
+    r_ft = aero_reference_offset(fdm) / FT2M
+    force = np.array([fdm["forces/fbx-aero-lbs"], fdm["forces/fby-aero-lbs"],
+                      fdm["forces/fbz-aero-lbs"]])
+    moment_cg = np.array([fdm["moments/l-aero-lbsft"], fdm["moments/m-aero-lbsft"],
+                          fdm["moments/n-aero-lbsft"]])
+    moment_arp = moment_cg - np.cross(r_ft, force)
     return dict(
         # The AIR-RELATIVE body velocity, recorded directly rather than as
         # (V, alpha, beta) so the comparison never depends on the two engines
@@ -182,9 +212,15 @@ def read_state(fdm):
         CL=fdm["forces/fwz-aero-lbs"] / qS,
         CD=fdm["forces/fwx-aero-lbs"] / qS,
         CY=fdm["forces/fwy-aero-lbs"] / qS,
-        Cl=fdm["moments/l-aero-lbsft"] / (qS * b),
-        Cm=fdm["moments/m-aero-lbsft"] / (qS * c),
-        Cn=fdm["moments/n-aero-lbsft"] / (qS * b),
+        # About the AERORP. The CG-referenced values are kept alongside so the
+        # sweep can still be compared as JSBSim reports it.
+        Cl=moment_arp[0] / (qS * b),
+        Cm=moment_arp[1] / (qS * c),
+        Cn=moment_arp[2] / (qS * b),
+        Cl_cg=moment_cg[0] / (qS * b),
+        Cm_cg=moment_cg[1] / (qS * c),
+        Cn_cg=moment_cg[2] / (qS * b),
+        aero_ref=aero_reference_offset(fdm),
     )
 
 
@@ -226,6 +262,46 @@ def central(coefficient, key, step, base, **fixed):
 
 def _slope(lo, hi, coefficient, var):
     return (hi[coefficient] - lo[coefficient]) / (hi[var] - lo[var])
+
+
+def recover_pitch_axis(trim_alpha_deg, trim_de):
+    """(Cm0, Cma, Cmq, Cmadot, Cmde) by least squares, not central differences.
+
+    Central differences cannot do this axis, and the reason is worth stating.
+    Setting alpha away from trim also sets ALPHADOT, because the state is then
+    out of equilibrium -- measured, d(alphadot)/d(alpha) = -0.529 /s. So an
+    alpha difference silently carries the Cmadot term with it, and the recovered
+    Cma comes out -0.5328 against 737.xml's -0.600. The gap is exactly
+    Cmadot * d(alphadot)/d(alpha) * c/2V = +0.0672.
+
+    Fitting alpha, q, alphadot and elevator together over a CROSSED design
+    separates them. Every column is read back from the engine, so this is still
+    a recovery rather than a transcription -- and it lands on 737.xml's own
+    constants, which is the check.
+
+    CAVEAT, and it is in the numbers rather than hidden: alphadot and q are very
+    nearly collinear in any reachable state, so their SPLIT is ill-conditioned
+    even though their SUM is not. Measured, the fit puts Cmq at -27.041 and
+    Cmadot at -15.959 -- each 0.041 from 737.xml's -27 and -16, equal and
+    opposite -- while the sum is -43.000000. flightsim needs the sum for
+    still-air damping and uses the split only for the wind term, so the
+    well-determined quantity is the one that carries weight.
+    """
+    import itertools
+
+    rows = []
+    for a_off, d_off, q in itertools.product(
+        (-2.0, 0.0, 2.0), (-0.05, 0.0, 0.05), (-0.015, 0.0, 0.015)
+    ):
+        st = read_state(at_state(alpha_deg=trim_alpha_deg + a_off,
+                                 de=trim_de + d_off, q=q))
+        rows.append((st["alpha"], st["q"] * st["ci2vel"],
+                     st["alphadot"] * st["ci2vel"], st["de"], st["Cm"]))
+    design = np.array([[1.0, r[0], r[1], r[2], r[3]] for r in rows])
+    answer = np.array([r[4] for r in rows])
+    solution, *_ = np.linalg.lstsq(design, answer, rcond=None)
+    residual = float(np.max(np.abs(design @ solution - answer)))
+    return dict(zip(("Cm0", "Cma", "Cmq", "Cmadot", "Cmde"), solution)), residual,         float(np.linalg.cond(design))
 
 
 def recover(trim_alpha_deg, trim_de):
@@ -275,6 +351,12 @@ def recover(trim_alpha_deg, trim_de):
     lo, hi = central(None, "da", 0.05, 0.0, **base)
     d["Clda"] = _slope(lo, hi, "Cl", "da")
     d["Cnda"] = _slope(lo, hi, "Cn", "da")
+
+    # --- pitch axis, by least squares; see recover_pitch_axis ---
+    pitch, pitch_residual, pitch_cond = recover_pitch_axis(trim_alpha_deg, trim_de)
+    d.update(pitch)
+    d["_pitch_fit_residual"] = pitch_residual
+    d["_pitch_fit_condition"] = pitch_cond
 
     # --- rudder ---
     lo, hi = central(None, "dr", 0.05, 0.0, **base)
@@ -569,10 +651,11 @@ def aircraft_entry(fdm, d, at_trim, trim, rho, h_match):
     e = 1.0 / (0.043 * math.pi * AR)
 
     a_t, de_t = trim["alpha"], trim["elevator"]
-    # Intercepts are solved so the model reproduces JSBSim's coefficients AT the
-    # reference point exactly; that is what "linearised about cruise" means.
+    # CL0 is solved as the intercept that reproduces JSBSim's lift AT the
+    # reference point. Cm0 is NOT: the pitch-axis fit recovers it directly, and
+    # it comes out at zero because 737.xml has no Cm0 term at all -- what used
+    # to look like one (-0.0107 about the CG) was entirely the AERORP offset.
     CL0 = at_trim["CL"] - d["CLa"] * a_t - d["CLde"] * de_t
-    Cm0 = at_trim["Cm"] - d["Cma"] * a_t - d["Cmde"] * de_t
     # Wave drag is zero at M 0.78 by construction, so CD0 absorbs everything
     # that is not induced -- including JSBSim's CDde term (0.059 |de|), which
     # has no home in flightsim and is therefore frozen at its trim value.
@@ -580,16 +663,26 @@ def aircraft_entry(fdm, d, at_trim, trim, rho, h_match):
 
     sweep, t_over_c, kappa = wave_drag_parameters(at_trim["CL"])
     fmax, lapse, ram, mach_res, alt_res = thrust_fit(trim["throttle"])
+    offset = aero_reference_offset(fdm)
     return dict(
         mass=fdm["inertia/weight-lbs"] * LBF2N / 9.80665,
-        S=S, b=b, c=c, AR=AR, e=e, CD0=CD0, CL0=CL0, Cm0=Cm0,
+        aero_ref_x=offset[0], aero_ref_y=offset[1], aero_ref_z=offset[2],
+        S=S, b=b, c=c, AR=AR, e=e, CD0=CD0, CL0=CL0,
         sweep=sweep, t_over_c=t_over_c, kappa_airfoil=kappa,
         max_thrust=fmax, thrust_lapse=lapse, mach_ram=ram,
         thrust_mach_residual=mach_res, thrust_altitude_residual=alt_res,
         elevator_limit=ELEVATOR_RANGE, aileron_limit=AILERON_RANGE,
         rudder_limit=RUDDER_RANGE, matched_altitude=h_match,
         airspeed=fdm["velocities/vt-fps"] * FT2M,
-        **{k: v for k, v in d.items() if k not in ABSENT and k != "CDa_engine"},
+        **{k: v for k, v in d.items() if k not in ABSENT and k != "CDa_engine"
+           and k != "Cmq"},
+        # FOLDED, deliberately. The fit separates Cmq = -27.000 from
+        # Cmadot = -16.000, but flightsim applies alphadot for the WIND only, so
+        # in still air its q term has to carry both -- which is exact whenever
+        # alphadot = q. The sum is also the well-determined quantity: the two are
+        # nearly collinear in any reachable state, so the split carries ~0.04 of
+        # uncertainty while the sum is exact to machine precision.
+        Cmq=d["Cmq"] + d["Cmadot"],
     )
 
 
@@ -660,6 +753,9 @@ def build(condition_name):
 
     # --- derivatives ---
     d = recover(math.degrees(trim_alpha), trim_de)
+    # Underscore-prefixed keys are fit diagnostics, not derivatives. Split them
+    # out before anything prints or writes the derivative set.
+    diagnostics = {k[1:]: d.pop(k) for k in list(d) if k.startswith("_")}
     print("\nrecovered derivatives:")
     for k in sorted(d):
         print(f"  {k:12s} {d[k]:+.6f}")
@@ -792,6 +888,11 @@ def build(condition_name):
     for s in sweep:
         L.append(
             f'    <point alpha="{f(s["alpha"])}" beta="{f(s["beta"])}" '
+            # alphadot is recorded because setting a state away from trim also
+            # sets it, and flightsim applies Cmadot to the WIND part of alphadot
+            # only. Without this the layer-1 Cm difference is unexplainable; with
+            # it, it is predicted exactly.
+            f'alphadot="{f(s["alphadot"])}" ci2vel="{f(s["ci2vel"])}" '
             f'vel_body="{vec(s["vel_body"])}" sound_speed="{f(s["a_sound"])}" '
             f'rates="{vec([s["p"], s["q"], s["r"]])}" '
             f'controls="{vec([s["de"], s["da"], s["dr"]])}" '
@@ -818,6 +919,8 @@ def build(condition_name):
         L.append("  </trajectory>")
 
     L.append("  <diagnostics>")
+    for k in sorted(diagnostics):
+        L.append(f"    <{k}>{f(diagnostics[k])}</{k}>")
     L.append(f'    <coriolis_velocity_m_s>{f(coriolis)}</coriolis_velocity_m_s>')
     L.append("  </diagnostics>")
     L.append("</jsbsim_reference>")

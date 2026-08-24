@@ -14,7 +14,7 @@ import pytest
 
 from flightsim import aero, integrate, wind
 from flightsim.aircraft import REGISTRY
-from flightsim.atmosphere import speed_of_sound
+from flightsim.atmosphere import RHO0, speed_of_sound
 from flightsim.state import Controls, State, euler_to_quat
 from flightsim.tests.conftest import make_test_aircraft
 
@@ -172,3 +172,60 @@ def test_the_gust_alphadot_reaches_the_pitching_moment_through_step():
     no_term = integrate.step(integrate.init_sim(state, jax.random.PRNGKey(0)),
                              controls, jnp.array(0.05), bare, wind_model=model)
     assert float(with_term.state.omega[1]) != float(no_term.state.omega[1])
+
+
+# ---------------------------------------------------------------------------
+# aerodynamic reference point
+# ---------------------------------------------------------------------------
+def test_aero_reference_defaults_to_the_cg(test_aircraft):
+    """Zero offset means the coefficients are about the CG, as they always were."""
+    assert float(np.abs(np.asarray(test_aircraft.aero_ref)).max()) == 0.0
+
+
+def test_a_zero_reference_offset_adds_exact_zero(test_aircraft):
+    """Not merely 'about the same' -- jnp.cross of a zero vector is exact zero.
+
+    This is what makes every pre-existing aircraft bit-identical rather than
+    equivalent to round-off, which matters because PROJECT.md section 4's
+    numbers were measured before the field existed.
+    """
+    vel = jnp.array([60.0, 3.0, 2.0])
+    controls = ZERO._replace(elevator=jnp.array(0.05))
+    _, moment = aero.aero_forces_moments(vel, jnp.array([0.1, 0.05, 0.02]), controls,
+                                         test_aircraft, RHO0, jnp.array(A0))
+    offset = test_aircraft._replace(aero_ref=jnp.zeros(3))
+    _, again = aero.aero_forces_moments(vel, jnp.array([0.1, 0.05, 0.02]), controls,
+                                        offset, RHO0, jnp.array(A0))
+    assert [float(v) for v in moment] == [float(v) for v in again]
+
+
+def test_the_transfer_is_r_cross_f():
+    """Stengel Eq. (2.4-68), as a cross product rather than a chord fraction."""
+    offset = jnp.array([-0.36, 0.0, -1.50])
+    ac = make_test_aircraft()._replace(aero_ref=offset)
+    vel = jnp.array([60.0, 2.0, 3.0])
+    controls = ZERO._replace(elevator=jnp.array(0.04))
+    force, moment = aero.aero_forces_moments(vel, jnp.zeros(3), controls, ac,
+                                             RHO0, jnp.array(A0))
+    at_cg = make_test_aircraft()
+    _, base = aero.aero_forces_moments(vel, jnp.zeros(3), controls, at_cg,
+                                       RHO0, jnp.array(A0))
+    expected = np.asarray(base) + np.cross(np.asarray(offset), np.asarray(force))
+    np.testing.assert_allclose(np.asarray(moment), expected, rtol=1e-12, atol=0.0)
+
+
+def test_the_737_carries_jsbsims_own_constants_now():
+    """The point of the change: the entry traces to a file, not a fit.
+
+    737.xml's PITCH/Cmalpha is -0.6, ROLL/Clb is -0.09 and YAW/Cnb is +0.26.
+    Referred to the CG those become -1.13, -0.144 and +0.273, and which of those
+    you get depends on the fuel state. Referred to the AERORP they are the file's
+    numbers, at both recovery conditions, because that is what they are.
+    """
+    for name in ("boeing737", "boeing737_approach"):
+        ac = REGISTRY[name]
+        assert float(ac.Cma) == pytest.approx(-0.6, abs=5e-4), name
+        assert float(ac.Clb) == pytest.approx(-0.09, abs=5e-6), name
+        assert float(ac.Cnb) == pytest.approx(+0.26, abs=5e-6), name
+        # 737.xml has no Cm0 term at all; what looked like one was the offset.
+        assert abs(float(ac.Cm0)) < 1e-4, name

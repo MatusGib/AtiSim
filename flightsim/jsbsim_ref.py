@@ -60,6 +60,8 @@ class SweepPoint(NamedTuple):
     vel_body: np.ndarray      # (3,) m/s
     sound_speed: float        # m/s, JSBSim's at this point
     alpha: float
+    alphadot: float          # rad/s, as the engine reported it
+    ci2vel: float             # c/2V, the pitch non-dimensionalisation
     beta: float
     rates: np.ndarray         # (3,) rad/s, body, air-relative
     controls: np.ndarray      # (3,) rad: elevator, aileron, rudder
@@ -185,6 +187,8 @@ def load(path: Path = REFERENCE) -> Reference:
                 vel_body=_floats(p.get("vel_body")),
                 sound_speed=float(p.get("sound_speed")),
                 alpha=float(p.get("alpha")),
+                alphadot=float(p.get("alphadot")),
+                ci2vel=float(p.get("ci2vel")),
                 beta=float(p.get("beta")),
                 rates=_floats(p.get("rates")),
                 controls=_floats(p.get("controls")),
