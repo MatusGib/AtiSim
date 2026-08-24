@@ -117,7 +117,10 @@ def _missing_drag(point, trim, ac):
     CD_beta comment in aircraft.py.
     """
     return (
+        # The alpha channel is now MOSTLY covered: flightsim carries a linear
+        # CD_alpha, so what is left is the table's departure from that line.
         (np.interp(point.alpha, *_CD0_ALPHA) - np.interp(trim.alpha, *_CD0_ALPHA))
+        - float(ac.CD_alpha) * (point.alpha - trim.alpha)
         + (np.interp(point.beta, *_CD_BETA) - float(ac.CD_beta) * point.beta**2)
         + _CD_DE * (abs(point.controls[0]) - abs(trim.elevator))
     )
@@ -157,11 +160,19 @@ def test_layer1_coefficients_with_no_model_difference_agree(name, index, tol, co
 def test_layer1_drag_difference_is_exactly_the_terms_flightsim_lacks(condition):
     """CD disagrees, and the disagreement is accounted for rather than allowed.
 
-    flightsim has no CD0(alpha) variation, no CDbeta and no CDde. Subtracting
-    their predicted departure from trim leaves 3.6e-4 worst case. At the
-    sideslip points, where the raw difference is largest at 1.0e-2, the
-    prediction accounts for it to 2.9e-10; what remains anywhere is the
-    second-order induced-drag difference.
+    flightsim now carries a linear CD_alpha and a quadratic CD_beta, so the
+    prediction is what those two forms do NOT cover plus the CDde term it has no
+    home for at all:
+
+      - alpha: the table's departure from the straight line CD_alpha fits. The
+        table is linear in alpha above zero, so this is nearly nothing there,
+        and grows where the sweep crosses toward the kink at the origin.
+      - beta: JSBSim's linearly interpolated table against the quadratic, which
+        agree at the 0.26 rad breakpoint and diverge below it by design.
+      - elevator: CDde, which flightsim freezes into CD0 at the trim deflection.
+
+    The induced term needs no prediction: e is set so CL^2/(pi e AR) reproduces
+    JSBSim's CDi = 0.043 CL^2 exactly.
     """
     ref, _cond, trim, ac = case(condition)
     worst, where = 0.0, None
@@ -279,32 +290,33 @@ def test_layer3_longitudinal_modes_match():
     [u, w, q, theta] one. So no basis conversion is needed and none can be got
     wrong -- the transform was in the plan and turned out to be unnecessary.
 
-    Measured: short period wn 1.79224 against 1.76918 (1.30%), zeta 0.38778
-    against 0.39294 (1.31%). At the approach condition, 1.08% and 1.10%.
+    Measured: short period wn 1.76841 against 1.76918 (0.04%), zeta 0.39305
+    against 0.39294 (0.03%). At approach, 0.08% and 0.08%.
 
-    THE HISTORY OF THIS NUMBER IS WORTH KEEPING, because it went 0.04% -> 3.95%
-    -> 1.30% and only the last of those is honest.
+    THE HISTORY OF THIS NUMBER IS THE POINT, because it went
+    0.04% -> 3.95% -> 1.30% -> 0.04% and only the last is honest.
 
-    The 0.04% was two errors cancelling. Cma was recovered by a central
+    The FIRST 0.04% was two errors cancelling. Cma was recovered by a central
     difference about the CG, which is contaminated by Cmadot because setting
     alpha away from trim also sets alphadot (d(alphadot)/d(alpha) = -0.529 /s);
     that put it at -1.0637 instead of the alphadot-free -1.1309. flightsim then
     had no aircraft-motion alphadot coupling at all, so its linearisation was
-    missing exactly the term the contamination stood in for. A wrong coefficient
-    was cancelling a missing one.
+    missing exactly the term the contamination stood in for.
 
     Referring the moments to the AERORP fixed the coefficient and left the
     missing term exposed: 3.95%. Resolving the aircraft's own alphadot in
-    dynamics.derivatives supplied the term: 1.30%.
+    dynamics.derivatives supplied the term: 1.30%. Giving the drag its CD_alpha
+    slope closed the rest: 0.04%, now at BOTH conditions rather than one.
 
-    What remains is the drag error reaching the pitching moment through r x F.
-    With JSBSim's own force in the transfer the effective Cma is -1.1331 against
-    the -1.1309 truth; with flightsim's it is -1.1666. AERORP makes the moment
-    inherit the force error rather than absorbing it into a fitted constant,
-    which is correct, and is another reason the missing CD0(alpha) matters.
+    The last step is the one that shows why AERORP mattered. Referring moments
+    to the AERORP makes the pitching moment inherit the force error through
+    r x F instead of absorbing it into a fitted Cma -- so a drag slope that was
+    0.1267 against JSBSim's 0.2113 could no longer hide, and fixing it moved the
+    short period by 1.3%. The CG-referenced model would have shown nothing.
 
-    The phugoid is looser at 6.7% because it is a slow drag-and-thrust energy
-    exchange, and drag and thrust are exactly where the two models still differ.
+    The phugoid stays looser at 6.6% because it is a slow drag-and-thrust energy
+    exchange, and the thrust model is still linear in throttle where JSBSim's is
+    not -- that is the remaining known difference, not a defect.
     """
     from flightsim import validation
 

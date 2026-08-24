@@ -63,7 +63,8 @@
   </absent_derivatives>
   <aircraft_entry>
     <value name="AR">7.658488471392e+00</value>
-    <value name="CD0">3.118072854008e-02</value>
+    <value name="CD0">2.570062073226e-02</value>
+    <value name="CD_alpha">8.641089758596e-02</value>
     <value name="CL0">1.999999904220e-01</value>
     <value name="CLa">4.347826086957e+00</value>
     <value name="CLde">2.000000000000e-01</value>

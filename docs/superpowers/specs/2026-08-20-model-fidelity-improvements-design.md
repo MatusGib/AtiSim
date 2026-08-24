@@ -291,6 +291,51 @@ errors:
   left a 31.3% altitude residual. The band now brackets whatever condition is being built, which
   takes it to 0.83%.
 
+## 5. Closing the loop: CD_alpha, and what the sequence showed
+
+Added after item 4, because item 4 is what made it visible.
+
+`CD_alpha`, a linear profile-drag rise with incidence, recovered from the engine as
+`dCD/dα − 2·CL·CLa/(π·e·AR)` — the total drag slope minus the induced part flightsim already had.
+Measured 0.0847 (cruise) and 0.0864 (approach) against 737.xml's CD0 table slope of 0.0808, the
+excess being the CDde and ground-effect residue.
+
+**Linear, where `CD_beta` is quadratic, and the asymmetry is the point.** Drag is even about its
+minimum in both variables. For sideslip the reference condition sits *at* that minimum, β = 0, so a
+linear term would put a kink through the operating point and the quadratic is the only defensible
+form. For incidence the reference sits well away from it — α = 1.97° cruise, 3.63° approach — so
+the first-order Taylor term is exactly right for a model that is explicitly a linearisation about
+that point. It is wrong at negative α, which is the same cruise-local caveat the entry already has.
+
+### The short period, in four steps
+
+| state | cruise | why |
+|---|---|---|
+| original | 0.04% | **two errors cancelling** |
+| after AERORP | 3.95% | honest `Cma`, missing α̇ term now exposed |
+| after the α̇ solve | 1.30% | α̇ supplied; drag slope still wrong |
+| after `CD_alpha` | **0.04%** | honest throughout, and at **both** conditions |
+
+The first and last are the same number and mean opposite things. The first came from an
+α̇-contaminated `Cma` of −1.0637 standing in for a coupling the model did not have. The last comes
+from `Cma` = −0.6 referred to the AERORP, a real α̇ coupling, and a real drag slope.
+
+**This is the argument for AERORP referencing, made by measurement rather than by principle.**
+Referring moments to the AERORP makes the pitching moment inherit the force error through `r × F`
+instead of absorbing it into a fitted `Cma`. A drag slope of 0.1267 against JSBSim's 0.2113 could
+then no longer hide, and fixing it moved the short period by 1.3%. The CG-referenced model would
+have shown nothing at all — it had a coefficient free to absorb exactly that error.
+
+### What is left
+
+Phugoid 6.6% at cruise, 3.4% at approach. It is a slow drag-and-thrust energy exchange and the
+thrust model is still linear in throttle where JSBSim's varies 4.3× across the range. That is the
+next thing, if the phugoid matters.
+
+Layer 4 moved 0.483 → 0.558 m/s on the doublet. Trajectory divergence is set by total drag along
+the path, not by its slope at one point, and the two are independently adjustable — improving the
+slope does not have to improve the integral.
+
 ## Explicitly not done
 
 Item 4. The aircraft-motion part of α̇ (the `1/(1 − Zẇ)` implicit solve). Spool dynamics, stall,

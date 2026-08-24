@@ -660,7 +660,12 @@ def aircraft_entry(fdm, d, at_trim, trim, rho, h_match):
     # Wave drag is zero at M 0.78 by construction, so CD0 absorbs everything
     # that is not induced -- including JSBSim's CDde term (0.059 |de|), which
     # has no home in flightsim and is therefore frozen at its trim value.
-    CD0 = at_trim["CD"] - at_trim["CL"] ** 2 / (math.pi * e * AR)
+    # The drag slope JSBSim has and the induced term alone cannot supply. This
+    # is 737.xml's CD0(alpha) table slope (0.0808) plus the CDde and
+    # ground-effect residue, recovered from the engine rather than read off.
+    CD_alpha = d["CDa_engine"] - 2.0 * at_trim["CL"] * d["CLa"] / (math.pi * e * AR)
+    CD0 = (at_trim["CD"] - at_trim["CL"] ** 2 / (math.pi * e * AR)
+           - CD_alpha * at_trim["alpha"])
 
     sweep, t_over_c, kappa = wave_drag_parameters(at_trim["CL"])
     fmax, lapse, ram, mach_res, alt_res = thrust_fit(trim["throttle"])
@@ -668,7 +673,7 @@ def aircraft_entry(fdm, d, at_trim, trim, rho, h_match):
     return dict(
         mass=fdm["inertia/weight-lbs"] * LBF2N / 9.80665,
         aero_ref_x=offset[0], aero_ref_y=offset[1], aero_ref_z=offset[2],
-        S=S, b=b, c=c, AR=AR, e=e, CD0=CD0, CL0=CL0,
+        S=S, b=b, c=c, AR=AR, e=e, CD0=CD0, CD_alpha=CD_alpha, CL0=CL0,
         sweep=sweep, t_over_c=t_over_c, kappa_airfoil=kappa,
         max_thrust=fmax, thrust_lapse=lapse, mach_ram=ram,
         thrust_mach_residual=mach_res, thrust_altitude_residual=alt_res,
