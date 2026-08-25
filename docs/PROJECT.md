@@ -994,9 +994,11 @@ Trajectory divergence is set by total drag along the path; the slope at one poin
 integral over the path are independently adjustable, so improving the slope does not have to
 improve the integral. Both cases remain inside their derived tolerances (0.6 and 2.0 m/s).
 
-**Still open, and named rather than absorbed:** the phugoid at 6.58%, which is a slow
-drag-and-thrust energy exchange against a thrust model still linear in throttle where
-JSBSim's varies 4.3× across the range; `CDde` (JSBSim's `0.059·|δe|`, frozen into `CD0` at
+**Still open, and named rather than absorbed:** the phugoid at 6.58% — attributed here to "a
+slow drag-and-thrust energy exchange against a thrust model still linear in throttle", which
+is **half right and is corrected in session 19**: thrust is the *damping* story and has
+nothing to do with the *frequency* error, which is the larger of the two and is a missing
+Mach dependence of the pitching moment; `CDde` (JSBSim's `0.059·|δe|`, frozen into `CD0` at
 the trim elevator, so moving the elevator changes no drag here); Mach scheduling of `Cmde`
 and `Clda`, which is why one aeroplane needs two registry entries; banked trim, where layer
 2's turn case is recorded but not compared; and `wave_drag`, which the comparison does not
@@ -1122,6 +1124,68 @@ M 0.60–0.95 rather than the condition in use. Declaring `[0.60, 0.95]` for tha
 condemn it at its own recovery point, and inventing a lower bound would be inventing; so its
 Mach half is left undeclared and the check says so out loud. The fix is one line in the
 generator plus a regeneration, which needs JSBSim installed.
+
+**The phugoid, diagnosed. It is two different problems wearing one name.** Sessions 17 and 18
+attributed the whole of it to drag and thrust. Localised by comparing the two longitudinal
+plant matrices **entry by entry** rather than on eigenvalues — substituting JSBSim's value for
+one entry at a time and re-solving — it splits cleanly:
+
+*The frequency error is one entry, `M_u` = ∂q̇/∂vt.*
+
+| substituting JSBSim's… | cruise ωn | approach ωn |
+|---|---|---|
+| nothing (as built) | 0.05581 — 6.58% | 0.09370 — 3.42% |
+| `∂q̇/∂vt` alone | 0.05251 — **0.27%** | 0.09063 — **0.03%** |
+| JSBSim | 0.05237 | 0.09060 |
+
+Every other entry of the 4×4 agrees to within 2.7% and moves the phugoid not at all. So one
+derivative accounts for 96% of the cruise error and 99% of the approach one.
+
+*AtiSim's `M_u` is entirely an α̇ coupling, and that is measured, not argued.* Its
+coefficients have **no speed dependence whatever** at fixed α — `CL`, `CD` and `Cm` are
+bit-identical at V ± 10 m/s at both conditions, since there is no Prandtl–Glauert correction
+anywhere in `aero.py` and `M_crit` sits at 0.898 against M 0.78. What produces `M_u` is
+dynamic: perturbing speed changes the force balance, which changes ẇ, which changes α̇, which
+`Cmadot` = −16 turns into a pitching moment. Setting `Cmadot` = `CLadot` = 0 sends `M_u` to
+**−4.9e-19**, machine zero. (That probe is clean because α̇ = 0 at the trim point, so zeroing
+the term does not move the equilibrium it is linearised about.)
+
+JSBSim carries the same coupling **plus** genuinely Mach-dependent aerodynamics. The two
+therefore differ in sign at cruise — AtiSim +1.114e-04 against JSBSim −1.024e-04 — and by a
+factor of two at approach, +4.509e-04 against +2.254e-04.
+
+**This is structural, not a defect.** A constant-coefficient model cannot carry a Mach-tuck
+term. The phugoid is the only mode slow enough for speed derivatives to dominate — the short
+period is over before the speed has changed, which is exactly why it agrees to 0.04% while
+the phugoid does not. The consistent-with explanation on JSBSim's side is the Mach-scheduled
+`Cmde` this document already records from 737.xml; at δe_trim = −0.052 rad a modest table
+slope gives this magnitude. **Not confirmed** — 737.xml was not re-read this session, and
+cannot be without JSBSim installed.
+
+*The damping error is a different derivative, `X_u` = ∂v̇t/∂vt.*
+
+| | cruise | approach |
+|---|---|---|
+| `X_u` error | 1.06% | **8.56%** |
+| phugoid ζ error | 3.44% | **13.72%** |
+| ζ with JSBSim's `X_u` substituted | — | 13.72% → **3.0%** |
+
+At approach the culprit is the ram term, which contributes **+6.50e-04 1/s of de-damping** —
+thrust rising with speed. This is the generator's hard-coded Mach fit band showing up as a
+number: `mach_ram` = 0.3346 was fitted over M 0.60–0.95 and is being applied at M 0.40.
+
+**NO MODEL CHANGE WAS MADE, AND THAT IS THE POINT.** Setting `mach_ram` = 0 moves approach ζ
+from 13.72% to 7.55% and cruise ζ from 3.44% to **13.35%** — it buys one condition at the
+other's expense, because at cruise the term sits inside its fit band and is doing correct
+work. Deleting it would be fitting the solver to a test result. The same applies to the
+frequency half: inventing a `Cm`-versus-Mach term sized to close 6.58% would be tuning, not
+modelling. Both fixes have to come from the source:
+
+- **`mach_ram`:** re-fit from JSBSim's own CFM56 tables over a band that brackets each
+  condition's Mach, exactly as `thrust_fit` already brackets altitude. One line in the
+  generator plus a regeneration, which needs JSBSim installed.
+- **`Cmde` Mach schedule:** read from 737.xml's own table, not chosen. Until then the
+  frequency error is *explained* rather than removed, which is the honest state.
 
 **Still open, and unchanged by this session:** layer 3 runs at cruise only, and the approach
 phugoid ζ is out by **13.72%** (0.04850 against 0.05621) with no test asserting it — the
