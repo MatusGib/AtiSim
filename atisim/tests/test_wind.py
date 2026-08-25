@@ -988,3 +988,70 @@ def test_the_rigid_rotation_structure_diagnostic_is_reported_per_field():
         pair_p = "n/a" if abs(dw_dy) < 1e-12 else f"{-dv_dz / dw_dy:+.4f}"
         pair_q = "n/a" if abs(dw_dx) < 1e-12 else f"{-du_dz / dw_dx:+.4f}"
         print(f"  {label:12s}  p-pair {pair_p}   q-pair {pair_q}")
+
+
+# ---------------------------------------------------------------------------
+# The same vortices, as the LATER paper reports them.
+#
+# Wingrove & Bach 1994, J. Aircraft 31(4), Fig. 4 p. 755. Obtained session 19 --
+# the audit had this source down as `unverifiable -- source not available`.
+# ---------------------------------------------------------------------------
+
+
+def test_wingrove_fig4_cases_are_radii_and_morton_fixes_the_interpretation():
+    """Fig. 4 quotes DIAMETERS; the dict must hold radii.
+
+    Morton is the cross-check that fixes the interpretation: Fig. 4's 900 ft
+    diameter is 450 ft of radius, which is PARKS_CASES['morton']['r0'] exactly.
+    Without that agreement there would be no way to tell a diameter column from
+    a radius column, and every core in this comparison would be a factor of two
+    out with nothing to catch it.
+    """
+    assert wind.WINGROVE_FIG4_CASES["morton"]["r0"] == pytest.approx(450.0 * FT2M)
+    assert wind.WINGROVE_FIG4_CASES["morton"]["r0"] == pytest.approx(
+        wind.PARKS_CASES["morton"]["r0"]
+    )
+    assert wind.WINGROVE_FIG4_CASES["morton"]["v0"] == pytest.approx(
+        wind.PARKS_CASES["morton"]["v0"]
+    )
+
+
+def test_hannibal_radius_conflict_is_pinned_not_resolved():
+    """The two sources disagree on Hannibal and this test says so out loud.
+
+    Fig. 4 gives a 1000 ft diameter, so a 500 ft radius. PARKS_CASES says 600 ft,
+    citing Parks et al. 1985 -- which has never been obtained (AUDIT.md row 19),
+    so there is no way to tell which is the transcription error. Both are kept
+    and both are flown. If someone later resolves it, this test is where the
+    resolution has to be argued.
+    """
+    assert wind.WINGROVE_FIG4_CASES["hannibal"]["r0"] == pytest.approx(500.0 * FT2M)
+    assert wind.PARKS_CASES["hannibal"]["r0"] == pytest.approx(600.0 * FT2M)
+    # Same core strength in both sources -- only the radius is in dispute.
+    assert wind.WINGROVE_FIG4_CASES["hannibal"]["v0"] == pytest.approx(
+        wind.PARKS_CASES["hannibal"]["v0"]
+    )
+
+
+def test_cimarron_exists_only_in_the_1994_paper():
+    """Parks identifies two cases; Wingrove & Bach add a third."""
+    assert "cimarron" not in wind.PARKS_CASES
+    assert wind.WINGROVE_FIG4_CASES["cimarron"]["r0"] == pytest.approx(450.0 * FT2M)
+    assert wind.WINGROVE_FIG4_CASES["cimarron"]["v0"] == pytest.approx(50.0 * FT2M)
+
+
+def test_fig4_cases_carry_no_spacing():
+    """Fig. 4 gives core size and strength and says nothing about array spacing.
+
+    A `spacing` key here would be invented. Callers that need an array take it
+    from PARKS_CASES and say which source each number came from.
+    """
+    for case in wind.WINGROVE_FIG4_CASES.values():
+        assert set(case) == {"r0", "v0"}
+
+
+def test_case_altitudes_match_table_1():
+    """Table 1, p. 754. These three cases are NOT at one altitude."""
+    assert wind.WINGROVE_CASE_ALTITUDE["cimarron"] == pytest.approx(33000.0 * FT2M)
+    assert wind.WINGROVE_CASE_ALTITUDE["hannibal"] == pytest.approx(37000.0 * FT2M)
+    assert wind.WINGROVE_CASE_ALTITUDE["morton"] == pytest.approx(39000.0 * FT2M)
