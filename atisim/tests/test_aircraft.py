@@ -413,9 +413,21 @@ def test_a_recovery_band_is_declared_only_where_one_was_measured():
         ac = REGISTRY[name]
         banded = float(ac.valid_altitude[1]) > float(ac.valid_altitude[0])
         assert banded == name.startswith("boeing737"), name
-    # The approach entry's Mach half is deliberately absent; see its comment.
-    assert float(REGISTRY["boeing737"].valid_mach[1]) > 0.0
-    assert float(REGISTRY["boeing737_approach"].valid_mach[1]) == 0.0
+    # BOTH halves are declared for both entries. The approach entry's Mach band
+    # was absent while the generator's thrust fit sampled M 0.60-0.95 regardless
+    # of the condition, which left nothing honest to state for an entry flown at
+    # M 0.40; the fit now brackets the condition and the band is what was fitted.
+    for name in ("boeing737", "boeing737_approach"):
+        lo, hi = (float(v) for v in REGISTRY[name].valid_mach)
+        assert hi > lo > 0.0, name
+        mach = CRUISE[name]["airspeed"] / _sound_speed_at(CRUISE[name]["altitude"])
+        assert lo < mach < hi, f"{name} flies at M {mach:.3f}, outside its own band"
+
+
+def _sound_speed_at(altitude):
+    from atisim.atmosphere import speed_of_sound
+
+    return float(speed_of_sound(altitude))
 
 
 def test_the_recovery_band_reaches_no_force():

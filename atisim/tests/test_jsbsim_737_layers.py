@@ -335,10 +335,16 @@ def test_layer1_pitching_moment_difference_is_exactly_the_alphadot_term(conditio
 def test_layer2_longitudinal_trim_matches(condition):
     """Both engines' own trim algorithms, at the same condition.
 
-    Measured: alpha 1.980 deg against JSBSim's 1.965, elevator -0.05311 against
-    -0.05192 rad, thrust +1.04%. The thrust difference is the linear-throttle
-    approximation plus the 0.19% ram fit residual, both documented in
-    _boeing_737's docstring; the tolerance is set just above it at 2%.
+    Measured: alpha 1.9807 deg against JSBSim's 1.9650, elevator -0.053362
+    against -0.051922 rad, thrust +1.12% at cruise and +1.56% at approach. The
+    thrust difference is the linear-throttle approximation plus the ram fit
+    residual, both documented in _boeing_737's docstring; the tolerance is 2%.
+
+    The thrust LEVEL did not move when the ram fit was re-banded, and could not
+    have: max_thrust is solved so the model reproduces JSBSim's thrust AT the
+    condition, so re-fitting mach_ram moves the two together and leaves their
+    product at the trim point alone. What re-banding changed is the SLOPE with
+    Mach, which is what the phugoid damping reads -- see layer 3.
     """
     from atisim.atmosphere import RHO0, density
 
@@ -420,9 +426,27 @@ def test_layer3_longitudinal_modes_match():
     0.1267 against JSBSim's 0.2113 could no longer hide, and fixing it moved the
     short period by 1.3%. The CG-referenced model would have shown nothing.
 
-    The phugoid stays looser at 6.6% because it is a slow drag-and-thrust energy
-    exchange, and the thrust model is still linear in throttle where JSBSim's is
-    not -- that is the remaining known difference, not a defect.
+    THE PHUGOID IS TWO DIFFERENT PROBLEMS, and this docstring used to name only
+    one of them -- "a slow drag-and-thrust energy exchange" is the DAMPING half
+    and says nothing about the frequency, which is the larger error.
+
+      frequency, 6.58%: M_u, the pitching moment due to speed. atisim has none
+      beyond an alphadot coupling; JSBSim's Cmde is a Mach table, -1.20 at M 0
+      and -0.30 at M 2, and delta_e times that 0.45 slope accounts for 90.5% of
+      the gap at cruise and 83.1% at approach. Structural -- a
+      constant-coefficient model cannot carry a Mach-tuck term. Asserted in
+      test_layer3_phugoid_frequency_gap_is_the_pitching_moment_speed_derivative.
+
+      damping, 3.12%: X_u. This WAS 3.44% at cruise and 13.72% at approach,
+      until the generator's thrust fit was re-banded to bracket each condition
+      rather than sampling M 0.60-0.95 regardless. The approach entry had been
+      carrying a ram coefficient fitted entirely above its own flight condition;
+      re-fitting from JSBSim's own engine table put it at -0.2949 and took the
+      approach damping error to 1.53%.
+
+    The frequency numbers barely moved across that refit -- 6.582% to 6.582% at
+    cruise -- which is the cross-check that the two halves really are separate
+    mechanisms rather than one error split two ways.
     """
     from atisim import validation
 

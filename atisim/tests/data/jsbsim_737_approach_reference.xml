@@ -93,16 +93,16 @@
     <value name="e">9.665817896440e-01</value>
     <value name="elevator_limit">3.000000000000e-01</value>
     <value name="kappa_airfoil">1.002098775681e+00</value>
-    <value name="mach_ram">3.345799618749e-01</value>
+    <value name="mach_ram">-2.948758408911e-01</value>
     <value name="mass">4.853438359000e+04</value>
     <value name="matched_altitude">1.523558080263e+03</value>
-    <value name="max_thrust">8.257856222904e+04</value>
+    <value name="max_thrust">9.130710487406e+04</value>
     <value name="rudder_limit">3.500000000000e-01</value>
     <value name="sweep">4.363323129986e-01</value>
     <value name="t_over_c">1.200000000000e-01</value>
     <value name="thrust_altitude_residual">8.258350104484e-03</value>
     <value name="thrust_lapse">9.581403997535e-01</value>
-    <value name="thrust_mach_residual">2.834236684678e-03</value>
+    <value name="thrust_mach_residual">2.542726364824e-02</value>
   </aircraft_entry>
   <sweep>
     <point alpha="4.143569290943e-08" beta="3.021538348886e-18" alphadot="4.143569315310e-02" ci2vel="1.402567936823e-02" vel_body="1.337577988735e+02 4.041543187590e-16 5.542347078365e-06" sound_speed="3.343944991959e+02" rates="0.000000000000e+00 -2.475458155044e-08 -4.846972326817e-26" controls="-7.543909584388e-02 0.000000000000e+00 0.000000000000e+00" coefficients="1.849123609864e-01 2.717091004291e-02 -3.021538348886e-18 -2.719384518704e-19 6.764924241039e-02 7.855999725407e-19"/>
