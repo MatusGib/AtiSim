@@ -1170,8 +1170,9 @@ term. The phugoid is the only mode slow enough for speed derivatives to dominate
 period is over before the speed has changed, which is exactly why it agrees to 0.04% while
 the phugoid does not. The consistent-with explanation on JSBSim's side is the Mach-scheduled
 `Cmde` this document already records from 737.xml; at δe_trim = −0.052 rad a modest table
-slope gives this magnitude. **Not confirmed** — 737.xml was not re-read this session, and
-cannot be without JSBSim installed.
+slope gives this magnitude. **Confirmed in session 20 by reading the file and running the
+engine** — the table is −1.20 at M 0 and −0.30 at M 2, a slope of **+0.45 per Mach**, and
+δe × 0.45 accounts for **90.5%** of the `M_u` gap at cruise and **83.1%** at approach.
 
 *The damping error is a different derivative, `X_u` = ∂v̇t/∂vt.*
 
@@ -1193,8 +1194,8 @@ frequency half: inventing a `Cm`-versus-Mach term sized to close 6.58% would be 
 modelling. Both fixes have to come from the source:
 
 - **`mach_ram`:** re-fit from JSBSim's own CFM56 tables over a band that brackets each
-  condition's Mach, exactly as `thrust_fit` already brackets altitude. One line in the
-  generator plus a regeneration, which needs JSBSim installed.
+  condition's Mach, exactly as `thrust_fit` already brackets altitude. **Done in session
+  20** — see below.
 - **`Cmde` Mach schedule:** read from 737.xml's own table, not chosen. Until then the
   frequency error is *explained* rather than removed, which is the honest state.
 
@@ -1218,6 +1219,80 @@ phugoid test applies. Session 18's approach column reads "3.4%", which is ωn al
 unchanged: the reference XML still carries no `<tolerances>` block, so the design's promise
 that a widened tolerance shows up as a mismatch with its recorded derivation is still only
 half-built.
+
+### The engine run live, and the thrust fit re-banded (session 20)
+
+JSBSim was available after all — installed in the system interpreter rather than the project
+venv. Everything below is from the **same build** the reference was frozen at, 1.3.1 build
+1837 commit `3b25f25e`, so it is a check of the record rather than a new baseline. The
+generator gained a root-directory fallback so it can run from an interpreter that has
+`atisim` (and therefore JAX) while reaching `jsbsim` over `PYTHONPATH`;
+`get_default_root_dir()` raises `OSError` in that configuration.
+
+**Three claims checked. All held; one method of mine did not.**
+
+*`Ixz`, confirmed by a second and independent route.* Session 19 took the sign from JSBSim's
+exported linearisation. Finite-differencing the running engine's own
+`accelerations/rdot-rad_sec2` instead gives **∂ṙ/∂p = +1.180808e-02** against the exported
+matrix's +1.180789e-02 — five digits, same positive sign, so the tensor element is +19109.1
+and the property must not be negated. The generator's new `assert_inertia` also fired for
+real during the regeneration and passed at 1.3e-07 relative.
+
+*`Cmde` is a Mach table, read from the file.* −1.20 at M 0, −0.30 at M 2, so **+0.45 per
+Mach**; at M 0.78 it evaluates to −0.849, which is the recovered value exactly. Reading each
+`aero/coefficient/*` property directly shows `Cmalpha` and `Cmq` have **zero** Mach
+dependence and `d(Cmde)/dM` is δe × 0.45 to the digit at both conditions.
+
+*A measurement of mine was contaminated, and it is the same trap the original work hit.* My
+first `∂Cm/∂M` was a fixed-α Mach sweep, which gave −0.0099 at cruise and **+0.048** at
+approach — disagreeing with the table in magnitude and, at approach, in sign. The
+decomposition shows why: `d(Cmadot)/dM` contributes +0.0134 and +0.0824, because setting a
+state off-equilibrium sets α̇ and α̇ moves with the perturbation. That is exactly why `Cma`
+needed a least-squares crossed design rather than a central difference. The per-function read
+is the clean measurement; the sweep is not.
+
+**The thrust fit is re-banded, and this is a model change — the only one this session.**
+`thrust_fit`'s Mach samples were hard-coded at 0.60–0.95 regardless of condition; they now
+bracket `MACH` at ±0.10, exactly as the altitude samples have always bracketed `ALT_FT`. The
+number comes from JSBSim's own engine table, not from anything tuned. Measured at the
+approach trim throttle, thrust runs 46309 / 43591 / **40864** / 41383 / 41906 N at
+M 0.20 / 0.30 / **0.40** / 0.50 / 0.60 — a bucket whose minimum sits essentially at the
+condition, so the local slope is *downward* where the extrapolated fit supplied *upward*.
+
+Regenerated against the same build, **only three lines changed in each reference file** —
+every derivative, trim, A/B matrix, sweep point and trajectory sample is bit-identical:
+
+| | cruise | approach |
+|---|---|---|
+| `mach_ram` | 0.2511 → 0.2456 | **+0.3346 → −0.2949** |
+| `max_thrust` | 101375 → 101668 N | 82579 → 91307 N |
+| `thrust_mach_residual` | 0.193% → **0.151%** | 0.283% → **2.54%** |
+
+The approach residual got **worse**, and that is the honest number: `1 + ram·M²` is monotonic
+in |M| and cannot represent a bucket at all. The fit now reports a poor fit *at the
+condition* instead of a good fit *somewhere else*.
+
+| | before | after |
+|---|---|---|
+| approach phugoid ζ | 13.72% | **1.53%** |
+| cruise phugoid ζ | 3.44% | **3.12%** |
+| approach phugoid ωn | 3.42% | 3.39% |
+| cruise phugoid ωn | 6.58% | 6.58% |
+
+**The frequencies did not move, and that is the cross-check.** The refit touched thrust only,
+so if the frequency error were drag-and-thrust it would have moved too. It did not, at either
+condition — which confirms the two halves are separate mechanisms rather than one error split
+two ways, and leaves the frequency where the `Cmde` table says it belongs.
+
+The trim **thrust level** did not move either (+1.12% cruise, +1.56% approach, unchanged),
+and could not have: `max_thrust` is solved so the model reproduces JSBSim's thrust *at* the
+condition, so the two move together and only the Mach **slope** changes. That is precisely
+the quantity the phugoid damping reads.
+
+**`boeing737_approach` now declares a Mach validity band** of 0.30–0.50, which session 19 had
+to leave undeclared because there was no honest band to state. `test_a_recovery_band_is_...`
+caught the change and now asserts both entries carry a band containing their own flight
+condition.
 
 ### The validated baseline — do not touch these tolerances
 

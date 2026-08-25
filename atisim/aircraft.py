@@ -1098,14 +1098,14 @@ def _boeing_737() -> Aircraft:
         Cnda=jnp.array(0.0),  # 737.xml defines none
         Cndr=jnp.array(-0.2),
         # FITTED at the trim throttle over the cruise band -- see the docstring.
-        max_thrust=jnp.array(101375.4010746),
+        max_thrust=jnp.array(101668.1750481),
         thrust_lapse=jnp.array(0.7207901171515),
         # Deflection limits are 737.xml's aerosurface_scale ranges, so trim
         # bounds here are the same bounds JSBSim's own FCS enforces.
         elevator_limit=jnp.array(0.3),
         aileron_limit=jnp.array(0.35),
         rudder_limit=jnp.array(0.35),
-        mach_ram=jnp.array(0.2510939315992),
+        mach_ram=jnp.array(0.2456376192716),
         # Sideslip drag. 737.xml's CDbeta table gives 0.05 at beta = 0.26 rad;
         # 0.05/0.26^2 puts the quadratic through that breakpoint, which is where
         # the table's author presumably placed a real number. Below it this
@@ -1128,12 +1128,13 @@ def _boeing_737() -> Aircraft:
         aero_ref=jnp.array([-0.3603476635514, 0.0, -1.500261682243]),
         # The band the entry's own fits were made over, not a judgement about
         # where it "probably still works". Both come from
-        # scripts/gen_jsbsim_reference.py's thrust_fit: the altitude fit samples
-        # ALT_FT +/- 5,000 ft, and the Mach fit samples 0.60 to 0.95. Outside
-        # them the thrust model is extrapolating, the CD0(alpha) and CL(alpha)
-        # tables the entry linearises have departed, and the wave-drag onset was
-        # placed at M 0.79 by construction rather than by physics.
-        valid_mach=jnp.array([0.60, 0.95]),
+        # scripts/gen_jsbsim_reference.py's thrust_fit, BOTH of whose sample bands
+        # now bracket the condition: altitude at ALT_FT +/- 5,000 ft and Mach at
+        # MACH +/- 0.10. Outside them the thrust model is extrapolating, the
+        # CD0(alpha) and CL(alpha) tables the entry linearises have departed, and
+        # the wave-drag onset was placed at M 0.79 by construction rather than by
+        # physics -- only 0.010 Mach above this entry's own trim point.
+        valid_mach=jnp.array([0.68, 0.88]),
         valid_altitude=jnp.array([25000.0 * FT2M, 35000.0 * FT2M]),
     )
 
@@ -1220,31 +1221,36 @@ def _boeing_737_approach() -> Aircraft:
         Cnr=jnp.array(-0.3500024048283),
         Cnda=jnp.array(0.0),
         Cndr=jnp.array(-0.2),
-        max_thrust=jnp.array(82578.56222904),
+        max_thrust=jnp.array(91307.10487406),
         thrust_lapse=jnp.array(0.9581403997535),
         elevator_limit=jnp.array(0.3),
         aileron_limit=jnp.array(0.35),
         rudder_limit=jnp.array(0.35),
-        mach_ram=jnp.array(0.3345799618749),
+        # NEGATIVE, and not a typo. mach_ram is a LOCAL fit of thrust against
+        # Mach at the trim throttle, not a ram-recovery coefficient, and JSBSim's
+        # engine gives 46309 / 43591 / 40864 / 41383 / 41906 N at
+        # M 0.20 / 0.30 / 0.40 / 0.50 / 0.60 -- a bucket whose minimum sits
+        # essentially AT this entry's M 0.40, so the local slope is downward.
+        #
+        # It was +0.3346 until the generator's Mach samples were made to bracket
+        # the condition; before that they were hard-coded at 0.60-0.95 and this
+        # entry carried a coefficient fitted entirely above its own flight
+        # condition. The 2.5% mach residual recorded beside it is honest and is
+        # worse than the 0.28% the extrapolated fit reported, because
+        # 1 + ram*M^2 is monotonic in |M| and cannot represent a bucket at all.
+        mach_ram=jnp.array(-0.2948758408911),
         CD_beta=jnp.array(0.05 / 0.26**2),
         Cmadot=jnp.array(-15.96458939685),
         # Body-axis vector from the CG to 737.xml's AERORP: 1.183 ft aft and
         # 4.925 ft above, read from the engine rather than transcribed.
         aero_ref=jnp.array([-0.3603476635514, 0.0, -1.500261682243]),
-        # Altitude only, and the Mach half is DELIBERATELY LEFT UNDECLARED.
-        #
-        # gen_jsbsim_reference.thrust_fit brackets the altitude fit around the
-        # condition -- ALT_FT +/- 5,000 ft, so 0 to 10,000 ft here -- but its
-        # Mach samples are hard-coded at 0.60 to 0.95 and are NOT rebound per
-        # condition. This entry flies at M 0.40, below its own ram fit, so its
-        # mach_ram of 0.3346 is an extrapolation and the 0.28% residual recorded
-        # beside it describes M 0.60-0.95 rather than the condition in use.
-        #
-        # Declaring [0.60, 0.95] here would condemn the entry at its own
-        # recovery point; declaring a band down to 0.40 would invent one. So it
-        # stays undeclared and the check reports the Mach axis as unchecked,
-        # until the generator brackets MACH the way it already brackets ALT_FT
-        # and the reference is regenerated. Recorded in PROJECT.md section 4.
+        # BOTH halves declared now. This entry's Mach band was left undeclared
+        # while gen_jsbsim_reference.thrust_fit hard-coded its Mach samples at
+        # 0.60-0.95 -- above this entry's own M 0.40, so there was no honest band
+        # to state. The generator now brackets MACH the way it always bracketed
+        # ALT_FT, and the reference has been regenerated against it, so the fit
+        # covers M 0.30-0.50 and the band is simply what was fitted.
+        valid_mach=jnp.array([0.30, 0.50]),
         valid_altitude=jnp.array([0.0, 10000.0 * FT2M]),
     )
 

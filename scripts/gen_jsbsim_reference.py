@@ -89,8 +89,21 @@ LBFT2NM = LBF2N * FT2M
 # --------------------------------------------------------------------------
 # driving JSBSim
 # --------------------------------------------------------------------------
+# JSBSim's data ships inside its own package. `get_default_root_dir` resolves
+# it relative to how the extension was loaded and raises OSError when jsbsim is
+# imported from OUTSIDE its own environment -- which is exactly this project's
+# case, since the venv deliberately has no jsbsim and the package is reached
+# over PYTHONPATH. Falling back to the package directory makes the generator
+# runnable from an interpreter that has atisim (and therefore jax) without
+# needing jsbsim installed into it.
+try:
+    ROOT_DIR = jsbsim.get_default_root_dir()
+except OSError:
+    ROOT_DIR = str(Path(jsbsim.__file__).resolve().parent)
+
+
 def new_fdm():
-    fdm = jsbsim.FGFDMExec(jsbsim.get_default_root_dir())
+    fdm = jsbsim.FGFDMExec(ROOT_DIR)
     fdm.set_debug_level(0)
     fdm.load_model("737")
     return fdm
@@ -623,12 +636,23 @@ def thrust_fit(throttle):
     table shows at M = 0: that table is FULL power, and the idle/mil blend at a
     part-throttle cruise setting lapses differently.
     """
-    # Both fits are over the CRUISE BAND only, matching the rest of the design.
+    # BOTH bands now bracket the condition. The altitude one always did; the
+    # Mach one was hard-coded at 0.60-0.95 and did NOT move with MACH, so the
+    # approach entry -- flown at M 0.40 -- carried a ram coefficient fitted
+    # entirely above its own flight condition and extrapolated down to it.
+    #
+    # Measured at the approach trim throttle, JSBSim's own engine gives
+    # 46309 / 43591 / 40864 / 41383 / 41906 N at M 0.20 / 0.30 / 0.40 / 0.50 /
+    # 0.60: a bucket whose MINIMUM sits essentially at M 0.40. The local slope
+    # there is about -11,000 N per Mach while the extrapolated fit supplied
+    # +10,400 -- opposite in sign, which removed speed damping the real engine
+    # does not remove and showed up as the phugoid's approach damping error.
+    #
     # A single power law over 10,000-40,000 ft leaves a 6.75% worst residual,
     # because JSBSim's idle/mil blend is not a power law over that span; over
     # the band the comparison actually flies it is far tighter. Values outside
     # the band are recorded in the limitations, not fitted to.
-    machs = np.array([0.60, 0.70, 0.78, 0.85, 0.95])
+    machs = MACH + np.array([-0.10, -0.05, 0.0, 0.05, 0.10])
     T_m = np.array([thrust_at(ALT_FT, m, throttle) for m in machs])
     # The band BRACKETS the condition rather than being fixed at cruise. A band
     # pinned to 25,000-35,000 ft left a 31.3% residual when fitting a 5,000 ft
