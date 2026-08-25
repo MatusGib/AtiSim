@@ -1,13 +1,22 @@
 """Generate the frozen JSBSim reference data for the 737 cross-code comparison.
 
 Run with an interpreter that has JSBSim installed (NOT the project venv, which
-deliberately does not):
+deliberately does not). On this machine that interpreter is, measured session 19:
 
-    python scripts/gen_jsbsim_reference.py
+    C:/Users/mateusz/AppData/Local/Programs/Python/Python310/python.exe \
+        scripts/gen_jsbsim_reference.py
+
+It carries jsbsim 1.3.1, numpy 2.2.6, scipy 1.15.3 and jax 0.6.2 -- everything
+this file imports. It does NOT carry matplotlib, so nothing here may import it.
 
 Writes atisim/tests/data/jsbsim_737_reference.xml. The test suite reads that
 file and never imports jsbsim, so the suite runs anywhere and reference drift
-shows up in git diff. This is the ONLY file in the project that imports jsbsim.
+shows up in git diff.
+
+This is no longer the only file that imports jsbsim: scripts/gen_jsbsim_747.py
+recovers the 747 entry and scripts/gen_jsbsim_vortex_reference.py freezes the
+vortex encounters. There are exactly three, all of them under scripts/, and all
+of them freeze their output so nothing under atisim/ ever imports jsbsim.
 
 Design: docs/superpowers/specs/2026-08-20-jsbsim-737-verification-design.md
 
