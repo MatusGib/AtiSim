@@ -176,6 +176,23 @@ LEDGER: dict[str, Entry] = {
     # then u_max = 0.2357*lambda*R from those. One empirical input and three
     # consequences -- of which 1.1212 happens also to be independently
     # obtainable, since it solves exp(-x^2)(2x^2+1) = 1 with no z in it.
+    # -- the superseded Hannibal core radius --------------------------------
+    # Not used by any computation. It is here so the value the project flew
+    # before session 22 is recorded in the code rather than only in git, and so
+    # the test that pins the Scorer ratio has something to compare against.
+    "wind.HANNIBAL_R0_SUPERSEDED": Entry(
+        "SOURCED",
+        "600 ft, Parks et al. 1985 J. Aircraft 22(2) pp.127-128 AS TRANSCRIBED. "
+        "SUPERSEDED session 22 by Wingrove & Bach 1994 Fig. 4, which gives the "
+        "same vortex a 1000 ft DIAMETER -- 500 ft of radius -- and whose Morton "
+        "row reproduces this project's Morton radius exactly. Parks has never "
+        "been retrieved, so the conflict is decided on which document is held, "
+        "not on which is primary. Kept because Parks' own Scorer check "
+        "(spacing/diameter 'about 2.9 to 3.5') reproduces at 600 ft and does "
+        "NOT at 500 ft, which is real evidence the other way; see "
+        "test_wind.test_the_spacing_to_core_diameter_ratio_and_what_session_22_cost_it.",
+    ),
+
     "wind.MICROBURST_ZM_OVER_ZSTAR": Entry(
         "SOURCED",
         "0.22, the altitude of maximum outflow over z*. THE EMPIRICAL INPUT of "

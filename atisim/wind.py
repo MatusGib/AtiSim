@@ -99,9 +99,12 @@ class VortexArray(NamedTuple):
     core, so N is fixed by their shape -- changing the count recompiles, which
     is correct, and vmapping over encounter geometry batches these leaves.
 
-    Identified values (Parks pp. 127-128), both DC-10s near the tropopause:
-      Case 1, Hannibal MO,  37,000 ft: r0 = 600 ft, V0 = 85 ft/s, spacing 3500 ft
-      Case 2, Morton WY,    39,000 ft: r0 = 450 ft, V0 = 70 ft/s, spacing 3200 ft
+    Identified values, both DC-10s near the tropopause:
+      Case 1, Hannibal MO, 37,000 ft: r0 = 500 ft, V0 = 85 ft/s, spacing 3500 ft
+      Case 2, Morton WY,   39,000 ft: r0 = 450 ft, V0 = 70 ft/s, spacing 3200 ft
+
+    Hannibal's radius is Wingrove & Bach 1994 Fig. 4's, NOT Parks'; the strength
+    and both spacings are Parks pp. 127-128. See PARKS_CASES for why.
     """
 
     north: Array  # (N,) m, NED north of each core
@@ -114,10 +117,38 @@ class VortexArray(NamedTuple):
 # They live here rather than in a script because more than one entry point needs
 # them, and a sourced number restated in two places is a number that will
 # eventually disagree with itself.
+#
+# *** HANNIBAL'S RADIUS IS NOT PARKS' -- IT IS WINGROVE & BACH Fig. 4's. ***
+# Decided session 22, and the citation moves with the number rather than being
+# left pointing at a document that says something else.
+#
+# This entry read 600 ft, attributed to Parks 1985, until Wingrove & Bach 1994
+# was obtained. That paper's Fig. 4 gives the same Hannibal vortex a 1000 ft
+# core DIAMETER -- a 500 ft radius. The two disagree by 20% and Parks 1985 has
+# never been retrieved, so the conflict could not be arbitrated on the documents.
+# It was resolved in favour of the source actually held and read:
+#
+#   - Fig. 4 is a table of identified values in a paper that IS in hand, whose
+#     Morton row (900 ft diameter -> 450 ft radius) reproduces this dict's
+#     Morton radius to the digit. That agreement is what establishes the column
+#     as a diameter, and it makes Fig. 4 a checked source rather than a guess.
+#   - The 600 ft was a transcription from a paper nobody here has read.
+#
+# The superseded value is recorded rather than erased: Parks 1985 as transcribed
+# gave r0 = 600 ft, and if that document is ever retrieved this is the line to
+# revisit. `WINGROVE_FIG4_CASES` below still holds Fig. 4's numbers separately,
+# so the two sources remain distinguishable even though they now agree.
+#
+# `spacing` is still Parks': Fig. 4 gives core size and strength and says
+# nothing about array spacing, so that number has not moved and cannot.
 PARKS_CASES: dict[str, dict[str, float]] = {
-    "hannibal": {"r0": 600.0 * FT2M, "v0": 85.0 * FT2M, "spacing": 3500.0 * FT2M},
+    "hannibal": {"r0": 500.0 * FT2M, "v0": 85.0 * FT2M, "spacing": 3500.0 * FT2M},
     "morton": {"r0": 450.0 * FT2M, "v0": 70.0 * FT2M, "spacing": 3200.0 * FT2M},
 }
+
+# What Hannibal's radius was before session 22, and where it came from. Kept so
+# the change is visible in the code and not only in the history.
+HANNIBAL_R0_SUPERSEDED = 600.0 * FT2M  # Parks 1985 as transcribed; see above.
 
 
 # ---------------------------------------------------------------------------
