@@ -255,10 +255,16 @@ def test_the_lift_table_is_not_linearised_at_a_breakpoint():
         )
 
 
-def test_only_the_737_entries_carry_a_lift_table():
-    """Every other aircraft keeps the linear form, so nothing else moved."""
-    from atisim.aircraft import REGISTRY
+def test_only_the_jsbsim_recovered_entries_carry_a_lift_table():
+    """Every other aircraft keeps the linear form, so nothing else moved.
+
+    The qualifying set is aircraft.RECOVERED_FROM_JSBSIM, not a name prefix.
+    A table belongs to an entry that LINEARISES a nonlinear source model, and
+    that is what membership means; it was `startswith("boeing737")` only while
+    those were the only such entries.
+    """
+    from atisim.aircraft import RECOVERED_FROM_JSBSIM, REGISTRY
 
     for name, ac in REGISTRY.items():
         has_table = bool(ac.CL_table_alpha.size)
-        assert has_table == name.startswith("boeing737"), name
+        assert has_table == (name in RECOVERED_FROM_JSBSIM), name

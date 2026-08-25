@@ -99,9 +99,12 @@ class VortexArray(NamedTuple):
     core, so N is fixed by their shape -- changing the count recompiles, which
     is correct, and vmapping over encounter geometry batches these leaves.
 
-    Identified values (Parks pp. 127-128), both DC-10s near the tropopause:
-      Case 1, Hannibal MO,  37,000 ft: r0 = 600 ft, V0 = 85 ft/s, spacing 3500 ft
-      Case 2, Morton WY,    39,000 ft: r0 = 450 ft, V0 = 70 ft/s, spacing 3200 ft
+    Identified values, both DC-10s near the tropopause:
+      Case 1, Hannibal MO, 37,000 ft: r0 = 500 ft, V0 = 85 ft/s, spacing 3500 ft
+      Case 2, Morton WY,   39,000 ft: r0 = 450 ft, V0 = 70 ft/s, spacing 3200 ft
+
+    Hannibal's radius is Wingrove & Bach 1994 Fig. 4's, NOT Parks'; the strength
+    and both spacings are Parks pp. 127-128. See PARKS_CASES for why.
     """
 
     north: Array  # (N,) m, NED north of each core
@@ -114,9 +117,94 @@ class VortexArray(NamedTuple):
 # They live here rather than in a script because more than one entry point needs
 # them, and a sourced number restated in two places is a number that will
 # eventually disagree with itself.
+#
+# *** HANNIBAL'S RADIUS IS NOT PARKS' -- IT IS WINGROVE & BACH Fig. 4's. ***
+# Decided session 22, and the citation moves with the number rather than being
+# left pointing at a document that says something else.
+#
+# This entry read 600 ft, attributed to Parks 1985, until Wingrove & Bach 1994
+# was obtained. That paper's Fig. 4 gives the same Hannibal vortex a 1000 ft
+# core DIAMETER -- a 500 ft radius. The two disagree by 20% and Parks 1985 has
+# never been retrieved, so the conflict could not be arbitrated on the documents.
+# It was resolved in favour of the source actually held and read:
+#
+#   - Fig. 4 is a table of identified values in a paper that IS in hand, whose
+#     Morton row (900 ft diameter -> 450 ft radius) reproduces this dict's
+#     Morton radius to the digit. That agreement is what establishes the column
+#     as a diameter, and it makes Fig. 4 a checked source rather than a guess.
+#   - The 600 ft was a transcription from a paper nobody here has read.
+#
+# The superseded value is recorded rather than erased: Parks 1985 as transcribed
+# gave r0 = 600 ft, and if that document is ever retrieved this is the line to
+# revisit. `WINGROVE_FIG4_CASES` below still holds Fig. 4's numbers separately,
+# so the two sources remain distinguishable even though they now agree.
+#
+# `spacing` is still Parks': Fig. 4 gives core size and strength and says
+# nothing about array spacing, so that number has not moved and cannot.
 PARKS_CASES: dict[str, dict[str, float]] = {
-    "hannibal": {"r0": 600.0 * FT2M, "v0": 85.0 * FT2M, "spacing": 3500.0 * FT2M},
+    "hannibal": {"r0": 500.0 * FT2M, "v0": 85.0 * FT2M, "spacing": 3500.0 * FT2M},
     "morton": {"r0": 450.0 * FT2M, "v0": 70.0 * FT2M, "spacing": 3200.0 * FT2M},
+}
+
+# What Hannibal's radius was before session 22, and where it came from. Kept so
+# the change is visible in the code and not only in the history.
+HANNIBAL_R0_SUPERSEDED = 600.0 * FT2M  # Parks 1985 as transcribed; see above.
+
+
+# ---------------------------------------------------------------------------
+# The same vortices, as the LATER paper reports them.
+#
+# Source: R. C. Wingrove, R. E. Bach Jr., "Severe Turbulence and Maneuvering
+# from Airline Flight Records", J. Aircraft 31(4), Jul-Aug 1994, pp. 753-760.
+# Fig. 4, p. 755, "Models for vortex-induced turbulence". Obtained session 21;
+# AUDIT.md had this source down as `unverifiable -- source not available`.
+#
+# A SEPARATE dict from PARKS_CASES on purpose. These are different numbers from
+# a different paper, and merging them would put two citations on one dict and
+# lose which value came from where -- the drift PARKS_CASES' own comment exists
+# to prevent.
+#
+# Fig. 4's columns are headed "Vortex diameter (feet)" and "Tangential velocity
+# (ft/sec)", reading 1000/85, 900/70 and 900/50. Stored here HALVED, as radii,
+# so this dict carries the same quantity in the same units as PARKS_CASES.
+#
+# MORTON FIXES THE INTERPRETATION. 900 ft of diameter is 450 ft of radius, and
+# PARKS_CASES["morton"]["r0"] is 450 ft to the digit. That agreement is the only
+# thing distinguishing a diameter column from a radius column; without it every
+# core here would risk being a factor of two out with nothing to catch it.
+#
+# *** HANNIBAL DISAGREES, AND THAT IS NOT RESOLVED HERE. *** Fig. 4's 1000 ft
+# diameter is a 500 ft radius. PARKS_CASES says 600 ft, citing Parks et al.
+# 1985, which has never been obtained (AUDIT.md row 19) -- so there is no way to
+# tell which is the transcription error. Both are kept, both are flown, and the
+# spread is reported. Neither is deleted in favour of the other. The core
+# STRENGTH agrees at 85 ft/s in both sources; only the radius is in dispute.
+#
+# CIMARRON APPEARS ONLY HERE. Parks identifies two cases; this paper adds a
+# third, and it is the one with published time histories (Fig. 3 and Fig. 6a)
+# and a published model-against-data overlay (Fig. 4) -- which is why it is the
+# case the 737 flies.
+#
+# `spacing` is deliberately ABSENT. Fig. 4 gives core size and strength and says
+# nothing about array spacing, so any value here would be invented. Callers that
+# need an array take the spacing from PARKS_CASES and say that they did.
+# ---------------------------------------------------------------------------
+WINGROVE_FIG4_CASES: dict[str, dict[str, float]] = {
+    "hannibal": {"r0": 500.0 * FT2M, "v0": 85.0 * FT2M},
+    "morton": {"r0": 450.0 * FT2M, "v0": 70.0 * FT2M},
+    "cimarron": {"r0": 450.0 * FT2M, "v0": 50.0 * FT2M},
+}
+
+# The altitude each incident was flown at. Wingrove & Bach Table 1, p. 754,
+# which quotes them in hundreds of feet: 370, 390 and 330.
+#
+# Here because these three cases are NOT at one altitude, and density drives
+# every aerodynamic force in the comparison. Flying all three at one nominal
+# cruise would put a same-signed bias on every result.
+WINGROVE_CASE_ALTITUDE: dict[str, float] = {
+    "hannibal": 37000.0 * FT2M,
+    "morton": 39000.0 * FT2M,
+    "cimarron": 33000.0 * FT2M,
 }
 
 

@@ -1320,14 +1320,198 @@ def _boeing_737_approach() -> Aircraft:
     )
 
 
+def _boeing_747_jsbsim() -> Aircraft:
+    """JSBSim 1.3.1's own B747, recovered at 38,000 ft / M 0.80.
+
+    *** NOT A QUALIFIED SOURCE. NOT A CREDIBLE 747. NOT `boeing747`. ***
+
+    READ _boeing_737's DOCSTRING FIRST -- every caveat there applies here, and
+    two more that do not apply to the 737.
+
+    WHY IT EXISTS. `boeing747` is the CR-2144 aeroplane and is the validated
+    one; its modes are checked against Table IX-5 and it is what flies against
+    Wingrove & Bach's measured g-loads. It cannot be compared to JSBSim's B747,
+    because they are not the same aircraft: 288,773 kg against 249,974 kg
+    (15.5%), 59.64 m of span against 64.46 m (8.1%), 511.0 m^2 of wing against
+    524.7 (2.7%) -- while sharing an inertia tensor. Since n = L/W, a load-factor
+    difference between the two engines would be dominated by that mass gap and
+    say nothing about either solver. This entry carries JSBSim's own numbers, so
+    a difference between the two engines flying IT is a difference between the
+    engines.
+
+    THE EXTRA CAVEATS, both worse here than for the 737:
+
+      - B747.xml declares release="ALPHA" and author "Unknown", against the
+        737's release="BETA" and named authors.
+      - *** ITS LIFT CURVE IS NOT 747 DATA. *** B747.xml's CLalpha table is
+        (-0.20, -0.68), (0.00, 0.20), (0.23, 1.20), (0.60, 0.60) and 737.xml's
+        is (-0.20, -0.68), (0.00, 0.20), (0.23, 1.20), (0.46, 0.20). The first
+        THREE POINTS ARE IDENTICAL, and both give CLa = 4.3478 /rad. A 747 and a
+        737 do not share a lift-curve slope; this is one Aeromatic template used
+        twice. It costs the cross-code comparison nothing -- both engines eat
+        the same numbers -- and it makes any comparison of THIS entry against
+        flight data meaningless. Use `boeing747` for that.
+
+    VALIDITY BAND: 35,000-41,000 ft, M 0.70-0.90, linearised about alpha
+    4.279 deg. The band brackets Wingrove & Bach's Hannibal (37,000 ft) and
+    Morton (39,000 ft), which is what it was recovered for.
+
+    Every number below comes from scripts/gen_jsbsim_747.py, which imports the
+    737's recovery machinery and rebinds it, so the two entries cannot drift
+    apart in method. The recovery lands on B747.xml's own declared constants:
+    CYb, Clb, Clp, Cldr, Cnb, Cndr and CLde exactly, Cma -0.699965 against
+    -0.7000, and Cmq + Cmadot = -25.000000 against -21 + -4.
+    """
+    S = 524.71636992  # m^2, metrics/Sw-sqft 5648
+    b = 64.4652       # m, metrics/bw-ft 211.5
+    c = 8.324088      # m, metrics/cbarw-ft 27.31
+    # Ixz is POSITIVE here and the 737's is NEGATIVE, and neither is a typo --
+    # they are the same rule applied to engine properties of opposite sign.
+    #
+    # `inertia_tensor` takes Ixz in the positive-forward-up sense and NEGATES it
+    # into the tensor. JSBSim's inertia/ixz-slugs_ft2 is already the TENSOR
+    # element, so whatever the engine reports has to be passed negated to
+    # survive that. The engine reports -970000 for the B747 and +19109.13 for
+    # the 737, so this entry passes +969999.99 and the 737 passes -19109.13, and
+    # BOTH land on a tensor element with the engine's own sign.
+    #
+    # Getting this backwards is not loud. It was shipped that way on the 737
+    # once and every layer passed, because the sign is worth only 1.6-3.2% on
+    # the lateral modes. Here it was caught by
+    # test_mass_and_inertia_match_the_engine, which compares the assembled
+    # tensor against the frozen reference rather than the argument against a
+    # remembered convention -- which is the only version of this check that
+    # works.
+    # Converted with atisim's OWN SLUG_FT2_TO_KG_M2, so the round trip back to
+    # the reference's SI tensor is exact. A constant differing in the 8th digit
+    # leaves a 1e-8 relative gap, which is physically nothing and still enough
+    # to fail an exact-match test -- and an exact-match test is the one worth
+    # having here.
+    #
+    # The last two land on B747.xml's stated 4.97e+07 and -970000 to ten digits;
+    # the first two carry an extra 11,622.94 slug ft^2 each, which is the fuel
+    # and point-mass contribution the engine adds and the XML constant does not.
+    inertia = inertia_tensor(
+        *(v * SLUG_FT2_TO_KG_M2 for v in (
+            18211622.939457253, 33111622.93945883,
+            49699999.99999955, +969999.9999996619,
+        ))
+    )
+    return Aircraft(
+        mass=jnp.array(551098.0 * LBF2N / G0),  # lb, engine total with fuel
+        inertia=inertia,
+        inertia_inv=jnp.linalg.inv(inertia),
+        S=jnp.array(S),
+        b=jnp.array(b),
+        c=jnp.array(c),
+        # Absorbs everything at trim that is not induced; wave drag is exactly
+        # zero at M 0.80, where B747.xml's CDmach table still reads zero.
+        CD0=jnp.array(0.02530631882491),
+        # B747.xml's CD0(alpha) table rise, recovered from the engine as
+        # dCD/dalpha minus the induced part.
+        CD_alpha=jnp.array(0.07488788347087),
+        # Chosen so CL^2/(pi e AR) reproduces JSBSim's CDi = 0.0420 CL^2 exactly.
+        # The 737's coefficient is 0.043, so its e is not this one.
+        e=jnp.array(0.9569181269645),
+        AR=jnp.array(b * b / S),
+        # FITTED to place the Korn/Lock drag rise where B747.xml's CDmach table
+        # leaves zero (M 0.79), NOT 747 geometry -- B747.xml gives neither sweep
+        # nor thickness. kappa above 1.0 is not physical; it is what puts the
+        # onset in the right place, and wave drag is UNTESTED by this comparison
+        # because at M 0.80 both engines give exactly zero.
+        sweep=jnp.array(0.4363323129986),
+        t_over_c=jnp.array(0.12),
+        kappa_airfoil=jnp.array(1.006726463738),
+        CL0=jnp.array(0.1999999907817),
+        CLa=jnp.array(4.347826086957),
+        CLq=jnp.array(0.0),  # B747.xml defines none; measured 2.5e-4, the drift floor
+        CLde=jnp.array(0.2),
+        Cm0=jnp.array(-2.418896913375e-06),
+        Cma=jnp.array(-0.6999648367122),
+        Cmq=jnp.array(-21.00553692583),  # BARE Cmq; Cmadot is separate below
+        Cmde=jnp.array(-0.9100000011349),
+        CYb=jnp.array(-1.0),
+        CYp=jnp.array(0.0),  # B747.xml defines none
+        CYr=jnp.array(0.0),  # B747.xml defines none
+        CYdr=jnp.array(0.0),  # B747.xml defines none: rudder makes no side force
+        Clb=jnp.array(-0.09999991882178),
+        Clp=jnp.array(-0.4000000566734),
+        Clr=jnp.array(0.1500005781162),
+        # Mach-scheduled in JSBSim (0.100 at M 0, 0.033 at M 2); M 0.80 value.
+        Clda=jnp.array(0.07320000007583),
+        Cldr=jnp.array(0.01),
+        Cnb=jnp.array(0.1199999870733),
+        Cnp=jnp.array(0.0),  # B747.xml defines none
+        Cnr=jnp.array(-0.1500006635566),
+        # DEFINED by B747.xml, unlike the 737's, and defined as exactly zero.
+        # Carried as a measured value rather than asserted absent.
+        Cnda=jnp.array(0.0),
+        Cndr=jnp.array(-0.1),
+        # B747.xml's own CL(alpha) table, transcribed exactly. See the docstring
+        # for why its first three points are the 737's. The fourth differs:
+        # this one falls to 0.60 at 0.60 rad where the 737 falls to 0.20 at 0.46.
+        CL_table_alpha=jnp.array([-0.20, 0.00, 0.23, 0.60]),
+        CL_table_CL=jnp.array([-0.68, 0.20, 1.20, 0.60]),
+        # FITTED at the trim throttle over 33,000-43,000 ft and M 0.70-0.90.
+        # Residuals 1.30% over altitude and 3.13% over Mach -- both larger than
+        # the 737's 1.8%, and reported rather than smoothed.
+        max_thrust=jnp.array(415809.4615739),
+        thrust_lapse=jnp.array(0.2644780053084),
+        mach_ram=jnp.array(0.08859606080634),
+        # B747.xml's aerosurface_scale ranges. The elevator's is ASYMMETRIC
+        # (-0.35 to +0.175); 0.175 is the symmetric inner bound, so a trim bound
+        # built from it can never command a deflection JSBSim would clip.
+        elevator_limit=jnp.array(0.175),
+        aileron_limit=jnp.array(0.35),
+        rudder_limit=jnp.array(0.35),
+        # B747.xml's CDbeta table gives 0.05 at beta = 0.26 rad, the same
+        # breakpoint the 737's does; same quadratic through it, same reasoning.
+        CD_beta=jnp.array(0.05 / 0.26**2),
+        # B747.xml's Cmadot. Applies to the TOTAL alphadot, so Cmq above is the
+        # bare -21.0 rather than the folded -25.0. The q/alphadot SPLIT is
+        # ill-conditioned (fit condition 2.7e9) and each is 0.0055 from
+        # B747.xml's -21 and -4, equal and opposite; their SUM is -25.000000 and
+        # is the well-determined quantity.
+        Cmadot=jnp.array(-3.9944630784),
+        # Body-axis vector from the CG to B747.xml's AERORP: 50 in aft, 0 in up,
+        # read from the engine rather than transcribed.
+        aero_ref=jnp.array([-1.27, 0.0, -0.05730072472773]),
+        # The band the entry's own fits were made over. Brackets both vortex
+        # cases this entry exists for.
+        valid_mach=jnp.array([0.70, 0.90]),
+        valid_altitude=jnp.array([35000.0 * FT2M, 41000.0 * FT2M]),
+    )
+
+
 REGISTRY: dict[str, Aircraft] = {
     "boeing747": _boeing_747(),
     "boeing747_approach": _boeing_747_approach(),
+    # JSBSim's B747, NOT the CR-2144 aeroplane above. See its docstring.
+    "boeing747_jsbsim": _boeing_747_jsbsim(),
     "boeing737": _boeing_737(),
     "boeing737_approach": _boeing_737_approach(),
     "cherokee": _cherokee_pa28_180(),
     "cessna172": _cessna_172(),
 }
+
+# The entries that are LOCAL FITS to JSBSim's nonlinear models, as opposed to
+# linear derivative sets transcribed from CR-2144 or Nelson.
+#
+# Named once, here, because three separate tests need the distinction and each
+# had encoded it as `name.startswith("boeing737")` -- which was the same set
+# only for as long as the JSBSim-recovered entries happened to all be 737s.
+# Adding boeing747_jsbsim broke two of them and would have broken the third,
+# each with a message about 737s that had nothing to do with the real rule.
+#
+# What follows from membership, and why each test cares:
+#   - it carries a recovery band (valid_mach, valid_altitude), because a fit has
+#     a range and a derivative set does not
+#   - it carries the source model's own CL(alpha) table, because the linear form
+#     reports lift outside the fit range that the source does not have
+#   - it must trim well inside a table segment, or jacfwd linearises at a knot
+RECOVERED_FROM_JSBSIM: frozenset[str] = frozenset(
+    {"boeing737", "boeing737_approach", "boeing747_jsbsim"}
+)
 
 # Reference trim conditions, for the trim solver and for tests. SI.
 CRUISE: dict[str, dict[str, float]] = {
@@ -1345,6 +1529,11 @@ CRUISE: dict[str, dict[str, float]] = {
     # bias on every force in the comparison. 9130.83 m is 43.22 ft lower and
     # matches JSBSim's density to 1e-16 relative.
     "boeing737": {"altitude": 9130.825908961, "airspeed": 236.5191917152},
+    # The condition boeing747_jsbsim's derivatives were recovered at, and the
+    # only one it is valid near. DENSITY-MATCHED for the same reason the 737's
+    # is: JSBSim flies this at 38,000 ft, and 11561.31 m is 69.19 ft lower and
+    # matches JSBSim's density exactly (residual 0.0).
+    "boeing747_jsbsim": {"altitude": 11561.31072235, "airspeed": 236.0552703914},
     # The second recovery condition, 5,000 ft and M 0.40. Density-matched for
     # the same reason, though the shift is only -1.45 ft this low down.
     "boeing737_approach": {"altitude": 1523.558080263, "airspeed": 133.7577996784},
