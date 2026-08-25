@@ -139,10 +139,12 @@ def test_far_field_preconditioning_is_bounded_and_is_not_trim_decay(reference):
             f"the 1% these encounters were characterised at. Either the lead-in "
             f"of {reference.lead_in_radii:.0f} core radii changed or the field did."
         )
-    # The far field is stronger for a bigger core at the same strength, so the
-    # 600 ft Hannibal must precondition more than the 500 ft one. If that
-    # ordering ever inverts, the effect is not the far field.
-    assert worst[("hannibal", "parks")] > worst[("hannibal", "wingrove")]
+    # Hannibal's two runs are now the same radius, so they must precondition
+    # identically. Before session 22 this asserted an ORDERING -- the 600 ft
+    # core preconditioning more than the 500 ft one, which it did -- and that
+    # ordering was the evidence the effect really is the far field. What
+    # survives of it is the equality.
+    assert worst[("hannibal", "parks")] == worst[("hannibal", "wingrove")]
 
 
 def test_the_encounter_is_a_single_core_as_fig_4_draws_it(reference):
@@ -165,39 +167,41 @@ def test_the_encounter_is_a_single_core_as_fig_4_draws_it(reference):
         assert crossings == 1, f"{key}: {crossings} sign changes, expected 1"
 
 
-def test_morton_is_a_control_because_both_sources_agree_on_it(reference):
-    """Morton's two runs must be IDENTICAL, and that is the point of running it.
+def test_both_sources_now_agree_on_every_case_so_every_pair_is_identical(reference):
+    """After session 22 the two radius sources give the same number everywhere.
 
-    Fig. 4 and PARKS_CASES both give Morton a 450 ft radius, so its `wingrove`
-    and `parks` encounters are the same physical case flown twice. Any
-    difference between them would be numerical noise in the harness rather than
-    a radius effect -- which is exactly the null this comparison needs, because
-    Hannibal's two runs DO differ and something has to establish that the
-    difference is the radius and not the machinery.
+    Morton always agreed -- Fig. 4's 900 ft diameter halves to PARKS_CASES'
+    450 ft. Hannibal did not, until session 22 adopted Fig. 4's 500 ft there
+    too. So the `radius_source` dimension is now degenerate, and every pair of
+    runs is the same case flown twice.
+
+    That is worth keeping rather than deleting, for two reasons. It records that
+    two sources were consulted and what each said. And a pair of runs that must
+    be bit-identical is a determinism check on the whole harness -- generator,
+    frozen XML, parser and analysis -- which nothing else here provides.
     """
-    a = reference.encounters[("morton", "wingrove")]
-    b = reference.encounters[("morton", "parks")]
-    assert a.values["r0"] == b.values["r0"]
-    assert a.load_increments() == b.load_increments()
-    assert a.pitch_increments() == b.pitch_increments()
+    for case in ("hannibal", "morton"):
+        a = reference.encounters[(case, "wingrove")]
+        b = reference.encounters[(case, "parks")]
+        assert a.values["r0"] == b.values["r0"], case
+        assert a.load_increments() == b.load_increments(), case
+        assert a.pitch_increments() == b.pitch_increments(), case
+        assert a.core_response() == b.core_response(), case
 
 
-def test_hannibals_two_radii_give_genuinely_different_answers(reference):
-    """The unresolved conflict, measured rather than argued.
+def test_hannibal_now_flies_fig_4s_radius(reference):
+    """The decision of session 22, pinned where the runs can see it.
 
-    Fig. 4 gives Hannibal a 500 ft radius and PARKS_CASES 600 ft, and Parks 1985
-    has never been obtained to settle it. This asserts the disagreement MATTERS
-    -- if the two radii ever produced the same load increment, the conflict
-    would be reportable as harmless, and it is not.
+    Fig. 4 gives Hannibal a 1000 ft core diameter, so 500 ft of radius; the
+    superseded transcription from Parks 1985 said 600 ft. The reference must
+    have been regenerated at the new value -- an XML still carrying 600 ft would
+    make every number downstream describe a vortex the project no longer flies,
+    and nothing else here would notice.
     """
-    wingrove = reference.encounters[("hannibal", "wingrove")]
-    parks = reference.encounters[("hannibal", "parks")]
-    assert wingrove.values["r0"] == pytest.approx(500.0 * FT2M)
-    assert parks.values["r0"] == pytest.approx(600.0 * FT2M)
-    _, wingrove_min = wingrove.load_increments()
-    _, parks_min = parks.load_increments()
-    spread = abs(wingrove_min - parks_min) / abs(parks_min)
-    assert spread > 0.05, (
-        f"the two Hannibal radii differ by only {spread:.1%} in peak negative "
-        "load; the conflict would then be reportable as immaterial"
-    )
+    for source in ("wingrove", "parks"):
+        enc = reference.encounters[("hannibal", source)]
+        assert enc.values["r0"] == pytest.approx(500.0 * FT2M), source
+        assert enc.values["r0"] == pytest.approx(
+            wind.PARKS_CASES["hannibal"]["r0"]
+        ), source
+        assert enc.values["r0"] != pytest.approx(wind.HANNIBAL_R0_SUPERSEDED)

@@ -382,13 +382,13 @@ footer {
   </div>
   <div>
     <dt>Pitch, core traverse</dt>
-    <dd>0.4&#8211;7.0%</dd>
+    <dd>0.4&#8211;5.3%</dd>
     <p class="sub">Same runs, same window</p>
   </div>
   <div>
     <dt>Pitch, measured from trim</dt>
     <dd class="bad">15&#8211;54%</dd>
-    <p class="sub">The same data, measured wrongly &#8212; see &#167;5</p>
+    <p class="sub">Same data, wrong datum. Traced to one modelling choice &#8212; &#167;5</p>
   </div>
 </dl>
 
@@ -558,12 +558,9 @@ footer {
         <tr><td>Cimarron, 33,000 ft</td><td><code>boeing737</code></td>
             <td class="num">1.1337 g</td><td class="num">1.1408 g</td><td class="num ok">+0.6%</td>
             <td class="num">1.1191&#176;</td><td class="num">1.0940&#176;</td><td class="num ok">&#8722;2.2%</td></tr>
-        <tr><td>Hannibal, 37,000 ft &#183; r&#8320; 500 ft</td><td><code>boeing747_jsbsim</code></td>
+        <tr><td>Hannibal, 37,000 ft</td><td><code>boeing747_jsbsim</code></td>
             <td class="num">1.7077 g</td><td class="num">1.7443 g</td><td class="num ok">+2.1%</td>
             <td class="num">1.1289&#176;</td><td class="num">1.1336&#176;</td><td class="num ok">+0.4%</td></tr>
-        <tr><td>Hannibal, 37,000 ft &#183; r&#8320; 600 ft</td><td><code>boeing747_jsbsim</code></td>
-            <td class="num">1.5423 g</td><td class="num">1.5667 g</td><td class="num ok">+1.6%</td>
-            <td class="num">1.7747&#176;</td><td class="num">1.8990&#176;</td><td class="num ok">+7.0%</td></tr>
         <tr><td>Morton, 39,000 ft</td><td><code>boeing747_jsbsim</code></td>
             <td class="num">1.3626 g</td><td class="num">1.4016 g</td><td class="num ok">+2.9%</td>
             <td class="num">0.9211&#176;</td><td class="num">0.9703&#176;</td><td class="num ok">+5.3%</td></tr>
@@ -572,7 +569,7 @@ footer {
   </div>
 
   <p>
-    AtiSim reads consistently <em>higher</em> on load &#8212; every one of the four is positive, between
+    AtiSim reads consistently <em>higher</em> on load &#8212; all three are positive, between
     +0.6% and +2.9%. That is a systematic bias, not scatter, and it is small enough that the
     interesting question is what causes it rather than whether the two engines agree.
   </p>
@@ -606,8 +603,7 @@ footer {
       </thead>
       <tbody>
         <tr><td>Cimarron</td><td class="num ok">&#8722;1.8%</td><td class="num bad">&#8722;15.0%</td><td class="num">0.336&#176;</td></tr>
-        <tr><td>Hannibal, r&#8320; 500 ft</td><td class="num ok">&#8722;4.3%</td><td class="num bad">&#8722;42.8%</td><td class="num">1.553&#176;</td></tr>
-        <tr><td>Hannibal, r&#8320; 600 ft</td><td class="num ok">&#8722;2.3%</td><td class="num bad">&#8722;44.0%</td><td class="num">1.734&#176;</td></tr>
+        <tr><td>Hannibal</td><td class="num ok">&#8722;4.3%</td><td class="num bad">&#8722;42.8%</td><td class="num">1.553&#176;</td></tr>
         <tr><td>Morton</td><td class="num ok">&#8722;6.0%</td><td class="num bad">&#8722;53.7%</td><td class="num">1.482&#176;</td></tr>
       </tbody>
     </table>
@@ -632,13 +628,68 @@ footer {
     </p>
   </div>
 
+  <h3>Two experiments that close it</h3>
+
   <p>
-    The likely cause of the drift is the trade made in &#167;3: AtiSim is started from JSBSim's trim
-    state, which is 0.95% of <span class="mono">C<sub>L</sub></span> short of AtiSim's own 1&nbsp;g,
-    so AtiSim begins fractionally out of trim and settles during the run-in. That is consistent
-    with the sign and roughly with the magnitude, but it has <em>not</em> been separated from a
-    genuine difference in phugoid rate &#8212; which remains open.
+    The suspect was the trade made in &#167;3: AtiSim is started from JSBSim's trim state, which is
+    0.95% of <span class="mono">C<sub>L</sub></span> short of AtiSim's own 1&nbsp;g, so AtiSim
+    begins fractionally out of trim. Two runs settle whether that is really the cause.
   </p>
+
+  <p>
+    <strong>Switch the vortex off entirely.</strong> Fly the same start state, the same controls,
+    the same duration, in still air. Whatever pitch appears cannot be the vortex.
+  </p>
+
+  <div class="scroll">
+    <table>
+      <caption>Still air, from JSBSim's trim state, over the run-in</caption>
+      <thead>
+        <tr><th>Case</th><th class="num">Run-in</th><th class="num">Drift in still air</th><th class="num">AtiSim&#8722;JSBSim offset with the vortex</th><th class="num">Accounted for</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Cimarron</td><td class="num">8.24 s</td><td class="num">&#8722;0.340&#176;</td><td class="num">&#8722;0.336&#176;</td><td class="num ok">101%</td></tr>
+        <tr><td>Hannibal</td><td class="num">9.04 s</td><td class="num">&#8722;1.583&#176;</td><td class="num">&#8722;1.553&#176;</td><td class="num ok">103%</td></tr>
+        <tr><td>Morton</td><td class="num">8.14 s</td><td class="num">&#8722;1.502&#176;</td><td class="num">&#8722;1.482&#176;</td><td class="num ok">101%</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    <strong>The vortex contributes nothing to the offset.</strong> All of it is AtiSim settling
+    out of a trim that is not its own, and it would happen just as fast in perfectly still air.
+  </p>
+
+  <p>
+    <strong>Then remove the compromise.</strong> Start AtiSim from its <em>own</em> trim and fly
+    the identical vortex &#8212; giving up the shared initial condition to get an in-trim start:
+  </p>
+
+  <div class="scroll">
+    <table>
+      <caption>Pitch excursion from trim, shared start vs own trim</caption>
+      <thead>
+        <tr><th>Case</th><th class="num jsb">JSBSim &#916;&#952;&#8315;</th><th class="num">From JSBSim's state</th><th class="num">Error</th><th class="num">From AtiSim's own trim</th><th class="num">Error</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Cimarron</td><td class="num">&#8722;2.301&#176;</td><td class="num">&#8722;2.645&#176;</td><td class="num bad">&#8722;15%</td><td class="num">&#8722;2.297&#176;</td><td class="num ok">+0%</td></tr>
+        <tr><td>Hannibal</td><td class="num">&#8722;3.636&#176;</td><td class="num">&#8722;5.193&#176;</td><td class="num bad">&#8722;43%</td><td class="num">&#8722;3.603&#176;</td><td class="num ok">+1%</td></tr>
+        <tr><td>Morton</td><td class="num">&#8722;2.852&#176;</td><td class="num">&#8722;4.384&#176;</td><td class="num bad">&#8722;54%</td><td class="num">&#8722;2.827&#176;</td><td class="num ok">+1%</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <span class="lab">So the answer is</span>
+    <p>
+      The 15&#8211;54% pitch error is not a disagreement between the solvers and is not slow
+      integration of a physical difference. It is <strong>one modelling choice</strong> &#8212; the
+      decision to give both engines an identical start &#8212; costing 0.95% of lift coefficient,
+      paid back over eight to nine seconds of settling. Start each engine in its own trim and
+      the same measurement agrees to <strong>1%</strong>. The core response never moved, because
+      the settling is slow compared with a one-second traverse.
+    </p>
+  </div>
 </section>
 
 <section>
@@ -674,8 +725,7 @@ footer {
       </thead>
       <tbody>
         <tr><td>Cimarron</td><td class="num">1.1408 g</td><td class="num">1.0108 g</td><td class="num">1.3630 g</td><td class="num">1.2315 g</td><td class="num">+7.9%</td></tr>
-        <tr><td>Hannibal, r&#8320; 500 ft</td><td class="num">1.7443 g</td><td class="num">1.6923 g</td><td class="num">2.0197 g</td><td class="num">1.9663 g</td><td class="num">+12.7%</td></tr>
-        <tr><td>Hannibal, r&#8320; 600 ft</td><td class="num">1.5667 g</td><td class="num">1.5066 g</td><td class="num">1.8863 g</td><td class="num">1.8268 g</td><td class="num">+16.6%</td></tr>
+        <tr><td>Hannibal</td><td class="num">1.7443 g</td><td class="num">1.6923 g</td><td class="num">2.0197 g</td><td class="num">1.9663 g</td><td class="num">+12.7%</td></tr>
         <tr><td>Morton</td><td class="num">1.4016 g</td><td class="num">1.3696 g</td><td class="num">1.5693 g</td><td class="num">1.5377 g</td><td class="num">+9.7%</td></tr>
       </tbody>
     </table>
@@ -683,7 +733,7 @@ footer {
 
   <p>
     The wind-induced &#593;&#775; term <em>reduces</em> the load excursion by up to 11%; the gust-rate
-    term <em>increases</em> it by up to 20%. Net, the gradient adds <strong>8&#8211;17% of load
+    term <em>increases</em> it by up to 20%. Net, the gradient adds <strong>8&#8211;13% of load
     span</strong>. That is the size of the term JSBSim has no way to represent, and it is the
     single largest modelling difference this comparison found &#8212; roughly five times the
     solver-to-solver disagreement.
@@ -725,32 +775,119 @@ footer {
     the up-gust, then up through the down-gust. Both engines reproduce that ordering. They simply
     do more of it, against less load, than the recorder saw.
   </p>
+
+  <h3>Which shared input is responsible</h3>
+
+  <p>
+    Start from what the aircraft would feel if it could not respond at all. A 50&nbsp;ft/s gust at
+    766&nbsp;ft/s is <span class="mono">&#916;&#945; = 3.74&#176;</span>; at
+    <span class="mono">C<sub>L&#945;</sub> = 4.348</span> and
+    <span class="mono">C<sub>L,trim</sub> = 0.391</span> that is a <strong>quasi-steady
+    +0.725&nbsp;g</strong> &#8212; almost exactly the DFDR's +0.73. The simulated aircraft reports
+    +0.417, so it sheds <strong>42% of the quasi-steady load</strong> by pitching away and
+    climbing during the one-second traverse.
+  </p>
+  <p>
+    So the question is which shared input is wrong. Changing one at a time, against the recorded
+    &#8722;1.20&nbsp;g:
+  </p>
+
+  <div class="scroll">
+    <table>
+      <caption>Cimarron: one lever at a time</caption>
+      <thead>
+        <tr><th>Lever</th><th class="num">&#916;n&#8315;</th><th class="num">Fraction of the DFDR</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Nothing &#8212; as flown</td><td class="num">&#8722;0.841 g</td><td class="num">70%</td></tr>
+        <tr><td>C<sub>L&#945;</sub> &#215; 1.20</td><td class="num">&#8722;0.913 g</td><td class="num">76%</td></tr>
+        <tr><td>C<sub>L&#945;</sub> &#215; 1.60 &#8212; Prandtl&#8211;Glauert at M 0.78</td><td class="num">&#8722;1.022 g</td><td class="num">85%</td></tr>
+        <tr><td>Core strength 50 &#8594; 60 ft/s</td><td class="num">&#8722;1.015 g</td><td class="num">85%</td></tr>
+        <tr><td>Core strength 50 &#8594; 70 ft/s</td><td class="num">&#8722;1.192 g</td><td class="num ok">99%</td></tr>
+        <tr><td>737 &#8594; 747 &#8212; four times the mass</td><td class="num">&#8722;0.837 g</td><td class="num bad">70% &#8212; no effect</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    <strong>Gust strength dominates.</strong> A 40% stronger core closes the gap almost exactly,
+    and there is direct evidence for it in the source: Fig. 4 overlays the Cimarron
+    <em>data</em> on the fitted model, and the data spikes past it. The Rankine core is a
+    smooth fit to a signal that was not smooth, and a fit that matches a peak in the
+    least-squares sense under-reads the peak itself.
+  </p>
+  <p>
+    <strong>Lift-curve slope is worth about half the remainder.</strong> JSBSim's table gives
+    4.348&nbsp;/rad with no Mach correction; Prandtl&#8211;Glauert at M&nbsp;0.78 would raise it by
+    a factor of 1.60. That alone takes 70% to 85%. Both engines inherit the same table, which is
+    precisely why they agree with each other and miss the data together.
+  </p>
+
+  <div class="note warn">
+    <span class="lab">A clean negative result</span>
+    <p>
+      <strong>Airframe mass does not matter.</strong> The obvious intuition &#8212; a heavier
+      aircraft has more pitch inertia, so it sheds less of the quasi-steady load &#8212; is wrong.
+      Flying the same vortex with the 747 at four times the 737's mass and twenty times its
+      pitch inertia moves the answer by <strong>0.6%</strong>. The reason is that
+      <span class="mono">&#916;n = &#916;C<sub>L</sub>/C<sub>L,trim</sub></span> and
+      <span class="mono">C<sub>L,trim</sub> = W/q&#772;S</span>, so wing loading cancels. Not
+      knowing what aircraft the DFDR was in is a real limitation of this comparison, but it is
+      not the source of this discrepancy.
+    </p>
+  </div>
 </section>
 
 <section>
-  <h2><span class="num">08</span> One thing this could not settle</h2>
+  <h2><span class="num">08</span> The Hannibal radius, decided</h2>
+
+  <p>
+    <code>PARKS_CASES</code> gave Hannibal a <strong>600&nbsp;ft</strong> core radius, transcribed
+    from Parks et al. 1985. Wingrove &amp; Bach Fig. 4 gives the same vortex a 1000&nbsp;ft
+    <em>diameter</em> &#8212; <strong>500&nbsp;ft</strong>. Everything above is flown at 500&nbsp;ft.
+  </p>
+  <p>
+    The units are not in question. Fig. 4's Morton row halves to 450&nbsp;ft, which is the code's
+    Morton radius to the digit &#8212; that agreement is what establishes the column as a diameter and
+    makes Fig. 4 a checked source rather than a guess. The paper's own summary text (p. 760) says
+    the same thing in words: <em>&#8220;the vortex cores have diameters of 900&#8211;1000 ft&#8221;</em>.
+  </p>
 
   <div class="note warn">
-    <span class="lab">Open &#8212; needs Parks et al. 1985</span>
+    <span class="lab">The evidence pointing the other way, recorded</span>
     <p>
-      <code>PARKS_CASES</code> gives Hannibal a <strong>600&nbsp;ft</strong> core radius, citing
-      Parks et al. 1985. Wingrove &amp; Bach Fig. 4 gives the same vortex a 1000&nbsp;ft
-      <em>diameter</em> &#8212; so <strong>500&nbsp;ft</strong>. The units are not in doubt: Fig. 4's
-      Morton entry halves to 450&nbsp;ft, which is the code's Morton radius to the digit.
-      One of the two papers is misquoted, and Parks 1985 has never been obtained to say which.
+      Parks p. 128 checks its identified arrays against Scorer's theory:
+      <em>&#8220;the ratio of spacing to core diameter ranged from about 2.9 to 3.5.&#8221;</em>
+      At 600&nbsp;ft the two cases give <strong>2.92 and 3.56</strong> &#8212; that sentence,
+      reproduced. At 500&nbsp;ft they give <strong>3.50 and 3.56</strong>, and the lower end of
+      Parks' stated range is gone.
     </p>
     <p>
-      It is not immaterial. Flown in JSBSim the two radii give <span class="mono">&#8722;1.2581 g</span>
-      and <span class="mono">&#8722;1.1325 g</span> of peak load &#8212; an <strong>11.1% spread</strong>.
-      Both radii are kept, in separate dictionaries with separate citations, and both are flown
-      throughout. Resolving it needs <em>J. Aircraft</em> <strong>22</strong>(2), 124&#8211;129.
+      A transcription error in a radius would normally <em>break</em> its consistency with a
+      separately quoted ratio range. These two agree at 600&nbsp;ft, which is what a faithful
+      transcription looks like. Against that: the ratio quote and the 600&nbsp;ft come from the
+      same unretrieved document and the same transcriber, so they are not independent evidence &#8212;
+      one table misread carries into both. Wingrove &amp; Bach is in hand and says 1000&nbsp;ft
+      twice, in a figure and in prose.
+    </p>
+    <p>
+      The two papers disagree and only Parks 1985 &#8212; <em>J. Aircraft</em>
+      <strong>22</strong>(2), 124&#8211;129 &#8212; can close it. The superseded value is kept in the code
+      as a named constant, and the test that checked Scorer's ratio now pins both numbers so the
+      argument survives where someone will find it.
     </p>
   </div>
 
   <p>
-    Morton is the control that makes this a real finding rather than harness noise: both sources
-    give it 450&nbsp;ft, its two runs are the same case flown twice, and they agree to the last
-    digit. So the Hannibal spread is the radius.
+    What the radius is worth, measured before it was fixed: at 600&nbsp;ft the peak load was
+    <span class="mono">&#8722;1.1325&nbsp;g</span>, at 500&nbsp;ft it is
+    <span class="mono">&#8722;1.2581&nbsp;g</span> &#8212; an <strong>11.1% spread</strong>. The choice
+    is not cosmetic.
+  </p>
+  <p>
+    Morton remains the control that makes the whole radius question tractable: both sources give
+    it 450&nbsp;ft, its two runs are the same case flown twice, and they agree to the last digit.
+    That is also, now, the only determinism check on the harness end to end.
   </p>
 </section>
 
@@ -775,7 +912,12 @@ footer {
       <span class="mono">&#8722;C<sub>mq</sub>/C<sub>Lq</sub></span> is a division by zero. It costs
       this work nothing &#8212; strip loads are roll-only and this field has no spanwise structure &#8212;
       but the gradient arm rests on the analytic Jacobian alone, with no independent cross-check.</li>
-    <li><strong>The run-in drift is characterised, not explained.</strong> See &#167;5.</li>
+    <li><strong>The run-in drift is now explained</strong> (&#167;5) but not eliminated: the headline
+      table still uses the shared start, because an identical initial condition is worth more to a
+      cross-code comparison than a tidier from-trim column. Read the core-response numbers, not
+      the from-trim ones.</li>
+    <li><strong>Parks 1985 is still unretrieved</strong>, and its Scorer ratio check disagrees with
+      the radius now flown (&#167;8).</li>
   </ul>
 </section>
 
@@ -796,7 +938,10 @@ footer {
 &lt;ref-python&gt; scripts/gen_jsbsim_vortex_reference.py
 
 # 3. fly AtiSim through the identical field and compare
-.venv/Scripts/python.exe scripts/vortex_compare.py --png runs/vc.png</pre>
+.venv/Scripts/python.exe scripts/vortex_compare.py --png runs/vc.png
+
+# 4. separate the two large errors into their causes
+.venv/Scripts/python.exe scripts/vortex_diagnose.py</pre>
 
   <details>
     <summary>Two bugs the tests caught, worth recording</summary>
@@ -840,7 +985,7 @@ footer {
     pp. 753&#8211;760.<br>
     Vortex model after E. K. Parks, R. C. Wingrove, R. E. Bach and R. S. Mehta,
     <em>J. Aircraft</em> <strong>22</strong>(2), 1985, 124&#8211;129 &#8212; not obtained; see &#167;8.<br>
-    Full suite: 724 passed, 1 skipped.
+    Full suite: 725 passed, 1 skipped. Hannibal flown at Fig. 4's 500 ft core radius.
   </p>
 </footer>
 
