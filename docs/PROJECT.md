@@ -1141,11 +1141,22 @@ one entry at a time and re-solving — it splits cleanly:
 Every other entry of the 4×4 agrees to within 2.7% and moves the phugoid not at all. So one
 derivative accounts for 96% of the cruise error and 99% of the approach one.
 
-*AtiSim's `M_u` is entirely an α̇ coupling, and that is measured, not argued.* Its
-coefficients have **no speed dependence whatever** at fixed α — `CL`, `CD` and `Cm` are
-bit-identical at V ± 10 m/s at both conditions, since there is no Prandtl–Glauert correction
-anywhere in `aero.py` and `M_crit` sits at 0.898 against M 0.78. What produces `M_u` is
-dynamic: perturbing speed changes the force balance, which changes ẇ, which changes α̇, which
+*AtiSim's `M_u` is entirely an α̇ coupling, and that is measured, not argued.* At fixed α
+the build-up has no Mach dependence at all except wave drag, since there is no
+Prandtl–Glauert correction anywhere in `aero.py` — and wave drag is exactly zero at both
+recovery points, so it contributes nothing to `M_u` either.
+
+> **Correction to the first writing of this entry**, which said "`CL`, `CD` and `Cm` are
+> bit-identical at V ± 10 m/s … `M_crit` sits at 0.898 against M 0.78". 0.8977 is
+> **M_dd**, not `M_crit`: `wave_drag` subtracts `_MDD_OFFSET` = 0.10772, putting the onset at
+> **M 0.78998** — 0.010 Mach above the cruise trim point, about **3 m/s**. `CL` and `Cm` are
+> speed-independent as stated, but `CD` is only so *below that onset*, and V + 10 m/s at
+> cruise is above it. The `M_u` conclusion is unaffected — the onset is above the
+> linearisation point, so wave drag has value and slope exactly zero there — but the margin
+> is thin enough to be worth a tripwire, and now has one in
+> `test_the_wave_drag_onset_sits_above_the_recovery_mach`.
+
+What produces `M_u` is dynamic: perturbing speed changes the force balance, which changes ẇ, which changes α̇, which
 `Cmadot` = −16 turns into a pitching moment. Setting `Cmadot` = `CLadot` = 0 sends `M_u` to
 **−4.9e-19**, machine zero. (That probe is clean because α̇ = 0 at the trim point, so zeroing
 the term does not move the equilibrium it is linearised about.)
@@ -1186,6 +1197,19 @@ modelling. Both fixes have to come from the source:
   generator plus a regeneration, which needs JSBSim installed.
 - **`Cmde` Mach schedule:** read from 737.xml's own table, not chosen. Until then the
   frequency error is *explained* rather than removed, which is the honest state.
+
+**The diagnosis is now asserted, not just written down.** Three tests, all test-only — no
+coefficient moved:
+
+| test | what it pins |
+|---|---|
+| `..._phugoid_frequency_gap_is_the_pitching_moment_speed_derivative` | substituting JSBSim's `M_u` alone must cut the frequency error **tenfold**, at both conditions. Substituting `X_u` instead moves it by under 1e-4 of itself, which is how the test is known to discriminate between entries rather than restate arithmetic |
+| `test_atisim_has_no_aerodynamic_speed_derivative_of_pitching_moment` | zeroing `Cmadot`/`CLadot` drives `M_u` below 1e-12, at both conditions, with a vacuity guard that the un-zeroed value is non-trivial |
+| `test_the_wave_drag_onset_sits_above_the_recovery_mach` | the one Mach term AtiSim does carry stays off at both recovery points, so the α̇ attribution holds |
+
+This moves the phugoid from a 10% allowance to a **localisation**: the frequency gap is one
+named derivative, and if it ever stops being that, the first test fails rather than the
+number quietly drifting inside a tolerance.
 
 **Still open, and unchanged by this session:** layer 3 runs at cruise only, and the approach
 phugoid ζ is out by **13.72%** (0.04850 against 0.05621) with no test asserting it — the
