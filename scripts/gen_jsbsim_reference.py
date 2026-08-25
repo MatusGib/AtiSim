@@ -82,6 +82,55 @@ TURN_BANK_DEG = 30.0
 # deflection; the achieved deflection is always read back.
 ELEVATOR_RANGE, AILERON_RANGE, RUDDER_RANGE = 0.3, 0.35, 0.35
 
+# --------------------------------------------------------------------------
+# What is specific to the 737, and therefore what a sibling generator rebinds.
+#
+# scripts/gen_jsbsim_747.py imports this module and rebinds the six names below
+# to recover the B747 with the same code. They are module globals, and every
+# function reads them at CALL time, for exactly the reason `at_state` already
+# documents about ALT_FT: a default argument binds at definition time and a
+# rebinding would never reach it.
+#
+# The 737's own values are the defaults, so this file's behaviour is unchanged
+# -- which is checked by regenerating the reference and finding an empty diff,
+# not by inspection.
+# --------------------------------------------------------------------------
+MODEL = "737"
+ENGINES = (0, 1)
+
+# JSBSim's induced drag is CDi = <coeff> CL^2. atisim's Oswald e is chosen to
+# make its own induced term identical rather than merely close, so this is the
+# number that choice depends on. 737.xml: 0.043. B747.xml: 0.0420.
+CDI_COEFF = 0.043
+
+
+def elevator_cmd(de):
+    """Normalised pitch command that ACHIEVES elevator deflection `de` (rad).
+
+    The 737's aerosurface_scale is symmetric, so this is one division. The B747's
+    is not -- its range is [-0.35, +0.175], zero-centred, so its two sides have
+    different gearing and its override in gen_jsbsim_747.py branches on sign.
+    Measured, not read off the XML.
+    """
+    return de / ELEVATOR_RANGE
+
+
+def rudder_cmd(dr, r_aero):
+    """Normalised yaw command that ACHIEVES rudder deflection `dr` (rad).
+
+    Pre-compensates the yaw damper, which moves the rudder in response to yaw
+    rate with no rudder command at all. The 737's damper contributes
+    RUDDER_RANGE * r_aero, so subtracting r_aero cancels it exactly. The B747's
+    damper has a different scheduled gain and its override subtracts a different
+    multiple -- calibrated against the running engine rather than assumed.
+    """
+    return dr / RUDDER_RANGE - r_aero
+
+
+def total_thrust_lbs(fdm):
+    """Sum of every engine's thrust. The 737 has two; the B747 has four."""
+    return sum(fdm[f"propulsion/engine[{i}]/thrust-lbs"] for i in ENGINES)
+
 # Step used only to let the FCS gear commands onto the surfaces. See at_state.
 SETTLE_DT = 1e-6
 
@@ -114,13 +163,13 @@ except OSError:
 def new_fdm():
     fdm = jsbsim.FGFDMExec(ROOT_DIR)
     fdm.set_debug_level(0)
-    fdm.load_model("737")
+    fdm.load_model(MODEL)
     return fdm
 
 
 def _clean(fdm):
     """Gear up, flaps up, engines lit: the configuration every case shares."""
-    for i in (0, 1):
+    for i in ENGINES:
         fdm[f"propulsion/engine[{i}]/set-running"] = 1
     fdm["gear/gear-cmd-norm"] = 0
     fdm["gear/gear-pos-norm"] = 0
@@ -154,10 +203,10 @@ def at_state(alpha_deg=0.0, beta_deg=0.0, p=0.0, q=0.0, r=0.0,
     fdm["ic/r-rad_sec"] = r
     fdm.run_ic()
     _clean(fdm)
-    fdm["fcs/pitch-trim-cmd-norm"] = de / ELEVATOR_RANGE
+    fdm["fcs/pitch-trim-cmd-norm"] = elevator_cmd(de)
     fdm["fcs/aileron-cmd-norm"] = da / AILERON_RANGE
     # Pre-compensate the yaw damper so the commanded rudder is what is achieved.
-    fdm["fcs/rudder-cmd-norm"] = dr / RUDDER_RANGE - fdm["velocities/r-aero-rad_sec"]
+    fdm["fcs/rudder-cmd-norm"] = rudder_cmd(dr, fdm["velocities/r-aero-rad_sec"])
     # A step is needed for the FCS to gear the commands onto the surfaces, but
     # run() also INTEGRATES, and at the default 1/120 s a pitch rate drifts
     # alpha enough to fake a lift-due-to-pitch-rate derivative the model does
@@ -562,10 +611,10 @@ def fly(case, duration=20.0, dt=1.0 / 120.0, sample_every=0.05, latitude_deg=47.
     while fdm["simulation/sim-time-sec"] <= duration:
         t = fdm["simulation/sim-time-sec"]
         d_de, d_da, d_dr = schedule(t)
-        fdm["fcs/pitch-trim-cmd-norm"] = (de_trim + d_de) / ELEVATOR_RANGE
+        fdm["fcs/pitch-trim-cmd-norm"] = elevator_cmd(de_trim + d_de)
         fdm["fcs/aileron-cmd-norm"] = d_da / AILERON_RANGE
-        fdm["fcs/rudder-cmd-norm"] = (
-            d_dr / RUDDER_RANGE - fdm["velocities/r-aero-rad_sec"]
+        fdm["fcs/rudder-cmd-norm"] = rudder_cmd(
+            d_dr, fdm["velocities/r-aero-rad_sec"]
         )
         fdm.run()
         worst_miss = max(worst_miss, abs(fdm["fcs/rudder-pos-rad"] - d_dr))
@@ -583,8 +632,7 @@ def fly(case, duration=20.0, dt=1.0 / 120.0, sample_every=0.05, latitude_deg=47.
                 controls=np.array([fdm["fcs/elevator-pos-rad"],
                                    fdm["fcs/left-aileron-pos-rad"],
                                    fdm["fcs/rudder-pos-rad"]]),
-                thrust=(fdm["propulsion/engine[0]/thrust-lbs"]
-                        + fdm["propulsion/engine[1]/thrust-lbs"]) * LBF2N,
+                thrust=total_thrust_lbs(fdm) * LBF2N,
             ))
             next_sample += sample_every
     return samples, worst_miss
@@ -622,14 +670,13 @@ def thrust_at(alt_ft, mach, throttle):
     fdm["ic/mach"] = mach
     fdm["ic/gamma-deg"] = GAMMA_DEG
     fdm.run_ic()
-    for i in (0, 1):
+    for i in ENGINES:
         fdm[f"fcs/throttle-cmd-norm[{i}]"] = throttle
         fdm[f"propulsion/engine[{i}]/set-running"] = 1
     fdm["gear/gear-pos-norm"] = 0
     fdm.set_dt(SETTLE_DT)
     fdm.run()
-    return (fdm["propulsion/engine[0]/thrust-lbs"]
-            + fdm["propulsion/engine[1]/thrust-lbs"]) * LBF2N
+    return total_thrust_lbs(fdm) * LBF2N
 
 
 def thrust_fit(throttle):
@@ -717,9 +764,9 @@ def aircraft_entry(fdm, d, at_trim, trim, rho, h_match):
     c = fdm["metrics/cbarw-ft"] * FT2M
     AR = b * b / S
 
-    # JSBSim's induced drag is CDi = 0.043 CL^2. Choosing e so that
+    # JSBSim's induced drag is CDi = CDI_COEFF * CL^2. Choosing e so that
     # CL^2/(pi e AR) equals that makes the term identical, not merely close.
-    e = 1.0 / (0.043 * math.pi * AR)
+    e = 1.0 / (CDI_COEFF * math.pi * AR)
 
     a_t, de_t = trim["alpha"], trim["elevator"]
     # CL0 is solved as the intercept that reproduces JSBSim's lift AT the
@@ -789,8 +836,7 @@ def build(condition_name):
         "longitudinal": dict(
             alpha=trim_alpha, elevator=trim_de,
             throttle=lon["fcs/throttle-cmd-norm[0]"],
-            thrust=(lon["propulsion/engine[0]/thrust-lbs"]
-                    + lon["propulsion/engine[1]/thrust-lbs"]) * LBF2N,
+            thrust=total_thrust_lbs(lon) * LBF2N,
             bank=0.0,
         ),
     }
@@ -800,8 +846,7 @@ def build(condition_name):
     trims["turn"] = dict(
         alpha=turn["aero/alpha-rad"], elevator=turn["fcs/elevator-pos-rad"],
         throttle=turn["fcs/throttle-cmd-norm[0]"],
-        thrust=(turn["propulsion/engine[0]/thrust-lbs"]
-                + turn["propulsion/engine[1]/thrust-lbs"]) * LBF2N,
+        thrust=total_thrust_lbs(turn) * LBF2N,
         bank=turn["attitude/phi-rad"],
     )
 
