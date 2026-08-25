@@ -1,7 +1,7 @@
 """Generate the frozen JSBSim reference data for the 737 cross-code comparison.
 
 Run with an interpreter that has JSBSim installed (NOT the project venv, which
-deliberately does not). On this machine that interpreter is, measured session 19:
+deliberately does not). On this machine that interpreter is, measured session 21:
 
     C:/Users/mateusz/AppData/Local/Programs/Python/Python310/python.exe \
         scripts/gen_jsbsim_reference.py

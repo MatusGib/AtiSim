@@ -405,6 +405,14 @@ GAINS: dict[str, Gains] = {
     # see roughly the same dynamic pressure and the cruise set carries over.
     # UNTUNED beyond that -- it holds and captures in the suite, nothing more.
     "boeing737_approach": BOEING737_GAINS,
+    # JSBSim's B747, which is a heavier-winged, longer-spanned aeroplane than
+    # the CR-2144 one but flies at the same speed and a similar altitude, so the
+    # 747 cruise set carries over. UNTUNED beyond that -- it holds and captures
+    # in the suite, nothing more. The vortex comparison this entry exists for
+    # flies FIXED CONTROLS and never engages the autopilot at all; these are
+    # here because every REGISTRY entry must have a set, not because they were
+    # designed for this airframe.
+    "boeing747_jsbsim": BOEING747_GAINS,
     "cherokee": CHEROKEE_GAINS,
     "cessna172": CESSNA172_GAINS,
 }

@@ -993,7 +993,7 @@ def test_the_rigid_rotation_structure_diagnostic_is_reported_per_field():
 # ---------------------------------------------------------------------------
 # The same vortices, as the LATER paper reports them.
 #
-# Wingrove & Bach 1994, J. Aircraft 31(4), Fig. 4 p. 755. Obtained session 19 --
+# Wingrove & Bach 1994, J. Aircraft 31(4), Fig. 4 p. 755. Obtained session 21 --
 # the audit had this source down as `unverifiable -- source not available`.
 # ---------------------------------------------------------------------------
 

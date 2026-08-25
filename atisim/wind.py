@@ -125,7 +125,7 @@ PARKS_CASES: dict[str, dict[str, float]] = {
 #
 # Source: R. C. Wingrove, R. E. Bach Jr., "Severe Turbulence and Maneuvering
 # from Airline Flight Records", J. Aircraft 31(4), Jul-Aug 1994, pp. 753-760.
-# Fig. 4, p. 755, "Models for vortex-induced turbulence". Obtained session 19;
+# Fig. 4, p. 755, "Models for vortex-induced turbulence". Obtained session 21;
 # AUDIT.md had this source down as `unverifiable -- source not available`.
 #
 # A SEPARATE dict from PARKS_CASES on purpose. These are different numbers from

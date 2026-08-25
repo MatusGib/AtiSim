@@ -1850,6 +1850,86 @@ source exactly. A smoother interpolant would agree with the source less.
 
 ## 9. Session log
 
+### Session 21 — the Wingrove paper arrives, and JSBSim gains a 747
+
+**The source the audit could not obtain is now in hand.** Wingrove & Bach, *Severe
+Turbulence and Maneuvering from Airline Flight Records*, J. Aircraft **31**(4), Jul-Aug
+1994, 753-760. `AUDIT.md` rows 19, 168 and 393 marked `UPDRAFT_W0`, `UPDRAFT_SECONDS`, the
+5.2 deg pitch figure, the +0.66/-1.58 g and the Fig. 8 discriminator as
+`unverifiable -- source not available`. All five check out verbatim; closing those rows is
+still outstanding.
+
+**The paper names no aircraft.** All twelve incidents are "modern airliners" carrying a
+DFDR; Table 1 gives date, location and altitude, Table 2 gives load increments, and no
+table, figure or sentence identifies an airframe. Any comparison against it therefore
+chooses its own aircraft, and this project's choice is the JSBSim-intersection below.
+
+**Fig. 4 supplies a third vortex case and contradicts `PARKS_CASES` on a second.** The
+figure quotes core DIAMETERS: Hannibal 1000 ft, Morton 900, Cimarron 900, at 85, 70 and
+50 ft/s. Morton halves to 450 ft, which is `wind.py`'s Morton radius to the digit and
+settles that the column is a diameter. Hannibal halves to **500 ft where `wind.py` says
+600**, and Parks 1985 has still never been obtained, so nothing arbitrates. Both are kept
+in separate dicts, `PARKS_CASES` and the new `WINGROVE_FIG4_CASES`, and both will be flown.
+Cimarron exists only in this paper, and it is the only case with published time histories.
+
+**JSBSim cannot be asked to carry a gust gradient.** Its property catalog reports
+`atmosphere/{p,q,r}-turb-rad_sec` as READ-ONLY, and a write to `q-turb-rad_sec` reads back
+0.0 after one step. Every writable wind input -- `wind-*-fps`, `gust-*-fps`, `turb-*-fps`,
+`cosine-gust/*` -- is translational, sampled at one point. Translational injection does
+work and was checked against arithmetic: `wind-down-fps = -50` at M 0.78 / 30,000 ft moved
+alpha 3.687 deg against a predicted `atan(50/776) = 3.69`. So the gradient arm of the
+vortex comparison measures what JSBSim omits, using atisim as the instrument, and cannot
+be a JSBSim-to-JSBSim delta.
+
+**`boeing747_jsbsim` joins the registry, and `boeing747` is untouched.** JSBSim's B747 is
+not the CR-2144 aeroplane: 249,974 kg against 288,773 (15.5%), 64.46 m of span against
+59.64 (8.1%), 524.7 m^2 against 511.0 (2.7%) -- while sharing an inertia tensor to under
+0.1%. Since n = L/W, a load-factor difference between the two engines flying "a 747" would
+have been dominated by that mass gap. The new entry carries JSBSim's own numbers, recovered
+at 38,000 ft / M 0.80 by `scripts/gen_jsbsim_747.py`, which imports the 737's recovery
+machinery rather than copying it.
+
+**It is not a credible 747 and the entry says so.** B747.xml is `release="ALPHA"`, author
+"Unknown", and its CLalpha table shares its first three points with 737.xml's -- both give
+CLa = 4.3478 /rad. That is one Aeromatic template used twice. It costs the cross-code
+comparison nothing and makes any comparison of that entry against flight data meaningless;
+`boeing747` remains the aeroplane for that.
+
+**Two things were caught by tests rather than by inspection**, and both are recorded because
+neither was loud:
+
+- **The Ixz sign was wrong.** `inertia_tensor` negates its argument, and JSBSim's
+  `inertia/ixz-slugs_ft2` is already the tensor element, so the engine's -970000 had to be
+  passed as +969999.99. Passing it as reported flipped the cross-product term -- the exact
+  failure the 737 shipped with once, worth 1.6-3.2% on the lateral modes and inside every
+  layer tolerance. `test_mass_and_inertia_match_the_engine` compares the ASSEMBLED tensor
+  against the reference rather than the argument against a remembered convention, which is
+  the only form of the check that catches it.
+- **A unit constant differing in the 8th digit.** slug ft^2 values converted with
+  1.35581796190452 instead of `units.SLUG_FT2_TO_KG_M2` = 1.3558179483314003 left a 1e-8
+  relative gap. Recomputed with the project's own constant, Izz and Ixz land on B747.xml's
+  stated 4.97e+07 and -970000 to ten digits.
+
+**The recovery lands on B747.xml's own constants**, which is the check that it is a recovery
+rather than a plausible fit: CYb, Clb, Clp, Cldr, Cnb, Cndr and CLde exactly, Cma -0.699965
+against -0.7000, Clda 0.0732 against the Mach-scheduled table's M 0.80 value. Cmq and
+Cmadot come back as -21.0055 and -3.9945 against -21 and -4 -- each 0.0055 out, equal and
+opposite, at a design condition number of 2.7e9 -- while their SUM is -25.000000. The same
+q/alphadot collinearity the 737 records, and the sum is the quantity that carries weight.
+
+**The refactor that made the reuse possible changed nothing**, and that is measured: both
+737 reference XMLs regenerate to the same blob hash they had before
+(`c0d5522a...`, `44eb69f7...`).
+
+**The two engines do not trim to the same point, and that is a design input.** At the
+recovery condition atisim trims to alpha 4.3321 deg where JSBSim trims to 4.2786, a
++0.0535 deg gap. It is not an entry defect: fed JSBSim's own trim state, atisim returns
+CL to 3e-6. JSBSim's `do_simple_trim` converges to **Nz = 0.99093, not 1.0**, and atisim
+needs 0.95% more CL for a true 1 g -- worth +0.0627 deg of alpha against the +0.0535
+observed. So the vortex comparison must be driven from a MATCHED STATE rather than from
+each engine's own trim, the way the 737 sweep already is.
+
+
 ### Session 18 — the AtiSim rename, and correcting five stale claims
 
 **The project is now AtiSim.** The import package is `atisim`, the distribution is `atisim`,
