@@ -249,13 +249,24 @@ and the reasoning is repeated at the constant itself.
 
 ## C. Aerodynamics
 
-### C1. Lift is linear in α, with no stall
+### C1. Lift is linear in α unless the aircraft carries a table
 
-**Where:** `aero.coefficients`, `CL = CL0 + CLa·α`.
+**Where:** `aero.coefficients`. `CL = CL0 + CLa·α` when `CL_table_alpha` is empty, which is
+every entry except the two 737s.
 
-Fully documented already in `PROJECT.md` §5 and §7, including the three consequences: the
-±g asymmetry is unreachable, the Cessna's stall tables stay unused, and any encounter
-driving |α| past ~10–12° reports lift the sources deny. Not repeated here.
+**Changed in session 20.** `aero.coefficients` now interpolates a CL(α) table when one is
+present, and the 737 entries carry 737.xml's own — four points, peaking at 1.20 near 13.18°
+and falling. Two of the three consequences `PROJECT.md` §5 and §7 record are therefore no
+longer unconditional:
+
+- **The ±g asymmetry is reachable for an aircraft with a table.** It was a property of the
+  linear form, not of the airframe: the 737's table has slope 4.400 below zero incidence
+  against 4.3478 above, so an up-gust and an equal down-gust no longer give equal and
+  opposite increments. It remains exactly odd-symmetric for every entry without a table.
+- **The Cessna's stall tables are still unused**, but now for want of a caller rather than
+  for want of a mechanism.
+- **|α| past ~10–12° still reports lift the sources deny** — for the linear entries. The 737
+  matches its source to better than 1e-9 across the full ±26° table.
 
 ### C2. Aerodynamics are quasi-steady: no α̇ or unsteady lag
 

@@ -172,3 +172,93 @@ def test_mach_ram_defaults_to_zero_mach_when_not_passed(test_aircraft):
     assert float(aero.thrust_force(full, ac, RHO0)[0]) == pytest.approx(
         float(ac.max_thrust)
     )
+
+
+# ---------------------------------------------------------------------------
+# Nonlinear CL(alpha): the stall table
+# ---------------------------------------------------------------------------
+_737_CL_TABLE = ((-0.20, -0.68), (0.00, 0.20), (0.23, 1.20), (0.46, 0.20))
+
+
+def _CL_at(ac, alpha_rad):
+    import numpy as np
+
+    from atisim import aero
+    from atisim.state import Controls
+
+    V = 236.5191917152
+    vel = jnp.array([V * np.cos(alpha_rad), 0.0, V * np.sin(alpha_rad)])
+    zero = Controls(elevator=jnp.array(0.0), aileron=jnp.array(0.0),
+                    rudder=jnp.array(0.0), throttle=jnp.array(0.0))
+    return float(aero.coefficients(vel, jnp.zeros(3), zero, ac,
+                                   jnp.array(303.2297329682))[0])
+
+
+@pytest.mark.parametrize("alpha_deg,expected", [
+    (13.18, 1.2000), (16.0, 0.9859), (20.0, 0.6823), (26.36, 0.2000),
+])
+def test_the_737_lift_curve_breaks_where_jsbsims_table_breaks(alpha_deg, expected):
+    """737.xml's CL(alpha) peaks at 1.20 near 13 deg and falls. Ours must too."""
+    import numpy as np
+
+    from atisim.aircraft import REGISTRY
+
+    got = _CL_at(REGISTRY["boeing737"], np.radians(alpha_deg))
+    assert got == pytest.approx(expected, abs=5e-4), (
+        f"alpha {alpha_deg} deg: CL {got:.4f}, table says {expected:.4f}"
+    )
+
+
+def test_the_lift_table_is_bit_identical_to_the_linear_form_where_it_is_linear():
+    """The table must change NOTHING the comparison already verified.
+
+    737.xml's segment two IS CL0 + CLa*alpha -- slope to 4.8e-13, intercept to
+    5.5e-9 -- so across 0 to 13.18 deg the two forms are the same function. If
+    they ever stop being, every layer result at the recovery points moves and
+    this says so before they do.
+    """
+    import numpy as np
+
+    from atisim.aircraft import REGISTRY
+
+    ac = REGISTRY["boeing737"]
+    linear = ac._replace(CL_table_alpha=jnp.zeros(0), CL_table_CL=jnp.zeros(0))
+    worst = 0.0
+    for alpha_deg in np.linspace(0.0, 13.0, 40):
+        a = np.radians(alpha_deg)
+        worst = max(worst, abs(_CL_at(ac, a) - _CL_at(linear, a)))
+    assert worst < 1e-8, f"table and linear form differ by {worst:.3e} inside the segment"
+
+
+def test_the_lift_table_is_not_linearised_at_a_breakpoint():
+    """jacfwd at a knot returns a one-sided slope, so the modes would be an
+    artifact of where the breakpoints sit. Both 737 entries must trim well
+    inside a segment.
+
+    The cruise margin is the tighter one: alpha 1.98 deg against a knot at
+    0.00, so 1.98 deg of room. A model change that moved the trim toward zero
+    incidence -- more flap, a forward CG, a heavier fuel load -- would land on it.
+    """
+    import numpy as np
+
+    from atisim.aircraft import CRUISE, REGISTRY
+    from atisim.tests.test_jsbsim_737_layers import _atisim_trim
+
+    for name, condition in (("boeing737", "cruise"), ("boeing737_approach", "approach")):
+        ac = REGISTRY[name]
+        (alpha, _de, _th), _ = _atisim_trim(condition)
+        knots = np.asarray(ac.CL_table_alpha)
+        gap = np.min(np.abs(knots - alpha))
+        assert gap > np.radians(1.0), (
+            f"{name} trims at alpha {np.degrees(alpha):.3f} deg, only "
+            f"{np.degrees(gap):.3f} deg from a table breakpoint"
+        )
+
+
+def test_only_the_737_entries_carry_a_lift_table():
+    """Every other aircraft keeps the linear form, so nothing else moved."""
+    from atisim.aircraft import REGISTRY
+
+    for name, ac in REGISTRY.items():
+        has_table = bool(ac.CL_table_alpha.size)
+        assert has_table == name.startswith("boeing737"), name

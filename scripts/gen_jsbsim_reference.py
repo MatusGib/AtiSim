@@ -894,6 +894,23 @@ def build(condition_name):
                                          dr=dr, de=trim_de)))
     print(f"sweep: {len(sweep)} points")
 
+    # --- stall sweep -----------------------------------------------------
+    # The ordinary sweep stays inside +/- 4 deg, where 737.xml's CL table is a
+    # straight line and the linear model is exact. This one runs the whole
+    # table -- past the break at 0.23 rad and out to both clamped endpoints --
+    # so the nonlinear lift curve is compared where it actually differs.
+    #
+    # CL only. Cm and CD at these incidences are dominated by the alphadot the
+    # off-equilibrium state carries, which is a property of the probe rather
+    # than of the airframe; lift has no such term of consequence here.
+    stall = []
+    for a_deg in (-14.0, -11.46, -8.0, -3.0, 0.0, 3.0, 6.0, 10.0, 13.18,
+                  16.0, 20.0, 24.0, 26.36, 30.0):
+        st = read_state(at_state(alpha_deg=a_deg, de=0.0))
+        stall.append((st["alpha"], st["CL"] - d["CLde"] * st["de"]))
+    print(f"stall sweep: {len(stall)} points, "
+          f"CL {min(c for _a, c in stall):+.3f} to {max(c for _a, c in stall):+.3f}")
+
     # --- linearisation ---
     A, B, x0, u0 = linearization(work)
     print("linearisation state ordering re-derived and confirmed")
@@ -972,6 +989,11 @@ def build(condition_name):
             f'coefficients="{vec([s["CL"], s["CD"], s["CY"], s["Cl"], s["Cm"], s["Cn"]])}"/>'
         )
     L.append("  </sweep>")
+
+    L.append("  <stall_sweep>")
+    for a, cl in stall:
+        L.append(f'    <point alpha="{f(a)}" CL="{f(cl)}"/>')
+    L.append("  </stall_sweep>")
 
     L.append("  <linearization>")
     L.append(f"    <A>{vec(A)}</A>")

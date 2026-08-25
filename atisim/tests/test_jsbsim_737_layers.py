@@ -235,7 +235,11 @@ def _missing_drag(point, trim, ac):
 @pytest.mark.parametrize("condition", list(CASES))
 @pytest.mark.parametrize(
     "name,index,tol",
-    [("CL", 0, 1e-7), ("CY", 2, 1e-10), ("Cl", 3, 1e-7), ("Cn", 5, 1e-7)],
+    # CL is 1e-12 rather than 1e-7 since the lift table went in: CL0 used to be
+    # an intercept SOLVED to reproduce lift at the reference point, and carried
+    # that solve's residual; the table is 737.xml's own 0.20. Worst measured fell
+    # from 5.5e-09 to 7.1e-14 at cruise and 9.6e-09 to 1.3e-13 at approach.
+    [("CL", 0, 1e-12), ("CY", 2, 1e-10), ("Cl", 3, 1e-7), ("Cn", 5, 1e-7)],
 )
 def test_layer1_coefficients_with_no_model_difference_agree(name, index, tol, condition):
     """The four coefficients both engines model the same way.
@@ -243,7 +247,7 @@ def test_layer1_coefficients_with_no_model_difference_agree(name, index, tol, co
     These need no real tolerance beyond round-off. JSBSim's CL is a table, but
     it is LINEAR on the segment swept here, and CY, Cl and Cn are linear in
     every swept variable in both engines. Worst measured across the sweep:
-    CL 5.5e-9, CY 1.6e-14, Cl 1.1e-8, Cn 1.0e-8.
+    CL 7.1e-14, CY 1.6e-14, Cl 1.1e-8, Cn 1.0e-8.
 
     Cl and Cn were 7.0e-6 and 1.7e-6 until the moment coefficients were referred
     to the AERORP instead of the CG. The residual was the side force acting on
@@ -886,3 +890,40 @@ def test_the_wave_drag_onset_sits_above_the_recovery_mach(condition):
         "attribution in this file no longer holds"
     )
     assert float(aero.wave_drag(jnp.array(mach), jnp.array(CL), ac)) == 0.0
+
+
+@pytest.mark.parametrize("condition", list(CASES))
+def test_layer1_lift_matches_through_the_stall(condition):
+    """CL against the engine across the WHOLE table, not just its linear part.
+
+    The ordinary sweep stays inside +/- 4 deg, where 737.xml's CL table is a
+    straight line -- so layer 1's 5.5e-09 was a statement about one segment. This
+    runs the whole curve: past the break at 0.23 rad, out to both clamped
+    endpoints, and into the falling branch beyond.
+
+    Before the table, atisim reported 2.5x the source's lift at alpha 20 deg and
+    6.9x at 25 deg, because CL0 + CLa*alpha keeps climbing where the table falls.
+    That is the "reports lift the source model does not have" warning in
+    _boeing_737's docstring, and it is now closed rather than documented.
+    """
+    ref, _cond, _trim, ac = case(condition)
+    assert len(ref.stall_sweep) >= 14, "the stall sweep did not load"
+
+    import jax.numpy as jnp
+
+    from atisim import aero
+    from atisim.state import Controls
+
+    zero = Controls(elevator=jnp.array(0.0), aileron=jnp.array(0.0),
+                    rudder=jnp.array(0.0), throttle=jnp.array(0.0))
+    V, a_snd = _cond.airspeed, _cond.sound_speed
+    worst, where = 0.0, None
+    for point in ref.stall_sweep:
+        vel = jnp.array([V * np.cos(point.alpha), 0.0, V * np.sin(point.alpha)])
+        got = float(aero.coefficients(vel, jnp.zeros(3), zero, ac, jnp.array(a_snd))[0])
+        if abs(got - point.CL) > worst:
+            worst, where = abs(got - point.CL), np.degrees(point.alpha)
+    assert worst < 1e-9, (
+        f"{condition}: CL differs from the engine by {worst:.3e} at "
+        f"alpha {where:.2f} deg, across the full table"
+    )
