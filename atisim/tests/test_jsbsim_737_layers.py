@@ -722,3 +722,143 @@ def test_layer4_what_survives_the_hold_is_two_residuals_and_no_more(manoeuvre, c
         f"of equivalent alpha ({extrapolated[2]:.4f} m/s), past the 0.2 deg this "
         "comparison has measured at both conditions"
     )
+
+
+def _longitudinal_pair(ac, condition):
+    """(AtiSim, JSBSim) longitudinal plant matrices in ONE basis and ONE unit system.
+
+    JSBSim's block is [vt, alpha, theta, q] with vt in ft/s;
+    validation.longitudinal_matrix is [u, w, q, theta] in metres. Eigenvalues
+    are invariant under both transforms -- which is why the mode comparison
+    needs neither -- but an entry-by-entry statement needs both undone.
+    """
+    from atisim import validation
+    from atisim.units import FT2M
+
+    ref, cond, _trim, _ac = case(condition)
+    (alpha, elevator, throttle), _ = _atisim_trim(condition)
+    V = cond.airspeed
+    s, c = np.sin(alpha), np.cos(alpha)
+    P = np.array([[c, s, 0.0, 0.0], [-s / V, c / V, 0.0, 0.0],
+                  [0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 0.0]])
+    ati = P @ np.asarray(validation.longitudinal_matrix(
+        ac, alpha, elevator, throttle, V, cond.matched_altitude)) @ np.linalg.inv(P)
+    scale = np.array([FT2M, 1.0, 1.0, 1.0])
+    js = ref.linearization.A[:4, :4] * (scale[:, None] / scale[None, :])
+    return ati, js
+
+
+def _phugoid_wn(A):
+    return _modes_from(A)[0][0]
+
+
+@pytest.mark.parametrize("condition", list(CASES))
+def test_layer3_phugoid_frequency_gap_is_the_pitching_moment_speed_derivative(condition):
+    """The phugoid is PREDICTED here, not allowed a tolerance.
+
+    Sessions 17 and 18 put the whole phugoid disagreement down to "a slow
+    drag-and-thrust energy exchange". That is the DAMPING story. The FREQUENCY
+    error is one entry of the plant matrix -- M_u, the pitching moment due to
+    speed -- and substituting JSBSim's value for it alone collapses the gap:
+
+        substituting          cruise wn         approach wn
+        nothing               0.05581  6.58%    0.09370  3.42%
+        d(qdot)/d(vt) alone   0.05251  0.27%    0.09063  0.03%
+        JSBSim                0.05237           0.09060
+
+    Every other entry of the 4x4 agrees to within 2.7% and moves the phugoid not
+    at all -- asserted below by requiring a TENFOLD reduction, which substituting
+    X_u instead does not produce (it moves the error by less than 1e-4 of
+    itself). So this localises the disagreement rather than bounding it.
+
+    WHY atisim's M_u differs is a structural limit, not a defect: a
+    constant-coefficient model cannot carry a Mach-tuck term, and the phugoid is
+    the only mode slow enough for speed derivatives to dominate -- which is
+    exactly why the short period agrees to 0.04% and this does not. See
+    test_atisim_has_no_aerodynamic_speed_derivative_of_pitching_moment.
+
+    THE 0.5% BOUND IS AN ALLOWANCE, and is labelled one. What is left after the
+    substitution is the other entries' disagreement leaking in, which this test
+    does not compute. The tenfold assertion is the predictive half.
+    """
+    ac = REGISTRY[CASES[condition][0]]
+    ati, js = _longitudinal_pair(ac, condition)
+    want = _phugoid_wn(js)
+    before = abs(_phugoid_wn(ati) - want) / want
+
+    swapped = ati.copy()
+    swapped[3, 0] = js[3, 0]          # M_u = d(qdot)/d(vt)
+    after = abs(_phugoid_wn(swapped) - want) / want
+
+    assert after < before / 10.0, (
+        f"{condition}: M_u no longer explains the phugoid frequency -- "
+        f"substituting it moved the error {before:.4%} -> {after:.4%}, less than "
+        "the tenfold this predicts. Another derivative now dominates."
+    )
+    assert after < 5e-3, (
+        f"{condition}: {after:.4%} left after substituting M_u, past the 0.5% "
+        "the other entries' disagreement accounts for"
+    )
+
+
+def test_atisim_has_no_aerodynamic_speed_derivative_of_pitching_moment():
+    """M_u exists in atisim ONLY as an alphadot coupling, and that is measurable.
+
+    There is no Prandtl-Glauert correction anywhere in aero.py, so at fixed alpha
+    the build-up has no Mach dependence at all except wave drag -- which is off
+    at both recovery points. What produces a non-zero M_u is dynamic rather than
+    aerodynamic: perturbing speed changes the force balance, which changes wdot,
+    which changes alphadot, which Cmadot = -16 turns into a pitching moment.
+
+    Zeroing the alphadot derivatives sends M_u to machine zero. The probe is
+    clean because alphadot = 0 AT the trim point, so removing the term does not
+    move the equilibrium being linearised about -- only its slope.
+
+    This is what makes the frequency gap above structural rather than a defect:
+    there is no coefficient here that could be adjusted to close it without
+    inventing a Mach schedule the source would have to supply.
+    """
+    import jax.numpy as jnp
+
+    for condition in CASES:
+        ac = REGISTRY[CASES[condition][0]]
+        ati, _js = _longitudinal_pair(ac, condition)
+        bare = ac._replace(Cmadot=jnp.array(0.0), CLadot=jnp.array(0.0))
+        without, _ = _longitudinal_pair(bare, condition)
+        assert abs(ati[3, 0]) > 1e-5, f"{condition}: M_u vanished; the probe is vacuous"
+        assert abs(without[3, 0]) < 1e-12, (
+            f"{condition}: M_u is {without[3, 0]:.3e} with the alphadot terms "
+            "removed, so something else in the build-up now carries a speed "
+            "dependence -- find it before trusting the phugoid attribution"
+        )
+
+
+@pytest.mark.parametrize("condition", list(CASES))
+def test_the_wave_drag_onset_sits_above_the_recovery_mach(condition):
+    """A tripwire on the one Mach term atisim does have.
+
+    kappa_airfoil is FITTED to place this project's Korn/Lock rise at the Mach
+    where JSBSim's CDmach table leaves zero, so wave drag is exactly zero at both
+    recovery points and contributes nothing to any layer -- including nothing to
+    M_u, which is what lets the alphadot attribution above stand.
+
+    The cruise margin is thin: onset at M 0.78998 against a trim M 0.78000, which
+    is 0.010 Mach, about 3 m/s of airspeed. A change to kappa, t/c or sweep that
+    moved the onset below the trim point would switch wave drag on inside the
+    linearisation and move the phugoid for a reason nobody was looking for. This
+    fails first if that happens.
+    """
+    import jax.numpy as jnp
+
+    from atisim import aero
+
+    ref, cond, _trim, ac = case(condition)
+    CL = ref.derivatives["CL_trim"]
+    onset = float(aero.drag_divergence_mach(jnp.array(CL), ac)) - float(aero._MDD_OFFSET)
+    mach = cond.airspeed / cond.sound_speed
+    assert mach < onset, (
+        f"{condition}: flown at M {mach:.5f}, at or above the M {onset:.5f} wave-drag "
+        "onset -- wave drag is now inside the linearisation and the phugoid "
+        "attribution in this file no longer holds"
+    )
+    assert float(aero.wave_drag(jnp.array(mach), jnp.array(CL), ac)) == 0.0
