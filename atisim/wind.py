@@ -120,6 +120,63 @@ PARKS_CASES: dict[str, dict[str, float]] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# The same vortices, as the LATER paper reports them.
+#
+# Source: R. C. Wingrove, R. E. Bach Jr., "Severe Turbulence and Maneuvering
+# from Airline Flight Records", J. Aircraft 31(4), Jul-Aug 1994, pp. 753-760.
+# Fig. 4, p. 755, "Models for vortex-induced turbulence". Obtained session 19;
+# AUDIT.md had this source down as `unverifiable -- source not available`.
+#
+# A SEPARATE dict from PARKS_CASES on purpose. These are different numbers from
+# a different paper, and merging them would put two citations on one dict and
+# lose which value came from where -- the drift PARKS_CASES' own comment exists
+# to prevent.
+#
+# Fig. 4's columns are headed "Vortex diameter (feet)" and "Tangential velocity
+# (ft/sec)", reading 1000/85, 900/70 and 900/50. Stored here HALVED, as radii,
+# so this dict carries the same quantity in the same units as PARKS_CASES.
+#
+# MORTON FIXES THE INTERPRETATION. 900 ft of diameter is 450 ft of radius, and
+# PARKS_CASES["morton"]["r0"] is 450 ft to the digit. That agreement is the only
+# thing distinguishing a diameter column from a radius column; without it every
+# core here would risk being a factor of two out with nothing to catch it.
+#
+# *** HANNIBAL DISAGREES, AND THAT IS NOT RESOLVED HERE. *** Fig. 4's 1000 ft
+# diameter is a 500 ft radius. PARKS_CASES says 600 ft, citing Parks et al.
+# 1985, which has never been obtained (AUDIT.md row 19) -- so there is no way to
+# tell which is the transcription error. Both are kept, both are flown, and the
+# spread is reported. Neither is deleted in favour of the other. The core
+# STRENGTH agrees at 85 ft/s in both sources; only the radius is in dispute.
+#
+# CIMARRON APPEARS ONLY HERE. Parks identifies two cases; this paper adds a
+# third, and it is the one with published time histories (Fig. 3 and Fig. 6a)
+# and a published model-against-data overlay (Fig. 4) -- which is why it is the
+# case the 737 flies.
+#
+# `spacing` is deliberately ABSENT. Fig. 4 gives core size and strength and says
+# nothing about array spacing, so any value here would be invented. Callers that
+# need an array take the spacing from PARKS_CASES and say that they did.
+# ---------------------------------------------------------------------------
+WINGROVE_FIG4_CASES: dict[str, dict[str, float]] = {
+    "hannibal": {"r0": 500.0 * FT2M, "v0": 85.0 * FT2M},
+    "morton": {"r0": 450.0 * FT2M, "v0": 70.0 * FT2M},
+    "cimarron": {"r0": 450.0 * FT2M, "v0": 50.0 * FT2M},
+}
+
+# The altitude each incident was flown at. Wingrove & Bach Table 1, p. 754,
+# which quotes them in hundreds of feet: 370, 390 and 330.
+#
+# Here because these three cases are NOT at one altitude, and density drives
+# every aerodynamic force in the comparison. Flying all three at one nominal
+# cruise would put a same-signed bias on every result.
+WINGROVE_CASE_ALTITUDE: dict[str, float] = {
+    "hannibal": 37000.0 * FT2M,
+    "morton": 39000.0 * FT2M,
+    "cimarron": 33000.0 * FT2M,
+}
+
+
 def vortex_wind(pos_ned: Array, array: VortexArray) -> Array:
     """Wind velocity (NED, m/s) induced by the array at a point.
 
