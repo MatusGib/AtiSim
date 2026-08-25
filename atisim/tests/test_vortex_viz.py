@@ -20,7 +20,13 @@ from atisim.units import FT2M, RAD2DEG  # noqa: E402
 AC = REGISTRY["boeing747"]
 V = CRUISE["boeing747"]["airspeed"]
 H = CRUISE["boeing747"]["altitude"]
-R0, V0, SPACING = 600.0 * FT2M, 85.0 * FT2M, 3500.0 * FT2M
+# Read from PARKS_CASES rather than restated, so this file cannot go on testing
+# a core the project no longer flies. It held its own 600 ft literal until
+# session 22 moved Hannibal's radius to Fig. 4's 500 ft, at which point the two
+# silently disagreed and this file was pinning numbers for a vortex that had
+# stopped existing anywhere else.
+_HANNIBAL = wind.PARKS_CASES["hannibal"]
+R0, V0, SPACING = _HANNIBAL["r0"], _HANNIBAL["v0"], _HANNIBAL["spacing"]
 
 
 def _encounter(lead_in=40.0):
@@ -75,10 +81,18 @@ def pushdown():
     )
 
 
-# Captured from `fly` BEFORE it was changed to log the SimState it flew. This is
-# the guard on that change: PROJECT.md section 4's headline pair is 2.240 deg /
-# -1.235 g, and switching the rollout must move neither by a single bit.
-FIG8_VORTEX_BEFORE_LOGGING = (2.239956221700959, -1.2352174348304876)
+# The exact Fig-8 coordinates the current code produces for the shipped vortex
+# run. Any change to the rollout must move neither by a single bit.
+#
+# ORIGINALLY captured from `fly` BEFORE it was changed to log the SimState it
+# flew, as the guard on that change, at 2.239956221700959 / -1.2352174348304876.
+# Re-captured session 22 when Hannibal's core radius moved from 600 ft to
+# Fig. 4's 500 ft: the encounter itself changed, so a pin taken at the old
+# radius could only ever fail. What that costs is worth stating plainly -- these
+# numbers no longer certify the logging refactor, because they were taken after
+# it. What they still do is hold the rollout arithmetic-exact from here on.
+FIG8_VORTEX = (2.1601976247303707, -1.260600307461945)
+FIG8_VORTEX_BEFORE_LOGGING = FIG8_VORTEX  # old name, kept for one release
 
 
 def test_logging_the_run_did_not_move_the_headline_numbers(encounter):

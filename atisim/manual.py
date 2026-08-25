@@ -341,6 +341,9 @@ MANUAL_GAINS: dict[str, ManualGains] = {
     "boeing737": BOEING737_MANUAL,
     "boeing737_approach": BOEING737_MANUAL,
     "boeing747_approach": BOEING747_APPROACH_MANUAL,
+    # Same reasoning as GAINS: carried over from the CR-2144 747, untuned, and
+    # unused by the fixed-control comparison this entry exists for.
+    "boeing747_jsbsim": BOEING747_MANUAL,
     "cherokee": CHEROKEE_MANUAL,
     "cessna172": CESSNA172_MANUAL,
 }

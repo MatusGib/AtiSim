@@ -188,6 +188,93 @@ spacing from a free parameter into a cited one.
 
 Every figure below is measured, with the tolerance the test asserts.
 
+### AtiSim against JSBSim through a Kelvin–Helmholtz vortex (session 21)
+
+Same field, same starting state, same density, fixed controls. atisim run
+**translation-only**, because JSBSim has no writable gust-rate input and carries no
+gradient at all. Measured **peak to peak across the core window**, which is the encounter;
+see the row below for why not from trim.
+
+| Case | Airframe | JSBSim n_z span | AtiSim n_z span | Error | JSBSim θ span | AtiSim θ span | Error |
+|---|---|---|---|---|---|---|---|
+| Cimarron, 33,000 ft | `boeing737` | 1.1337 g | 1.1408 g | **+0.6%** | 1.1191° | 1.0940° | **−2.2%** |
+| Hannibal, 37,000 ft | `boeing747_jsbsim` | 1.7077 g | 1.7443 g | **+2.1%** | 1.1289° | 1.1336° | **+0.4%** |
+| Morton, 39,000 ft | `boeing747_jsbsim` | 1.3626 g | 1.4016 g | **+2.9%** | 0.9211° | 0.9703° | **+5.3%** |
+
+**Measured from trim instead, the same runs disagree on pitch by 15–77%, and none of it is
+the encounter.** The run-in is fifteen core radii — nine to eleven seconds through the
+vortex's 1/r far field — and attitude accumulates over it, because atisim is started from
+JSBSim's trim state and JSBSim's trim is not atisim's. At the window edge atisim is already
+1.55° nose-down of JSBSim on Hannibal and 1.48° on Morton, before the core.
+
+| Case | Run-in θ offset at the window edge | Δn error from trim | Δθ error from trim |
+|---|---|---|---|
+| Cimarron | 0.336° | −1.8% | −15.0% |
+| Hannibal | 1.553° | −4.3% | −42.8% |
+| Morton | 1.482° | −6.0% | −53.7% |
+
+Load factor is algebraic in the state and does not accumulate; attitude is an integral and
+does. That is the whole of the difference.
+
+### What JSBSim cannot carry, measured (session 21)
+
+`atmosphere/{p,q,r}-turb-rad_sec` are **read-only** in JSBSim 1.3.1's property catalog, and
+a write to `q-turb-rad_sec` reads back `0.0` after one step. Every writable wind input is
+translational and sampled at one point. The gradient's two terms pull in **opposite**
+directions, so a single "with gradient" figure would hide both:
+
+| Case | translational | + wind alphadot | + omega_gust | + both |
+|---|---|---|---|---|
+| Cimarron, n_z span | 1.1408 g | 1.0108 g | 1.3630 g | 1.2315 g |
+| Hannibal, n_z span | 1.7443 g | 1.6923 g | 2.0197 g | 1.9663 g |
+| Morton, n_z span | 1.4016 g | 1.3696 g | 1.5693 g | 1.5377 g |
+
+Net, both terms on: **+7.9%** (Cimarron), **+12.7%** (Hannibal), **+9.7%** (Morton) of load span. Translational injection itself
+is verified, not assumed: `wind-down-fps = -50` at M 0.78 / 30,000 ft moves α **3.687°**
+against a predicted `atan(50/776) = 3.69°`.
+
+### Why the two large errors are large (session 22)
+
+Two numbers in the comparison look bad beside a core response the engines agree on to a few
+percent. They are different kinds of error and `scripts/vortex_diagnose.py` separates them.
+
+**The 15–54% pitch error is the datum, not the physics.** See §8. Measured, not argued:
+still-air drift accounts for 101–103% of it, and starting in-trim removes it entirely.
+
+**The 30–43% DFDR shortfall is shared by both engines**, so by construction it cannot be a
+solver difference — it is in the inputs they both received. Cimarron, against the recorded
+−1.20 g:
+
+| Lever changed | Δn⁻ | Fraction of the DFDR value |
+|---|---|---|
+| Nothing (as flown) | −0.841 g | 70% |
+| C_Lα × 1.20 | −0.913 g | 76% |
+| C_Lα × 1.60 (Prandtl–Glauert at M 0.78) | −1.022 g | 85% |
+| Core strength 50 → 60 ft/s | −1.015 g | 85% |
+| Core strength 50 → 70 ft/s | −1.192 g | **99%** |
+| 737 → 747, four times the mass | −0.837 g | 70% — **no effect** |
+
+The quasi-steady load, before the aircraft responds at all, is **+0.725 g** — essentially
+the DFDR's +0.73. The simulated aircraft sheds 42% of that by pitching away and climbing
+during the traverse.
+
+Two findings there. **Gust strength dominates**: the fitted Rankine core is smoother than
+the data Fig. 4 itself overlays on it, and a 40% stronger core closes the gap almost
+exactly. **Airframe mass does not matter at all** — a clean null. The intuition that a
+heavier aircraft holds more of the quasi-steady load is wrong, because Δn = ΔC_L/C_L,trim
+and C_L,trim = W/qS, so wing loading cancels; four times the mass moves the answer by 0.6%.
+
+### Comparison preconditions (session 21)
+
+| Check | Measured | Why it has to be checked |
+|---|---|---|
+| The two vortex fields, written independently in numpy and JAX | **< 1e-9 m/s** at every sample | a bug on both sides of a comparison is invisible to it |
+| JSBSim `accelerations/Nz` vs atisim `dynamics.load_factor`, same still-air state | **6.6e-5 to 2.1e-4 g** | otherwise the Δn column compares two different quantities |
+| JSBSim elevator over the whole encounter | **0.0000° of movement** | a moving surface would be commanding the pitch difference |
+| Morton flown at both sources' radii, which agree | **identical to the last digit** | establishes Hannibal's spread as the radius, not the harness |
+| Density match, atisim geometric vs JSBSim geopotential | residual **0.0**, shift −69.19 ft | qbar ∝ ρ, so a nominal match biases every force one way |
+
+
 ### Integrator and rigid body
 
 | Check | Measured | Tolerance |
@@ -232,7 +319,7 @@ Suite: **358 passed, 1 skipped**, up from 342 with nothing broken.
 | Tail-arm gate at construction | raises for both light aircraft | `pytest.raises` |
 | Parks core traverse, point vs strip position | **0.000000 m** (`Cl` = 1.8e-19) | reported |
 | Cubic spanwise gust, point vs strip position | **0.187463 m** (`Cl` = 1.335e-05) | must be > 0 |
-| Fig. 8 vortex point, point vs strip | **unchanged: d(θ) 2.240°, d(n) −1.235 g** | reported |
+| Fig. 8 vortex point, point vs strip | **unchanged: d(θ) 2.160°, d(n) −1.261 g** | reported |
 | Fig. 8 updraft point, point vs strip | **unchanged: d(θ) 4.366°, d(n) −0.114 g** | reported |
 | Ordering vortex < updraft < manoeuvre | **HOLDS on both paths** | exact |
 | Rigid-rotation structure, inside the Parks core | **q-pair +1.0000**, p-pair n/a | reported |
@@ -404,7 +491,7 @@ mechanism changes, since both are orderings rather than values.
 |---|---|---|
 | Live loop in still air, with and without an explicit `zero_wind` | **bit-identical** | `np.array_equal` |
 | Live loop through an updraft vs still air, 40 frames | 1.0 m of altitude | > 1.0 m |
-| `vortex.py` unmoved by the constants move: first-core Δθ | 2.240 deg | was 2.24 |
+| `vortex.py` unmoved by the constants move: first-core Δθ | 2.160 deg | was 2.24 |
 | …updraft Δθ / peak load | 4.366 deg / −1.235 g | were 4.37 / −1.23 |
 | Slip ball vs β under held rudder | **opposite signs** | product < 0 |
 | Stick ramp: 10 steps in 1 frame vs in 10 frames | identical | `approx` |
@@ -702,9 +789,16 @@ number `scripts/vortex.py` actually prints — the in-core Fig-8 Δθ:
 
 | dt | wind held | wind re-sampled per stage | cost |
 |---|---|---|---|
-| 0.02 | 2.2596° | 2.2230° | **−1.62%** |
-| **0.01 (published)** | **2.2400°** | **2.2216°** | **−0.82%** |
-| 0.005 | 2.2271° | 2.2179° | −0.41% |
+| 0.02 | 2.1261° | 2.1628° | **+1.72%** |
+| **0.01 (published)** | **2.1602°** | **2.1434°** | **−0.78%** |
+| 0.005 | 2.1506° | 2.1593° | +0.40% |
+
+Re-measured session 22 at Hannibal's 500 ft core; at 600 ft the same three rows read
+2.2596/2.2230/−1.62%, 2.2400/2.2216/−0.82% and 2.2271/2.2179/−0.41%. **The magnitudes
+are what carry the conclusion and they barely moved** — 1.72%, 0.78%, 0.40%, still
+halving with dt. The signs now alternate, which is a property of the measurement rather
+than of the scheme: the quantity is a max-minus-min over a discretely sampled trace, so
+which sample lands nearest the peak flips with the step.
 
 So the cost at the production step is **~0.8%, not ~1e-4 — about 80× the figure this
 paragraph carried** — and it halves with dt, as an O(h) error must. Pinned by
@@ -712,7 +806,7 @@ paragraph carried** — and it halves with dt, as an O(h) error must. Pinned by
 
 **No conclusion changes**, because §5 caps the vortex claims at orderings and puts ±25%
 bands on the identified parameters, and 0.8% sits far inside both. What does change is
-the precision claim: **Δθ = 2.240° is not good to four significant figures** — its last
+the precision claim: **Δθ = 2.160° is not good to four significant figures** — its last
 two digits are scheme-dependent. Quote it as 2.24°.
 
 **The Rankine row is a second, separate mechanism.** `vortex_wind` switches
@@ -1831,86 +1925,108 @@ source exactly. A smoother interpolant would agree with the source less.
 
 ## 8. Open questions
 
-- **Row spacing beyond two cores.** Parks identifies two significant vortices per case.
-  Whether Mehta 1987 (*JGCD* 10, 27–31, DOI 10.2514/3.20176) uses a longer periodic train
-  is unconfirmed — it is paywalled and was not retrieved.
-- ~~**The Fig. 8 load-band convention.**~~ **DECIDED, session 7: read as an increment.**
-  Still not resolvable from the paper's text — what forced the decision is that the two
-  readings land on opposite sides of *this model's* validity boundary, so it stopped being
-  harmless the moment a manoeuvre had to be flown to the band. Measured, 747 at CR-2144
-  FC9, elevator pulse held one short period:
-
-  | Reading | Elevator from trim | \|α\| max | Verdict |
-  |---|---|---|---|
-  | increment, Δn = −1.9 g | 8.926° (bisected) | 10.31° | **marginal** — flyable, amber band |
-  | absolute, n_z = −1.9 g | ≈13.8° | ≈18.5° | **outside** — see §5 |
-
-  The increment reading is flown. The absolute one is reported as out of reach, which is a
-  finding about the model's ceiling rather than a dodge — §5 carries it.
-- ~~**Which window is canonical for Fig. 8.**~~ **DECIDED, session 7: the window is the
-  disturbance's own extent.** This is what the two existing points were already doing; it
-  had never been stated as a rule, so the third point had nothing to follow. The vortex
-  window is the core (±r₀), the updraft window is the column (±radius), and the manoeuvre
-  window is the elevator pulse. In seconds, at the 747's 235.9 m/s, against a 6.609 s
-  short period:
-
-  | Encounter | Extent | Window | in short periods |
-  |---|---|---|---|
-  | vortex | first core, ±182.88 m | 1.550 s | 0.235 |
-  | manoeuvre | elevator pulse, **declared** | 6.609 s | 1.000 |
-  | updraft | column, ±2359 m | 20.0 s | 3.026 |
-
-  The rule matters because Δθ is the one quantity with no natural bound: Δn and \|α\| both
-  saturate 4 s into a held elevator and never move again, while Δθ keeps growing at about
-  3.6°/s for as long as the elevator is held. A "manoeuvre" measured over a 12 s hold reads
-  43°, and it reads that because it has stopped being a manoeuvre and become a descent.
-  The window still prints in the figure's provenance footer, and now so does the rule.
-- **What sets the manoeuvre's pulse length.** Decided *as* a declared parameter rather than
-  resolved: one short period, `--pushdown-seconds`, in the same sense `--sharpness` is
-  declared. The paper constrains the load, not how the pilot got there. It is bounded
-  below by the ~4 s the load excursion needs to develop and unbounded above, so it is a
-  choice; one short period puts the manoeuvre *between* the other two in duration, which
-  is what makes the third cluster's separation attributable to the elevator rather than to
-  timescale. Δθ is 25° at the shortest defensible hold and 30° at this one, so the choice
-  moves the number without moving the conclusion.
-- ~~**The `−m·dW/dt` gust error is still untested.**~~ **CLOSED, session 12.** §2 names two
-  classic gust-modelling mistakes: substituting `vel_rel` into the Coriolis term, and
-  adding an explicit `−m·dW/dt`. Session 11's Galilean test catches the first and, as it
-  said, could not catch the second. §4 now carries both new rows.
-
-  What forced the design is worth keeping, because the obvious test is wrong. Offsetting
-  the start state by `W(0)` and demanding the rates match still air — the steady test's own
-  instrument — asserts **false physics**. With `ṽ_b = v_b − CᵀW(t)` the air-relative body
-  velocity, `ṽ̇_b = F(ṽ_b,ω)/m + g_b − ω×ṽ_b − Cᵀ Ẇ`: the air-relative state obeys the
-  still-air equation **plus** `−Cᵀ Ẇ`. That term is exactly what makes a time-varying wind
-  something other than a change of inertial frame, so the two runs must diverge and an
-  invariance assertion cannot be the instrument. What works is a **closed form** — zero the
-  aerodynamics and the thrust, and free fall is the exact answer while the wind has no
-  legitimate route into the equations at all, so any dependence on it is the spurious term
-  and nothing else.
-
-  Both tests were checked by **injecting the bug**, per §3's rule that a check which can
-  only pass shows nothing. Both fail on it by orders of magnitude; the Galilean test
-  *passes* with the bug still in (2.7e-15 on quaternion against its 1e-11 tolerance) once
-  the wind cache is seeded consistently, so its blindness is measured and not merely
-  argued. `docs/ASSUMPTIONS.md` §E4 carries the detail.
-- **Whether Etkin & Reid publishes an independent CRUISE worked example.** Caughey covers
-  the M 0.25 approach point, where the model's error is 0.4%. The interesting condition is
-  M 0.80 / 40,000 ft, where it is 17.8%, and there the only reference is CR-2144's own
-  transfer-function factors. Etkin & Reid (3rd ed., 1996) is Caughey's reference [1] and
-  may carry a worked cruise case; **not verified**, needs the physical book. It would give
-  a second implementation exactly where the gap is largest.
-- **Suite runtime is not currently measurable.** The same untouched tests (187 at the time,
-  221 by session 5) have run in 53 s and 164 s on the same machine. Session 6 saw 126–207 s
-  across runs of the same suite. Re-measure on a quiet machine before treating any timing
-  as a baseline.
-- **Whether the panel holds 20 fps on an interactive backend.** The headless half of this
-  is now answered and is in §4: the re-layout did **not** hold 20 fps — 13.7 fps on Agg —
-  and jitting `sense`/`accelerometers` took it to 26.4. What remains open is narrower.
-  Agg is not TkAgg, which has a window manager and a real compositor in the loop, so the
-  interactive rate has still not been re-taken since the re-layout.
+- **Hannibal's core radius: 500 ft or 600 ft?** `PARKS_CASES` carries 600 ft, citing Parks
+  et al. 1985. Wingrove & Bach 1994 Fig. 4 gives the same vortex a **1000 ft diameter**,
+  so 500 ft. The units are not in doubt — Fig. 4's Morton entry halves to 450 ft, which is
+  `PARKS_CASES['morton']['r0']` to the digit — so one of the two papers is misquoted and
+  Parks 1985 has never been obtained to say which. **It is not immaterial:** flown in
+  JSBSim the two radii give −1.2581 g and −1.1325 g of peak load, an 11.1% spread. Both are
+  kept, in separate dicts with separate citations, and both are flown. Resolving it needs
+  J. Aircraft **22**(2), 124–129 (DOI 10.2514/3.45095).
+- ~~**Why does atisim accumulate more nose-down attitude than JSBSim through the run-in?**~~
+  **ANSWERED, session 22 — it is the shared-start compromise, not the physics.**
+  `scripts/vortex_diagnose.py` settles it two ways. Flown from JSBSim's state in
+  **still air**, with the vortex switched off entirely, atisim drifts −0.340°, −1.583°
+  and −1.502° over the same run-in — which is **101%, 103% and 101%** of the
+  atisim-minus-JSBSim offset measured at the window edge with the vortex on. The vortex
+  contributes nothing to it. And started from **atisim's own trim** instead, the from-trim
+  pitch error collapses from −15.0% / −42.8% / −53.7% to **+0% / +1% / +1%**.
+  So the whole of the apparent 15–54% pitch disagreement is atisim settling out of a trim
+  that is not its own, at 0.95% of C_L, over eight to nine seconds. It is the price of the
+  identical initial condition, it is now measured rather than assumed, and it does not
+  touch the core response.
 
 ## 9. Session log
+
+### Session 21 — the Wingrove paper arrives, and JSBSim gains a 747
+
+**The source the audit could not obtain is now in hand.** Wingrove & Bach, *Severe
+Turbulence and Maneuvering from Airline Flight Records*, J. Aircraft **31**(4), Jul-Aug
+1994, 753-760. `AUDIT.md` rows 19, 168 and 393 marked `UPDRAFT_W0`, `UPDRAFT_SECONDS`, the
+5.2 deg pitch figure, the +0.66/-1.58 g and the Fig. 8 discriminator as
+`unverifiable -- source not available`. All five check out verbatim; closing those rows is
+still outstanding.
+
+**The paper names no aircraft.** All twelve incidents are "modern airliners" carrying a
+DFDR; Table 1 gives date, location and altitude, Table 2 gives load increments, and no
+table, figure or sentence identifies an airframe. Any comparison against it therefore
+chooses its own aircraft, and this project's choice is the JSBSim-intersection below.
+
+**Fig. 4 supplies a third vortex case and contradicts `PARKS_CASES` on a second.** The
+figure quotes core DIAMETERS: Hannibal 1000 ft, Morton 900, Cimarron 900, at 85, 70 and
+50 ft/s. Morton halves to 450 ft, which is `wind.py`'s Morton radius to the digit and
+settles that the column is a diameter. Hannibal halves to **500 ft where `wind.py` says
+600**, and Parks 1985 has still never been obtained, so nothing arbitrates. Both are kept
+in separate dicts, `PARKS_CASES` and the new `WINGROVE_FIG4_CASES`, and both will be flown.
+Cimarron exists only in this paper, and it is the only case with published time histories.
+
+**JSBSim cannot be asked to carry a gust gradient.** Its property catalog reports
+`atmosphere/{p,q,r}-turb-rad_sec` as READ-ONLY, and a write to `q-turb-rad_sec` reads back
+0.0 after one step. Every writable wind input -- `wind-*-fps`, `gust-*-fps`, `turb-*-fps`,
+`cosine-gust/*` -- is translational, sampled at one point. Translational injection does
+work and was checked against arithmetic: `wind-down-fps = -50` at M 0.78 / 30,000 ft moved
+alpha 3.687 deg against a predicted `atan(50/776) = 3.69`. So the gradient arm of the
+vortex comparison measures what JSBSim omits, using atisim as the instrument, and cannot
+be a JSBSim-to-JSBSim delta.
+
+**`boeing747_jsbsim` joins the registry, and `boeing747` is untouched.** JSBSim's B747 is
+not the CR-2144 aeroplane: 249,974 kg against 288,773 (15.5%), 64.46 m of span against
+59.64 (8.1%), 524.7 m^2 against 511.0 (2.7%) -- while sharing an inertia tensor to under
+0.1%. Since n = L/W, a load-factor difference between the two engines flying "a 747" would
+have been dominated by that mass gap. The new entry carries JSBSim's own numbers, recovered
+at 38,000 ft / M 0.80 by `scripts/gen_jsbsim_747.py`, which imports the 737's recovery
+machinery rather than copying it.
+
+**It is not a credible 747 and the entry says so.** B747.xml is `release="ALPHA"`, author
+"Unknown", and its CLalpha table shares its first three points with 737.xml's -- both give
+CLa = 4.3478 /rad. That is one Aeromatic template used twice. It costs the cross-code
+comparison nothing and makes any comparison of that entry against flight data meaningless;
+`boeing747` remains the aeroplane for that.
+
+**Two things were caught by tests rather than by inspection**, and both are recorded because
+neither was loud:
+
+- **The Ixz sign was wrong.** `inertia_tensor` negates its argument, and JSBSim's
+  `inertia/ixz-slugs_ft2` is already the tensor element, so the engine's -970000 had to be
+  passed as +969999.99. Passing it as reported flipped the cross-product term -- the exact
+  failure the 737 shipped with once, worth 1.6-3.2% on the lateral modes and inside every
+  layer tolerance. `test_mass_and_inertia_match_the_engine` compares the ASSEMBLED tensor
+  against the reference rather than the argument against a remembered convention, which is
+  the only form of the check that catches it.
+- **A unit constant differing in the 8th digit.** slug ft^2 values converted with
+  1.35581796190452 instead of `units.SLUG_FT2_TO_KG_M2` = 1.3558179483314003 left a 1e-8
+  relative gap. Recomputed with the project's own constant, Izz and Ixz land on B747.xml's
+  stated 4.97e+07 and -970000 to ten digits.
+
+**The recovery lands on B747.xml's own constants**, which is the check that it is a recovery
+rather than a plausible fit: CYb, Clb, Clp, Cldr, Cnb, Cndr and CLde exactly, Cma -0.699965
+against -0.7000, Clda 0.0732 against the Mach-scheduled table's M 0.80 value. Cmq and
+Cmadot come back as -21.0055 and -3.9945 against -21 and -4 -- each 0.0055 out, equal and
+opposite, at a design condition number of 2.7e9 -- while their SUM is -25.000000. The same
+q/alphadot collinearity the 737 records, and the sum is the quantity that carries weight.
+
+**The refactor that made the reuse possible changed nothing**, and that is measured: both
+737 reference XMLs regenerate to the same blob hash they had before
+(`c0d5522a...`, `44eb69f7...`).
+
+**The two engines do not trim to the same point, and that is a design input.** At the
+recovery condition atisim trims to alpha 4.3321 deg where JSBSim trims to 4.2786, a
++0.0535 deg gap. It is not an entry defect: fed JSBSim's own trim state, atisim returns
+CL to 3e-6. JSBSim's `do_simple_trim` converges to **Nz = 0.99093, not 1.0**, and atisim
+needs 0.95% more CL for a true 1 g -- worth +0.0627 deg of alpha against the +0.0535
+observed. So the vortex comparison must be driven from a MATCHED STATE rather than from
+each engine's own trim, the way the 737 sweep already is.
+
 
 ### Session 18 — the AtiSim rename, and correcting five stale claims
 
@@ -2726,6 +2842,11 @@ several sessions, which is the drift §4's rules exist to prevent.
 | `.venv/Scripts/python.exe scripts/vortex.py --artifacts runs/analysis` | The same run, **also written as a run artifact per encounter** — Parquet series plus `meta.json` and `checks.json`. Prints `checks ok` or names the checks that failed. Needs the `ui` extra. Until this flag existed, every number in §4's encounter tables came from a run that did not survive the script that produced it. |
 | `.venv/Scripts/python.exe -m atisim.apps.sweep runs/analysis` | **The analysis UI.** Sweep view per run — provenance header with caveats, check badges, the causal strip stack, the 3D field with the trajectory through it, Fig. 8, and n_z-vs-α — plus a shared time cursor: click any strip and every panel, the 3D marker and the readout move to that sample together. Needs the `ui` extra (`pip install -e .[ui]`). |
 | `.venv/Scripts/python.exe scripts/summary.py docs/summary/atisim-summary.pdf docs/summary/panel.png` | Rebuilds the plain-English summary PDF (14 pages). The parts that are *computed* cannot drift from the code — the vortex figures call `wind.vortex_wind`, and the aircraft table reads `CRUISE`. **The prose and the summary statistics are literals and can**: the test and line counts were stale by session 7, and four page cross-references were wrong by session 8. The page numbers are now generated from `PAGE_ORDER` with a build-time count check; the statistics are still literals. Re-run it after anything that changes those. |
+| `C:/Users/mateusz/AppData/Local/Programs/Python/Python310/python.exe` `scripts/gen_jsbsim_747.py` | **Recovers the `boeing747_jsbsim` entry from the running B747.** Needs jsbsim, so it runs under the reference interpreter above, NOT the project venv. Writes `atisim/tests/data/jsbsim_747_reference.xml`. Run only when the recovery condition changes; drift shows up in `git diff`. |
+| `C:/Users/mateusz/AppData/Local/Programs/Python/Python310/python.exe` `scripts/gen_jsbsim_vortex_reference.py` | **Freezes JSBSim's answer to the three vortex cases.** Same interpreter, same reason. Writes `atisim/tests/data/jsbsim_vortex_reference.xml`. |
+| `.venv/Scripts/python.exe scripts/vortex_compare.py --png runs/vc.png` | **The cross-code vortex comparison.** Flies atisim through the identical field the frozen reference was generated from and reports where the two engines part, against Wingrove & Bach's own g-loads. Imports no jsbsim. |
+| `.venv/Scripts/python.exe scripts/vortex_diagnose.py` | **Why the comparison's two large errors are large.** Three experiments: the same start state flown in still air, atisim flown from its own trim, and a one-lever-at-a-time sweep against the DFDR. Imports no jsbsim. |
+| `docs/summary/jsbsim-atisim-vortex-report.html` | **The written comparison** — the numbers above with the reasoning, the figure, and what the result does and does not establish. Not generated; edit it when the numbers move. |
 
 ### The documents, and which question each answers
 

@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<jsbsim_747_reference>
+  <provenance>
+    <jsbsim_version>1.3.1 [GitHub build 1837/commit 3b25f25e49b42d0489c04ac805674fc1450ca579] May 17 2026 14:28:34</jsbsim_version>
+    <model>B747</model>
+    <yaw_damper_gain>7.000002905904e-01</yaw_damper_gain>
+  </provenance>
+  <condition>
+    <altitude_m>1.158240000000e+04</altitude_m>
+    <matched_altitude_m>1.156131072235e+04</matched_altitude_m>
+    <density>3.330908718189e-01</density>
+    <density_match_residual>0.000000000000e+00</density_match_residual>
+    <mach>8.000000000000e-01</mach>
+    <airspeed>2.360552703914e+02</airspeed>
+    <mass>2.499738479223e+05</mass>
+    <inertia>2.469164524956e+07 0.000000000000e+00 -1.315143409881e+06 0.000000000000e+00 4.489333267970e+07 0.000000000000e+00 -1.315143409881e+06 0.000000000000e+00 6.738415203207e+07</inertia>
+  </condition>
+  <trim>
+    <alpha>7.467638274921e-02</alpha>
+    <elevator>-1.301032493427e-01</elevator>
+    <throttle>6.314608506372e-01</throttle>
+    <thrust>1.964397731992e+05</thrust>
+  </trim>
+  <derivatives>
+    <derivative name="CDa_engine" value="2.570069197162e-01"/>
+    <derivative name="CLa" value="4.347826086957e+00"/>
+    <derivative name="CLde" value="2.000000000000e-01"/>
+    <derivative name="CLq" value="2.465922188207e-04"/>
+    <derivative name="CYb" value="-1.000000000000e+00"/>
+    <derivative name="CYdr" value="0.000000000000e+00"/>
+    <derivative name="CYp" value="-5.463842901782e-07"/>
+    <derivative name="CYr" value="7.303087087397e-06"/>
+    <derivative name="Clb" value="-9.999991882178e-02"/>
+    <derivative name="Clda" value="7.320000007583e-02"/>
+    <derivative name="Cldr" value="1.000000000000e-02"/>
+    <derivative name="Clp" value="-4.000000566734e-01"/>
+    <derivative name="Clr" value="1.500005781162e-01"/>
+    <derivative name="Cm0" value="-2.418896913375e-06"/>
+    <derivative name="Cma" value="-6.999648367122e-01"/>
+    <derivative name="Cmadot" value="-3.994463078400e+00"/>
+    <derivative name="Cmde" value="-9.100000011349e-01"/>
+    <derivative name="Cmq" value="-2.100553692583e+01"/>
+    <derivative name="Cnb" value="1.199999870733e-01"/>
+    <derivative name="Cnda" value="0.000000000000e+00"/>
+    <derivative name="Cndr" value="-1.000000000000e-01"/>
+    <derivative name="Cnp" value="6.760109550356e-08"/>
+    <derivative name="Cnr" value="-1.500006635566e-01"/>
+    <derivative name="_pitch_fit_condition" value="2.745205624351e+09"/>
+    <derivative name="_pitch_fit_residual" value="2.067489755786e-11"/>
+  </derivatives>
+  <aircraft_entry>
+    <value name="AR">7.920015934844e+00</value>
+    <value name="CD0">2.530631882491e-02</value>
+    <value name="CD_alpha">7.488788347087e-02</value>
+    <value name="CL0">1.999999907817e-01</value>
+    <value name="CLa">4.347826086957e+00</value>
+    <value name="CLde">2.000000000000e-01</value>
+    <value name="CYb">-1.000000000000e+00</value>
+    <value name="Clb">-9.999991882178e-02</value>
+    <value name="Clda">7.320000007583e-02</value>
+    <value name="Cldr">1.000000000000e-02</value>
+    <value name="Clp">-4.000000566734e-01</value>
+    <value name="Clr">1.500005781162e-01</value>
+    <value name="Cm0">-2.418896913375e-06</value>
+    <value name="Cma">-6.999648367122e-01</value>
+    <value name="Cmadot">-3.994463078400e+00</value>
+    <value name="Cmde">-9.100000011349e-01</value>
+    <value name="Cmq">-2.100553692583e+01</value>
+    <value name="Cnb">1.199999870733e-01</value>
+    <value name="Cnda">0.000000000000e+00</value>
+    <value name="Cndr">-1.000000000000e-01</value>
+    <value name="Cnr">-1.500006635566e-01</value>
+    <value name="S">5.247163699200e+02</value>
+    <value name="aero_ref_x">-1.270000000000e+00</value>
+    <value name="aero_ref_y">0.000000000000e+00</value>
+    <value name="aero_ref_z">-5.730072472773e-02</value>
+    <value name="aileron_limit">3.500000000000e-01</value>
+    <value name="airspeed">2.360552703914e+02</value>
+    <value name="b">6.446520000000e+01</value>
+    <value name="c">8.324088000000e+00</value>
+    <value name="e">9.569181269645e-01</value>
+    <value name="elevator_limit">1.750000000000e-01</value>
+    <value name="kappa_airfoil">1.006726463738e+00</value>
+    <value name="mach_ram">8.859606080634e-02</value>
+    <value name="mass">2.499738479223e+05</value>
+    <value name="matched_altitude">1.156131072235e+04</value>
+    <value name="max_thrust">4.158094615739e+05</value>
+    <value name="rudder_limit">3.500000000000e-01</value>
+    <value name="sweep">4.363323129986e-01</value>
+    <value name="t_over_c">1.200000000000e-01</value>
+    <value name="thrust_altitude_residual">1.302104583322e-02</value>
+    <value name="thrust_lapse">2.644780053084e-01</value>
+    <value name="thrust_mach_residual">3.129233714633e-02</value>
+  </aircraft_entry>
+  <validity>
+    <mach_low>7.000000000000e-01</mach_low>
+    <mach_high>9.000000000000e-01</mach_high>
+    <altitude_low>1.066800000000e+04</altitude_low>
+    <altitude_high>1.249680000000e+04</altitude_high>
+  </validity>
+</jsbsim_747_reference>
