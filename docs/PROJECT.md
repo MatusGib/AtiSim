@@ -1294,6 +1294,43 @@ to leave undeclared because there was no honest band to state. `test_a_recovery_
 caught the change and now asserts both entries carry a band containing their own flight
 condition.
 
+**The 737 carries JSBSim's own CL(α) table now, and the ceiling in §7 is open.** Four
+points, transcribed exactly:
+
+| α (rad) | α (deg) | CL | segment slope |
+|---|---|---|---|
+| −0.20 | −11.46° | −0.68 | |
+| 0.00 | 0° | 0.20 | **4.400** below zero incidence |
+| 0.23 | **13.18°** | **1.20** | **4.3478** — this *is* `CL0 + CLa·α` |
+| 0.46 | 26.36° | 0.20 | −4.3478, past the break |
+
+Segment two is the linear model already verified: its slope matches `CLa` to **4.8e-13** and
+its intercept matches `CL0` to 5.5e-09. So the table changes nothing at either recovery
+point — and in fact **improves layer 1's CL by five orders**, from 5.5e-09 to **7.1e-14** at
+cruise and 9.6e-09 to 1.3e-13 at approach, because `CL0` was an intercept *solved* to
+reproduce lift at the reference and carried that solve's residual where the table is simply
+737.xml's own 0.20. Layers 2, 3 and 4 are bit-identical. The layer-1 CL tolerance is
+tightened 1e-7 → **1e-12** to hold the improvement.
+
+Outside the segment it changes everything that matters: the linear form reported **2.5× the
+source's lift at α 20°** and 6.9× at 25°. Agreement across the full table — both clamped
+endpoints, the break, and the falling branch — is now better than **1e-9**, asserted in
+`test_layer1_lift_matches_through_the_stall` against a new `<stall_sweep>` block in the
+reference. That block is additive: the ordinary sweep is untouched, so no existing layer-1
+result moved.
+
+**Two consequences §5 and §7 record as permanent are now conditional.** The ±g asymmetry was
+a property of the *linear form*, not of the airframe — the table's slope is 4.400 below zero
+incidence against 4.3478 above, so an up-gust and an equal down-gust no longer give equal and
+opposite increments for an aircraft carrying one. And the Cessna's stall tables are still
+unused, but now for want of a caller rather than for want of a mechanism. Both remain exactly
+as recorded for every entry without a table, which is all four other aircraft.
+
+**What opening the seam actually cost**, neither of which §7 anticipated: a kink at every
+breakpoint, which `jacfwd` turns into a one-sided slope if anything linearises *at* one — the
+737's cruise margin is 1.98° and is now asserted — and trim ceasing to be single-valued above
+the break, which `trim.trim` has no defence against since it is an unbracketed root-find.
+
 ### The validated baseline — do not touch these tolerances
 
 `test_conservation.py`, `test_cr2144_modes.py`, `test_drag_polar.py`, `test_navion.py`,
@@ -1687,6 +1724,15 @@ file is a mechanical translation. Not before.
 
 ### Extensibility: the ceiling nobody should walk into
 
+> **The seam this section said was not taken has now been opened — session 20.**
+> `aero.coefficients` interpolates a `CL(α)` table when the aircraft carries one, and the
+> two 737 entries carry 737.xml's own. The three consequences below still hold **for every
+> entry without a table**, which is all four light and heavy aircraft; they no longer hold
+> unconditionally, and the first of them was never a property of the airframe.
+>
+> Nothing else about this section changed: the exit named at the bottom is the one that was
+> used, and the traps it did not mention are recorded with it.
+
 `aero.py` is `CL = CL0 + CLa·α`, linear, with no stall — and by decision it stays that way.
 Three consequences, stated here so they are not rediscovered:
 
@@ -1702,7 +1748,24 @@ Three consequences, stated here so they are not rediscovered:
   leaves it is not evidence of anything.
 
 If that ceiling ever needs lifting, the seam is `aero.coefficients` — swap it for a
-protocol with a linear and a table implementation. That was the option not taken.
+protocol with a linear and a table implementation. ~~That was the option not taken.~~
+**Taken in session 20**, and it cost less than this paragraph implies: two `Aircraft` fields
+defaulting to empty, one `jnp.interp` behind a shape test that resolves at trace time, and
+no change to any other aircraft. What it did cost was two things this paragraph did not
+mention:
+
+- **A kink at every breakpoint.** `validation.longitudinal_matrix` takes `jacfwd` of the real
+  dynamics, so a linearisation *at* a knot returns a one-sided slope and the modes become an
+  artifact of knot placement. The 737's knots sit at α = 0.00 and 0.23 rad and it linearises
+  at 0.0346 and 0.0631 — inside a segment both times, asserted rather than assumed in
+  `test_the_lift_table_is_not_linearised_at_a_breakpoint`. The cruise margin is only 1.98°.
+- **Trim stops being single-valued** above the break, since two incidences give the same
+  lift. Both entries trim far below it, but `trim.trim` is an unbracketed root-find and has
+  no defence if one ever does not.
+
+Linear interpolation is deliberate and is *faithful* rather than lazy: JSBSim's own `<table>`
+blocks are linearly interpolated and clamp at their endpoints, so `jnp.interp` reproduces the
+source exactly. A smoother interpolant would agree with the source less.
 
 ## 8. Open questions
 

@@ -113,7 +113,15 @@ def coefficients(
     # Same non-dimensionalisation as q_hat: Stengel Eq. (3.4-25), (3.4-26).
     alphadot_hat = alphadot_gust * ac.c / (2.0 * V)
 
-    CL = (ac.CL0 + ac.CLa * alpha + ac.CLq * q_hat + ac.CLde * de
+    # Lift from incidence: a table if the aircraft carries one, the linear form
+    # otherwise. `.size` is a property of the SHAPE, so this branch is resolved
+    # at trace time and costs nothing under jit. The other CL terms stay
+    # additive either way, exactly as JSBSim keeps CLalpha and CLde separate.
+    if ac.CL_table_alpha.size:
+        CL_alpha_part = jnp.interp(alpha, ac.CL_table_alpha, ac.CL_table_CL)
+    else:
+        CL_alpha_part = ac.CL0 + ac.CLa * alpha
+    CL = (CL_alpha_part + ac.CLq * q_hat + ac.CLde * de
           + ac.CLadot * alphadot_hat)
     Cm = (ac.Cm0 + ac.Cma * alpha + ac.Cmq * q_hat + ac.Cmde * de
           + ac.Cmadot * alphadot_hat)

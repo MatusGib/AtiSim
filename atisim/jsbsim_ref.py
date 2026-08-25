@@ -68,6 +68,17 @@ class SweepPoint(NamedTuple):
     coefficients: np.ndarray  # (6,) CL, CD, CY, Cl, Cm, Cn
 
 
+class StallPoint(NamedTuple):
+    """One point of the full CL(alpha) curve, past the break.
+
+    CL here has the elevator term removed, so it is the CLalpha table alone --
+    which is the thing atisim's CL_table_alpha/CL_table_CL must reproduce.
+    """
+
+    alpha: float
+    CL: float
+
+
 class Linearization(NamedTuple):
     """JSBSim's 12-state model, ordering re-derived by the generator.
 
@@ -108,6 +119,7 @@ class Reference(NamedTuple):
     absent: dict
     entry: dict
     sweep: list
+    stall_sweep: list
     linearization: Linearization
     trajectory: dict
     diagnostics: dict
@@ -181,6 +193,10 @@ def load(path: Path = REFERENCE) -> Reference:
         entry={v.get("name"): float(v.text)
                for v in root.findall("aircraft_entry/value")},
         linearization=linearization,
+        stall_sweep=[
+            StallPoint(alpha=float(p.get("alpha")), CL=float(p.get("CL")))
+            for p in root.findall("stall_sweep/point")
+        ],
         trajectory=trajectory,
         sweep=[
             SweepPoint(

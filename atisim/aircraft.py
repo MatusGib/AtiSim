@@ -178,6 +178,23 @@ class Aircraft(NamedTuple):
     valid_mach: Array = jnp.zeros(2)
     valid_altitude: Array = jnp.zeros(2)  # m
 
+    # Nonlinear lift curve, as (alpha_rad, CL) breakpoints. EMPTY MEANS USE
+    # CL0 + CLa*alpha, which is what every other aircraft here does and what
+    # PROJECT.md section 7 declared the ceiling to be.
+    #
+    # Linearly interpolated, and that is FAITHFUL rather than lazy: JSBSim's own
+    # <table> blocks are linearly interpolated and clamp at their endpoints, so
+    # jnp.interp reproduces the source exactly rather than approximating it.
+    #
+    # THE COST IS A KINK AT EVERY BREAKPOINT. validation.longitudinal_matrix
+    # takes jacfwd of the real dynamics, so a linearisation AT a breakpoint gets
+    # a one-sided slope and the modes become an artifact of knot placement. The
+    # 737's knots sit at alpha = 0.00 and 0.23 rad while it is linearised at
+    # 0.0346 and 0.0631, inside a segment both times -- asserted, not assumed,
+    # in test_aero.test_the_lift_table_is_not_linearised_at_a_breakpoint.
+    CL_table_alpha: Array = jnp.zeros(0)
+    CL_table_CL: Array = jnp.zeros(0)
+
 
 def inertia_tensor(Ixx, Iyy, Izz, Ixz) -> Array:
     """Body-axis inertia tensor.
@@ -798,7 +815,9 @@ def _cherokee_pa28_180() -> Aircraft:
 # 0.03 in CL and 0.0004 in CD.
 #
 # *** THE TABLE CARRIES STALL DATA THIS MODEL CANNOT USE. *** CL_data runs to
-# CLmax 1.889 at 19.5 deg. atisim.aero is linear in alpha and has no stall,
+# CLmax 1.889 at 19.5 deg. aero.coefficients now takes a CL(alpha) table when
+# an aircraft carries one -- the 737 entries do -- so these COULD be read; they
+# are not, because nothing has needed the Cessna past the linear range,
 # so above roughly 10 deg this aircraft reports lift the source says it does not
 # have. That matters for the intended vortex work, where the source's own note
 # estimates alpha excursions of order 20 deg. The tables are therefore kept
@@ -965,10 +984,12 @@ def _boeing_737() -> Aircraft:
     Nelson, valid across the ordinary linear range -- this one is a local fit to
     a NONLINEAR model, and it degrades away from that point in known ways:
 
-      - JSBSim's CL(alpha) is a table peaking at 1.20 near 13 deg and falling.
-        CL0 + CLa*alpha keeps climbing. Above about 10 deg this entry does not
-        merely lose accuracy: it has NO stall behaviour and reports lift the
-        source model does not have.
+      - CLOSED. This entry now carries 737.xml's own CL(alpha) table, so it
+        peaks at 1.20 near 13 deg and falls exactly as the source does -- see
+        CL_table_alpha below. The linear form reported 2.5x the source's lift at
+        alpha 20 deg; agreement across the whole table is now better than 1e-9,
+        asserted in test_layer1_lift_matches_through_the_stall. The other
+        band-limiters below still stand.
       - CD0 here is the value at the trim alpha of a table running 0.021 at
         0 deg to 0.042 at 15 deg, so drag is progressively under-predicted as
         alpha departs from cruise. It also absorbs JSBSim's CDde term
@@ -1097,6 +1118,28 @@ def _boeing_737() -> Aircraft:
         Cnr=jnp.array(-0.350004258434),
         Cnda=jnp.array(0.0),  # 737.xml defines none
         Cndr=jnp.array(-0.2),
+        # 737.xml's own CL(alpha) table, transcribed exactly. Four points:
+        #
+        #     alpha_rad     CL       segment slope
+        #      -0.20      -0.68
+        #       0.00       0.20       4.4000   (below zero incidence)
+        #       0.23       1.20       4.3478   <- this IS CL0 + CLa*alpha
+        #       0.46       0.20      -4.3478   (past the break)
+        #
+        # Segment two is the linear model already verified against JSBSim: its
+        # slope matches CLa to 4.8e-13 and its intercept matches CL0 to 5.5e-9,
+        # so every layer result at the recovery points is unchanged, bit for
+        # bit. What the table adds is everything OUTSIDE 0 to 13.18 deg, where
+        # the linear form reports lift the source model does not have -- 2.5x at
+        # alpha 20 deg, 6.9x at 25 deg.
+        #
+        # It also breaks the +/-g symmetry that ASSUMPTIONS.md calls structurally
+        # impossible: the slope below zero incidence is 4.4 against 4.3478 above,
+        # so an up-gust and an equal down-gust no longer give equal and opposite
+        # load increments. That symmetry was a property of the LINEAR form, not
+        # of the airframe.
+        CL_table_alpha=jnp.array([-0.20, 0.00, 0.23, 0.46]),
+        CL_table_CL=jnp.array([-0.68, 0.20, 1.20, 0.20]),
         # FITTED at the trim throttle over the cruise band -- see the docstring.
         max_thrust=jnp.array(101668.1750481),
         thrust_lapse=jnp.array(0.7207901171515),
@@ -1221,6 +1264,28 @@ def _boeing_737_approach() -> Aircraft:
         Cnr=jnp.array(-0.3500024048283),
         Cnda=jnp.array(0.0),
         Cndr=jnp.array(-0.2),
+        # 737.xml's own CL(alpha) table, transcribed exactly. Four points:
+        #
+        #     alpha_rad     CL       segment slope
+        #      -0.20      -0.68
+        #       0.00       0.20       4.4000   (below zero incidence)
+        #       0.23       1.20       4.3478   <- this IS CL0 + CLa*alpha
+        #       0.46       0.20      -4.3478   (past the break)
+        #
+        # Segment two is the linear model already verified against JSBSim: its
+        # slope matches CLa to 4.8e-13 and its intercept matches CL0 to 5.5e-9,
+        # so every layer result at the recovery points is unchanged, bit for
+        # bit. What the table adds is everything OUTSIDE 0 to 13.18 deg, where
+        # the linear form reports lift the source model does not have -- 2.5x at
+        # alpha 20 deg, 6.9x at 25 deg.
+        #
+        # It also breaks the +/-g symmetry that ASSUMPTIONS.md calls structurally
+        # impossible: the slope below zero incidence is 4.4 against 4.3478 above,
+        # so an up-gust and an equal down-gust no longer give equal and opposite
+        # load increments. That symmetry was a property of the LINEAR form, not
+        # of the airframe.
+        CL_table_alpha=jnp.array([-0.20, 0.00, 0.23, 0.46]),
+        CL_table_CL=jnp.array([-0.68, 0.20, 1.20, 0.20]),
         max_thrust=jnp.array(91307.10487406),
         thrust_lapse=jnp.array(0.9581403997535),
         elevator_limit=jnp.array(0.3),

@@ -120,9 +120,10 @@ _HORIZON_L = 4.0  # half-length of the sky/ground quads, in axes units
 # ---------------------------------------------------------------------------
 
 # PROJECT.md section 7: "any encounter driving alpha past ~10-12 deg reports lift
-# the sources say is not there". That is a statement about THIS MODEL's linear
-# aero, not a stall table -- aero.py is CL = CL0 + CLa*alpha with no stall at
-# all, and the only aircraft in the project with nonlinear data is out of scope.
+# the sources say is not there". That is a statement about the LINEAR aero, which
+# is what every aircraft the panel flies uses: aero.py takes a CL(alpha) table
+# when the aircraft carries one, and only the two 737 entries do. The band stays
+# as it is because the 737 is a verification fixture and is not flown here.
 # The band exists so that a run leaving the model's valid range says so on the
 # panel, instead of in a footnote nobody reads until afterwards.
 ALPHA_LINEAR_DEG = 10.0
