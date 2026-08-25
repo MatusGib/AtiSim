@@ -470,6 +470,18 @@ footer {
       nothing &#8212; both engines eat the same numbers &#8212; and it makes any comparison of that entry
       against flight data meaningless.
     </p>
+    <p>
+      <strong>Independently confirmed from the other direction.</strong> A separate search of this
+      project's reference shelf for a real 747 lift curve reached the same verdict on JSBSim's and
+      rejected it: NASA CR-2144 gives the 747
+      <span class="mono">C<sub>L&#945;</sub> = 4.9441</span> against JSBSim's 4.3478, and adopting
+      the latter would replace a qualified NASA number with an unqualified one. That search also
+      found that <em>no source this project can reach publishes a post-stall 747 lift curve at
+      all</em> &#8212; CR-114494, the canonical nonlinear 747 model, draws
+      <span class="mono">C<sub>L</sub></span> as straight lines annotated
+      <em>&#8220;extrapolate linearly to higher &#945; if required&#8221;</em>, and treats stall as a
+      boundary rather than a falling curve.
+    </p>
   </div>
 
   <p>
@@ -821,6 +833,12 @@ footer {
     4.348&nbsp;/rad with no Mach correction; Prandtl&#8211;Glauert at M&nbsp;0.78 would raise it by
     a factor of 1.60. That alone takes 70% to 85%. Both engines inherit the same table, which is
     precisely why they agree with each other and miss the data together.
+  </p>
+  <p>
+    There is corroboration that the table is low, though it is for the wrong aeroplane to apply
+    here directly: CR-2144 gives the <em>747</em> a slope of 4.9441&nbsp;/rad, a factor of 1.14 on
+    JSBSim's 4.3478. The Cimarron case above flies the 737, so that figure is evidence about the
+    template rather than a correction to this run &#8212; but the template is the same one.
   </p>
 
   <div class="note warn">
