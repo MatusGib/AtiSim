@@ -59,6 +59,18 @@ def test_only_the_two_747_configurations_pass_the_plausibility_gate():
     the input does not exist -- so the strip path is structurally unavailable
     for that aircraft and the gate refusing it is exactly right.
 
+    `boeing747_jsbsim` fails for EXACTLY that reason too, and the entry is a
+    third 747 rather than a third light aircraft, so the heading's "two 747
+    configurations" now means two CR-2144 ones. B747.xml defines no CLq either,
+    so its arm is the same division by zero. The consequence is worth stating
+    where someone will find it: the strip load path cannot be used for any
+    JSBSim-recovered entry, which includes both airframes in the vortex
+    comparison. That costs the vortex work nothing -- strip loads are ROLL ONLY
+    (loads.strip_increment) and the Parks vortex has no spanwise structure, so
+    they change nothing for it -- but it does mean the gradient arm of that
+    comparison rests on wind.gust_rates alone, and cannot be cross-checked
+    against a strip integration.
+
     WHAT THIS DOES NOT ESTABLISH is which side is at fault. It may be the source
     data -- PROJECT.md section 3 already records the Cessna's rudder set as
     inconsistent and the Cherokee's Izz < Iyy as flagged by its own author -- or
@@ -74,6 +86,8 @@ def test_only_the_two_747_configurations_pass_the_plausibility_gate():
         "cherokee": False,
         "boeing737": False,
         "boeing737_approach": False,
+        # No CLq in B747.xml either, so the same division by zero.
+        "boeing747_jsbsim": False,
     }, f"gate outcome changed: {passes}"
 
 
