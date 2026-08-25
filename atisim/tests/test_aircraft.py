@@ -408,16 +408,25 @@ def test_a_recovery_band_is_declared_only_where_one_was_measured():
     Every other entry is a linear derivative set from CR-2144 or Nelson, valid
     across the ordinary linear range. Giving those a band would be inventing a
     bound their sources do not state -- and a wrong bound gates real runs.
+
+    The qualifying set is named rather than matched on a prefix. It was
+    `name.startswith("boeing737")` while the JSBSim-recovered entries happened
+    to be the only 737s, which silently made the rule "is a 737" instead of "is
+    a fit" -- and boeing747_jsbsim, recovered by the same machinery from the
+    same kind of model, then failed a test it satisfies.
     """
+    from atisim.aircraft import RECOVERED_FROM_JSBSIM
+
+    assert RECOVERED_FROM_JSBSIM <= set(EVERY)
     for name in EVERY:
         ac = REGISTRY[name]
         banded = float(ac.valid_altitude[1]) > float(ac.valid_altitude[0])
-        assert banded == name.startswith("boeing737"), name
+        assert banded == (name in RECOVERED_FROM_JSBSIM), name
     # BOTH halves are declared for both entries. The approach entry's Mach band
     # was absent while the generator's thrust fit sampled M 0.60-0.95 regardless
     # of the condition, which left nothing honest to state for an entry flown at
     # M 0.40; the fit now brackets the condition and the band is what was fitted.
-    for name in ("boeing737", "boeing737_approach"):
+    for name in sorted(RECOVERED_FROM_JSBSIM):
         lo, hi = (float(v) for v in REGISTRY[name].valid_mach)
         assert hi > lo > 0.0, name
         mach = CRUISE[name]["airspeed"] / _sound_speed_at(CRUISE[name]["altitude"])
