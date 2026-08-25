@@ -1331,6 +1331,68 @@ breakpoint, which `jacfwd` turns into a one-sided slope if anything linearises *
 737's cruise margin is 1.98° and is now asserted — and trim ceasing to be single-valued above
 the break, which `trim.trim` has no defence against since it is an unbracketed root-find.
 
+### Looking for a 747 lift curve, and why the Mach tables are not applied (session 21)
+
+**No source this project can reach publishes a post-stall 747 lift curve.** Checked, not
+assumed:
+
+- **CR-2144** returns zero hits for "stall", "lift curve", "CLmax" or "nonlinear" across all
+  352 pages. §IX gives linear derivative tables (IX-1, IX-2) and derivative-vs-Mach figures.
+  It is a handling-qualities compendium of linearised sets by construction.
+- **NASA CR-114494** (Hanke & Nordwall, Boeing D6-30643, 1970 — the canonical nonlinear 747
+  model, now in `refs/`) has `CL_BASIC` vs α on pp. 2.0-7 and 2.0-8 as **straight lines**,
+  annotated *"extrapolate linearly to higher α_WDP if required"*. Stall is a **boundary** —
+  buffet onset, stick shaker, certification stall speeds — not a falling curve. §19 revises
+  ground effect and buffet-onset α, not the lift curve.
+- **JSBSim's B747** was rejected: its table is the 737's first three points verbatim with a
+  different tail, author "Unknown", `release="ALPHA"`, implying `CLα` = 4.3478 against
+  CR-2144's 4.9441. Adopting it would replace a qualified NASA number with an unqualified one
+  24% different.
+
+**Two figures were digitised, and both are recorded here rather than applied.** The working
+patch is kept out of the tree; what follows is the data and the reason.
+
+*`CL_MAX(M)` — CR-114494 p. 2.0-38, flaps up, gear up, trimmed.* Reading uncertainty **±0.02**:
+the fine grid is 0.1 CL over 63 px and the drawn line is 4–8 px. The curve had to be separated
+from the major gridlines by stroke thickness — gridlines render 1–2 px, curves 3 or more —
+which is what stopped the trace latching onto the CL 0.894 gridline.
+
+| M | 0.10 | 0.30 | 0.50 | 0.70 | 0.78 | 0.82 | 0.86 | 0.90 | 0.94 |
+|---|---|---|---|---|---|---|---|---|---|
+| CL_max | 1.097 | 1.053 | 1.008 | 0.952 | 0.910 | 0.878 | 0.834 | 0.763 | 0.678 |
+
+*`CLα(M)` — CR-2144 Figure IX-5, 40,000 ft curve.* **The cross-check you would want:** read on
+its own the figure gives **4.892 at M 0.80** against Table IX-4's **4.9441** — agreeing to
+**1.05%**, which is the measured reading uncertainty of the whole digitisation. Level from the
+table, shape from the figure. Uncertainty ±0.05 in `CLα`, about ±1%.
+
+**WHY NEITHER IS APPLIED.** Both were implemented and the full suite was run. **Eleven tests
+failed**, and not cosmetically:
+
+- `test_the_six_dof_rollout_is_fourth_order`, `test_extracting_rk4_step_did_not_move_a_single_bit`,
+  `test_the_rollout_is_only_first_order_through_a_spatially_varying_wind`,
+  `test_a_time_varying_uniform_wind_adds_no_body_force` — **a hard `min` ceiling is a kink, and
+  a kink destroys RK4's formal order** wherever a trajectory crosses it. The integrator
+  verification in §4 is not compatible with a non-smooth force model.
+- `test_load_factor_is_a_straight_line_in_air_relative_incidence` and
+  `test_logging_the_run_did_not_move_the_headline_numbers` — the ceiling retires the linearity
+  invariant the vortex analysis is built on. That is the ceiling *working*: at FC9 the aircraft
+  trims at CL 0.654 against a 0.894 ceiling, and a vortex adding 10° of α asks for CL 1.52. The
+  existing vortex results were in the regime §7 already warns "is not evidence of anything" —
+  but bounding it changes every published figure in that analysis.
+
+And `CLα(M)` **does not improve the 747** — measured at FC9, phugoid ωn goes 17.8% → 19.4%
+(worse) and ζ 14.4% → 12.6% (better), the short period unmoved. That is the shape of a
+**partial** correction: CR-2144's own FC9 model carries `Xu`, `Zu` and `Mu`, this project omits
+all three by form, and a Mach-dependent `CLα` is an indirect stand-in for `Zu` alone.
+
+**What shipping it properly needs**, and it is a planned piece of work rather than a coefficient
+addition: a **smooth** saturation in place of `min` so the integrator keeps its order, a
+re-verification that it does, and a re-baselining of the vortex analysis against a model that
+now has a ceiling. **And the higher-value fix first:** `Xu`, `Zu`, `Mu` are exact tabulated
+numbers already in Table IX-4, which `_boeing_747` skips with the note "the speed and alpha-dot
+derivatives are outside this model's form". No digitisation, no reading uncertainty.
+
 ### The validated baseline — do not touch these tolerances
 
 `test_conservation.py`, `test_cr2144_modes.py`, `test_drag_polar.py`, `test_navion.py`,

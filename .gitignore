@@ -9,7 +9,8 @@ runs/
 # Third-party reference PDFs, 58 MB between them. Kept on disk because several
 # open questions can only be closed by reading them, and deliberately kept out
 # of history: they are re-downloadable and mostly not ours to redistribute.
-# refs/ holds NASA-CR-2144, Caughey MAE5070, Doyle et al. 2011, Oseguera &
-# Bowles 1988, and Proctor, Hinton & Bowles 2000.
+# refs/ holds NASA-CR-2144, NASA-CR-114494 (Hanke & Nordwall, Boeing
+# D6-30643, the nonlinear 747 model), Caughey MAE5070, Doyle et al. 2011,
+# Oseguera & Bowles 1988, and Proctor, Hinton & Bowles 2000.
 refs/
 Flight_Dynamics_-_Second_Edition.pdf
