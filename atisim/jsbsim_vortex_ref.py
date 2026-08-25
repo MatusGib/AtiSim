@@ -96,6 +96,23 @@ class Encounter(NamedTuple):
         theta = np.degrees(np.array([s.theta for s in self.window()]) - datum)
         return float(theta.max()), float(theta.min())
 
+    def core_response(self):
+        """Increments relative to the WINDOW EDGE, not to trim.
+
+        The run-in is 15 core radii -- 9 to 11 seconds -- through the vortex's
+        1/r far field, and both attitude and load accumulate over it. Measured
+        from trim, the two engines' pitch appears to disagree by up to 75%;
+        measured from the window edge, by under 6%. The difference is entirely
+        in the run-in, so this is the quantity that compares the ENCOUNTER.
+
+        Returns (dn_max, dn_min, dtheta_max, dtheta_min) in g and degrees.
+        """
+        win = self.window()
+        nz = np.array([s.Nz for s in win])
+        theta = np.degrees(np.array([s.theta for s in win]))
+        return (float((nz - nz[0]).max()), float((nz - nz[0]).min()),
+                float((theta - theta[0]).max()), float((theta - theta[0]).min()))
+
     def entry_speed_drift(self):
         """Fractional airspeed lost between the start and the core.
 

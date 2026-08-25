@@ -117,13 +117,51 @@ def fly(
     x, _ = trim.trim(jnp.array(airspeed), jnp.array(altitude), ac)
     alpha_trim = jnp.array(float(x[0]))
     controls = trim.trimmed_controls(x[1], x[2])
-    model = wind.field_model(field)
     if strip:
         load_model = loads.strip_model(field, ac)
 
     state = trim.trimmed_state(alpha_trim, jnp.array(airspeed), jnp.array(altitude))
     state = state._replace(pos_ned=jnp.array([start_north, 0.0, -altitude]))
 
+    return fly_from_state(
+        ac, field, state, controls,
+        label=label, seconds=seconds, dt=dt, window=window,
+        window_name=window_name, load_model=load_model,
+    )
+
+
+def fly_from_state(
+    ac: Aircraft,
+    field,
+    state,
+    controls,
+    *,
+    label: str,
+    seconds: float,
+    dt: float = 0.01,
+    window: tuple[float, float],
+    window_name: str,
+    load_model=None,
+    wind_model=None,
+) -> Encounter:
+    """`fly`, but from a state and controls the caller already has.
+
+    Split out of `fly` rather than copied, so the two entry points cannot drift
+    apart in what they measure. `fly` trims and then calls this.
+
+    It exists for the cross-code comparison. The two engines do NOT trim to the
+    same point -- JSBSim's do_simple_trim converges to Nz = 0.99093 rather than
+    1.0, worth about 0.05 deg of alpha -- so scripts/vortex_compare.py starts
+    atisim from JSBSim's recorded state instead of from atisim's own trim.
+    Trimming independently would begin the two runs at different angles of
+    attack and carry that offset into every difference downstream.
+
+    `wind_model` overrides the default `wind.field_model(field)`. The comparison
+    needs a TRANSLATION-ONLY model for its like-for-like arm, because JSBSim has
+    no writable gust-rate input and therefore carries no gradient at all; the
+    default model would give atisim a term the other engine cannot have.
+    """
+    model = wind.field_model(field) if wind_model is None else wind_model
     n = int(round(seconds / dt))
     # `logged_rollout`, not `rollout`: same `step`, wider scan output, so the run
     # can be written to an artifact carrying the wind it actually flew.
