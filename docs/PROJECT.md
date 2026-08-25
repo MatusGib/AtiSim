@@ -188,6 +188,64 @@ spacing from a free parameter into a cited one.
 
 Every figure below is measured, with the tolerance the test asserts.
 
+### AtiSim against JSBSim through a Kelvin–Helmholtz vortex (session 21)
+
+Same field, same starting state, same density, fixed controls. atisim run
+**translation-only**, because JSBSim has no writable gust-rate input and carries no
+gradient at all. Measured **peak to peak across the core window**, which is the encounter;
+see the row below for why not from trim.
+
+| Case | Airframe | JSBSim n_z span | AtiSim n_z span | Error | JSBSim θ span | AtiSim θ span | Error |
+|---|---|---|---|---|---|---|---|
+| Cimarron, 33,000 ft | `boeing737` | 1.1337 g | 1.1408 g | **+0.6%** | 1.1191° | 1.0940° | **−2.2%** |
+| Hannibal, 37,000 ft, r₀ 500 ft | `boeing747_jsbsim` | 1.7077 g | 1.7443 g | **+2.1%** | 1.1289° | 1.1336° | **+0.4%** |
+| Hannibal, 37,000 ft, r₀ 600 ft | `boeing747_jsbsim` | 1.5423 g | 1.5667 g | **+1.6%** | 1.7747° | 1.8990° | **+7.0%** |
+| Morton, 39,000 ft | `boeing747_jsbsim` | 1.3626 g | 1.4016 g | **+2.9%** | 0.9211° | 0.9703° | **+5.3%** |
+
+**Measured from trim instead, the same runs disagree on pitch by 15–77%, and none of it is
+the encounter.** The run-in is fifteen core radii — nine to eleven seconds through the
+vortex's 1/r far field — and attitude accumulates over it, because atisim is started from
+JSBSim's trim state and JSBSim's trim is not atisim's. At the window edge atisim is already
+1.55° nose-down of JSBSim on Hannibal and 1.48° on Morton, before the core.
+
+| Case | Run-in θ offset at the window edge | Δn error from trim | Δθ error from trim |
+|---|---|---|---|
+| Cimarron | 0.336° | −1.8% | −15.0% |
+| Hannibal, r₀ 500 ft | 1.553° | −4.3% | −42.8% |
+| Hannibal, r₀ 600 ft | 1.734° | −2.3% | −44.0% |
+| Morton | 1.482° | −6.0% | −53.7% |
+
+Load factor is algebraic in the state and does not accumulate; attitude is an integral and
+does. That is the whole of the difference.
+
+### What JSBSim cannot carry, measured (session 21)
+
+`atmosphere/{p,q,r}-turb-rad_sec` are **read-only** in JSBSim 1.3.1's property catalog, and
+a write to `q-turb-rad_sec` reads back `0.0` after one step. Every writable wind input is
+translational and sampled at one point. The gradient's two terms pull in **opposite**
+directions, so a single "with gradient" figure would hide both:
+
+| Case | translational | + wind alphadot | + omega_gust | + both |
+|---|---|---|---|---|
+| Cimarron, n_z span | 1.1408 g | 1.0108 g | 1.3630 g | 1.2315 g |
+| Hannibal r₀ 500, n_z span | 1.7443 g | 1.6923 g | 2.0197 g | 1.9663 g |
+| Morton, n_z span | 1.4016 g | 1.3696 g | 1.5693 g | 1.5377 g |
+
+Net, both terms on: **+7.9%** (Cimarron), **+12.7%** and **+16.6%** (Hannibal at 500 and 600 ft), **+9.7%** (Morton) of load span. Translational injection itself
+is verified, not assumed: `wind-down-fps = -50` at M 0.78 / 30,000 ft moves α **3.687°**
+against a predicted `atan(50/776) = 3.69°`.
+
+### Comparison preconditions (session 21)
+
+| Check | Measured | Why it has to be checked |
+|---|---|---|
+| The two vortex fields, written independently in numpy and JAX | **< 1e-9 m/s** at every sample | a bug on both sides of a comparison is invisible to it |
+| JSBSim `accelerations/Nz` vs atisim `dynamics.load_factor`, same still-air state | **6.6e-5 to 2.1e-4 g** | otherwise the Δn column compares two different quantities |
+| JSBSim elevator over the whole encounter | **0.0000° of movement** | a moving surface would be commanding the pitch difference |
+| Morton flown at both sources' radii, which agree | **identical to the last digit** | establishes Hannibal's spread as the radius, not the harness |
+| Density match, atisim geometric vs JSBSim geopotential | residual **0.0**, shift −69.19 ft | qbar ∝ ρ, so a nominal match biases every force one way |
+
+
 ### Integrator and rigid body
 
 | Check | Measured | Tolerance |
@@ -1769,6 +1827,22 @@ source exactly. A smoother interpolant would agree with the source less.
 
 ## 8. Open questions
 
+- **Hannibal's core radius: 500 ft or 600 ft?** `PARKS_CASES` carries 600 ft, citing Parks
+  et al. 1985. Wingrove & Bach 1994 Fig. 4 gives the same vortex a **1000 ft diameter**,
+  so 500 ft. The units are not in doubt — Fig. 4's Morton entry halves to 450 ft, which is
+  `PARKS_CASES['morton']['r0']` to the digit — so one of the two papers is misquoted and
+  Parks 1985 has never been obtained to say which. **It is not immaterial:** flown in
+  JSBSim the two radii give −1.2581 g and −1.1325 g of peak load, an 11.1% spread. Both are
+  kept, in separate dicts with separate citations, and both are flown. Resolving it needs
+  J. Aircraft **22**(2), 124–129 (DOI 10.2514/3.45095).
+- **Why does atisim accumulate more nose-down attitude than JSBSim through the run-in?**
+  1.55° over eleven seconds on Hannibal, against a core response the two engines agree on
+  to 0.4%. It is a slow, quasi-static divergence rather than a gust-response one, and the
+  obvious candidate is that atisim is started from JSBSim's trim state, which is 0.95% of
+  CL short of atisim's own 1 g — so atisim begins fractionally out of trim and drifts. That
+  is consistent with the sign and roughly with the magnitude but has not been separated
+  from a genuine phugoid-rate difference. Starting each engine from its own trim would test
+  it, at the cost of the shared initial condition the comparison rests on.
 - **Row spacing beyond two cores.** Parks identifies two significant vortices per case.
   Whether Mehta 1987 (*JGCD* 10, 27–31, DOI 10.2514/3.20176) uses a longer periodic train
   is unconfirmed — it is paywalled and was not retrieved.
@@ -2747,6 +2821,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 | `C:/Users/mateusz/AppData/Local/Programs/Python/Python310/python.exe` `scripts/gen_jsbsim_747.py` | **Recovers the `boeing747_jsbsim` entry from the running B747.** Needs jsbsim, so it runs under the reference interpreter above, NOT the project venv. Writes `atisim/tests/data/jsbsim_747_reference.xml`. Run only when the recovery condition changes; drift shows up in `git diff`. |
 | `C:/Users/mateusz/AppData/Local/Programs/Python/Python310/python.exe` `scripts/gen_jsbsim_vortex_reference.py` | **Freezes JSBSim's answer to the three vortex cases.** Same interpreter, same reason. Writes `atisim/tests/data/jsbsim_vortex_reference.xml`. |
 | `.venv/Scripts/python.exe scripts/vortex_compare.py --png runs/vc.png` | **The cross-code vortex comparison.** Flies atisim through the identical field the frozen reference was generated from and reports where the two engines part, against Wingrove & Bach's own g-loads. Imports no jsbsim. |
+| `docs/summary/jsbsim-atisim-vortex-report.html` | **The written comparison** — the numbers above with the reasoning, the figure, and what the result does and does not establish. Not generated; edit it when the numbers move. |
 
 ### The documents, and which question each answers
 
