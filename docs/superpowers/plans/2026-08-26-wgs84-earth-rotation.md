@@ -1185,22 +1185,33 @@ def test_pos_ned_is_a_rotation_of_the_offset_not_a_difference_of_large_numbers()
 def test_altitude_is_geodetic_and_diverges_from_the_tangent_plane_with_range():
     """-pos_ned[2] is no longer altitude, and the difference is not small.
 
-    The tangent plane falls away from the ellipsoid as d^2/2R: about 7.8 m at
-    10 km of ground track and 785 m at 100 km. Anything still reading
-    -pos_ned[2] as altitude is a bug this asserts the existence of.
+    The ELLIPSOID falls away beneath the tangent plane as d^2/2a: about 7.8 m at
+    10 km of ground track and 784 m at 100 km. So a point held level in the
+    anchor's plane has NED down of exactly 0 and a geodetic altitude of nearly
+    800 m. Anything still reading -pos_ned[2] as altitude is a bug this asserts
+    the existence of.
+
+    SIGN CORRECTED DURING IMPLEMENTATION. This first negated `altitude` and
+    expected +7.8, which cannot pass: the plane does not fall away from the
+    Earth, the Earth falls away from the plane, so the altitude is POSITIVE.
+    Measured +7.892 m and +789.162 m against d^2/2a of 7.839 and 783.928.
     """
     import atisim.state as st
 
     anchor = earth.anchor_at(0.0, 0.0, 0.0)
-    for distance, expected in ((10.0e3, 7.8), (100.0e3, 785.0)):
+    for distance, expected in ((10.0e3, 7.84), (100.0e3, 783.9)):
         offset = jnp.asarray([distance, 0.0, 0.0])   # level in the tangent plane
         state = st.State(
             pos_ecef=anchor.T_e2l.T @ offset,
             vel_body=jnp.zeros(3), quat=jnp.asarray([1.0, 0.0, 0.0, 0.0]), omega=jnp.zeros(3),
         )
-        drop = -float(st.altitude(state, anchor))
-        assert drop == pytest.approx(expected, rel=0.05), (
-            f"tangent-plane drop at {distance/1e3:.0f} km is {drop:.1f} m, expected ~{expected}"
+        # NED down is exactly zero here, which is the whole point: zero NED down
+        # and hundreds of metres of geodetic altitude are the same place.
+        assert float(st.pos_ned(state, anchor)[2]) == pytest.approx(0.0, abs=1e-9)
+        rise = float(st.altitude(state, anchor))
+        assert rise == pytest.approx(expected, rel=0.05), (
+            f"geodetic altitude at {distance/1e3:.0f} km of level tangent-plane "
+            f"track is {rise:.1f} m, expected ~{expected}"
         )
 ```
 
@@ -1924,7 +1935,7 @@ Every `cannot import name 'quat_to_dcm'` is a site that was silently assuming bo
 | `-state.pos_ned[2]` as altitude | `altitude(state, anchor)` | **geodetic now** |
 | `state.pos_ned` fed to a wind field | `pos_ned(state, anchor)` | wind fields themselves are unchanged |
 | `State(pos_ned=..., quat=...)` | `state_from_ned(..., anchor)` | keeps call sites in the terms they already use |
-| `quat_to_euler(state.quat)` | `quat_to_euler_ned(state, anchor)` | |
+| `quat_to_euler(state.quat)` | `quat_to_euler_ned(state, anchor)` | includes `analysis/series.py:26`, which the file list above missed |
 
 **`atisim/wind.py` needs no change to any field.** Its `-pos_ned[2]` at lines 219 and 625 are heights within the field's own local frame, which is correct and stays. Only the `quat_to_dcm` calls at 265, 299, 722 and 862 change, to `quat_to_matrix` where they act on a bare quaternion.
 
