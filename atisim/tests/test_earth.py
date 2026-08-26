@@ -74,3 +74,30 @@ def test_geodetic_to_ecef_puts_the_reference_points_where_they_belong():
 
     pole = earth.geodetic_to_ecef(np.pi / 2, 0.0, 0.0)
     assert np.allclose(np.asarray(pole), [0.0, 0.0, earth.B_WGS84], atol=1e-6)
+
+
+def test_ecef_to_ned_matrix_is_orthonormal_and_points_down_along_the_ellipsoid_normal():
+    """Down must be the GEODETIC normal, not the geocentric radius.
+
+    These differ by up to 0.19 degrees at 45 latitude. Using the geocentric
+    direction costs 65 m/s in v_north at 47 degrees, measured against JSBSim,
+    which is why this is asserted rather than assumed.
+    """
+    for lat_deg in (-89.0, -45.0, 0.0, 12.5, 47.0, 89.0):
+        lat, lon = np.radians(lat_deg), 0.4
+        m = np.asarray(earth.ecef_to_ned_matrix(lat, lon))
+
+        assert np.allclose(m @ m.T, np.eye(3), atol=1e-13), f"not orthonormal at {lat_deg}"
+        assert np.linalg.det(m) == pytest.approx(1.0, abs=1e-13)
+
+        # `down` must be the inward geodetic normal: moving 1 m along -down
+        # from the surface must raise geodetic altitude by exactly 1 m.
+        surface = earth.geodetic_to_ecef(lat, lon, 0.0)
+        up_ecef = -m[2]
+        _, _, h = earth.ecef_to_geodetic(surface + np.asarray(up_ecef))
+        assert float(h) == pytest.approx(1.0, abs=1e-6), f"down is not the normal at {lat_deg}"
+
+        # North at the pole-facing side must raise latitude.
+        north_ecef = m[0]
+        lat2, _, _ = earth.ecef_to_geodetic(surface + np.asarray(north_ecef))
+        assert float(lat2) > lat

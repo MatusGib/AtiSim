@@ -77,3 +77,20 @@ def ecef_to_geodetic(r: Array) -> tuple[Array, Array, Array]:
     s, c = jnp.sin(lat), jnp.cos(lat)
     h = p * c + z * s - A_WGS84 * jnp.sqrt(1.0 - E2_WGS84 * s * s)
     return lat, lon, h
+
+
+def ecef_to_ned_matrix(lat: Array, lon: Array) -> Array:
+    """ECEF -> local NED rotation. v_ned = ecef_to_ned_matrix(lat, lon) @ v_ecef.
+
+    `lat` is GEODETIC. Verified against JSBSim: rotating its ECEF velocity by
+    this matrix at the geodetic latitude reproduces its own
+    velocities/v-north|east|down to machine precision, and at the geocentric
+    latitude it does not.
+    """
+    sf, cf = jnp.sin(lat), jnp.cos(lat)
+    sl, cl = jnp.sin(lon), jnp.cos(lon)
+    return jnp.array([
+        [-sf * cl, -sf * sl, cf],
+        [-sl, cl, jnp.zeros_like(lat)],
+        [-cf * cl, -cf * sl, -sf],
+    ])
