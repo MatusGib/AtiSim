@@ -63,7 +63,8 @@ def oscillator_refinement(dts, t_end=2.0):
 
 
 def fixed_control_refinement(ac, airspeed, altitude, dts, dt_ref, t_end=4.0,
-                             d_elevator=0.02, wind_model=None, start_north=0.0):
+                             d_elevator=0.02, wind_model=None, start_north=0.0,
+                             stage_sampled=False):
     """Refine the real 6-DOF rollout against a fine-step reference.
 
     The manufactured case isolates the stage weights; this one can also see a
@@ -107,7 +108,8 @@ def fixed_control_refinement(ac, airspeed, altitude, dts, dt_ref, t_end=4.0,
     def final_pos(dt):
         sim = init_sim(state, jax.random.PRNGKey(0))
         _, traj = rollout(
-            sim, controls, jnp.array(dt), ac, int(round(t_end / dt)), wind_model=model
+            sim, controls, jnp.array(dt), ac, int(round(t_end / dt)), wind_model=model,
+            stage_sampled=stage_sampled
         )
         return np.asarray(traj.pos_ned[-1])
 
@@ -173,6 +175,16 @@ def _swinging_wind(wind_state, state, key, dt):
     del state
     gust = SWING_W0 * jnp.sin(SWING_OMEGA * wind_state.t)
     return gust, jnp.zeros(3), WindClock(t=wind_state.t + dt), key
+
+
+def _still_wind(wind_state, state, key, dt):
+    """`_swinging_wind` with the wind removed and nothing else changed.
+
+    The control for the free-fall experiment. It keeps the same clock and the
+    same state type so the two rollouts differ in the wind vector alone.
+    """
+    del state
+    return jnp.zeros(3), jnp.zeros(3), WindClock(t=wind_state.t + dt), key
 
 
 def without_aerodynamics(ac):
@@ -264,15 +276,33 @@ def free_fall_through_a_swinging_wind(ac, dt=0.02, n=300):
     )
     final, traj = rollout(sim, controls, jnp.array(dt), ac, n, wind_model=_swinging_wind)
 
-    t = np.arange(1, n + 1) * dt
-    v_ned0 = np.asarray(quat_to_dcm(quat) @ state.vel_body)
-    gravity = np.array([0.0, 0.0, float(G0)])
-    exact = (
-        np.asarray(state.pos_ned)
-        + t[:, None] * v_ned0
-        + 0.5 * (t**2)[:, None] * gravity
-    )
-    error = float(np.abs(np.asarray(traj.pos_ned) - exact).max())
+    # *** THE REFERENCE IS THE STILL-AIR ROLLOUT, NOT A CLOSED FORM -- session 23.
+    #
+    # It used to be `pos0 + v0 t + [0,0,G0] t^2/2`, which is exact only while
+    # gravity is constant. Session 23 made it g(h), so free fall stopped being
+    # parabolic and the closed form broke by 0.163 m over six seconds -- which is
+    # exactly `(G0 - g(3000 m)) t^2 / 2`, i.e. the reference was stale rather than
+    # the dynamics being wrong.
+    #
+    # Comparing against the SAME rollout in still air is better than repairing the
+    # closed form, for two reasons. It tests the actual claim -- that a
+    # time-varying uniform wind adds no body force -- as an exact equality instead
+    # of inferring it from a free-fall solution. And it is independent of what
+    # gravity does, so it cannot go stale again the next time the gravity model
+    # changes.
+    #
+    # It does NOT become the invariance assertion the docstring rejects: that one
+    # offsets two runs by W(0) and expects them to agree, which is wrong because a
+    # time-varying wind is not a change of inertial frame. This compares wind-on
+    # against WIND-OFF from an identical state. With every coefficient zeroed the
+    # wind reaches nothing, so the two must agree BITWISE -- while a spurious
+    # -m*dW/dt term, which is the error being hunted, enters outside the
+    # aerodynamics and would separate them.
+    still = sim._replace(wind=WindClock(t=jnp.array(0.0)))
+    _, still_traj = rollout(still, controls, jnp.array(dt), ac, n,
+                            wind_model=_still_wind)
+    error = float(np.abs(np.asarray(traj.pos_ned)
+                         - np.asarray(still_traj.pos_ned)).max())
 
     # Reported so a caller can assert the wind really swung, rather than the
     # model quietly returning zeros and the experiment passing for that reason.

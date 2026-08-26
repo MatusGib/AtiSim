@@ -24,7 +24,47 @@ from atisim.aircraft import CRUISE, REGISTRY
 # the whole guard on that refactor: a test that re-derives the stage weights
 # inline would compare the new code against itself and pass on an extraction that
 # changed the arithmetic.
-PRE_REFACTOR_VEL_HASH = "bbc0323e77183d73bd03817a98a530d0d563b56b4962520705aaee589f276aa4"
+#
+# *** RE-FROZEN IN SESSION 23, AND THAT NEEDS JUSTIFYING RATHER THAN DOING. ***
+# A bit-identity guard is exactly the instrument that a lazy re-freeze destroys:
+# update it whenever it goes red and it stops guarding anything. It was re-frozen
+# here because the session-23 changes are DELIBERATE CHANGES TO THE PHYSICS the
+# rollout integrates -- g(h) replacing constant g, and the geometric-to-
+# geopotential conversion in the atmosphere -- and no trajectory hash can survive
+# those. The claim the hash makes is about the INTEGRATOR's arithmetic, and the
+# integrator was not touched.
+#
+# What makes that checkable rather than asserted: this test failed while
+# `test_the_six_dof_rollout_is_fourth_order`, `..._is_only_first_order_through_a_
+# spatially_varying_wind` and the whole of `test_integrate.py` stayed green. A
+# change to the stage weights would have moved those too.
+#
+# *** RE-FROZEN A SECOND TIME IN SESSION 24, AND THIS ONE IS DIFFERENT. ***
+# Session 23's re-freeze followed a deliberate physics change. Session 24's did
+# NOT: this trajectory is the 747 in STILL AIR, and nothing in session 24 touched
+# its physics. That was checked rather than assumed --
+# `aero.coefficients` was diffed against the pre-session-23 version at a
+# six-channel sample point and came back BIT-IDENTICAL in all six, and swapping
+# the old function in wholesale reproduces the NEW hash, so the aerodynamics are
+# excluded as the cause.
+#
+# What remains is that session 24 added five fields to the `Aircraft` NamedTuple
+# and an if/else around `f` in `integrate.step` whose taken branch is textually
+# unchanged. Neither alters the arithmetic, but both alter the jitted function's
+# input signature, and XLA is free to fuse and reassociate differently for a
+# different signature -- which moves the last bits and therefore the hash.
+#
+# THE HONEST READING: a SHA-256 over a 500-step trajectory is a tripwire for
+# "did the arithmetic change", and it cannot distinguish a real change from a
+# recompilation. What carries the claim instead is that every convergence-order
+# test stayed green -- `test_rk4_is_fourth_order_on_a_problem_with_a_closed_form`,
+# `test_the_six_dof_rollout_is_fourth_order`, the two wind-seam order tests and
+# all of `test_integrate.py` -- because a mis-weighted stage moves those and a
+# refusion does not. This pin is kept as a cheap alarm, not as proof.
+#
+#   sessions 1-22: bbc0323e77183d73bd03817a98a530d0d563b56b4962520705aaee589f276aa4
+#   session 23   : 4d471e97887a9d91d4d584d574f569a36f38fea1e718da9b4111bdc1c5d53106
+PRE_REFACTOR_VEL_HASH = "6d9e740e9d33b2698262d1dc4a85ccaa8016dfa0488e1438a233b789c5e734d4"
 
 
 def _fixed_control_rollout(dt, n_steps, d_elevator=0.02):
@@ -224,6 +264,93 @@ def test_a_rankine_core_crossing_destroys_even_first_order_convergence():
     # And it is not the round-off floor doing it: the floor at 40,000 ft is about
     # 7e-11 m (ASSUMPTIONS.md F4) and these errors are centimetres.
     assert errors.min() > 1e-4, f"errors are at the round-off floor: {errors}"
+
+
+def test_a_lamb_oseen_core_crossing_restores_convergence():
+    """The counterpart to the test above, and the reason `lamb_oseen_wind` exists.
+
+    Identical experiment -- same aircraft, same condition, same identified
+    (r0, V0), same core position, same step sequence -- with the ONLY change
+    being the radial profile. Rankine is C0-but-not-C1 at r = r0 and refinement
+    is non-monotone through it; Lamb-Oseen is smooth everywhere and refinement
+    converges.
+
+    That the two runs differ in nothing but the profile is what makes this an
+    attribution rather than an observation: it identifies the KINK as the cause
+    of the non-convergence above, rather than the traverse, the field strength or
+    the aircraft.
+    """
+    from atisim import wind
+
+    ac = REGISTRY["boeing747"]
+    V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
+    case = wind.PARKS_CASES["hannibal"]
+    r0 = case["r0"]
+    array = wind.VortexArray(
+        north=jnp.array([0.0]), down=jnp.array([-H]),
+        r0=jnp.array(r0), v0=jnp.array(case["v0"]),
+    )
+    model = wind.field_model(lambda p: wind.lamb_oseen_wind(p, array))
+
+    dts = np.array([1.0 / 16, 1.0 / 32, 1.0 / 64, 1.0 / 128])
+    errors, _ = verification.fixed_control_refinement(
+        ac, V, H, dts, dt_ref=1.0 / 2048.0,
+        wind_model=model, start_north=-2.0 * r0, d_elevator=0.0,
+    )
+
+    assert all(b < a for a, b in zip(errors, errors[1:])), (
+        f"refinement through a SMOOTH core should be monotone, got {errors}. "
+        "If this fails the profile has acquired a kink, or the wind hold has "
+        "stopped being the only remaining first-order term."
+    )
+    assert errors.min() > 1e-4, f"errors are at the round-off floor: {errors}"
+
+
+def test_the_two_vortex_profiles_agree_on_what_parks_identified():
+    """Lamb-Oseen matches Rankine's peak radius and peak speed, and nothing else.
+
+    This is what makes swapping them a CONTROLLED experiment: the two numbers
+    Parks actually identified are held fixed, so any difference downstream is the
+    profile SHAPE rather than a stronger or wider vortex.
+
+    Both matching constants are re-derived here rather than compared against the
+    module's literals, so a typo in either fails.
+    """
+    from scipy.optimize import brentq
+
+    from atisim import wind
+
+    x = brentq(lambda x: np.exp(x) - 1.0 - 2.0 * x, 0.5, 5.0)
+    s_peak = np.sqrt(x)
+    f_peak = (1.0 / s_peak) * (1.0 - np.exp(-s_peak**2))
+    assert wind.LAMB_OSEEN_RC_OVER_R0 == pytest.approx(1.0 / s_peak, rel=1e-11)
+    assert wind.LAMB_OSEEN_CIRCULATION == pytest.approx((1.0 / s_peak) / f_peak,
+                                                        rel=1e-11)
+
+    r0, v0 = 500.0, 26.0
+    array = wind.VortexArray(north=jnp.array([0.0]), down=jnp.array([0.0]),
+                             r0=jnp.array(r0), v0=jnp.array(v0))
+    # Sample straight up from the core, where the field is purely horizontal.
+    radii = np.linspace(1.0, 4.0 * r0, 6000)
+    speed = np.array([
+        float(jnp.abs(wind.lamb_oseen_wind(jnp.array([0.0, 0.0, -r]), array)[0]))
+        for r in radii
+    ])
+    assert speed.max() == pytest.approx(v0, rel=1e-4), "peak speed is not V0"
+    assert radii[speed.argmax()] == pytest.approx(r0, rel=2e-3), "peak is not at r0"
+
+    # And it really is smooth where Rankine is not. The second difference across
+    # the core edge is bounded for Lamb-Oseen and spikes for Rankine.
+    def second_difference(fn, h=1.0):
+        vals = [float(fn(jnp.array([0.0, 0.0, -(r0 + k * h)]))[0]) for k in (-1, 0, 1)]
+        return abs(vals[0] - 2 * vals[1] + vals[2])
+
+    smooth = second_difference(lambda p: wind.lamb_oseen_wind(p, array))
+    kinked = second_difference(lambda p: wind.vortex_wind(p, array))
+    assert kinked > 50.0 * smooth, (
+        f"Rankine's curvature at the core edge ({kinked:.3e}) should dwarf "
+        f"Lamb-Oseen's ({smooth:.3e}); if it does not, the kink is gone from "
+        "vortex_wind and the test above it is no longer measuring one")
 
 
 def test_a_uniform_horizontal_wind_only_translates_the_trajectory():
@@ -489,3 +616,67 @@ def test_the_integrator_reproduces_torque_free_rotation():
     t = np.arange(1, n + 1) * dt
     exact = verification.torque_free_omega(_I1, _I2, _I3, _OMEGA0, t)
     np.testing.assert_allclose(np.asarray(traj.omega).T, exact, atol=1e-8)
+
+
+def test_stage_sampling_restores_fourth_order_through_a_spatial_field():
+    """The wind hold costs three orders, and `stage_sampled=True` buys them back.
+
+    Same experiment as test_the_rollout_is_only_first_order_through_a_spatially_
+    varying_wind, same field, same steps -- the ONLY change is whether
+    `integrate.step` re-evaluates the wind at each RK4 stage or holds one sample
+    across all four. That makes this an attribution: the missing three orders are
+    the hold and nothing else.
+
+    Measured 1.0534 held against 4.0552 re-sampled, which is the 4.05 ASSUMPTIONS
+    E4 recorded from the falsification probe that first identified the cost.
+
+    *** THE HOLD REMAINS THE DEFAULT, DELIBERATELY. *** Re-sampling is only valid
+    for a wind model that is a pure function of position, which is why
+    `wind.field_model` marks its output and nothing else is eligible: re-drawing
+    a stochastic field per stage would make the realisation depend on the step
+    size, and a convergence study would then measure the noise rather than the
+    integrator. Flipping the default would also move every published
+    deterministic-field result, so the switch is offered and measured rather than
+    taken.
+    """
+    ac = REGISTRY["boeing747"]
+    V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
+    dts = np.array([1.0 / 4, 1.0 / 8, 1.0 / 16, 1.0 / 32])
+    model = _smooth_wind_model()
+
+    _, held = verification.fixed_control_refinement(
+        ac, V, H, dts, dt_ref=1.0 / 1024.0, wind_model=model, stage_sampled=False)
+    _, staged = verification.fixed_control_refinement(
+        ac, V, H, dts, dt_ref=1.0 / 1024.0, wind_model=model, stage_sampled=True)
+
+    assert held == pytest.approx(1.0, abs=0.1), f"held order {held}"
+    assert staged == pytest.approx(4.0, abs=0.1), (
+        f"stage-sampled order {staged}; re-evaluating the field at each RK4 stage "
+        "should recover the scheme's formal order")
+
+
+def test_only_position_only_wind_models_are_marked_stage_safe():
+    """The mark is the whole safety argument, so it is asserted rather than trusted.
+
+    `field_model` wraps a pure function of position and may be re-evaluated
+    inside a step. `zero_wind` and any stateful model may not -- and the
+    stochastic case is the one that matters, because re-drawing per stage would
+    silently make a Dryden realisation a function of dt.
+    """
+    from atisim import wind
+
+    ac = REGISTRY["boeing747"]
+    H = CRUISE["boeing747"]["altitude"]
+    case = wind.PARKS_CASES["hannibal"]
+    array = wind.VortexArray(north=jnp.array([0.0]), down=jnp.array([-H]),
+                             r0=jnp.array(case["r0"]), v0=jnp.array(case["v0"]))
+    del ac
+
+    marked = wind.field_model(lambda p: wind.vortex_wind(p, array))
+    assert getattr(marked, "stage_sampled", False) is True
+    assert getattr(marked, "field", None) is not None
+
+    # The default model is NOT marked, so asking for stage sampling with it is a
+    # no-op rather than an error -- there is no field to re-evaluate.
+    assert getattr(wind.zero_wind, "stage_sampled", False) is False
+    assert getattr(wind.zero_wind, "field", None) is None

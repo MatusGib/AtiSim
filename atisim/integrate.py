@@ -107,7 +107,7 @@ def rk4_step(f, x, dt):
     return _axpy(x, increment, dt)
 
 
-@partial(jax.jit, static_argnames=("wind_model", "load_model"))
+@partial(jax.jit, static_argnames=("wind_model", "load_model", "stage_sampled"))
 def step(
     sim: SimState,
     controls: Controls,
@@ -115,6 +115,7 @@ def step(
     ac: Aircraft,
     wind_model=zero_wind,
     load_model=None,
+    stage_sampled: bool = False,
 ) -> SimState:
     """One RK4 step. The PRNG key is threaded through the wind model.
 
@@ -145,9 +146,40 @@ def step(
     applied = zero_increment() if load_model is None else load_model(sim.state)
     increment = None if load_model is None else applied
 
-    def f(s: State) -> State:
-        return derivatives(s, controls, ac, wind_ned, omega_gust,
-                           increment=increment, alphadot_gust=alphadot_gust)
+    # *** THE WIND HOLD, AND HOW TO TURN IT OFF -- session 23. ***
+    #
+    # Holding one wind sample across all four RK4 stages is an O(h) perturbation
+    # of the right-hand side inside the step, so the scheme is FIRST ORDER
+    # through a spatially varying field however good the stage weights are:
+    # measured 1.05 held against 4.05 re-sampled, and it costs 0.82% of the
+    # headline in-core d(theta) at the published dt (ASSUMPTIONS E4).
+    #
+    # Re-sampling is correct ONLY for a model that is a pure function of
+    # position. For a stochastic field it would make the realisation depend on
+    # the step size, so a convergence study would measure the noise instead of
+    # the integrator. `wind.field_model` therefore MARKS the models that are
+    # safe, and nothing else is re-sampled.
+    #
+    # DEFAULT IS STILL THE HOLD. Flipping it would move every published
+    # deterministic-field result again, so it is opt-in per call and the switch
+    # is measured rather than assumed -- see
+    # test_integrate.test_stage_sampling_restores_fourth_order.
+    stage_field = getattr(wind_model, "field", None) if stage_sampled else None
+
+    if stage_field is None:
+        def f(s: State) -> State:
+            return derivatives(s, controls, ac, wind_ned, omega_gust,
+                               increment=increment, alphadot_gust=alphadot_gust)
+    else:
+        from atisim.wind import gust_alphadot as _gust_alphadot
+        from atisim.wind import gust_rates as _gust_rates
+
+        def f(s: State) -> State:
+            w = stage_field(s.pos_ned)
+            og = _gust_rates(s.pos_ned, s.quat, stage_field)
+            ad = _gust_alphadot(s.pos_ned, s.quat, s.vel_body, stage_field)
+            return derivatives(s, controls, ac, w, og,
+                               increment=increment, alphadot_gust=ad)
 
     new_state = rk4_step(f, sim.state, dt)
     new_state = new_state._replace(quat=quat_normalize(new_state.quat))
@@ -162,7 +194,7 @@ def step(
     )
 
 
-@partial(jax.jit, static_argnames=("n_steps", "wind_model", "load_model"))
+@partial(jax.jit, static_argnames=("n_steps", "wind_model", "load_model", "stage_sampled"))
 def rollout(
     sim: SimState,
     controls: Controls,
@@ -171,6 +203,7 @@ def rollout(
     n_steps: int,
     wind_model=zero_wind,
     load_model=None,
+    stage_sampled: bool = False,
 ) -> tuple[SimState, State]:
     """Run n_steps with fixed controls.
 
@@ -179,13 +212,14 @@ def rollout(
     """
 
     def body(carry: SimState, _) -> tuple[SimState, State]:
-        carry = step(carry, controls, dt, ac, wind_model=wind_model, load_model=load_model)
+        carry = step(carry, controls, dt, ac, wind_model=wind_model,
+                     load_model=load_model, stage_sampled=stage_sampled)
         return carry, carry.state
 
     return jax.lax.scan(body, sim, None, length=n_steps)
 
 
-@partial(jax.jit, static_argnames=("n_steps", "wind_model", "load_model"))
+@partial(jax.jit, static_argnames=("n_steps", "wind_model", "load_model", "stage_sampled"))
 def logged_rollout(
     sim: SimState,
     controls: Controls,
@@ -194,6 +228,7 @@ def logged_rollout(
     n_steps: int,
     wind_model=zero_wind,
     load_model=None,
+    stage_sampled: bool = False,
 ) -> tuple[SimState, SimState]:
     """`rollout`, but the whole `SimState` is stacked rather than just the state.
 
@@ -211,7 +246,8 @@ def logged_rollout(
     """
 
     def body(carry: SimState, _) -> tuple[SimState, SimState]:
-        carry = step(carry, controls, dt, ac, wind_model=wind_model, load_model=load_model)
+        carry = step(carry, controls, dt, ac, wind_model=wind_model,
+                     load_model=load_model, stage_sampled=stage_sampled)
         return carry, carry
 
     return jax.lax.scan(body, sim, None, length=n_steps)

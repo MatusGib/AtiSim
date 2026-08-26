@@ -40,6 +40,21 @@ V_MIN = 1.0  # m/s
 # M_crit = M_dd - (0.1/80)^(1/3).
 _MDD_OFFSET = (0.1 / 80.0) ** (1.0 / 3.0)  # 0.10772
 
+# Prandtl-Glauert is a SUBSONIC LINEARISED result and diverges at M = 1, where
+# the physics it comes from has already stopped applying. These two numbers stop
+# that divergence reaching the integrator, and neither is a modelling claim.
+#
+# The cap is placed at M 0.90 because it is above every condition this project
+# flies -- the fastest is the 747's M 0.80 -- so it is a GUARD that never
+# actually binds rather than a transonic model, which this project does not have
+# and must not pretend to. If a run ever reaches it, the aircraft is outside the
+# band `checks.recovery_band` already gates on.
+#
+# The floor keeps the denominator away from zero so `jacfwd` sees a finite
+# derivative even on a trajectory that a solver briefly probes past the cap.
+PG_MACH_MAX = 0.90
+PG_FLOOR = 1.0 - PG_MACH_MAX**2  # 0.19, the smallest 1 - M^2 the factor can see
+
 
 def drag_divergence_mach(CL: Array, ac: Aircraft) -> Array:
     """Korn equation.
@@ -117,14 +132,80 @@ def coefficients(
     # otherwise. `.size` is a property of the SHAPE, so this branch is resolved
     # at trace time and costs nothing under jit. The other CL terms stay
     # additive either way, exactly as JSBSim keeps CLalpha and CLde separate.
+    # True-airspeed Mach, shared by wave drag, the scheduled control
+    # derivatives and the Prandtl-Glauert factor. Built from the unfloored
+    # airspeed for the same reason wave drag is: Mach is finite at V = 0.
+    mach = jnp.linalg.norm(vel_rel) / a_sound
+
+    # Prandtl-Glauert, RELATIVE to the Mach the entry's data was taken at, so an
+    # aircraft flown at its own reference condition is unchanged. See the
+    # `pg_mach_ref` field. Undeclared (negative) leaves the factor at exactly 1.
+    #
+    # Applied to the WHOLE longitudinal lift-slope family rather than to CLa
+    # alone. That is not tidiness: PROJECT.md section 7 records CLa(M) applied
+    # BY ITSELF making the 747's phugoid WORSE (17.8% -> 19.4%), which is the
+    # signature of a partial correction. Every derivative below is proportional
+    # to the same two-dimensional section lift slope, so thin-aerofoil theory
+    # scales them together or not at all.
+    #
+    # Lateral derivatives are deliberately NOT scaled. Clb, Clp, Cnb and the
+    # rest mix section lift slope with dihedral, fin geometry and sidewash in
+    # proportions this project has no source for, so scaling them would be
+    # inventing a correction rather than applying one.
+    pg = jnp.where(
+        ac.pg_mach_ref < 0.0,
+        1.0,
+        jnp.sqrt(jnp.maximum(1.0 - jnp.minimum(ac.pg_mach_ref, PG_MACH_MAX) ** 2, 0.0))
+        / jnp.sqrt(jnp.maximum(1.0 - jnp.minimum(mach, PG_MACH_MAX) ** 2, PG_FLOOR)),
+    )
+
     if ac.CL_table_alpha.size:
         CL_alpha_part = jnp.interp(alpha, ac.CL_table_alpha, ac.CL_table_CL)
     else:
         CL_alpha_part = ac.CL0 + ac.CLa * alpha
-    CL = (CL_alpha_part + ac.CLq * q_hat + ac.CLde * de
-          + ac.CLadot * alphadot_hat)
-    Cm = (ac.Cm0 + ac.Cma * alpha + ac.Cmq * q_hat + ac.Cmde * de
-          + ac.Cmadot * alphadot_hat)
+    # `CL0` is an intercept, not a slope, so only the alpha-dependent part is
+    # scaled. For a table entry the intercept is the table's own value at
+    # alpha = 0 and the rest of the curve stretches about it -- the same
+    # construction scripts/vortex_diagnose.py uses for its CLa sweep, and the
+    # only one that is a pure lift-SLOPE change.
+    #
+    # Written as `x + (pg - 1)(x - CL0)` rather than the algebraically identical
+    # `CL0 + pg(x - CL0)`, because the two differ IN FLOATING POINT at pg = 1:
+    # the second round-trips through CL0 and back, which is not the identity,
+    # while the first multiplies an exact zero. Every aircraft that has not
+    # declared a reference Mach must be bit-for-bit unmoved by this whole block,
+    # and test_aero asserts it is.
+    if ac.CL_table_alpha.size:
+        CL0 = jnp.interp(jnp.array(0.0), ac.CL_table_alpha, ac.CL_table_CL)
+    else:
+        CL0 = ac.CL0
+    CL_alpha_part = CL_alpha_part + (pg - 1.0) * (CL_alpha_part - CL0)
+
+    # Scheduled control derivatives. `.size` is a shape property, so these
+    # branches resolve at trace time and an aircraft without a table performs no
+    # extra arithmetic. `jnp.interp` clamps outside its range, which is exactly
+    # what JSBSim's own <table> blocks do.
+    if ac.Cmde_table_mach.size:
+        Cmde = jnp.interp(mach, ac.Cmde_table_mach, ac.Cmde_table_Cmde)
+    else:
+        Cmde = ac.Cmde
+
+    # Scale the COEFFICIENTS, then sum in the original order. Grouping the terms
+    # instead -- `Cm0 + pg*(a + b + c + d)` -- is algebraically identical and
+    # NOT bit-identical: floating-point addition is not associative, so
+    # re-associating a five-term sum moves the last bits even at pg = 1.0. That
+    # is enough to break `test_extracting_rk4_step_did_not_move_a_single_bit`
+    # and the Fig. 8 pin, both of which assert exact equality on purpose.
+    # At pg = 1.0, `1.0 * x` is exactly `x`, so this form leaves every aircraft
+    # without a declared reference Mach bit-for-bit unmoved.
+    CLq, CLde, CLadot = pg * ac.CLq, pg * ac.CLde, pg * ac.CLadot
+    Cma, Cmq, Cmadot = pg * ac.Cma, pg * ac.Cmq, pg * ac.Cmadot
+    Cmde = pg * Cmde
+
+    CL = (CL_alpha_part + CLq * q_hat + CLde * de
+          + CLadot * alphadot_hat)
+    Cm = (ac.Cm0 + Cma * alpha + Cmq * q_hat + Cmde * de
+          + Cmadot * alphadot_hat)
     # Parabolic core plus a lift-dependent compressibility rise.
     # Mach divides by the speed of sound, not by V, so it takes the true
     # airspeed. Below the floor this is unobservable either way -- M_crit is
@@ -158,12 +239,17 @@ def coefficients(
         + ac.CD_alpha * alpha
     )
 
+    if ac.Clda_table_mach.size:
+        Clda = jnp.interp(mach, ac.Clda_table_mach, ac.Clda_table_Clda)
+    else:
+        Clda = ac.Clda
+
     CY = ac.CYb * beta + ac.CYp * p_hat + ac.CYr * r_hat + ac.CYdr * dr
     Cl = (
         ac.Clb * beta
         + ac.Clp * p_hat
         + ac.Clr * r_hat
-        + ac.Clda * da
+        + Clda * da
         + ac.Cldr * dr
     )
     Cn = (

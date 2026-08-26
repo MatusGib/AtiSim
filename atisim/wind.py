@@ -463,6 +463,78 @@ def vortex_wind(pos_ned: Array, array: VortexArray) -> Array:
     return jax.vmap(one)(array.north, array.down).sum(axis=0)
 
 
+# Lamb-Oseen, matched to a Rankine core's (r0, V0). Both constants are SOLVED
+# rather than transcribed -- see test_wind, which re-derives them and would fail
+# on a typo.
+#
+# The profile is  v_theta(r) = (Gamma/2 pi r) [1 - exp(-r^2/rc^2)].  Its peak
+# sits where exp(s^2) = 1 + 2 s^2 with s = r/rc, i.e. s = 1.1209064228; there
+# f(s) = (1/s)(1 - exp(-s^2)) = 0.6381726863.
+#
+# Choosing rc so the peak lands AT r0, and Gamma so the peak value IS V0, makes
+# the two profiles agree on the two numbers Parks actually identified -- core
+# radius and peak tangential velocity -- and differ only in shape. That is what
+# makes swapping them a controlled experiment rather than a new field.
+LAMB_OSEEN_RC_OVER_R0 = 0.892135132495       # 1 / 1.1209064228
+LAMB_OSEEN_CIRCULATION = 1.397952547316      # (Gamma / 2 pi) / (V0 r0)
+
+
+def lamb_oseen_wind(pos_ned: Array, array: VortexArray) -> Array:
+    """`vortex_wind`'s smooth sibling: same (r0, V0), no kink at the core edge.
+
+    *** WHY THIS EXISTS. *** Parks' Rankine profile switches branches at
+    r = r0, where ASSUMPTIONS E2 records the one-sided derivatives differing by
+    2*V0/r0 with opposite signs. The field is C0 but not C1 there, and RK4
+    across a kink has an error that depends on where the step grid falls
+    relative to the crossing -- so refining dt does not monotonically improve
+    the answer, and `verification.fitted_order` across a core traverse returns
+    0.62 and describes nothing. Lamb-Oseen is smooth everywhere, so the
+    integrator recovers its formal order.
+
+    *** AND IT POINTS THE SAME WAY AS THE DATA. *** Wingrove & Bach Fig. 4
+    overlays the Cimarron measurements on the fitted model and the data spikes
+    past it; scripts/vortex_diagnose.py measures both engines under-reading the
+    recorded load by 30-43% together. A profile that is peakier for the same
+    identified (r0, V0) moves in the direction the measurement asks for.
+
+    *** IT IS NOT THE DEFAULT, AND THAT IS DELIBERATE. *** `vortex_wind` stays
+    the shipped field. The frozen JSBSim vortex reference was generated with the
+    Rankine form -- the generator writes it in numpy and test_jsbsim_vortex
+    reconciles the two implementations to 1e-9 -- so switching the default would
+    invalidate that reference rather than improve it. This is the field for
+    analysis that is NOT a cross-code comparison, and for measuring what the
+    profile choice is worth.
+
+    Vertical-only far field, axis horizontal and perpendicular to the track,
+    exactly as `vortex_wind`: same geometry, different radial profile.
+    """
+
+    def one(north: Array, down: Array) -> Array:
+        along = pos_ned[0] - north
+        above = down - pos_ned[2]
+        r2 = along**2 + above**2
+
+        rc = LAMB_OSEEN_RC_OVER_R0 * array.r0
+        # r -> 0 is a removable singularity: v_theta ~ (Gamma/2pi)(r/rc^2) there.
+        # The clamp keeps the divisor finite so jax_debug_nans does not trip on a
+        # 0/0 that never contributes, and it sits far below any sampled radius.
+        r2_safe = jnp.maximum(r2, (1e-6 * array.r0) ** 2)
+        r_safe = jnp.sqrt(r2_safe)
+
+        v_theta = (LAMB_OSEEN_CIRCULATION * array.v0 * array.r0 / r_safe) * (
+            -jnp.expm1(-r2_safe / rc**2)
+        )
+        # Decompose the tangential velocity onto the two axes the same way the
+        # Rankine form does: horizontal component goes as (above/r), vertical as
+        # -(along/r), so the two fields are identical in DIRECTION everywhere and
+        # differ only in magnitude.
+        w_horizontal = v_theta * above / r_safe
+        w_up = -v_theta * along / r_safe
+        return jnp.array([w_horizontal, 0.0, -w_up])
+
+    return jax.vmap(one)(array.north, array.down).sum(axis=0)
+
+
 def gust_rates(pos_ned: Array, quat: Array, field) -> Array:
     """Body-axis (p, q, r) gust rates from the gradient of a wind field.
 
@@ -1388,6 +1460,24 @@ def field_model(field):
         alphadot = gust_alphadot(state.pos_ned, state.quat, state.vel_body, field)
         return wind_ned, omega_gust, wind_state, key, alphadot
 
+    # *** THE MARK THAT SAYS "SAFE TO RE-EVALUATE INSIDE AN RK4 STEP". ***
+    #
+    # This model is a pure function of position: no filter state, no key split,
+    # no clock. `integrate.step` may therefore call it at each RK4 stage instead
+    # of holding one sample across all four, which is what recovers the
+    # integrator's formal order -- measured 1.05 held against 4.05 re-sampled,
+    # ASSUMPTIONS E4.
+    #
+    # A STOCHASTIC model must never carry this. Re-drawing a Dryden field per
+    # stage makes the realisation depend on the step size, so a convergence study
+    # would measure the noise rather than the integrator -- the reasoning
+    # integrate.py's module docstring already records. That is exactly why this
+    # is a per-model MARK rather than a global switch.
+    #
+    # `wind_model` is a static argument to `step`, so this attribute is read at
+    # trace time and costs nothing at run time.
+    model.stage_sampled = True
+    model.field = field
     return model
 
 

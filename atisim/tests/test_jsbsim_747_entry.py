@@ -68,22 +68,42 @@ def test_mass_and_inertia_match_the_engine(ac, reference):
 def test_cruise_altitude_is_density_matched_not_nominal(ac, reference):
     """A nominal altitude would bias every force in the comparison.
 
-    atisim's ISA uses geometric altitude where the standard uses geopotential,
-    so its density at a nominal 38,000 ft is not JSBSim's. qbar is proportional
-    to rho, so the comparison must be flown at the matched altitude -- 69 ft
-    lower -- and CRUISE has to carry that, not 38,000 ft.
+    The comparison must be flown where atisim's density equals the density
+    JSBSim actually flew at, and CRUISE has to carry that.
+
+    *** THE MATCH IS DERIVED HERE, NOT READ FROM THE FILE -- session 23. ***
+    `matched_altitude_m` in the reference XML was solved against the atmosphere
+    of the day it was generated, which took a geometric argument through
+    geopotential formulas. Correcting that moved the answer 69 ft, so the frozen
+    figure became an error of exactly the size it was introduced to remove. It
+    is a property of ATISIM's atmosphere, not a JSBSim measurement, so it is
+    recomputed from the frozen `density` -- which IS one -- exactly as
+    `jsbsim_ref.load` now does.
     """
     from atisim.atmosphere import density
+    from atisim.jsbsim_ref import _match_density
 
     condition = reference["condition"]
     nominal = float(condition.findtext("altitude_m"))
-    matched = float(condition.findtext("matched_altitude_m"))
+    rho = float(condition.findtext("density"))
+    matched, residual = _match_density(rho, nominal)
+
     assert CRUISE["boeing747_jsbsim"]["altitude"] == pytest.approx(matched, rel=1e-12)
-    assert matched != nominal
-    assert (nominal - matched) / FT2M == pytest.approx(69.19, abs=0.01)
+    assert residual < 1e-10
     # The point of the shift: at the matched altitude the densities agree.
-    assert float(density(matched)) == pytest.approx(
-        float(condition.findtext("density")), rel=1e-12)
+    assert float(density(matched)) == pytest.approx(rho, rel=1e-12)
+
+    # The shift is now SMALL, and that is the session-23 result rather than an
+    # accident. Before the ISA fix it was 69.19 ft; what remains is the two
+    # codes' differing ISA constants, well under a foot. Asserted as a band
+    # rather than a point because it is a residual, not a target -- but bounded
+    # in BOTH directions, so a regression that reinstated the old 69 ft error
+    # fails here instead of passing a one-sided "small enough" check.
+    shift_ft = (nominal - matched) / FT2M
+    assert 0.0 < shift_ft < 1.0, (
+        f"density match now needs {shift_ft:.2f} ft; before session 23 it "
+        f"needed 69.19 ft, and anything approaching that means the "
+        f"geometric/geopotential conversion has been lost")
 
 
 def test_absent_derivatives_are_zero_because_b747_xml_defines_none(ac):

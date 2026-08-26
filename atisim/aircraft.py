@@ -178,6 +178,26 @@ class Aircraft(NamedTuple):
     valid_mach: Array = jnp.zeros(2)
     valid_altitude: Array = jnp.zeros(2)  # m
 
+    # Yaw-damper gain, rad of rudder per rad/s of yaw rate. ZERO MEANS NO
+    # DAMPER, which is every aircraft here except where noted -- so the term
+    # adds an exact zero and the bare airframes are bit-for-bit unmoved.
+    #
+    # This is STABILITY AUGMENTATION LIVING IN THE PLANT, which is a deliberate
+    # choice and not the only defensible one. JSBSim carries its damper in the
+    # FCS, INSIDE the exported model, which is why its `do_linearization` is
+    # closed-loop and why comparing it against a bare airframe reads as a 664%
+    # disagreement on the spiral mode. Modelling it here reproduces that
+    # structure rather than correcting for it afterwards.
+    #
+    # The cost is that an entry carrying a non-zero gain is no longer a BARE
+    # AIRFRAME, so its layer-1 yaw-rate sweep, its layer-3 modes and its layer-4
+    # prescribed-surface trajectories all change meaning. See
+    # `dynamics.yaw_damper_rudder`.
+    yaw_damper_gain: Array = jnp.array(0.0)  # s
+    # Mach below which the damper is inactive. JSBSim's 737 schedules its yaw
+    # damper on above M 0.11; below that the gain is zero.
+    yaw_damper_mach_on: Array = jnp.array(0.11)
+
     # Nonlinear lift curve, as (alpha_rad, CL) breakpoints. EMPTY MEANS USE
     # CL0 + CLa*alpha, which is what every other aircraft here does and what
     # PROJECT.md section 7 declared the ceiling to be.
@@ -194,6 +214,48 @@ class Aircraft(NamedTuple):
     # in test_aero.test_the_lift_table_is_not_linearised_at_a_breakpoint.
     CL_table_alpha: Array = jnp.zeros(0)
     CL_table_CL: Array = jnp.zeros(0)
+
+    # -- Mach-scheduled control derivatives -------------------------------
+    # EMPTY MEANS USE THE SCALAR ABOVE, which is what every aircraft here did
+    # before session 23 and what all but the two 737 entries still do -- so the
+    # branch resolves at trace time and costs them nothing.
+    #
+    # 737.xml schedules exactly three coefficients on Mach and no others,
+    # verified by reading the file rather than by recalling it: `Cmde`,
+    # `Clda` and `CDmach`. The third is wave drag, which `aero.wave_drag`
+    # already models with an onset at M 0.78998 against JSBSim's table breaking
+    # at M 0.79, so it needs no table here.
+    #
+    # *** CLalpha IS NOT AMONG THEM. *** JSBSim applies NO compressibility
+    # correction to lift, at any Mach. That is what makes `pg_mach_ref` below a
+    # DEPARTURE from JSBSim rather than a match to it, and the two must not be
+    # confused: these tables make atisim agree with JSBSim MORE, and
+    # Prandtl-Glauert makes it agree LESS while agreeing with reality more.
+    Cmde_table_mach: Array = jnp.zeros(0)
+    Cmde_table_Cmde: Array = jnp.zeros(0)
+    Clda_table_mach: Array = jnp.zeros(0)
+    Clda_table_Clda: Array = jnp.zeros(0)
+
+    # -- Prandtl-Glauert reference Mach -----------------------------------
+    # The Mach number AT WHICH this entry's lift-slope derivatives were measured
+    # or tabulated. NEGATIVE MEANS NOT DECLARED, and then no correction is
+    # applied at all -- the default, so every entry is bit-for-bit unmoved
+    # unless it opts in.
+    #
+    # The correction is a RATIO, not an absolute scaling:
+    #
+    #     factor(M) = sqrt(1 - M_ref^2) / sqrt(1 - M^2)
+    #
+    # which is exactly 1 at M = M_ref. That is the whole reason it is safe: an
+    # entry recovered at its own condition reproduces that condition exactly, so
+    # no validated result moves, and the correction only does work when the
+    # aircraft is flown AWAY from where its data came from.
+    #
+    # Writing it as an absolute 1/sqrt(1-M^2) instead would assume every
+    # tabulated set is incompressible, which is false for CR-2144's 747: its
+    # derivatives are published AT M 0.80 and already contain compressibility,
+    # so that form would count it twice.
+    pg_mach_ref: Array = jnp.array(-1.0)
 
 
 def inertia_tensor(Ixx, Iyy, Izz, Ixz) -> Array:
@@ -456,6 +518,38 @@ def _boeing_747() -> Aircraft:
         *(v * SLUG_FT2_TO_KG_M2 for v in (Ix, Iy, Iz, Ixz))
     )
     return Aircraft(
+        # *** NO PRANDTL-GLAUERT REFERENCE MACH IS DECLARED, AND THAT IS A
+        # MEASURED DECISION RATHER THAN AN OMISSION. ***
+        #
+        # Declaring 0.80 here is the obvious move: CR-2144's flight-condition 9
+        # set is published AT M 0.80, so the correction would be exactly 1.0 at
+        # the recovery point and would only act away from it. It was tried, and
+        # the measurement says no.
+        #
+        # Prandtl-Glauert's 1/beta is a TWO-DIMENSIONAL SECTION result. CLa here
+        # is a FINITE-WING coefficient, where the compressibility and downwash
+        # corrections interact and the true variation with Mach is much gentler
+        # -- the standard 3D form is
+        #
+        #     CLa(M) = 2 pi AR / (2 + sqrt(AR^2 beta^2 (1 + tan^2 L / beta^2) + 4))
+        #
+        # Applying the 2D form to a 3D coefficient over-corrects away from M_ref,
+        # and the size of that is not subtle: it implies an INCOMPRESSIBLE slope
+        # of 4.9441 * sqrt(1 - 0.8^2) = 2.9665 /rad for an AR 7.0 wing whose real
+        # low-speed value is around 4.5-5.0. It also has no Mach band to confine
+        # it, since this entry declares none.
+        #
+        # Measured cost of enabling it anyway: it broke the exact V^2 scaling of
+        # the aerodynamic force (test_the_airspeed_floor_...), moved the short-
+        # period damping attribution by 1.1e-4, and moved every Fig. 8 vortex
+        # number -- for a correction whose own premise fails at the conditions it
+        # was reaching. PROJECT.md section 7 had already recorded CLa(M) applied
+        # to this airframe making its phugoid WORSE, 17.8% -> 19.4%.
+        #
+        # So the MECHANISM ships and is tested, and no entry declares a reference
+        # Mach. Turning it on needs the 3D form above, which needs a sweep angle
+        # this project has no source for. See test_aero.
+
         mass=jnp.array(W * LB2KG),
         inertia=inertia,
         inertia_inv=jnp.linalg.inv(inertia),
@@ -1217,6 +1311,34 @@ def _boeing_737() -> Aircraft:
         # CD0(alpha) and CL(alpha) tables the entry linearises have departed, and
         # the wave-drag onset was placed at M 0.79 by construction rather than by
         # physics -- only 0.010 Mach above this entry's own trim point.
+        # JSBSim's 737 FCS carries a yaw damper: yaw rate to rudder at unit
+        # gain above M 0.11, geared by 0.35 rad. Modelled here because the real
+        # aeroplane never flies without it -- a bare 737 Dutch roll is not a
+        # flight condition anyone experiences, and gust response without the
+        # damper overstates lateral excursions.
+        #
+        # Worth dCnr = Cndr * 0.35 * 2V/b = -1.1472 at this condition, against a
+        # bare Cnr of -0.350: the damper is over three times the airframe's own
+        # yaw damping. That number was MEASURED off JSBSim's FCS in session 17,
+        # not chosen here.
+        yaw_damper_gain=jnp.array(0.35),
+        # Mach-scheduled Cmde and Clda, transcribed from 737.xml's own <table>
+        # blocks (read from the file, session 23):
+        #     Cmde   M 0.0 -> -1.20,  M 2.0 -> -0.30   (slope +0.45 per Mach)
+        #     Clda   M 0.0 ->  0.100, M 2.0 ->  0.033  (slope -0.0335 per Mach)
+        # Two points each, linearly interpolated and endpoint-clamped, which is
+        # what JSBSim's <table> does -- so jnp.interp reproduces the source
+        # exactly rather than approximating it.
+        #
+        # These CHANGE NOTHING AT THE RECOVERY POINT and that is the check: at
+        # M 0.78 the tables give -0.849 and 0.07387, which are the scalars this
+        # entry already carried. What they add is the SLOPE, which is what the
+        # phugoid's speed derivative M_u = dqdot/dvt reads and which session 19
+        # localised as 90.5% of the frequency gap at cruise.
+        Cmde_table_mach=jnp.array([0.0, 2.0]),
+        Cmde_table_Cmde=jnp.array([-1.20, -0.30]),
+        Clda_table_mach=jnp.array([0.0, 2.0]),
+        Clda_table_Clda=jnp.array([0.100, 0.033]),
         valid_mach=jnp.array([0.68, 0.88]),
         valid_altitude=jnp.array([25000.0 * FT2M, 35000.0 * FT2M]),
     )
@@ -1355,6 +1477,34 @@ def _boeing_737_approach() -> Aircraft:
         # to state. The generator now brackets MACH the way it always bracketed
         # ALT_FT, and the reference has been regenerated against it, so the fit
         # covers M 0.30-0.50 and the band is simply what was fitted.
+        # JSBSim's 737 FCS carries a yaw damper: yaw rate to rudder at unit
+        # gain above M 0.11, geared by 0.35 rad. Modelled here because the real
+        # aeroplane never flies without it -- a bare 737 Dutch roll is not a
+        # flight condition anyone experiences, and gust response without the
+        # damper overstates lateral excursions.
+        #
+        # Worth dCnr = Cndr * 0.35 * 2V/b = -0.6488 at this condition, against a
+        # bare Cnr of -0.350: the damper is over three times the airframe's own
+        # yaw damping. That number was MEASURED off JSBSim's FCS in session 17,
+        # not chosen here.
+        yaw_damper_gain=jnp.array(0.35),
+        # Mach-scheduled Cmde and Clda, transcribed from 737.xml's own <table>
+        # blocks (read from the file, session 23):
+        #     Cmde   M 0.0 -> -1.20,  M 2.0 -> -0.30   (slope +0.45 per Mach)
+        #     Clda   M 0.0 ->  0.100, M 2.0 ->  0.033  (slope -0.0335 per Mach)
+        # Two points each, linearly interpolated and endpoint-clamped, which is
+        # what JSBSim's <table> does -- so jnp.interp reproduces the source
+        # exactly rather than approximating it.
+        #
+        # These CHANGE NOTHING AT THE RECOVERY POINT and that is the check: at
+        # M 0.78 the tables give -0.849 and 0.07387, which are the scalars this
+        # entry already carried. What they add is the SLOPE, which is what the
+        # phugoid's speed derivative M_u = dqdot/dvt reads and which session 19
+        # localised as 90.5% of the frequency gap at cruise.
+        Cmde_table_mach=jnp.array([0.0, 2.0]),
+        Cmde_table_Cmde=jnp.array([-1.20, -0.30]),
+        Clda_table_mach=jnp.array([0.0, 2.0]),
+        Clda_table_Clda=jnp.array([0.100, 0.033]),
         valid_mach=jnp.array([0.30, 0.50]),
         valid_altitude=jnp.array([0.0, 10000.0 * FT2M]),
     )
@@ -1784,21 +1934,28 @@ CRUISE: dict[str, dict[str, float]] = {
     # The condition the 737's derivatives were recovered at, and the ONLY one it
     # is valid near -- see _boeing_737's docstring.
     #
-    # The altitude is DENSITY-MATCHED, not nominal: JSBSim flies this at
-    # 30,000 ft, but atisim's ISA uses geometric altitude where the standard
-    # uses geopotential, so its density there is 0.159% below JSBSim's. Since
-    # qbar is proportional to rho, running at a nominal 30,000 ft would put that
-    # bias on every force in the comparison. 9130.83 m is 43.22 ft lower and
-    # matches JSBSim's density to 1e-16 relative.
-    "boeing737": {"altitude": 9130.825908961, "airspeed": 236.5191917152},
+    # The altitude is DENSITY-MATCHED, not nominal, and session 23 changed what
+    # that is worth. It used to be 9130.825908961 m -- 43.22 ft BELOW the
+    # nominal 30,000 ft -- because atisim's ISA took a geometric altitude
+    # through geopotential formulas and read 0.159% light there. With the
+    # conversion in place the two atmospheres agree to 4.8e-6, so the match is
+    # now 29,999.87 ft: essentially the nominal altitude, 0.13 ft of residual
+    # ISA-constant difference between the two codes.
+    #
+    # It is still solved rather than set to the nominal, because that residual
+    # is real and unmeasured elsewhere. Recomputed by jsbsim_ref._match_density
+    # at load time; test_737_is_registered_at_its_recovery_condition pins this
+    # literal against it, so the two cannot drift apart.
+    "boeing737": {"altitude": 9143.960246316, "airspeed": 236.5191917152},
     # The condition boeing747_jsbsim's derivatives were recovered at, and the
-    # only one it is valid near. DENSITY-MATCHED for the same reason the 737's
-    # is: JSBSim flies this at 38,000 ft, and 11561.31 m is 69.19 ft lower and
-    # matches JSBSim's density exactly (residual 0.0).
-    "boeing747_jsbsim": {"altitude": 11561.31072235, "airspeed": 236.0552703914},
-    # The second recovery condition, 5,000 ft and M 0.40. Density-matched for
-    # the same reason, though the shift is only -1.45 ft this low down.
-    "boeing737_approach": {"altitude": 1523.558080263, "airspeed": 133.7577996784},
+    # only one it is valid near. Density-matched for the same reason: JSBSim
+    # flies this at 38,000 ft and the match is now 37,999.92 ft, where before
+    # session 23 it was 37,930.81 -- a 69.19 ft correction that is now 0.08 ft.
+    "boeing747_jsbsim": {"altitude": 11582.376064156, "airspeed": 236.0552703914},
+    # The second recovery condition, 5,000 ft and M 0.40. The shift was only
+    # -1.45 ft this low down and is now -0.25 ft, since the geometric/
+    # geopotential gap grows with height.
+    "boeing737_approach": {"altitude": 1523.923326636, "airspeed": 133.7577996784},
     "cherokee": {"altitude": 4920.0 * FT2M, "airspeed": 50.0},
     "cessna172": {"altitude": 5000.0 * FT2M, "airspeed": 60.0},
 }

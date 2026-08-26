@@ -336,7 +336,12 @@ def _cruise_modes():
 # KNOWN FLAW, bounded. CR-2144 Table IX-5's denominator publishes FOUR factors
 # for flight condition 9; PROJECT.md section 4 compares TWO. All four are
 # pinned here with the errors the audit measured.
-MODE_ERRORS_VS_IX5 = {"phugoid_wn": -0.178, "phugoid_zeta": +0.144,
+# Session 23 moved phugoid_zeta from +0.144 to +0.132 -- an IMPROVEMENT, and
+# an unforced one: modelling g(h) was not aimed at CR-2144 agreement and moved
+# the model 1.2 points CLOSER to Table IX-5. phugoid_wn is unmoved at this
+# tolerance. Recorded as corroboration that the gravity change is a fidelity
+# gain rather than a lateral move.
+MODE_ERRORS_VS_IX5 = {"phugoid_wn": -0.178, "phugoid_zeta": +0.132,
                       "sp_wn": -0.014, "sp_zeta": -0.115}
 
 
@@ -1748,13 +1753,19 @@ def test_the_atmosphere_extrapolates_below_sea_level_without_limit():
     `atmosphere.py` documents "0 to 20 km". Below zero the troposphere lapse
     continues without clamp or warning, and the previous test shows runs go
     there.
+
+    Session 23 moved these numbers without repairing the flaw. The geometric-to-
+    geopotential conversion runs the other way below the datum -- it makes the
+    height MORE negative, -5000 m becoming -5003.9 and -50,000 m becoming
+    -50,396 -- so the unclamped lapse now runs slightly further. The flaw is
+    unchanged and so is this test's point; only the values moved.
     """
     from atisim.atmosphere import temperature
 
-    assert float(temperature(-5000.0)) == pytest.approx(320.65, abs=0.01)
-    assert float(density(-5000.0)) == pytest.approx(1.9305, rel=1e-3)
-    assert float(temperature(-50000.0)) == pytest.approx(613.15, abs=0.01)
-    assert float(density(-50000.0)) == pytest.approx(30.468, rel=1e-3)
+    assert float(temperature(-5000.0)) == pytest.approx(320.6756, abs=0.01)
+    assert float(density(-5000.0)) == pytest.approx(1.93112, rel=1e-3)
+    assert float(temperature(-50000.0)) == pytest.approx(615.7266, abs=0.01)
+    assert float(density(-50000.0)) == pytest.approx(31.0166, rel=1e-3)
 
 
 # ---------------------------------------------------------------------------

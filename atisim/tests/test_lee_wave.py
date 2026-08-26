@@ -162,10 +162,17 @@ def test_a_long_wavelength_survives_the_average_almost_intact():
 
 
 def test_the_thrust_envelope_is_what_session_2_recorded():
-    """Recomputed, not taken on trust: section 4 carries +0.023/-0.066."""
+    """Recomputed, not taken on trust: section 4 carries +0.024/-0.066.
+
+    Session 23 moved the full-thrust figure from 0.023 to 0.0241, because
+    `thrust_authority` divides by the aircraft's WEIGHT and weight is now
+    m*g(h) rather than m*G0. At this altitude g is 0.38% below standard, so the
+    same thrust buys 0.38% more of it. The idle figure moves for the same reason
+    and in the same direction.
+    """
     x, _ = trim.trim(jnp.array(V), jnp.array(H), AC)
     full, idle = dynamics.thrust_authority(AC, x[2], jnp.array(H))
-    assert float(full) == pytest.approx(0.023, abs=0.001)
+    assert float(full) == pytest.approx(0.0241, abs=0.001)
     assert float(idle) == pytest.approx(-0.066, abs=0.001)
 
 

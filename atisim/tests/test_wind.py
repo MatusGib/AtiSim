@@ -21,6 +21,8 @@ import numpy as np
 import pytest
 
 from atisim import dynamics, wind
+from atisim.aircraft import CRUISE, REGISTRY
+from atisim.state import euler_to_quat
 from atisim.units import FT2M
 
 # Parks Table/prose values, Case 1 (Hannibal, MO, 3 April 1981, DC-10, 37,000 ft)
@@ -1120,3 +1122,107 @@ def test_case_altitudes_match_table_1():
     assert wind.WINGROVE_CASE_ALTITUDE["cimarron"] == pytest.approx(33000.0 * FT2M)
     assert wind.WINGROVE_CASE_ALTITUDE["hannibal"] == pytest.approx(37000.0 * FT2M)
     assert wind.WINGROVE_CASE_ALTITUDE["morton"] == pytest.approx(39000.0 * FT2M)
+
+
+def test_the_gradient_arm_has_an_independent_cross_check_and_what_it_bounds():
+    """*** THE MISSING CROSS-CHECK ON THE VORTEX COMPARISON'S HEADLINE TERM. ***
+
+    PROJECT.md section 4 reports the gust gradient adding 8-13% of load span --
+    the largest modelling difference the JSBSim comparison found, and the one
+    axis where atisim can do something JSBSim structurally cannot. Its limits
+    section records that the number "rests on the analytic Jacobian alone, with
+    no independent cross-check", because the strip path needs an effective tail
+    arm -Cmq/CLq and neither 737.xml nor B747.xml defines CLq.
+
+    This is that cross-check, run where the data supports it. `boeing747` is the
+    CR-2144 aeroplane and DOES carry CLq, giving a tail arm of 4.0241 cbar =
+    109.9 ft -- inside the real 100-110 ft, which section 4 already records as
+    validated. So the two estimators can be compared on it:
+
+        gust_rates     the analytic Jacobian AT THE CG -- a tangent
+        sampled_rates  a secant fitted ACROSS the airframe's own stations
+
+    They are estimators of the SAME quantity, so any difference bounds the error
+    in the one the comparison used.
+
+    *** THE INSTRUMENT VALIDATES ITSELF ON A NUMBER MEASURED ELSEWHERE. *** For
+    the Rankine core the worst disagreement over a +/-2.5 r0 traverse comes out
+    at 2.000 V0/r0, which is EXACTLY the one-sided derivative jump ASSUMPTIONS E2
+    records at r = r0, reached by a completely different route. That agreement is
+    what says this test is measuring the gradient rather than its own arithmetic.
+
+    *** WHAT IT BOUNDS. *** The tangent is worst precisely where the encounter is
+    strongest. For the smooth profile the disagreement is 0.26 V0/r0 -- 7.7x
+    smaller than Rankine's, since there is no kink, but still 26% of the
+    characteristic gradient, and it peaks near the velocity maximum where the
+    tangent passes through zero while the airframe still spans a varying field.
+    So the 8-13% gradient contribution is confirmed as REAL and its precision is
+    now bounded rather than unknown: read it as an ordering, not to two figures.
+    """
+    from atisim import airframe
+
+    ac = REGISTRY["boeing747"]
+    H = CRUISE["boeing747"]["altitude"]
+    case = wind.PARKS_CASES["hannibal"]
+    r0, v0 = case["r0"], case["v0"]
+    array = wind.VortexArray(north=jnp.array([0.0]), down=jnp.array([-H]),
+                             r0=jnp.array(r0), v0=jnp.array(v0))
+    st = airframe.stations(ac)
+    quat = euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0))
+    scale = v0 / r0
+
+    def worst_disagreement(field):
+        out = 0.0
+        for frac in np.linspace(-2.5, 2.5, 101):
+            p = jnp.array([frac * r0, 0.0, -H])
+            tangent = float(wind.gust_rates(p, quat, field)[1])
+            secant = float(wind.sampled_rates(p, quat, field, st)[1])
+            out = max(out, abs(secant - tangent) / scale)
+        return out
+
+    rankine = worst_disagreement(lambda p: wind.vortex_wind(p, array))
+    smooth = worst_disagreement(lambda p: wind.lamb_oseen_wind(p, array))
+
+    # The self-validation: Rankine's worst case IS E2's 2*V0/r0 edge jump.
+    assert rankine == pytest.approx(2.0, rel=1e-3), (
+        f"worst tangent-vs-secant disagreement is {rankine:.4f} V0/r0; E2 says "
+        "the one-sided derivatives at the core edge differ by exactly 2 V0/r0, "
+        "so this should reproduce it and does not")
+
+    # The smooth profile is dramatically better but NOT negligible.
+    assert smooth < rankine / 5.0, (
+        f"the smooth profile should shrink the disagreement several-fold; "
+        f"got {smooth:.4f} against Rankine's {rankine:.4f} V0/r0")
+    assert smooth == pytest.approx(0.260, abs=0.02), (
+        f"measured {smooth:.4f} V0/r0 for Lamb-Oseen; this is the bound the "
+        "gradient result carries and it is quoted in PROJECT.md section 4")
+
+    # Inside a Rankine core the field is solid-body -- LINEAR -- so the two
+    # estimators must agree EXACTLY there. That is the negative control: it shows
+    # the disagreements above are curvature and kink, not a bug in either.
+    p_inside = jnp.array([0.5 * r0, 0.0, -H])
+    field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
+    assert float(wind.gust_rates(p_inside, quat, field)[1]) == pytest.approx(
+        float(wind.sampled_rates(p_inside, quat, field, st)[1]), rel=1e-9)
+
+
+def test_the_jsbsim_recovered_entries_still_cannot_run_that_cross_check():
+    """And the reason is recorded rather than worked around.
+
+    The cross-check above needs `airframe.stations`, which needs the effective
+    tail arm -Cmq/CLq. Neither 737.xml nor B747.xml defines CLq, so for every
+    JSBSim-recovered entry that is a division by zero and no amount of care makes
+    it otherwise. Inventing a CLq to make the check run would be inventing the
+    very quantity being checked.
+
+    What the test above establishes is therefore a property of the ESTIMATOR --
+    measured on the one airframe whose data supports it -- and it transfers to
+    the recovered entries as a statement about the method, not as a measurement
+    on them. This test pins that limitation so it cannot be quietly forgotten.
+    """
+    for name in ("boeing737", "boeing737_approach", "boeing747_jsbsim"):
+        ac = REGISTRY[name]
+        assert float(ac.CLq) == 0.0, (
+            f"{name} has acquired a CLq of {float(ac.CLq)}. If it came from the "
+            "source file, run the cross-check on it directly and delete this "
+            "test; if it was invented, remove it.")

@@ -20,8 +20,8 @@ from jax import Array
 
 from atisim.aero import wave_drag
 from atisim.aircraft import Aircraft
-from atisim.atmosphere import G0, density, speed_of_sound
-from atisim.dynamics import derivatives
+from atisim.atmosphere import density, speed_of_sound
+from atisim.dynamics import derivatives, gravity
 from atisim.state import Controls, State, euler_to_quat
 
 
@@ -77,9 +77,11 @@ def minimum_drag_speed(
     a_sound = speed_of_sound(altitude)
     speeds = jnp.linspace(low, high, n)
 
+    g = gravity(altitude)
+
     def drag(V):
         qS = 0.5 * rho * V**2 * ac.S
-        CL = ac.mass * G0 / qS
+        CL = ac.mass * g / qS
         CD = ac.CD0 + CL**2 / (jnp.pi * ac.e * ac.AR) + wave_drag(V / a_sound, CL, ac)
         return qS * CD
 

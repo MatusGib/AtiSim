@@ -105,6 +105,24 @@ def _replay(ac, ref, cond, manoeuvre, decimate=1):
     hold and nothing else -- which is what makes the sampling artifact separable
     from the model difference. See
     test_layer4_what_survives_the_hold_is_two_residuals_and_no_more.
+
+    *** THE YAW DAMPER IS SWITCHED OFF HERE, AND THAT KEEPS LAYER 4 HONEST. ***
+    Layer 4's whole design is that SURFACE POSITIONS ARE PRESCRIBED TO BOTH
+    ENGINES: the generator pre-compensates JSBSim's rudder command each step by
+    the yaw-damper output so that `fcs/rudder-pos-rad` follows the commanded
+    history, and asserts it hits target. JSBSim's damper is therefore NEUTRALISED
+    in this reference by construction.
+
+    Since session 23 atisim's 737 carries a damper of its own in the plant. Left
+    on, it would ADD `0.35 r` on top of the prescribed rudder -- so atisim would
+    fly a surface JSBSim did not, and the comparison would no longer be
+    like-for-like. Measured, that is worth 1.83 m/s of spurious `v` divergence on
+    the approach rudder kick against a 0.013 m/s Earth-rotation floor, i.e. it
+    would swamp the residual this layer exists to measure.
+
+    Zeroing the gain restores the prescribed-surface premise on both sides. It
+    does NOT weaken the test: layer 3 is where the damper is compared, and it now
+    matches JSBSim's closed-loop linearisation directly.
     """
     import jax
     import jax.numpy as jnp
@@ -112,6 +130,8 @@ def _replay(ac, ref, cond, manoeuvre, decimate=1):
     from atisim import integrate
     from atisim.atmosphere import RHO0, density, speed_of_sound
     from atisim.state import Controls, State, euler_to_quat
+
+    ac = ac._replace(yaw_damper_gain=jnp.array(0.0))
 
     samples = ref.trajectory[manoeuvre][::decimate]
     first = samples[0]
@@ -495,21 +515,30 @@ def test_layer3_lateral_modes_match_once_the_yaw_damper_is_accounted_for():
     that looked like an ordinary model difference and was in fact the tensor
     being fed to the two engines differing. See
     test_inertia_cross_product_sign_matches_the_engines_own_coupling.
-    """
-    import jax.numpy as jnp
 
+    *** SESSION 23: THE FOLD IS GONE AND THE DAMPER IS IN THE PLANT. ***
+    `boeing737` now carries `yaw_damper_gain = 0.35` and `dynamics.derivatives`
+    adds `0.35 * r` to the rudder before the aerodynamics see it, so this test
+    uses the REGISTRY ENTRY UNMODIFIED. Applying the old `_replace` fold on top
+    would count the damper twice.
+
+    The plant form subsumes all THREE folds at once, and that is not a
+    coincidence: `delta_r = 0.35 r` reaches `CY`, `Cl` and `Cn` through the real
+    `CYdr`, `Cldr` and `Cndr`, which is algebraically what adding
+    `C*dr * 0.35 * 2V/b` to `C*r` did by hand. The measured result is closer
+    than the fold was -- zeta 0.34410 against JSBSim's 0.34410, where the fold
+    gave 0.34402 -- because the fold linearised about one airspeed and the plant
+    term uses the aircraft's actual yaw rate at every step.
+    """
     from atisim import validation
 
     ac = REGISTRY["boeing737"]
-    gain = 0.35 * 2.0 * CRUISE_COND.airspeed / float(ac.b)
-    closed_loop = ac._replace(
-        Cnr=jnp.array(float(ac.Cnr) + float(ac.Cndr) * gain),
-        Clr=jnp.array(float(ac.Clr) + float(ac.Cldr) * gain),
-        CYr=jnp.array(float(ac.CYr) + float(ac.CYdr) * gain),
-    )
+    assert float(ac.yaw_damper_gain) == 0.35, (
+        "this test compares against JSBSim's CLOSED-LOOP linearisation, so the "
+        "entry must carry the damper JSBSim's FCS carries")
     (alpha, elevator, throttle), _ = _atisim_trim()
     (wn, zeta), roll_tc, spiral_tc = validation.lateral_modes(
-        closed_loop, alpha, elevator, throttle,
+        ac, alpha, elevator, throttle,
         CRUISE_COND.airspeed, CRUISE_COND.matched_altitude,
     )
 
@@ -547,17 +576,24 @@ def test_layer3_lateral_modes_match_once_the_yaw_damper_is_accounted_for():
 
 
 def test_layer3_bare_airframe_would_fail_without_the_damper_correction():
-    """The correction above is load-bearing, and this proves it.
+    """The damper above is load-bearing, and this proves it.
 
     Without it the spiral disagrees by a factor of 7.6. If a future change made
-    the correction unnecessary -- JSBSim linearising open-loop, say -- this test
+    the damper unnecessary -- JSBSim linearising open-loop, say -- this test
     fails and the one above becomes wrong in a way nobody would otherwise see.
+
+    Session 23: the bare airframe is now constructed by zeroing the entry's own
+    `yaw_damper_gain` rather than by using the entry as shipped, because as
+    shipped it is no longer bare. Same statement, same number, different route.
     """
+    import jax.numpy as jnp
+
     from atisim import validation
 
+    bare = REGISTRY["boeing737"]._replace(yaw_damper_gain=jnp.array(0.0))
     (alpha, elevator, throttle), _ = _atisim_trim()
     _, _, spiral_tc = validation.lateral_modes(
-        REGISTRY["boeing737"], alpha, elevator, throttle,
+        bare, alpha, elevator, throttle,
         CRUISE_COND.airspeed, CRUISE_COND.matched_altitude,
     )
     eigenvalues = np.linalg.eigvals(REF.linearization.lateral)
@@ -829,36 +865,84 @@ def test_layer3_phugoid_frequency_gap_is_the_pitching_moment_speed_derivative(co
     )
 
 
-def test_atisim_has_no_aerodynamic_speed_derivative_of_pitching_moment():
-    """M_u exists in atisim ONLY as an alphadot coupling, and that is measurable.
+def test_atisims_speed_derivative_of_pitching_moment_is_the_cmde_mach_schedule():
+    """*** THIS TEST WAS INVERTED IN SESSION 23, AND THAT IS THE POINT. ***
 
-    There is no Prandtl-Glauert correction anywhere in aero.py, so at fixed alpha
-    the build-up has no Mach dependence at all except wave drag -- which is off
-    at both recovery points. What produces a non-zero M_u is dynamic rather than
-    aerodynamic: perturbing speed changes the force balance, which changes wdot,
-    which changes alphadot, which Cmadot = -16 turns into a pitching moment.
+    It used to be `test_atisim_has_no_aerodynamic_speed_derivative_of_pitching_
+    moment`, and it PINNED AN ABSENCE: at fixed alpha the build-up had no Mach
+    dependence at all except wave drag, so M_u existed only as an alphadot
+    coupling and zeroing Cmadot/CLadot sent it to machine zero. Session 19 used
+    that to prove the phugoid frequency gap was structural -- "there is no
+    coefficient here that could be adjusted to close it without inventing a Mach
+    schedule the source would have to supply."
 
-    Zeroing the alphadot derivatives sends M_u to machine zero. The probe is
-    clean because alphadot = 0 AT the trim point, so removing the term does not
-    move the equilibrium being linearised about -- only its slope.
+    The source supplied one. 737.xml schedules Cmde on Mach, -1.20 at M 0 to
+    -0.30 at M 2, and session 23 read it out of the file and put it in. So the
+    absence is gone, deliberately, and this test now pins its REPLACEMENT: the
+    aerodynamic speed derivative exists, and it comes from that table.
 
-    This is what makes the frequency gap above structural rather than a defect:
-    there is no coefficient here that could be adjusted to close it without
-    inventing a Mach schedule the source would have to supply.
+    What it bought, measured: the cruise phugoid frequency error went 6.58% ->
+    0.45% and the approach 3.39% -> 0.49%, and M_u changed SIGN at cruise to
+    agree with JSBSim's. Session 19 predicted exactly this -- substituting
+    JSBSim's M_u alone cut the error tenfold -- and supplying the mechanism
+    rather than the number reproduces it.
     """
     import jax.numpy as jnp
 
     for condition in CASES:
         ac = REGISTRY[CASES[condition][0]]
-        ati, _js = _longitudinal_pair(ac, condition)
+        assert ac.Cmde_table_mach.size, f"{condition}: entry lost its Cmde table"
+        ati, js = _longitudinal_pair(ac, condition)
+
+        # The alphadot coupling is still there and still real.
         bare = ac._replace(Cmadot=jnp.array(0.0), CLadot=jnp.array(0.0))
         without, _ = _longitudinal_pair(bare, condition)
         assert abs(ati[3, 0]) > 1e-5, f"{condition}: M_u vanished; the probe is vacuous"
-        assert abs(without[3, 0]) < 1e-12, (
+        assert abs(without[3, 0]) > 1e-5, (
             f"{condition}: M_u is {without[3, 0]:.3e} with the alphadot terms "
-            "removed, so something else in the build-up now carries a speed "
-            "dependence -- find it before trusting the phugoid attribution"
+            "removed. It should now be NON-zero -- the Cmde Mach schedule is an "
+            "aerodynamic speed dependence and this is where it shows."
         )
+
+        # And the schedule is identified as the SOURCE by probing the build-up
+        # directly rather than through the plant matrix. At fixed alpha and fixed
+        # controls, dCm/dV is EXACTLY zero without the table and non-zero with
+        # it -- an exact statement, where the same claim read off M_u carries
+        # ~8e-10 of residue from assembling a 4x4 by jacfwd (against a real M_u
+        # of -8.7e-05, so under 1e-5 of it). The direct probe is the sharper
+        # instrument and the one that cannot drift.
+        flat = ac._replace(
+            Cmde_table_mach=jnp.zeros(0), Cmde_table_Cmde=jnp.zeros(0),
+            Clda_table_mach=jnp.zeros(0), Clda_table_Clda=jnp.zeros(0),
+        )
+        from atisim import aero
+        from atisim.state import Controls
+
+        (alpha, elevator, throttle), _ = _atisim_trim(condition)
+        _ref, cond, _t, _ac = case(condition)
+        V, a_sound = cond.airspeed, jnp.array(cond.sound_speed)
+
+        def dCm_dV(entry, dv=1.0):
+            def Cm(Vx):
+                vel = jnp.array([Vx * np.cos(alpha), 0.0, Vx * np.sin(alpha)])
+                ctl = Controls(elevator=jnp.array(elevator), aileron=jnp.array(0.0),
+                               rudder=jnp.array(0.0), throttle=jnp.array(throttle))
+                return aero.coefficients(vel, jnp.zeros(3), ctl, entry, a_sound)[4]
+            return float(Cm(jnp.array(V + dv)) - Cm(jnp.array(V - dv))) / (2.0 * dv)
+
+        assert dCm_dV(flat) == 0.0, (
+            f"{condition}: dCm/dV is {dCm_dV(flat):.3e} with the Cmde schedule "
+            "removed, so a SECOND aerodynamic speed dependence has appeared -- "
+            "find it before trusting the attribution above")
+        assert abs(dCm_dV(ac)) > 1e-6, (
+            f"{condition}: dCm/dV is {dCm_dV(ac):.3e} WITH the schedule, which "
+            "is too small to be the mechanism the phugoid result rests on")
+
+        # The sign now agrees with JSBSim's, which it did not before: atisim read
+        # +1.114e-04 at cruise against JSBSim's -1.024e-04.
+        assert np.sign(ati[3, 0]) == np.sign(js[3, 0]), (
+            f"{condition}: M_u sign {ati[3, 0]:+.3e} against JSBSim's "
+            f"{js[3, 0]:+.3e}")
 
 
 @pytest.mark.parametrize("condition", list(CASES))
