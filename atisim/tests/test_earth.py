@@ -314,3 +314,108 @@ def test_our_j2_gravity_reproduces_jsbsims_at_every_probe():
         theirs_body = p.weight / p.mass
         t_b2e = (p.t_l2b @ p.t_e2l).T
         assert np.allclose(t_b2e @ theirs_body, ours, atol=1e-7)
+
+
+def test_derivatives_reproduce_every_jsbsim_eom_term():
+    """Verification check 1, the EOM rows. This is the heart of the work.
+
+    Each probe carries JSBSim's own forces, moments, inertia, velocities and
+    rates, plus the accelerations it computed from them. Feeding OUR equations
+    the same inputs must give the same accelerations.
+
+    Tolerances are tight because the design measured these relations closing to
+    machine zero. A loose tolerance here would pass with a wrong sign on a small
+    term, which is exactly the failure the design's frame-transfer probe hit.
+    """
+    from atisim import earth as E
+    from atisim.dynamics import earth_acceleration_terms
+
+    for p in _probes():
+        t_b2e = (p.t_l2b @ p.t_e2l).T
+        omega_earth_body = t_b2e.T @ np.array([0.0, 0.0, E.OMEGA_WGS84])
+
+        # The frame-transfer relation, which JSBSim states directly.
+        assert np.allclose(p.pqri - p.pqr, omega_earth_body, atol=1e-12)
+
+        accel, omega_dot = earth_acceleration_terms(
+            force=jnp.asarray(p.force),
+            moment=jnp.asarray(p.moment),
+            mass=p.mass,
+            inertia=jnp.asarray(p.inertia),
+            inertia_inv=jnp.asarray(np.linalg.inv(p.inertia)),
+            vel_body=jnp.asarray(p.vel_body),
+            omega=jnp.asarray(p.pqr),
+            quat_body_to_ecef=jnp.asarray(_quat_from(t_b2e)),
+            r_ecef=jnp.asarray(p.r_ecef),
+            model=E.WGS84_J2,
+        )
+        assert np.allclose(np.asarray(accel), p.uvwdot, atol=1e-9), (
+            f"translational EOM at lat {np.degrees(p.lat):.1f}: "
+            f"{np.asarray(accel)} vs {p.uvwdot}"
+        )
+        assert np.allclose(np.asarray(omega_dot), p.pqrdot, atol=1e-12), (
+            f"rotational EOM at lat {np.degrees(p.lat):.1f}: "
+            f"{np.asarray(omega_dot)} vs {p.pqrdot}"
+        )
+
+
+def _quat_from(m):
+    """numpy Shepperd, so the test does not depend on the code under test."""
+    c = np.array([
+        1 + m[0, 0] + m[1, 1] + m[2, 2], 1 + m[0, 0] - m[1, 1] - m[2, 2],
+        1 - m[0, 0] + m[1, 1] - m[2, 2], 1 - m[0, 0] - m[1, 1] + m[2, 2],
+    ])
+    i = int(np.argmax(c)); s = np.sqrt(c[i]) * 2.0
+    q = [
+        np.array([0.25 * s, (m[2, 1] - m[1, 2]) / s, (m[0, 2] - m[2, 0]) / s, (m[1, 0] - m[0, 1]) / s]),
+        np.array([(m[2, 1] - m[1, 2]) / s, 0.25 * s, (m[0, 1] + m[1, 0]) / s, (m[0, 2] + m[2, 0]) / s]),
+        np.array([(m[0, 2] - m[2, 0]) / s, (m[0, 1] + m[1, 0]) / s, 0.25 * s, (m[1, 2] + m[2, 1]) / s]),
+        np.array([(m[1, 0] - m[0, 1]) / s, (m[0, 2] + m[2, 0]) / s, (m[1, 2] + m[2, 1]) / s, 0.25 * s]),
+    ][i]
+    return q / np.linalg.norm(q)
+
+
+def test_the_frame_transfer_sign_is_plus_and_a_wings_level_probe_cannot_tell():
+    """The design's own near-miss, pinned so it cannot come back.
+
+    Near wings-level, `omega_be x Omega_b` is about 1e-5 and the WRONG sign's
+    residual is the same order -- both signs "fit". Only the high-rate probes
+    separate them: measured 6.9e-18 for plus against 1.9e-5 for minus. This test
+    asserts that the high-rate probes are what does the separating, so nobody
+    later trims the probe grid down to level flight and destroys the evidence.
+
+    MEASURED ON THE FROZEN GRID, AND IT REFINES THAT CLAIM RATHER THAN
+    CONFIRMING IT. Every probe here carries |pqr| >= 0.0293 rad/s -- the grid was
+    regenerated with controls deflected, so it contains no genuinely wings-level
+    case any more -- and against a reference that is itself exact, ALL SIX
+    separate the signs at the absolute 1e-9 asserted below:
+
+        lat     |pqr|     resid +     resid -    resid - , relative to |pqrdot|
+        0.0    0.05824   3.99e-15    8.47e-06    3.03e-04
+       47.0    0.03167   3.89e-16    3.20e-06    5.04e-04
+      -33.0    0.02930   2.85e-16    1.70e-06    3.31e-04
+       60.0    0.15084   8.33e-15    1.74e-05    3.88e-04
+      -70.0    0.11456   7.87e-15    1.25e-05    1.51e-04
+       10.0    0.61732   6.81e-15    3.19e-05    1.29e-03
+
+    So the `> 0.05` filter is not what is doing the work at this tolerance, and
+    the design's near-miss is visible in the LAST column instead: the wrong sign
+    costs 1.5e-4 to 5.0e-4 of `pqrdot` at the low-rate probes and 1.3e-3 at the
+    highest-rate one. An ordinary rel=1e-3 comparison -- which is what the first
+    probe was judged by -- accepts the minus sign everywhere except the 10 deg
+    probe. The absolute threshold is what makes it visible everywhere, and the
+    minus residual scales as 2|pqr|*Omega, so the signs would only become
+    genuinely indistinguishable at 1e-9 below |pqr| ~ 6.9e-6 rad/s. The filter is
+    kept as the guard it was written to be: it fails loudly if the grid is ever
+    regenerated at true wings-level, which is the state in which this evidence
+    really does vanish.
+    """
+    high_rate = [p for p in _probes() if np.linalg.norm(p.pqr) > 0.05]
+    assert high_rate, "the probe grid no longer contains a high-body-rate case"
+
+    for p in high_rate:
+        t_b2e = (p.t_l2b @ p.t_e2l).T
+        omega_earth_body = t_b2e.T @ np.array([0.0, 0.0, earth.OMEGA_WGS84])
+        term = np.cross(p.pqr, omega_earth_body)
+        assert np.allclose(p.pqridot + term, p.pqrdot, atol=1e-14)
+        assert not np.allclose(p.pqridot - term, p.pqrdot, atol=1e-9)

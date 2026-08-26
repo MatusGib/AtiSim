@@ -1,9 +1,16 @@
-"""6-DOF Newton-Euler equations of motion.
+"""6-DOF equations of motion on a rotating, ellipsoidal Earth.
 
-    vdot     = F/m + g_body - omega x v
-    omegadot = I^-1 (M - omega x (I omega))
-    posdot   = DCM v
-    quatdot  = 0.5 q (x) [0, omega]
+    rdot_e   = T_b2e v
+    vdot     = F/m + g_b - (w_be + 2 Om_b) x v - [Om x (Om x r_e)]_b
+    qdot     = 0.5 q (x) [0, w_be]                     (q: body -> ECEF)
+    wdot_be  = I^-1 (M - w_bi x I w_bi) + w_be x Om_b
+
+`v` is velocity relative to ECEF in body axes, `w_be` the body rate relative to
+ECEF, `w_bi = w_be + Om_b` the body rate relative to ECI, `Om_b = T_e2b Om` with
+`Om = [0,0,Omega]` in ECEF, and `F` excludes gravity. THESE WERE ESTABLISHED
+EMPIRICALLY FROM THE JSBSim BINARY, not transcribed -- JSBSim ships compiled
+with no source, so a transcription could not have been checked. Residuals are in
+the design doc section 2.
 
 The Coriolis terms use the *inertial* velocity and angular rate. Only the
 aerodynamics see air-relative quantities.
@@ -12,17 +19,76 @@ aerodynamics see air-relative quantities.
 import jax.numpy as jnp
 from jax import Array
 
+from atisim import earth
 from atisim.aero import V_MIN, aero_forces_moments, thrust_force
 from atisim.aircraft import Aircraft
 from atisim.atmosphere import G0, RHO0, density, speed_of_sound
 from atisim.loads import CoeffIncrement
-from atisim.state import Controls, State, quat_derivative, quat_to_dcm
+from atisim.state import Controls, State, quat_derivative, quat_to_matrix
 
 
 def relative_velocity(vel_body: Array, quat: Array, wind_ned: Array) -> Array:
-    """Body-axis velocity relative to the surrounding air mass."""
-    dcm = quat_to_dcm(quat)  # body -> NED
+    """Body-axis velocity relative to the surrounding air mass.
+
+    `quat` is body -> NED, which is the frame `wind_ned` is stated in. The state
+    quaternion is body -> ECEF and is NOT that; `derivatives` forms the local
+    frame at the aircraft's own position instead of calling this.
+    """
+    dcm = quat_to_matrix(quat)  # body -> NED
     return vel_body - dcm.T @ wind_ned
+
+
+def earth_acceleration_terms(
+    force: Array,
+    moment: Array,
+    mass: Array,
+    inertia: Array,
+    inertia_inv: Array,
+    vel_body: Array,
+    omega: Array,
+    quat_body_to_ecef: Array,
+    r_ecef: Array,
+    model: earth.EarthModel,
+) -> tuple[Array, Array]:
+    """The rotating-Earth equations of motion, isolated so they can be tested alone.
+
+    Established empirically from JSBSim v1.3.1, not transcribed -- the residuals
+    are in the design doc section 2. `force` EXCLUDES gravity; gravity is added
+    here so the caller cannot double-count it with the centrifugal term.
+
+        vdot    = F/m + g - (omega_be + 2 Omega_b) x v - [Omega x (Omega x r)]_b
+        wdot_be = I^-1 (M - omega_bi x I omega_bi) + omega_be x Omega_b
+
+    THE PLUS IN THE SECOND LINE IS MEASURED, NOT DERIVED-AND-HOPED. The first
+    probe of it was inconclusive: near wings-level the term is ~1e-5 and so is
+    the wrong sign's residual, so both signs "fit", and the wrong one would have
+    shipped. Re-probed at |omega_be| ~ 0.15 rad/s they separate cleanly --
+    6.9e-18 for plus against 1.9e-5 for minus.
+    `test_the_frame_transfer_sign_is_plus_and_a_wings_level_probe_cannot_tell`
+    pins that, and carries the per-probe measurement on the frozen grid.
+
+    `r_ecef` is the ABSOLUTE ECEF position, not the state's anchor-relative
+    offset: both gravity and the centrifugal term are functions of where the
+    aircraft actually is on the Earth.
+    """
+    t_b2e = quat_to_matrix(quat_body_to_ecef)
+    omega_ecef = jnp.array([0.0, 0.0, model.rotation_rate])
+    omega_earth_body = t_b2e.T @ omega_ecef
+
+    gravity_body = t_b2e.T @ earth.gravitation(r_ecef, model)
+    centrifugal_body = t_b2e.T @ jnp.cross(omega_ecef, jnp.cross(omega_ecef, r_ecef))
+
+    accel = (
+        force / mass
+        + gravity_body
+        - jnp.cross(omega + 2.0 * omega_earth_body, vel_body)
+        - centrifugal_body
+    )
+
+    omega_bi = omega + omega_earth_body
+    omega_dot_bi = inertia_inv @ (moment - jnp.cross(omega_bi, inertia @ omega_bi))
+    omega_dot_be = omega_dot_bi + jnp.cross(omega, omega_earth_body)
+    return accel, omega_dot_be
 
 
 def derivatives(
@@ -31,6 +97,8 @@ def derivatives(
     ac: Aircraft,
     wind_ned: Array,
     omega_gust: Array,
+    anchor: earth.Anchor,
+    earth_model: earth.EarthModel,
     increment: CoeffIncrement | None = None,
     alphadot_gust: Array = 0.0,
 ) -> State:
@@ -54,21 +122,30 @@ def derivatives(
     `specific_force` and `load_factor` forward it too. They invert this
     function's own sum rather than recomputing it, so only channels that entered
     `force` can reach them -- `CL`, and not `Cl`, `Cm` or `Cn`.
-    """
-    dcm = quat_to_dcm(state.quat)
 
-    vel_rel = relative_velocity(state.vel_body, state.quat, wind_ned)
+    `anchor` fixes where on the Earth the run is flying and `earth_model` which
+    Earth it is. Neither has a default: latitude now changes the answer, through
+    Coriolis, gravity magnitude and the trimmed bank angle alike.
+    """
+    t_b2e = quat_to_matrix(state.quat)
+    r_ecef = anchor.r_ecef + state.pos_ecef
+    # The local frame is taken at the AIRCRAFT's position, not the anchor's:
+    # the two verticals diverge with range, and being right at range is the
+    # whole reason the ellipsoid is here. Altitude is geodetic for the same
+    # reason -- the tangent plane falls away as d^2/2R, 785 m at 100 km.
+    lat, lon, h = earth.ecef_to_geodetic(r_ecef)
+    dcm_b2n = earth.ecef_to_ned_matrix(lat, lon) @ t_b2e
+
+    vel_rel = state.vel_body - dcm_b2n.T @ wind_ned
     omega_rel = state.omega - omega_gust
 
-    altitude = -state.pos_ned[2]
-    rho = density(altitude)
-    a_sound = speed_of_sound(altitude)
+    rho = density(h)
+    a_sound = speed_of_sound(h)
     # Air-relative Mach, and unfloored for the same reason aero.py does not
     # floor it: Mach is finite at V = 0, so a floor would report thrust the
     # aircraft does not have.
     mach = jnp.linalg.norm(vel_rel) / a_sound
     thrust = thrust_force(controls, ac, rho, mach)
-    gravity_body = dcm.T @ jnp.array([0.0, 0.0, G0])
 
     def accelerate(alphadot):
         f, m = aero_forces_moments(
@@ -76,7 +153,11 @@ def derivatives(
             increment=increment, alphadot_gust=alphadot,
         )
         f = f + thrust
-        return f, m, f / ac.mass + gravity_body - jnp.cross(state.omega, state.vel_body)
+        a, wdot = earth_acceleration_terms(
+            f, m, ac.mass, ac.inertia, ac.inertia_inv,
+            state.vel_body, state.omega, state.quat, r_ecef, earth_model,
+        )
+        return f, m, a, wdot
 
     # --- angle-of-attack rate, both halves -------------------------------
     # The WIND half arrives as alphadot_gust and is explicit. The AIRCRAFT half
@@ -97,18 +178,15 @@ def derivatives(
     # transport, so O(1e-6) of a term that is itself a correction. If an
     # aircraft ever carries a large CLadot, replace this with the closed-form
     # 1/(1 - B) factor rather than more passes.
-    _, _, accel_open = accelerate(alphadot_gust)
+    _, _, accel_open, _ = accelerate(alphadot_gust)
     u_rel, w_rel = vel_rel[0], vel_rel[2]
     denominator = jnp.maximum(u_rel**2 + w_rel**2, V_MIN**2)
     alphadot_aircraft = (u_rel * accel_open[2] - w_rel * accel_open[0]) / denominator
 
-    force, moment, accel = accelerate(alphadot_gust + alphadot_aircraft)
-    omega_dot = ac.inertia_inv @ (
-        moment - jnp.cross(state.omega, ac.inertia @ state.omega)
-    )
+    _, _, accel, omega_dot = accelerate(alphadot_gust + alphadot_aircraft)
 
     return State(
-        pos_ned=dcm @ state.vel_body,
+        pos_ecef=t_b2e @ state.vel_body,
         vel_body=accel,
         quat=quat_derivative(state.quat, state.omega),
         omega=omega_dot,
@@ -121,6 +199,8 @@ def specific_force(
     ac: Aircraft,
     wind_ned: Array,
     omega_gust: Array,
+    anchor: earth.Anchor,
+    earth_model: earth.EarthModel,
     increment: CoeffIncrement | None = None,
 ) -> Array:
     """Body-axis specific force in g: what a three-axis accelerometer at the CG reads.
@@ -128,13 +208,42 @@ def specific_force(
     Specific force is the aerodynamic plus propulsive force over mass and
     excludes gravity. `derivatives` computes exactly that quantity as
     `force / ac.mass` and then discards it inside the sum at the top of this
-    module, so it is recovered here by inverting that sum:
+    module, so it is recovered here by inverting that sum. On a rotating Earth
+    that sum has grown: it carries THREE non-force terms where it carried two,
+    and one of the two it kept has changed shape.
 
-        a_spec = vdot_body - g_body + omega x vel_body
+        vdot = F/m + g_b - (omega_be + 2 Omega_b) x v - [Om x (Om x r)]_b
+        =>  F/m = vdot - g_b + (omega_be + 2 Omega_b) x v + [Om x (Om x r)]_b
+
+    Gravity is no longer the constant `G0` along the body z axis but
+    `earth.gravitation` in body axes, and the centrifugal term has to be added
+    back too -- it is part of what `derivatives` subtracted, and leaving it out
+    would put 0.034 m/s^2 of un-inverted acceleration into the accelerometer at
+    the equator. The Coriolis term now carries `2 Omega_b` alongside the body
+    rate, for the same reason.
+
+    Rather than restate any of that arithmetic, this evaluates
+    `earth_acceleration_terms` WITH A ZERO FORCE. That gives exactly
+    `g_b - (omega_be + 2 Omega_b) x v - [Om x (Om x r)]_b`, the whole non-force
+    remainder, so the subtraction below is the algebra above with nothing
+    transcribed twice. A sign or a term added to the plant's non-force side
+    reaches this function automatically; a second hand-written copy of the
+    inversion is precisely what could silently drift out of step with it. The
+    moment argument is zero and the returned angular acceleration is discarded:
+    only the translational row is being inverted. Measured on a 737 at 9,144 m
+    and 47N with wind, gust and all three controls deflected, this recovers the
+    aero-plus-thrust force to 2.2e-11 N out of 4.02e5 N -- 5.4e-17 relative,
+    which is the float64 cancellation floor and nothing else -- and gives the
+    same answer under `WGS84_J2` and `FLAT`.
 
     Inverting rather than recomputing `force / mass` is deliberate. It cannot
     silently disagree with the plant if a force term is ever added to
     `derivatives`, because it inverts whatever `derivatives` actually did.
+
+    The result is still divided by the CONSTANT `G0`, not by local gravity.
+    "In g" here means the conventional unit, so that a load factor is comparable
+    between latitudes rather than being rescaled by the 0.5% the WGS-84 gravity
+    magnitude varies over.
 
     Signs are body axes throughout: +x forward, +y right, +z down. Note that
     `load_factor` NEGATES the z component, because the load-factor convention is
@@ -148,9 +257,16 @@ def specific_force(
     increment was exactly, not approximately, right while `strip_increment`
     populated Cl alone.
     """
-    d = derivatives(state, controls, ac, wind_ned, omega_gust, increment=increment)
-    gravity_body = quat_to_dcm(state.quat).T @ jnp.array([0.0, 0.0, G0])
-    return (d.vel_body - gravity_body + jnp.cross(state.omega, state.vel_body)) / G0
+    d = derivatives(
+        state, controls, ac, wind_ned, omega_gust, anchor, earth_model,
+        increment=increment,
+    )
+    non_force, _ = earth_acceleration_terms(
+        jnp.zeros(3), jnp.zeros(3), ac.mass, ac.inertia, ac.inertia_inv,
+        state.vel_body, state.omega, state.quat,
+        anchor.r_ecef + state.pos_ecef, earth_model,
+    )
+    return (d.vel_body - non_force) / G0
 
 
 def load_factor(
@@ -159,6 +275,8 @@ def load_factor(
     ac: Aircraft,
     wind_ned: Array,
     omega_gust: Array,
+    anchor: earth.Anchor,
+    earth_model: earth.EarthModel,
     increment: CoeffIncrement | None = None,
 ) -> Array:
     """Normal load factor n_z. +1 in level flight, 0 in free fall.
@@ -174,7 +292,9 @@ def load_factor(
     by `vortex_viz._measure`, so a strip run whose increment stopped short of
     this function would understate its own headline number.
     """
-    return -specific_force(state, controls, ac, wind_ned, omega_gust, increment)[2]
+    return -specific_force(
+        state, controls, ac, wind_ned, omega_gust, anchor, earth_model, increment
+    )[2]
 
 
 # ---------------------------------------------------------------------------
