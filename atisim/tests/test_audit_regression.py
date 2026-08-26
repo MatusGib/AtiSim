@@ -1198,7 +1198,7 @@ def _module_constants():
     import pathlib
     found = set()
     root = pathlib.Path(__file__).resolve().parents[1]
-    for name in ("aero", "airframe", "atmosphere", "trim", "wind"):
+    for name in ("aero", "airframe", "atmosphere", "earth", "trim", "wind"):
         tree = ast.parse((root / f"{name}.py").read_text(encoding="utf-8"))
         for node in tree.body:
             targets = ([node.target] if isinstance(node, ast.AnnAssign)
@@ -1239,7 +1239,7 @@ def test_the_provenance_ledger_does_not_cover_the_source_modules():
     for internal consistency and nothing checked COVERAGE.
 
     This test is that direction. A NEW unledgered module-level constant in one
-    of the five modules below fails it. Both documents have been rewritten to
+    of the six modules below fails it. Both documents have been rewritten to
     describe exactly this and no more, so the claim and the check now agree.
     Closing the remaining gap means adding ledger entries and shrinking
     KNOWN_UNLEDGERED -- never widening it.

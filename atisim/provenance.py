@@ -31,15 +31,15 @@ numeric literals across nine physics modules against 13 entries, roughly 2%.
 
 The direction that was missing now exists, as
 `test_audit_regression.py::test_the_provenance_ledger_does_not_cover_the_source_modules`.
-It parses the MODULE-LEVEL numeric constants of five physics modules -- `aero`,
-`airframe`, `atmosphere`, `trim`, `wind` -- with `ast`, and fails if one appears
-that is neither in this ledger nor in that test's recorded baseline. So the true
-statement is narrower than the old one and worth having:
+It parses the MODULE-LEVEL numeric constants of six physics modules -- `aero`,
+`airframe`, `atmosphere`, `earth`, `trim`, `wind` -- with `ast`, and fails if one
+appears that is neither in this ledger nor in that test's recorded baseline. So
+the true statement is narrower than the old one and worth having:
 
-    a NEW module-level constant in one of those five modules, added without a
+    a NEW module-level constant in one of those six modules, added without a
     ledger entry, fails the build.
 
-Constants inside functions, in the other four physics modules, and the aircraft
+Constants inside functions, in the other three physics modules, and the aircraft
 data in `aircraft.py` are NOT covered. The baseline set may only ever shrink;
 widening it to admit a new constant is the one move that would make the check
 meaningless.
@@ -260,40 +260,54 @@ LEDGER: dict[str, Entry] = {
     # SOURCED against the standard; the JSBSim agreement recorded in `detail`
     # is a CHECK that both implementations read the same standard, not the
     # source itself.
-    "earth.a": Entry(
+    "earth.A_WGS84": Entry(
         "SOURCED",
         "6378137.0 m semi-major axis. WGS-84 defining parameter. Recovered from "
         "JSBSim v1.3.1 build 1837 inertial/sea-level-radius_ft at the equator, exact",
     ),
-    "earth.f": Entry(
+    "earth.F_WGS84": Entry(
         "SOURCED",
         "1/298.257223563 flattening. WGS-84 defining parameter. Recovered from the "
         "JSBSim polar sea-level radius, 8e-10 relative",
     ),
-    "earth.GM": Entry(
+    "earth.GM_WGS84": Entry(
         "SOURCED",
         "3.986004418e14 m^3/s^2 geocentric gravitational constant. WGS-84. Solved "
         "from JSBSim's equatorial and polar gravity, 4.1e-13 relative",
     ),
-    "earth.J2": Entry(
+    "earth.J2_WGS84": Entry(
         "SOURCED",
         "1.08262982e-3 second dynamic form factor. WGS-84. Solved from the same "
         "pair, 1.3e-11 relative",
     ),
-    "earth.omega": Entry(
+    "earth.OMEGA_WGS84": Entry(
         "SOURCED",
         "7.292115e-5 rad/s Earth rotation rate. WGS-84. Recovered from JSBSim's "
         "d(position/epa-rad)/dt over 10 s, exact",
     ),
-    "earth.b": Entry(
+    "earth.B_WGS84": Entry(
         "DERIVED",
         "a(1-f) = 6356752.314245 m. NOT taken from JSBSim, which reports "
         "6356752.314186 m -- a 5.87e-5 m difference that is its internal storage "
         "in feet round-tripping, not a different ellipsoid",
-        ("earth.a", "earth.f"),
+        ("earth.A_WGS84", "earth.F_WGS84"),
     ),
-    "earth.e2": Entry(
-        "DERIVED", "f(2-f), first eccentricity squared", ("earth.f",)
+    "earth.E2_WGS84": Entry(
+        "DERIVED", "f(2-f), first eccentricity squared", ("earth.F_WGS84",)
+    ),
+    "earth.EP2_WGS84": Entry(
+        "DERIVED",
+        "e2/(1-e2), second eccentricity squared",
+        ("earth.E2_WGS84",),
+    ),
+    "earth.BOWRING_ITERATIONS": Entry(
+        "DECLARED",
+        "3, the fixed iteration count for Bowring's method in "
+        "ecef_to_geodetic -- fixed rather than converged so the routine stays "
+        "jittable and differentiable. SENSITIVITY, MEASURED: worst round-trip "
+        "altitude error is 3.5e-6 m at 1 iteration, 1.4e-8 m at 2, and 3.7e-9 m "
+        "at 3, against a 9.3e-10 m ECEF ulp -- three reaches the float64 floor "
+        "and a fourth buys nothing.",
     ),
 
     "airframe.tail_arm_band": Entry(

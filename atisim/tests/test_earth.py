@@ -223,11 +223,12 @@ def test_every_wgs84_constant_is_in_the_provenance_ledger():
     """
     from atisim.provenance import LEDGER
 
-    for name in ("earth.a", "earth.f", "earth.GM", "earth.J2", "earth.omega"):
+    for name in ("earth.A_WGS84", "earth.F_WGS84", "earth.GM_WGS84",
+                 "earth.J2_WGS84", "earth.OMEGA_WGS84"):
         assert name in LEDGER, f"{name} missing from the provenance ledger"
         assert LEDGER[name].category == "SOURCED"
         assert "WGS-84" in LEDGER[name].detail
 
-    for name in ("earth.b", "earth.e2"):
+    for name in ("earth.B_WGS84", "earth.E2_WGS84"):
         assert LEDGER[name].category == "DERIVED"
         assert LEDGER[name].inputs, f"{name} claims DERIVED with no inputs"
