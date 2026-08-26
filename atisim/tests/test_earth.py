@@ -244,12 +244,28 @@ def test_our_geodesy_reproduces_jsbsims_own_position_and_frame():
     This is the check that would have failed had we used geocentric latitude:
     the t_e2l comparison is the one that costs 65 m/s in v_north at 47 degrees.
 
-    The lat/lon/t_e2l tolerances are 1e-11, not 1e-12: re-encoding OUR lat/lon
-    back to ECEF reproduces JSBSim's r_ecef exactly (0.0 m residual measured),
-    but re-encoding JSBSim's OWN reported lat with that SAME r_ecef is off by
-    5.9e-5 m -- JSBSim's own (r_ecef, lat) pair is not perfectly self-consistent
-    at that level, not a defect on our side. Measured worst case is 9.3e-12 rad
-    in lat and 7.1e-12 in t_e2l; both get roughly 2x headroom here.
+    THE 1e-11 TOLERANCE IS THE SEMI-MINOR AXIS, AND IT IS NOT NOISE. The plan
+    specified 1e-12 and that fails, at 9.255e-12 rad on the 47 deg probe. The
+    cause was found rather than absorbed:
+
+        worst latitude residual   9.255e-12 rad = 5.923e-05 m on the ground
+        our b minus JSBSim's b                    5.870e-05 m
+
+    Those are the same number to 1%. `earth.B_WGS84` is DERIVED as a(1-f) =
+    6356752.314245 m; JSBSim reports 6356752.314186 m, its own value round-
+    tripped through feet. Re-running this inversion with JSBSim's b instead
+    drops the residual by 19x to 153x per probe, which is what identifies the
+    term. So this is a disagreement about the fifth decimal of one constant,
+    showing up as an angle, and it is bounded by that constant.
+
+    IT IS DELIBERATELY NOT FIXED. Adopting JSBSim's b to close a tolerance
+    would be picking a constant to make a test pass, and it would contradict
+    test_the_defining_wgs84_constants_are_exact, which exists to stop exactly
+    that. 0.06 mm of ground position is far below anything this project
+    reports.
+
+    Measured worst case 9.3e-12 rad in lat and 7.1e-12 in t_e2l; both get
+    roughly 2x headroom here.
     """
     for p in _probes():
         lat, lon, h = earth.ecef_to_geodetic(p.r_ecef)
