@@ -264,28 +264,47 @@ def test_our_geodesy_reproduces_jsbsims_own_position_and_frame():
     that. 0.06 mm of ground position is far below anything this project
     reports.
 
-    Measured worst case 9.3e-12 rad in lat and 7.1e-12 in t_e2l; both get
-    roughly 2x headroom here.
+    THE TOLERANCE IS SET AGAINST THE BOUND, NOT AGAINST THE OBSERVATION.
+    Measured worst case is 9.255e-12 rad in lat, 3.100e-13 in lon and 7.050e-12
+    in t_e2l. 1e-11 would clear the latitude term by 1.08x -- shaved to just
+    above what happened to be observed, which is the kind of tolerance that
+    fails spuriously the first time the reference is regenerated and then gets
+    loosened by someone who does not know why it was tight. 2e-11 is about
+    twice the b-discrepancy bound above, which is the quantity that actually
+    limits the agreement.
+
+    Nothing is weakened by that. The mistake this test exists to catch --
+    geocentric latitude in place of geodetic -- moves t_e2l by 2.57e-3, which
+    is EIGHT ORDERS clear of either tolerance.
     """
     for p in _probes():
         lat, lon, h = earth.ecef_to_geodetic(p.r_ecef)
-        assert float(lat) == pytest.approx(p.lat, abs=1e-11)
-        assert float(lon) == pytest.approx(p.lon, abs=1e-11)
+        assert float(lat) == pytest.approx(p.lat, abs=2e-11)
+        assert float(lon) == pytest.approx(p.lon, abs=2e-11)
 
         back = earth.geodetic_to_ecef(lat, lon, h)
         assert np.allclose(np.asarray(back), p.r_ecef, atol=1e-6)
 
-        assert np.allclose(np.asarray(earth.ecef_to_ned_matrix(lat, lon)), p.t_e2l, atol=1e-11)
+        assert np.allclose(np.asarray(earth.ecef_to_ned_matrix(lat, lon)), p.t_e2l, atol=2e-11)
 
         # And the frame actually maps JSBSim's ECEF velocity onto its own NED.
         assert np.allclose(p.t_e2l @ p.vel_ecef, p.vel_ned, atol=1e-9)
 
 
 def test_our_j2_gravity_reproduces_jsbsims_at_every_probe():
-    """3.6e-13 relative when the position is read back from the engine.
+    """Worst 4.599e-13 relative, when the position is read back from the engine.
 
-    Feeding a nominal altitude instead puts this at 2.4e-6. The tolerance is set
-    tight enough that the nominal-altitude mistake fails it.
+    THE READ-BACK RULE IS WHAT THIS MEASURES. Feeding the NOMINAL commanded
+    position into the gravity formula instead of the one JSBSim actually
+    reached puts the worst error at 4.833e-06 -- seven orders worse -- because
+    the aircraft drifts up to 448 m during the two-second settle. The rel=1e-10
+    tolerance sits 217x above the read-back figure and four orders BELOW the
+    nominal-position mistake, so it passes the right one and fails the wrong
+    one with room on both sides.
+
+    Both numbers are measured across all six probes of the frozen reference.
+    They supersede the 3.6e-13 and 2.4e-6 quoted while the design was being
+    written, which came from a single probe at 47N.
     """
     for p in _probes():
         ours = np.asarray(earth.gravitation(p.r_ecef, earth.WGS84_J2))
