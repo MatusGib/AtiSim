@@ -17,9 +17,13 @@ checked. The recovery and its residuals are in
 docs/superpowers/specs/2026-08-26-wgs84-earth-rotation-design.md section 2.
 """
 
+from typing import NamedTuple
+
 import jax
 import jax.numpy as jnp
 from jax import Array
+
+from atisim.atmosphere import G0
 
 # -- Defining constants. WGS-84 defines `a` and `f`; everything else follows. --
 A_WGS84 = 6378137.0             # m, semi-major axis
@@ -94,3 +98,91 @@ def ecef_to_ned_matrix(lat: Array, lon: Array) -> Array:
         [-sl, cl, jnp.zeros_like(lat)],
         [-cf * cl, -cf * sl, -sf],
     ])
+
+
+class EarthModel(NamedTuple):
+    """Which Earth the plant is flying over.
+
+    Carried as a STATIC argument through `integrate.step`, so every branch below
+    resolves at trace time and costs nothing under jit. That is also why the
+    fields are plain str/float rather than arrays -- a NamedTuple of those is
+    hashable, and a static argument must be.
+
+    `gravity` is one of "j2", "inverse_square", "constant".
+    """
+
+    gravity: str
+    rotation_rate: float
+    ellipsoidal: bool
+
+
+WGS84_J2 = EarthModel("j2", OMEGA_WGS84, True)
+WGS84_INVERSE_SQUARE = EarthModel("inverse_square", OMEGA_WGS84, True)
+# FLAT: non-rotating, spherical, constant g along the local vertical. It is a
+# CONFIGURATION of this one plant, not a second implementation retained
+# alongside. It does NOT reproduce the pre-Earth model bit-for-bit -- see the
+# design doc section 8 and ASSUMPTIONS.md F4.
+FLAT = EarthModel("constant", 0.0, False)
+
+
+def gravitation(r_ecef: Array, model: EarthModel) -> Array:
+    """Gravitational acceleration in the ECEF frame, (3,) m/s^2.
+
+    GRAVITATION, NOT APPARENT GRAVITY. The centrifugal term belongs to the
+    equation of motion in `dynamics.derivatives` and is not folded in here.
+    JSBSim makes the same split, which is why it reports 9.8142 m/s^2 at the
+    equator rather than 9.7803.
+    """
+    radius = jnp.linalg.norm(r_ecef)
+    direction = r_ecef / radius
+
+    if model.gravity == "constant":
+        return -G0 * direction
+
+    magnitude = GM_WGS84 / (radius * radius)
+    if model.gravity == "inverse_square":
+        return -magnitude * direction
+
+    if model.gravity != "j2":
+        raise ValueError(f"unknown gravity model {model.gravity!r}")
+
+    # J2 zonal harmonic. `sin_gc` is the sine of the GEOCENTRIC latitude, which
+    # is what a spherical-harmonic expansion is written in -- unlike the local
+    # frame, which is geodetic.
+    sin_gc = r_ecef[2] / radius
+    common = 1.5 * J2_WGS84 * (A_WGS84 / radius) ** 2
+    horizontal = 1.0 + common * (1.0 - 5.0 * sin_gc * sin_gc)
+    vertical = 1.0 + common * (3.0 - 5.0 * sin_gc * sin_gc)
+    return -magnitude * jnp.array([
+        direction[0] * horizontal,
+        direction[1] * horizontal,
+        direction[2] * vertical,
+    ])
+
+
+class Anchor(NamedTuple):
+    """A run's geodetic origin: where local NED is pinned.
+
+    A traced pytree, not a static argument, because it carries arrays. It is
+    constant for the life of a run.
+
+    THERE IS DELIBERATELY NO DEFAULT ANCHOR. A default would silently pick a
+    latitude, and latitude now changes the answer -- the Coriolis term, the
+    trimmed bank angle and the gravity magnitude all depend on it. Every caller
+    states where it is flying.
+    """
+
+    lat: Array
+    lon: Array
+    h: Array
+    r_ecef: Array   # (3,)
+    T_e2l: Array    # (3,3), ECEF -> NED at (lat, lon)
+
+
+def anchor_at(lat: Array, lon: Array, h: Array) -> Anchor:
+    lat, lon, h = jnp.asarray(lat), jnp.asarray(lon), jnp.asarray(h)
+    return Anchor(
+        lat=lat, lon=lon, h=h,
+        r_ecef=geodetic_to_ecef(lat, lon, h),
+        T_e2l=ecef_to_ned_matrix(lat, lon),
+    )

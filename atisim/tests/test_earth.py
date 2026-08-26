@@ -101,3 +101,62 @@ def test_ecef_to_ned_matrix_is_orthonormal_and_points_down_along_the_ellipsoid_n
         north_ecef = m[0]
         lat2, _, _ = earth.ecef_to_geodetic(surface + np.asarray(north_ecef))
         assert float(lat2) > lat
+
+
+def test_j2_gravity_matches_the_values_read_off_the_jsbsim_binary():
+    """The two anchor values, measured from JSBSim v1.3.1 at sea level.
+
+    These are GRAVITATION, not apparent gravity: JSBSim reports 9.8142 at the
+    equator, not the 9.7803 that includes the centrifugal term. The centrifugal
+    term is a SEPARATE term in the equation of motion, and folding it into
+    gravity here would double-count it.
+    """
+    equator = earth.gravitation(earth.geodetic_to_ecef(0.0, 0.0, 0.0), earth.WGS84_J2)
+    pole = earth.gravitation(earth.geodetic_to_ecef(np.pi / 2, 0.0, 0.0), earth.WGS84_J2)
+
+    assert float(np.linalg.norm(np.asarray(equator))) == pytest.approx(
+        9.814197353250055, rel=1e-11
+    )
+    assert float(np.linalg.norm(np.asarray(pole))) == pytest.approx(
+        9.832066846743299, rel=1e-9
+    )
+    # It points inward.
+    assert float(np.asarray(equator)[0]) < 0.0
+    assert float(np.asarray(pole)[2]) < 0.0
+
+
+def test_j2_is_what_separates_the_two_gravity_models():
+    """The inverse-square model is JSBSim's `gravity-model = 0`, and it differs.
+
+    Carried so a test can isolate what J2 alone is worth. At the pole the two
+    differ by roughly 3 J2 = 0.32%, which is far above anything this project
+    calls agreement, so the choice of model is not a detail.
+    """
+    r = earth.geodetic_to_ecef(np.pi / 2, 0.0, 0.0)
+    j2 = float(np.linalg.norm(np.asarray(earth.gravitation(r, earth.WGS84_J2))))
+    inv = float(np.linalg.norm(np.asarray(earth.gravitation(r, earth.WGS84_INVERSE_SQUARE))))
+    assert abs(j2 / inv - 1.0) == pytest.approx(3.0 * earth.J2_WGS84 * (earth.A_WGS84 / earth.B_WGS84) ** 2, rel=0.02)
+
+
+def test_flat_is_constant_g_along_the_local_vertical_and_does_not_rotate():
+    """FLAT is a CONFIGURATION of the one plant, not a second implementation."""
+    from atisim.atmosphere import G0
+
+    r = earth.geodetic_to_ecef(np.radians(47.0), 0.3, 9144.0)
+    g = np.asarray(earth.gravitation(r, earth.FLAT))
+    assert float(np.linalg.norm(g)) == pytest.approx(G0, rel=1e-14)
+    # Along the inward radius: FLAT is spherical, so down is -r_hat.
+    assert np.allclose(g / np.linalg.norm(g), -np.asarray(r) / np.linalg.norm(np.asarray(r)), atol=1e-14)
+    assert earth.FLAT.rotation_rate == 0.0
+    assert earth.WGS84_J2.rotation_rate == earth.OMEGA_WGS84
+
+
+def test_an_anchor_carries_its_own_ecef_position_and_frame():
+    anchor = earth.anchor_at(np.radians(47.0), np.radians(11.0), 0.0)
+    assert np.allclose(
+        np.asarray(anchor.r_ecef),
+        np.asarray(earth.geodetic_to_ecef(np.radians(47.0), np.radians(11.0), 0.0)),
+        atol=1e-9,
+    )
+    m = np.asarray(anchor.T_e2l)
+    assert np.allclose(m @ m.T, np.eye(3), atol=1e-13)
