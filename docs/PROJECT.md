@@ -64,7 +64,7 @@ without a core rewrite. Both have now been exercised and both held.
 | `verification.py` | **tier 0** — `fitted_order`, `oscillator_refinement`, `fixed_control_refinement`, `newton_residual_history`, `torque_free_omega`, `without_aerodynamics`, `free_fall_through_a_swinging_wind` | takes **no aircraft data as a reference**; a failure here is a defect in the core. Every check lives here rather than inside its test, so the notebook runs the same code the suite asserts on |
 | `validation.py` | **tiers 1–2** — `longitudinal_matrix`, `to_stability_axes`, `to_imperial_matrix`, `longitudinal_modes`, `lateral_modes`, `Reference`/`REFERENCES`, `CAUGHEY_A`, `sweep`, `affine_fit` | the linearisation lives here, not in `tests/modes.py`, which is now a re-export. Every reference number carries its citation as a `Reference.source` field, enforced by a test |
 | **`docs/ASSUMPTIONS.md`** | not code — the **assumption register**: what the model assumes, why, and a measured bound on each | this document records what has been *measured*; that one records what has been *assumed*. Read it before quoting any result to better than ~0.5%, before flying far from a trim point, and before adding a wind field whose scale approaches a wingspan |
-| **`provenance.py`** | the **ledger**: a constant's category and citation, as data — SOURCED / DERIVED / CALIBRATED / DECLARED | `test_provenance.py` enforces the entries' internal consistency; coverage is enforced separately and only over five modules' module-level constants — see §2's point 4, which corrects what this row used to claim. Answers "which numbers are bulletproof?" as a query rather than a memory |
+| **`provenance.py`** | the **ledger**: a constant's category and citation, as data — SOURCED / DERIVED / CALIBRATED / DECLARED | `test_provenance.py` enforces the entries' internal consistency; coverage is enforced separately and only over six modules' module-level constants — see §2's point 4, which corrects what this row used to claim. Answers "which numbers are bulletproof?" as a query rather than a memory |
 | **`airframe.py`** | where on the airframe the field is sampled: derived tail arm, sample stations, spanwise loading | the tail arm is DERIVED from `Cmq`/`CLq`, never sourced; the loading shape is DECLARED and carries a measured sensitivity |
 | `state.py` | `State`/`Controls`, quaternion utilities | NED inertial, body x-fwd/y-right/z-down; quat is `[w,x,y,z]`, body→NED |
 | `atmosphere.py` | ISA to 20 km | two layers — the 747 cruise sits above the tropopause |
@@ -138,9 +138,11 @@ rigid-rotation self-consistency test that found them. **Read it before changing 
    physics modules against 13 entries, about **2%**. The missing direction now exists as
    `test_audit_regression.py::test_the_provenance_ledger_does_not_cover_the_source_modules`,
    and the true statement is narrower: **a NEW module-level constant in `aero`, `airframe`,
-   `atmosphere`, `trim` or `wind`, added without a ledger entry, fails the build.**
-   Constants inside functions, the other four physics modules, and the aircraft data in
-   `aircraft.py` are not covered. The recorded baseline may only ever shrink — a second
+   `atmosphere`, `earth`, `trim` or `wind`, added without a ledger entry, fails the build.**
+   Constants inside functions, the other three physics modules, and the aircraft data in
+   `aircraft.py` are not covered. `earth` joined the enforced set in session 23, when the
+   WGS-84 constants landed; all nine of its module-level constants carry entries, so the
+   module was added without the baseline growing by a single name. The recorded baseline may only ever shrink — a second
    test fails if a name is ledgered and left in it.
 
 ## 3. Sources
