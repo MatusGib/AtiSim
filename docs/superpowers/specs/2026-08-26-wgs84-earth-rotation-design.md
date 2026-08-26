@@ -86,10 +86,19 @@ New module. Pure functions, no state.
 
 - `geodetic_to_ecef(lat, lon, h)` and `ecef_to_geodetic(r)`.
   `ecef_to_geodetic` uses **Bowring's method at a fixed 3 iterations** — fixed rather than
-  converged so it stays jittable and differentiable. Measured worst round-trip error over
-  lat in [-89.9°, 89.9°] x h in {0, 5, 12.192, 20} km: **1 iteration 3.5e-6 m, 2 iterations
-  1.4e-8 m, 3 iterations 1.4e-9 m.** Three is chosen because it reaches the float64 floor
-  — 1.4e-9 m is the ulp of an ECEF coordinate — so further iterations buy nothing.
+  converged so it stays jittable and differentiable. Measured worst round-trip ALTITUDE
+  error over lat in [-90°, 90°] x h in {0, 5, 12.192, 20} km: **1 iteration 3.5e-6 m,
+  2 iterations 1.4e-8 m, 3 iterations 3.7e-9 m.** Three is chosen because it reaches the
+  float64 floor — **9.3e-10 m** is the ulp of an ECEF coordinate — so further iterations
+  buy nothing.
+
+  **Corrected after implementation.** This paragraph first read "3 iterations 1.4e-9 m"
+  against "a 1.4e-9 m ulp", which conflated two different quantities: 1.4e-9 m is the
+  worst LATITUDE error expressed as a distance, not the altitude error, and the ECEF ulp
+  is 9.3e-10 m rather than 1.4e-9 m. The range was also stated as [-89.9°, 89.9°]; the
+  non-singular altitude form actually shipped is valid at the poles, so the measurement
+  covers [-90°, 90°] inclusive. As implemented and measured: worst altitude error
+  **2.94e-9 m**, worst latitude error **4.58e-11 arcsec**.
 - `ecef_to_ned_matrix(lat, lon)` — geodetic latitude, per §2.
 - `gravitation(r_ecef, model)` — J2 or inverse-square.
 - `EarthModel`, a NamedTuple carried as a **static** argument so its branches resolve at
