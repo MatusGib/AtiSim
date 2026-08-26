@@ -19,6 +19,72 @@ from atisim.loads import CoeffIncrement
 from atisim.state import Controls, State, quat_derivative, quat_to_dcm
 
 
+# Mean earth radius, for the inverse-square gravity fall-off below. This is the
+# GEODETIC mean (IUGG R1), deliberately not atmosphere.R_EARTH_ISA: that one is
+# the ISA's nominal radius, chosen to make the standard atmosphere's tables
+# self-consistent, and it is a property of the pressure model rather than of the
+# gravity field. The two differ by 0.2% and reproduce g(12,192 m) as 9.76922 and
+# 9.76914 respectively; the first is the figure PROJECT.md section 5 records.
+R_EARTH_MEAN = 6371000.0  # m
+
+
+def gravity(z: Array) -> Array:
+    """Gravitational acceleration at geometric altitude z, m/s^2.
+
+    `g(z) = g0 (R / (R + z))^2` -- Newtonian inverse-square from the earth's
+    centre, which is the whole of the model. NOT included, and each is larger
+    than the altitude term at some latitude: the WGS-84 latitude variation
+    (9.780 at the equator against 9.832 at the poles, 0.53%), the centrifugal
+    term of a rotating earth, and any gravity anomaly. This is a FLAT,
+    NON-ROTATING earth model (ASSUMPTIONS A1) that now varies g with height
+    only, so the altitude dependence is exact and the latitude dependence is
+    absent rather than approximated.
+
+    Smooth and monotonic, so it costs `jacfwd` and RK4 nothing.
+
+    Worth 0.383% at the 747's cruise altitude: 9.76922 against 9.80665. Session
+    12 measured that and chose not to model it; session 23 modelled it because
+    correctness at altitude was preferred to a frozen baseline.
+    """
+    return G0 * (R_EARTH_MEAN / (R_EARTH_MEAN + z)) ** 2
+
+
+def yaw_damper_rudder(controls: Controls, ac: Aircraft, r: Array,
+                      mach: Array) -> Array:
+    """Rudder actually at the surface, once the yaw damper has had its say.
+
+    `delta_r = delta_r_commanded + k * r`, above the schedule Mach. With
+    `Cndr < 0` a positive `k` opposes yaw rate, so the damper ADDS yaw damping:
+    the equivalent coefficient increment is
+
+        dCnr = Cndr * k * 2V/b
+
+    which at the 737's cruise condition is -1.1472 against a bare `Cnr` of
+    -0.350 -- i.e. the damper is over three times the airframe's own damping,
+    and is most of what sets the real aeroplane's Dutch roll. That figure is not
+    chosen here: it is what JSBSim's own FCS was measured to add.
+
+    *** THIS MAKES A DAMPED ENTRY NOT A BARE AIRFRAME. *** Three consequences,
+    all of which are the point rather than side-effects:
+
+      - a layer-1 sweep of yaw rate now moves the rudder, so it no longer
+        isolates `Cnr`
+      - layer 3 becomes directly comparable with JSBSim's closed-loop
+        `do_linearization`, WITHOUT the analytic fold that used to stand in for
+        the damper
+      - layer 4 prescribes surface positions; a damper adds to them, so a
+        prescribed-rudder trajectory is no longer prescribed
+
+    `r` is the INERTIAL yaw rate, not the gust-relative one. A real rate gyro
+    senses the aircraft's rotation in inertial space and has no way to know
+    about the air mass, so a damper responding to `omega_rel` would be sensing
+    something no instrument measures. This matters in turbulence and nowhere
+    else, which is precisely where the damper is worth having.
+    """
+    active = mach > ac.yaw_damper_mach_on
+    return controls.rudder + jnp.where(active, ac.yaw_damper_gain * r, 0.0)
+
+
 def relative_velocity(vel_body: Array, quat: Array, wind_ned: Array) -> Array:
     """Body-axis velocity relative to the surrounding air mass."""
     dcm = quat_to_dcm(quat)  # body -> NED
@@ -68,11 +134,17 @@ def derivatives(
     # aircraft does not have.
     mach = jnp.linalg.norm(vel_rel) / a_sound
     thrust = thrust_force(controls, ac, rho, mach)
-    gravity_body = dcm.T @ jnp.array([0.0, 0.0, G0])
+    gravity_body = dcm.T @ jnp.array([0.0, 0.0, gravity(altitude)])
+
+    # The surface the aerodynamics see, which is the commanded rudder plus the
+    # yaw damper's contribution. `yaw_damper_gain` is zero for every aircraft
+    # that does not declare one, so this is an exact no-op for them.
+    surfaces = controls._replace(
+        rudder=yaw_damper_rudder(controls, ac, state.omega[2], mach))
 
     def accelerate(alphadot):
         f, m = aero_forces_moments(
-            vel_rel, omega_rel, controls, ac, rho, a_sound,
+            vel_rel, omega_rel, surfaces, ac, rho, a_sound,
             increment=increment, alphadot_gust=alphadot,
         )
         f = f + thrust
@@ -149,7 +221,14 @@ def specific_force(
     populated Cl alone.
     """
     d = derivatives(state, controls, ac, wind_ned, omega_gust, increment=increment)
-    gravity_body = quat_to_dcm(state.quat).T @ jnp.array([0.0, 0.0, G0])
+    # The gravity REMOVED is the local one, g(h) -- that is the field the
+    # airframe is actually in. The divisor stays G0, because "g units" are
+    # STANDARD gravity: an accelerometer is calibrated in them, JSBSim's
+    # accelerations/Nz reports in them, and a DFDR trace is in them. Using g(h)
+    # for both would silently redefine the unit and make n_z at 40,000 ft
+    # incomparable with n_z at sea level.
+    gravity_body = quat_to_dcm(state.quat).T @ jnp.array(
+        [0.0, 0.0, gravity(-state.pos_ned[2])])
     return (d.vel_body - gravity_body + jnp.cross(state.omega, state.vel_body)) / G0
 
 
@@ -274,5 +353,5 @@ def thrust_authority(
         * (1.0 + ac.mach_ram * mach**2)
     )
     drag = trim_throttle * available
-    weight = ac.mass * G0
+    weight = ac.mass * gravity(altitude)
     return (available - drag) / weight, -drag / weight

@@ -212,11 +212,25 @@ def test_load_factor_in_trimmed_level_flight_is_cos_theta_not_one():
     is built from DFDR "normal acceleration", which is exactly this body-normal
     quantity, so this is the right convention for that comparison rather than a
     flight-path-normal one.
+
+    *** AND SINCE SESSION 23 IT IS NOT cos(theta) EITHER -- IT IS
+    cos(theta)*g(h)/G0. *** `load_factor` divides specific force by STANDARD
+    gravity, because that is what a "g" is: an accelerometer is calibrated in
+    standard g, JSBSim's accelerations/Nz reports in it, and a DFDR trace is in
+    it. The gravity the airframe is actually in is g(h). So level flight at
+    40,000 ft reads 0.99301 rather than 0.99681 -- 0.38% lower, which is what a
+    real accelerometer reads up there.
+
+    Dividing by g(h) instead would make this cos(theta) again and would be
+    wrong: it would silently redefine the unit, so an n_z at 40,000 ft could no
+    longer be compared with one at sea level, or with either of the two external
+    datasets this project measures itself against.
     """
     import jax.numpy as jnp
 
     from atisim import trim
     from atisim.aircraft import CRUISE, REGISTRY
+    from atisim.atmosphere import G0
     from atisim.state import quat_to_euler
 
     ac = REGISTRY["boeing747"]
@@ -227,8 +241,13 @@ def test_load_factor_in_trimmed_level_flight_is_cos_theta_not_one():
         state, trim.trimmed_controls(x[1], x[2]), ac, jnp.zeros(3), jnp.zeros(3)
     )
     theta = float(quat_to_euler(state.quat)[1])
-    assert float(n_z) == pytest.approx(np.cos(theta), abs=1e-9)  # measured 0.996728
-    assert float(n_z) == pytest.approx(0.9967, abs=1e-4)
+    g_ratio = float(dynamics.gravity(jnp.array(h))) / G0
+    assert float(n_z) == pytest.approx(np.cos(theta) * g_ratio, abs=1e-9)
+    assert float(n_z) == pytest.approx(0.9930, abs=1e-4)  # was 0.9967 under constant g
+    # The gravity factor is load-bearing here, not decoration: without it the
+    # assertion above would be out by 3.8e-3, nearly four thousand times its own
+    # tolerance. Pinned so a revert to constant g fails loudly.
+    assert abs(np.cos(theta) - np.cos(theta) * g_ratio) > 1e-3
 
 
 def test_load_factor_matches_the_aerodynamic_and_thrust_force_directly(test_aircraft):

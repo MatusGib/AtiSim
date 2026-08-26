@@ -60,11 +60,40 @@ signal and does not accumulate within a window.
 **Not sound for:** any claim about ground track over hundreds of km, or a run longer than
 about ten minutes. 6.88 m per 20 s grows as t².
 
-### A2. Constant gravity, g = 9.80665 m/s²
+### A2. ~~Constant gravity, g = 9.80665 m/s²~~ — RETIRED IN SESSION 23
 
-**Where:** `atmosphere.G0`, used by `dynamics.derivatives`, `trim`, `specific_force`.
+> **This assumption no longer holds. `dynamics.gravity(z) = g₀(R/(R+z))²` is modelled,
+> with R = 6,371,000 m.** The record below is kept because it is why the assumption stood
+> for twenty-two sessions and what it was measured to cost; the decision at the end of it
+> was reversed, not the measurement.
+>
+> **What is still assumed:** the *latitude* variation (9.780 equatorial against 9.832
+> polar, **0.53%** — larger than the altitude term this change models), the centrifugal
+> term of a rotating earth, and any gravity anomaly. Those follow from A1's flat,
+> non-rotating earth and are unchanged. So the altitude dependence is now exact and the
+> latitude dependence is absent rather than approximated.
+>
+> **What moved, measured:** the 747's phugoid ωn by **−0.3984%** against a −0.3817% change
+> in g, which is Lanchester's 1:1 to within the density change that came with it. The
+> sea-level 747-approach entry is **bit-identical** in α, δe and throttle — the control,
+> since g(0) = g₀ exactly.
+>
+> **One consequence worth stating separately, because it changes what a number means:**
+> `load_factor` divides specific force by **G0**, not by g(h), because "g units" are
+> standard gravity — an accelerometer is calibrated in them, so is JSBSim's
+> `accelerations/Nz`, so is a DFDR trace. So trimmed level flight at altitude now reads
+> `cos(θ₀)·g(h)/G0`, slightly **under** cos(θ₀): 0.9930 rather than 0.9968 at 40,000 ft.
+> That is what a real accelerometer reads there. `checks.trimmed_start` carries the
+> corrected invariant; the old `n_z == cos(θ₀)` form failed by 3.8e-3 g, nearly four times
+> its own tolerance, the moment gravity stopped being constant.
 
-**Why:** simplicity, and it is exact at sea level.
+**Where:** ~~`atmosphere.G0`~~ `dynamics.gravity`, used by `dynamics.derivatives`,
+`trim.minimum_drag_speed`, `specific_force` and `thrust_authority`. **`atmosphere.G0`
+remains constant inside the barometric integration and must**: geopotential altitude is
+*defined* as the coordinate that absorbs g's variation, so ISA already accounts for it and
+substituting g(h) there too would double-count. See A3.
+
+**Why it was assumed:** simplicity, and it is exact at sea level.
 
 **Bound, measured** — using `g(h) = g₀·(R/(R+h))²`, R = 6,371,008.8 m:
 
@@ -123,15 +152,44 @@ phugoid**, which carries the full 0.38%. It is safe for the lateral modes (0.06�
 for the short period (~0). Revisit if the project ever compares one aircraft across two
 altitudes, which is the case a constant g genuinely cannot serve.
 
-### A3. Altitude is geopotential, not geometric
+### A3. ~~Altitude is geopotential, not geometric~~ — RETIRED IN SESSION 23
 
-**Where:** `atmosphere.py`, and its docstring already says so.
+> **This was not an assumption. It was a defect, and the register described it as sound
+> for twenty-two sessions.**
+>
+> `atmosphere.py` documented that "altitude is treated as geopotential" and its formulas
+> were the geopotential ones — but **every caller passed geometric altitude.**
+> `dynamics.derivatives` passes `-state.pos_ned[2]`, straight out of the NED position, and
+> nothing converted it. The module was not making an approximation; it was being handed one
+> quantity and using it as another.
+>
+> **The entry below states the bound as 0.17% at 11 km "stated in the source module", and
+> that is the failure worth recording.** It quoted the module's own docstring as evidence
+> for the module's own correctness. Nothing measured the error at the altitudes actually
+> flown, and three separate places in the codebase had meanwhile grown workarounds for it —
+> `jsbsim_ref.matched_altitude`, the 747 generator's density solve, and a
+> hand-tuned altitude literal in `CRUISE` for each recovered entry.
+>
+> **Fixed:** `atmosphere.geopotential(z) = R z / (R + z)` with the ISA's own
+> R = 6,356,766 m, applied at the boundary, so callers keep passing the geometric altitude
+> they have.
+>
+> **What it was worth, measured:** density **+0.159%** at 30,000 ft and **+0.368%** at
+> 40,000 ft — exactly the figures PROJECT.md §4 had recorded as a known bias. Since
+> q̄ ∝ ρ, that was a same-signed error on every aerodynamic force at altitude.
+>
+> **The proof it is right:** AtiSim's density at a nominal 30,000 ft now agrees with
+> JSBSim's to **+0.000479%**, where it was 0.159% out. The `matched_altitude` workaround,
+> which used to shift 43.22 ft to close that gap, now needs **0.13 ft** — and applying the
+> old frozen shift would *introduce* a 0.158% error. It is recomputed at load time rather
+> than frozen, because it is a property of AtiSim's atmosphere and freezing it froze a
+> dependency on a model this project owns.
 
-**Bound:** 0.17% at 11 km, 0.31% at 20 km — stated in the source module.
+**Bound:** ~~0.17% at 11 km, 0.31% at 20 km — stated in the source module.~~ Superseded:
+0.159% at 30,000 ft and 0.368% at 40,000 ft, **measured**, now zero.
 
-**Verdict: sound**, and it is the smaller sibling of A2. Both are altitude-dependent
-systematic errors of a few tenths of a percent, and both should be revisited together if
-either is.
+**Verdict:** ~~sound~~ **it was a defect, and "the smaller sibling of A2" was wrong twice —
+it was not smaller, and it was not an assumption.**
 
 ### A4. There is no ground
 
@@ -1415,7 +1473,8 @@ solver preconditions live rather than a defect repair.
 | 2 | **B1** rigid airframe vs flexible data | **unquantifiable** | cap claims; do not assert structural fidelity |
 | 3 | **C3** derivatives frozen across the envelope | **unbounded** | state the excursion with every result away from trim |
 | 4 | **E2** point-aircraft gusts, vortex at 2.3–3.1 spans | **CLOSED for the linear fit, session 13; strip path flyable and measured, session 14** | correction is exactly 0 inside the core and 2.0·`V₀/r₀` at the boundary, where the gradient is discontinuous. Curvature beyond the linear fit rests on a DECLARED loading shape: 2.6% across defensible shapes, 49.7% including a uniform bracket. Flying the strip path moves the vortex result by **0.000000 m** — the field has no spanwise variation — so the headline number is still the point model's. **Roll only**; a pitch integral is the open work |
-| 5 | **A2** constant g, +0.383% at cruise | **CLOSED, session 12** | not modelled: worst mode movement is 7.6% of its tolerance. Phugoid only carries the full 0.38% |
+| 5 | **A2** constant g, +0.383% at cruise | ~~CLOSED, session 12~~ **MODELLED, session 23** | `dynamics.gravity(z) = g₀(R/(R+z))²`. Session 12 measured it and chose not to model it; session 23 modelled it anyway, preferring correctness at altitude to a frozen baseline. Moved the 747 phugoid ωn −0.3984% against g's −0.3817% — Lanchester's 1:1. Sea level bit-identical. **Latitude variation (0.53%, larger) is still absent** — see A1 |
+| 5a | **A3** geometric altitude through geopotential formulas | **WAS A DEFECT, NOT AN ASSUMPTION — FIXED session 23** | The register called it "sound" for 22 sessions, quoting the module's own docstring as evidence for the module's own correctness. Worth 0.159% of density at 30,000 ft and 0.368% at 40,000. AtiSim now matches JSBSim at the nominal altitude to 4.8e-6, where it was 0.159% out |
 | 6 | **C5** no thrust moment, no spool | **thrust moment newly bounded** | 0.38° of equivalent elevator at cruise trim, 1.5% of pitch authority, from CR-114494 p. 19.0-2. Spool is still required before any powered-recovery result |
 | 7 | **B4** accelerometer at CG vs DFDR | caveat | keep Fig. 8 claims as orderings |
 | 8 | **C9** every lift increment acts at the CG's relative wind | **bounded, wholly outside the envelope** | a real energy violation — +56.9 kW on the Cherokee at 8.26 rad/s — and **0 of 80,000** in-envelope states show it, threshold pitch rate 84–201 °/s, `max(E − E₀) = +0` exactly in every still-air run. Deliberately not repaired: the correction needs an arm for every lift channel and the only available one rests on an attribution this project has rejected |

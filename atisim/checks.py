@@ -174,7 +174,23 @@ def _energy_and_power(traj, ac: Aircraft, field):
     vel_ned = np.einsum("nij,nj->ni", dcm, np.asarray(traj.vel_body))
 
     mass = float(ac.mass)
-    energy = 0.5 * mass * (vel_ned**2).sum(axis=1) + mass * float(G0) * (-pos[:, 2])
+    # Potential energy under the inverse-square g(h) this model now flies, via
+    # an identity that is the whole reason geopotential altitude is defined:
+    #
+    #   integral(0..z) g0 (R/(R+s))^2 ds  =  g0 * R z / (R + z)  =  g0 * H(z)
+    #
+    # so PE per unit mass is exactly g0 times the GEOPOTENTIAL height. Using
+    # g0*z instead would overstate PE by 0.38% at 40,000 ft and put a height-
+    # dependent drift into a check whose entire job is to detect drift.
+    #
+    # `geopotential` is the atmosphere's ISA radius and `gravity` the geodetic
+    # mean, which differ by 0.2%; this uses `dynamics`' own, because it must
+    # match the gravity the trajectory was actually flown under, not the one the
+    # pressure model uses.
+    height = -pos[:, 2]
+    R = dynamics.R_EARTH_MEAN
+    pe_height = R * height / (R + height)
+    energy = 0.5 * mass * (vel_ned**2).sum(axis=1) + mass * float(G0) * pe_height
 
     controls_hist = Controls(*[jnp.asarray(traj.controls[:, i]) for i in range(4)])
 
@@ -408,7 +424,18 @@ def trimmed_start(traj, ac: Aircraft, controls: Controls, field) -> Check:
     n_z = load_factor_series(traj, ac)
     dcm = np.asarray(quat_to_dcm(jnp.asarray(traj.quat[0])))
     theta0 = float(np.arcsin(np.clip(-dcm[2, 0], -1.0, 1.0)))
-    offset = abs(float(n_z[0]) - np.cos(theta0))
+    # *** NOT cos(theta0) ALONE -- session 23. ***
+    # `load_factor` divides specific force by STANDARD gravity, because "g units"
+    # are standard g (an accelerometer is calibrated in them, so is JSBSim's
+    # accelerations/Nz, so is a DFDR trace). The gravity the airframe is actually
+    # in is g(h). So trimmed level flight at altitude reads cos(theta0)*g(h)/G0,
+    # slightly UNDER cos(theta0) -- which is what a real accelerometer reads
+    # there, not an error. At the 747's 40,000 ft that factor is 0.996183 and the
+    # difference is 3.8e-3 g, nearly four times this check's own tolerance, so
+    # the old form failed the moment gravity stopped being constant.
+    g_local = float(dynamics.gravity(jnp.asarray(-traj.pos_ned[0][2])))
+    expected = np.cos(theta0) * g_local / G0
+    offset = abs(float(n_z[0]) - expected)
 
     still_air = float(np.abs(np.asarray(traj.wind_ned)).max()) == 0.0
     if still_air:

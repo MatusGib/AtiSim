@@ -17,6 +17,9 @@ from pathlib import Path
 from typing import NamedTuple
 
 import numpy as np
+from scipy.optimize import brentq
+
+from atisim.atmosphere import density
 
 REFERENCE = Path(__file__).parent / "tests" / "data" / "jsbsim_737_reference.xml"
 
@@ -24,12 +27,28 @@ REFERENCE = Path(__file__).parent / "tests" / "data" / "jsbsim_737_reference.xml
 class Condition(NamedTuple):
     """The flight condition, and the altitude atisim must be run at.
 
-    `matched_altitude` is NOT `altitude`. atisim's ISA uses geometric
-    altitude where the standard uses geopotential, so its density at a nominal
-    30,000 ft is 0.159% below JSBSim's. Since qbar is proportional to rho, that
-    would put the same-signed bias on every force in every layer. The generator
-    solves for the geometric altitude at which atisim's density equals
-    JSBSim's -- 43.22 ft lower -- and that is what must be used.
+    `matched_altitude` is the geometric altitude at which atisim's density
+    equals the density JSBSim actually flew at. It is **recomputed at load
+    time** by `_match_density` rather than read from the reference file, and the
+    reason is session 23.
+
+    *** IT USED TO BE FROZEN, AND FREEZING IT WAS THE BUG. *** It is not a
+    JSBSim measurement -- it is a property of ATISIM's atmosphere, solved
+    against a JSBSim measurement. Freezing it therefore froze a dependency on a
+    model this project owns and can change. When session 23 corrected the ISA to
+    convert geometric to geopotential, the stored -43.22 ft stopped being a
+    correction and became a 0.158% density ERROR, in the same place the original
+    0.159% bias had been and in the same direction.
+
+    Recomputing it makes the quantity track the model it is derived from. What
+    stays frozen is `density`, which IS a JSBSim measurement.
+
+    After the session-23 fix the match is nearly the identity -- 30,000 ft
+    nominal against 29,999.9 ft matched -- because atisim's ISA and JSBSim's now
+    agree to 4.8e-6 relative. The mechanism is kept rather than deleted because
+    that residual is real: the two codes still differ in their ISA constants,
+    and a comparison that assumes they do not would be asserting something
+    nobody measured.
     """
 
     name: str
@@ -129,21 +148,41 @@ def _floats(text):
     return np.array([float(v) for v in text.split()])
 
 
+def _match_density(rho: float, nominal_m: float) -> tuple[float, float]:
+    """Geometric altitude at which atisim's density equals JSBSim's `rho`.
+
+    Solved here rather than read from the file -- see `Condition`. Identical in
+    form to `scripts/gen_jsbsim_vortex_reference.matched_altitude`, and it must
+    stay so: if the two ever disagree, the frozen vortex encounters and the
+    737 layers would be flown at different altitudes for the same reason.
+
+    The bracket is +/-400 m about the nominal, which is ~30x the largest match
+    this has ever needed (43.22 ft, before the session-23 ISA fix reduced it to
+    under a foot). A `ValueError` out of `brentq` means the two atmospheres have
+    diverged far more than any ISA constant difference explains.
+    """
+    h = brentq(lambda z: float(density(z)) - rho,
+               nominal_m - 400.0, nominal_m + 400.0, xtol=1e-12)
+    return h, abs(float(density(h)) - rho) / rho
+
+
 def load(path: Path = REFERENCE) -> Reference:
     root = ET.parse(path).getroot()
 
     conditions = {}
     for c in root.findall("condition"):
+        rho = float(c.findtext("density"))
+        matched, residual = _match_density(rho, float(c.findtext("altitude_m")))
         conditions[c.get("name")] = Condition(
             name=c.get("name"),
             altitude=float(c.findtext("altitude_m")),
-            matched_altitude=float(c.findtext("matched_altitude_m")),
-            density=float(c.findtext("density")),
+            matched_altitude=matched,
+            density=rho,
             sound_speed=float(c.findtext("sound_speed")),
             airspeed=float(c.findtext("airspeed")),
             mass=float(c.findtext("mass")),
             inertia=_floats(c.findtext("inertia")).reshape(3, 3),
-            density_match_residual=float(c.findtext("density_match_residual")),
+            density_match_residual=residual,
         )
 
     trims = {

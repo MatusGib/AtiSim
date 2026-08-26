@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 
 from atisim import aero
+from atisim.aircraft import CRUISE, REGISTRY
 from atisim.atmosphere import RHO0, speed_of_sound
 from atisim.state import Controls
 
@@ -268,3 +269,75 @@ def test_only_the_jsbsim_recovered_entries_carry_a_lift_table():
     for name, ac in REGISTRY.items():
         has_table = bool(ac.CL_table_alpha.size)
         assert has_table == (name in RECOVERED_FROM_JSBSIM), name
+
+
+def test_the_prandtl_glauert_mechanism_ships_but_no_entry_declares_a_reference_mach():
+    """The compressibility correction exists, is exercised, and is OFF everywhere.
+
+    *** THIS IS A MEASURED DECISION, NOT AN UNFINISHED ONE. *** Prandtl-Glauert's
+    1/beta is a TWO-DIMENSIONAL SECTION result and `CLa` here is a FINITE-WING
+    coefficient. Applying the 2D form to a 3D coefficient over-corrects away from
+    the reference Mach, and for the 747 it is not subtle: it implies an
+    incompressible slope of 4.9441 * sqrt(1 - 0.8^2) = 2.97 /rad for an AR 7 wing
+    whose real low-speed value is about 4.5-5.0.
+
+    Enabling it on `boeing747` was tried and measured. It broke the exact V^2
+    scaling of the aerodynamic force, moved the short-period damping attribution,
+    and moved every Fig. 8 vortex number -- and PROJECT.md section 7 had already
+    recorded CLa(M) making that airframe's phugoid worse, 17.8% -> 19.4%.
+
+    Turning it on properly needs the 3D form,
+
+        CLa(M) = 2 pi AR / (2 + sqrt(AR^2 beta^2 (1 + tan^2 L / beta^2) + 4))
+
+    which needs a quarter-chord sweep angle no source this project holds supplies.
+    So the seam is built and shut. If a future entry declares a reference Mach,
+    this test fails and whoever did it has to justify the form they used.
+    """
+    for name, ac in REGISTRY.items():
+        assert float(ac.pg_mach_ref) < 0.0, (
+            f"{name} declares pg_mach_ref = {float(ac.pg_mach_ref)}. The 2D "
+            "Prandtl-Glauert form over-corrects a finite-wing CLa; use the 3D "
+            "relation in this test's docstring, and delete this test when you do.")
+
+
+def test_the_prandtl_glauert_seam_is_exercised_and_is_exactly_neutral_when_undeclared():
+    """A shut seam that nothing tests is a seam that rots.
+
+    Two statements. The mechanism WORKS when a reference Mach is declared -- so
+    it is real code and not a stub -- and it is EXACTLY neutral when one is not,
+    which is what lets every entry carry the field without moving a single bit.
+    """
+    ac = REGISTRY["boeing747"]
+    V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
+    a_sound = speed_of_sound(jnp.array(H))
+    controls = Controls(elevator=jnp.array(0.0), aileron=jnp.array(0.0),
+                        rudder=jnp.array(0.0), throttle=jnp.array(0.5))
+
+    def velocity(speed):
+        return jnp.array([speed, 0.0, 0.1 * speed])
+
+    def CL_at(entry, speed):
+        return float(aero.coefficients(velocity(speed), jnp.zeros(3), controls,
+                                       entry, a_sound)[0])
+
+    # Neutral: declaring nothing must reproduce the pre-session-24 arithmetic
+    # exactly, at a speed well away from any reference Mach.
+    off = CL_at(ac, V * 0.4)
+
+    # Active: declaring the entry's own condition leaves it unmoved THERE...
+    #
+    # The reference Mach must be built from the TRUE AIRSPEED at the sample
+    # point, not from V: the velocity above carries a 0.1 V downward component,
+    # so |vel| is V*sqrt(1.01) and using V would declare a reference the sample
+    # is not at -- which is a bug in the test, not in the correction, and it is
+    # what the first version of this test actually caught.
+    mach_here = float(jnp.linalg.norm(velocity(V)) / a_sound)
+    at_ref = ac._replace(pg_mach_ref=jnp.array(mach_here))
+    assert CL_at(at_ref, V) == pytest.approx(CL_at(ac, V), rel=1e-12), (
+        "the correction must be exactly 1 at the declared reference Mach")
+
+    # ...and moves it elsewhere, which is the whole point.
+    assert CL_at(at_ref, V * 0.4) != pytest.approx(off, rel=1e-6), (
+        "declaring a reference Mach should change the lift away from it; if it "
+        "does not, the seam has been disconnected")

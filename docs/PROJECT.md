@@ -254,8 +254,14 @@ Arrays are linear superposition. Identified cases, both DC-10s near the tropopau
 
 | Case | Altitude | r₀ | V₀ | Spacing | Spacing/diameter |
 |---|---|---|---|---|---|
-| 1 Hannibal MO | 37,000 ft | 600 ft | 85 ft/s | 3500 ft | 2.92 |
+| 1 Hannibal MO | 37,000 ft | 600 ft † | 85 ft/s | 3500 ft | 2.92 † |
 | 2 Morton WY | 39,000 ft | 450 ft | 70 ft/s | 3200 ft | 3.56 |
+
+**† This table records what Parks reports, and Hannibal's row is no longer what the project
+flies.** Session 22 replaced that radius with Wingrove & Bach Fig. 4's **500 ft** (ratio
+3.50) — see the note below. `wind.PARKS_CASES['hannibal']['r0']` now carries 500 ft; the
+superseded 600 ft survives as `wind.HANNIBAL_R0_SUPERSEDED` with its own ledger entry. The
+strength and both spacings are still Parks' and have not moved.
 
 Parks checks that ratio against Scorer's theoretical 2.7 — which is what turned the array
 spacing from a free parameter into a cited one.
@@ -1302,17 +1308,20 @@ see the row below for why not from trim.
 | Hannibal, 37,000 ft | `boeing747_jsbsim` | 1.7077 g | 1.7443 g | **+2.1%** | 1.1289° | 1.1336° | **+0.4%** |
 | Morton, 39,000 ft | `boeing747_jsbsim` | 1.3626 g | 1.4016 g | **+2.9%** | 0.9211° | 0.9703° | **+5.3%** |
 
-**Measured from trim instead, the same runs disagree on pitch by 15–77%, and none of it is
-the encounter.** The run-in is fifteen core radii — nine to eleven seconds through the
-vortex's 1/r far field — and attitude accumulates over it, because atisim is started from
-JSBSim's trim state and JSBSim's trim is not atisim's. At the window edge atisim is already
-1.55° nose-down of JSBSim on Hannibal and 1.48° on Morton, before the core.
+**Measured from trim instead, the same runs disagree on pitch by 15–54% on Δθ⁻ and by
+31–77% on Δθ⁺, and none of it is the encounter.** *(Quote the column with the number: this
+paragraph used to say "15–77%", which silently spanned both and disagreed with the two
+places that say 15–54% — §8 and the report — because those quote Δθ⁻ alone.)* The run-in is
+fifteen core radii — eight to nine seconds through the vortex's 1/r far field — and attitude
+accumulates over it, because atisim is started from JSBSim's trim state and JSBSim's trim is
+not atisim's. At the window edge atisim is already 1.55° nose-down of JSBSim on Hannibal and
+1.48° on Morton, before the core.
 
-| Case | Run-in θ offset at the window edge | Δn error from trim | Δθ error from trim |
-|---|---|---|---|
-| Cimarron | 0.336° | −1.8% | −15.0% |
-| Hannibal | 1.553° | −4.3% | −42.8% |
-| Morton | 1.482° | −6.0% | −53.7% |
+| Case | Run-in | Run-in θ offset at the window edge | Δn⁻ error from trim | Δθ⁺ error from trim | Δθ⁻ error from trim |
+|---|---|---|---|---|---|
+| Cimarron | 8.24 s | 0.336° | −1.8% | −31.2% | −15.0% |
+| Hannibal | 9.04 s | 1.553° | −4.3% | −61.9% | −42.8% |
+| Morton | 8.14 s | 1.482° | −6.0% | −76.7% | −53.7% |
 
 Load factor is algebraic in the state and does not accumulate; attitude is an integral and
 does. That is the whole of the difference.
@@ -1401,6 +1410,221 @@ heavier aircraft holds more of the quasi-steady load is wrong, because Δn = ΔC
 > **So the original sentence had the right null and the wrong reason**, and the reason is what
 > §5 and a sealed prediction were both leaning on. See §5 for what that does to the
 > aircraft-type explanation.
+
+### Compressibility, a smooth core, and two things that had no cross-check (session 24)
+
+**1. The phugoid frequency gap is closed, by supplying the mechanism rather than the
+number.** Session 19 localised 96% of the cruise error to one derivative,
+`M_u = ∂q̇/∂v_t`, and named the fix: *"`Cmde` Mach schedule: read from 737.xml's own table,
+not chosen."* Session 24 read it — the file is on this machine and the two-point table was
+taken from it directly, not from this document's transcription of it.
+
+| | Before | After |
+|---|---|---|
+| Cruise phugoid ωn error | 6.58% | **+0.45%** |
+| Approach phugoid ωn error | 3.39% | **+0.49%** |
+| `M_u`, cruise | +1.114e-04 — **wrong sign** vs JSBSim's −1.024e-04 | **−8.66e-05**, right sign |
+
+`737.xml` schedules exactly three coefficients on Mach and no others, checked by reading
+the file: `Cmde` (−1.20 at M 0 to −0.30 at M 2), `Clda` (0.100 to 0.033) and `CDmach`. The
+third is wave drag, which `aero.wave_drag` already models with an onset at M 0.78998
+against JSBSim's table breaking at M 0.79 — so it needed nothing. **The tables change
+nothing at the recovery points** (at M 0.78 they give −0.849 and 0.07387, the scalars the
+entry already carried), which is why every layer-1 through layer-4 result is unmoved. What
+they add is the *slope*, which is exactly what `M_u` reads.
+
+> **`CLalpha` is NOT Mach-scheduled in 737.xml.** JSBSim applies no compressibility
+> correction to lift at any Mach. So Prandtl–Glauert is a **departure** from JSBSim, not a
+> match to it — the opposite in character to the two tables above, which make AtiSim agree
+> with JSBSim *more*. The two must not be conflated.
+
+**2. Prandtl–Glauert: the mechanism ships, and NO ENTRY DECLARES A REFERENCE MACH. That is
+a measured decision, and it is the most useful thing this session found.**
+
+`pg_mach_ref` is the Mach at which an entry's lift-slope derivatives were measured; the
+correction is `√(1−M_ref²)/√(1−M²)`, **exactly 1 at M_ref**, so an entry flown at its own
+recovery condition is bit-for-bit unmoved and the correction only acts away from it.
+Writing it as an absolute `1/√(1−M²)` would assume every tabulated set is incompressible —
+false for CR-2144's 747, whose derivatives are published *at* M 0.80.
+
+Declaring M_ref = 0.80 on `boeing747` is the obvious move and it was tried. **The
+measurement rejected it.**
+
+> **Prandtl–Glauert's `1/β` is a two-dimensional SECTION result, and `CLa` here is a
+> FINITE-WING coefficient.** For a finite wing the compressibility and downwash corrections
+> interact and the true variation is much gentler; the standard 3D form is
+> `CLα(M) = 2πAR / (2 + √(AR²β²(1 + tan²Λ/β²) + 4))`. Applying the 2D form to a 3D
+> coefficient over-corrects away from M_ref, and for this airframe that is not subtle: it
+> implies an **incompressible slope of 4.9441·√(1−0.8²) = 2.97 /rad** for an AR 7.0 wing
+> whose real low-speed value is about 4.5–5.0.
+
+Measured cost of enabling it anyway: it broke the **exact V² scaling** of the aerodynamic
+force, moved the short-period damping attribution by 1.1e-4, and moved **every Fig. 8
+vortex number** — for a correction whose own premise fails at the conditions it was
+reaching, on an entry that declares no Mach band to confine it. §7 had already recorded
+`CLα(M)` applied to this airframe making its phugoid *worse*, 17.8% → 19.4%; this explains
+why.
+
+**So the seam is built, exercised and shut.** Two tests hold it that way: one asserts no
+entry declares a reference Mach and names the 3D form needed before one should, the other
+asserts the mechanism is real (exactly neutral undeclared, active when declared) so a shut
+seam cannot rot. Turning it on properly needs a quarter-chord sweep angle no source this
+project holds supplies — which is the same shape of answer as session 20's `mach_ram`:
+**the honest move was not to fit the solver to a test result.**
+
+Applied to the whole longitudinal lift-slope family rather than `CLa` alone, since a partial
+correction is what made the phugoid worse. Lateral derivatives are not scaled: they mix
+section lift slope with dihedral, fin geometry and sidewash in proportions no source
+supplies.
+
+**3. `wind.lamb_oseen_wind` — a smooth core, matched to Parks' own two numbers.** Both
+matching constants are *solved*, not transcribed, and `test_wind` re-derives them with
+`brentq`: `rc/r0 = 0.892135` puts the peak at r₀, and `Γ/2π = 1.397953·V₀r₀` makes the peak
+value V₀. So Lamb–Oseen and Rankine agree on core radius and peak tangential velocity and
+differ **only in shape**, which is what makes substituting one for the other a controlled
+experiment.
+
+| Refinement through one core, 747 at cruise | Fitted behaviour |
+|---|---|
+| Rankine (C⁰ but not C¹ at r₀) | **non-monotone** — no order exists to fit |
+| Lamb–Oseen (smooth) | **monotone convergence** |
+
+**It is not the default, deliberately.** The frozen JSBSim vortex reference was generated
+with the Rankine form and `test_jsbsim_vortex` reconciles the two implementations to 1e−9,
+so switching the default would invalidate that reference rather than improve it.
+
+**4. The gradient arm now has the independent cross-check §4 said it lacked** — run where
+the data supports it. `boeing747` carries a real `CLq`, so its tail arm (4.0241 c̄ =
+109.9 ft, already validated) lets `sampled_rates` (a secant across the airframe) be
+compared against `gust_rates` (the analytic tangent the comparison used).
+
+| Profile | Worst tangent-vs-secant disagreement over ±2.5 r₀ |
+|---|---|
+| Rankine | **2.000 V₀/r₀** |
+| Lamb–Oseen | **0.260 V₀/r₀** — 7.7× smaller |
+
+**The instrument validates itself:** Rankine's worst case comes out at 2.000 V₀/r₀, which
+is *exactly* the one-sided derivative jump `ASSUMPTIONS` E2 records at the core edge,
+reached by a completely different route. Inside the core the two agree to 1e−9, because the
+field is solid-body and therefore linear — the negative control.
+
+**What it bounds:** the 8–13% gradient contribution is confirmed real, and its precision is
+now bounded rather than unknown. Even on the smooth profile the two estimators differ by 26%
+of the characteristic gradient, peaking near the velocity maximum where the tangent passes
+through zero while the airframe still spans a varying field. **Read the gradient result as
+an ordering, not to two figures.**
+
+**5. The RK4 wind hold can now be switched off per model, and it buys back three orders.**
+`step`/`rollout` take `stage_sampled`, and `wind.field_model` marks its output as safe to
+re-evaluate mid-step. Measured on the same field and steps, changing nothing else:
+
+| | Fitted order |
+|---|---|
+| Wind held across all four stages (default) | **1.0534** |
+| Re-evaluated per stage | **4.0552** |
+
+which is the 4.05 `ASSUMPTIONS` E4 recorded from the falsification probe that first
+identified the cost. **The hold stays the default**: re-sampling is valid only for a model
+that is a pure function of position — re-drawing a stochastic field per stage would make the
+realisation depend on step size, and a convergence study would then measure the noise rather
+than the integrator. Only `field_model` output carries the mark.
+
+> **Two items from the session's request were declined, with reasons.** *Copying JSBSim's
+> integrator* would replace 4th-order RK4 with 2nd-order Adams–Bashforth, delete the tier-0
+> order suite, break the `lax.scan` single-step contract the `vmap` ensemble rests on, and
+> not touch layer 4's dominant error — which is the 0.05 s replay **hold**, measured
+> first-order at 1.01–1.04, in the harness rather than the integrator. Item 5 above attacks
+> the same accuracy question from the correct end. *WGS-84 + Earth rotation* is deferred to
+> its own session: NED stops being inertial, every Coriolis and centrifugal term changes,
+> and it would not improve the JSBSim comparison, which deliberately sets JSBSim to
+> constant-g and quantifies the Coriolis floor by running lat 0° against 47°.
+>
+> **There is a general point here worth keeping.** The comparison's premise is that *"a
+> disagreement is a defect in one of the two implementations"* — and that holds only while
+> the implementations are independent. Sharing the aero *data* is correct, because it
+> isolates the solver. Sharing the gravity model, the integrator and the Mach scheduling
+> would remove the remaining independent axes, at which point 0.04% agreement on the short
+> period stops meaning "two independently-written solvers agree" and starts meaning "the
+> transcription was faithful."
+
+### Three model changes, and what each moved (session 23)
+
+Two of these repair defects this document had recorded and worked around for twenty-two
+sessions; the third adds a control-system term the real aeroplane never flies without.
+**Every altitude-dependent number in this ledger moved.** The rows below are what to read
+instead of chasing individual supersessions.
+
+**1. The ISA now converts geometric altitude to geopotential.** `atmosphere.py` documented
+"altitude is treated as geopotential" and used the geopotential formulas, while every
+caller passed geometric altitude — `dynamics.derivatives` passes `-state.pos_ned[2]` — and
+nothing converted it. Not an approximation; two different quantities.
+
+| Check | Before | After |
+|---|---|---|
+| Density error vs JSBSim at a **nominal** 30,000 ft | 0.159% low | **+0.000479%** |
+| `matched_altitude` shift needed to close it | 43.22 ft | **0.13 ft** |
+| Density at 40,000 ft | 0.368% low | matched |
+| ISA table check (`test_atmosphere`) | passed a geopotential argument | now enters each row at the **geometric** height whose geopotential is the tabulated one |
+
+The workaround this retires is instructive: `matched_altitude` used to be **frozen in the
+reference XML**, which froze a dependency on a model this project owns. When the atmosphere
+was corrected the stored shift became an *error of the same size and sign* as the bias it
+was introduced to remove. It is now recomputed at load time from the frozen JSBSim density —
+which **is** a measurement — by `jsbsim_ref._match_density`. The mechanism is kept rather
+than deleted because the residual 4.8e-6 between the two codes' ISA constants is real.
+
+**2. Gravity varies with height:** `dynamics.gravity(z) = g₀(R/(R+z))²`, R = 6,371,000 m.
+§5 recorded session 12 measuring this and deciding **not** to model it. That decision is
+reversed, not the measurement.
+
+| Quantity | Movement | Against |
+|---|---|---|
+| 747 phugoid ωn | **−0.3984%** | g's −0.3817% — Lanchester's `√2g/u₀` predicts **1:1** |
+| 747 phugoid ζ vs CR-2144 Table IX-5 | +14.4% → **+13.2%** | an **unforced improvement**; the change was not aimed at IX-5 |
+| 747-approach (sea level) α, δe, throttle | **bit-identical** | the control — g(0) = g₀ exactly |
+| Cherokee trim α | −0.0035° absolute | a −28% *relative* move on a near-zero trim; the percentage is an artefact |
+| Fig. 8 vortex point Δn | −1.261 → **−1.265 g** (+0.380%) | g(40,000 ft)/G₀ to three figures |
+
+`atmosphere.G0` **stays constant inside the barometric integration and must** — geopotential
+altitude is defined as the coordinate that absorbs g's variation, so ISA already accounts
+for it and substituting g(h) there would double-count.
+
+> **This changes what `load_factor` means, and the change is deliberate.** Specific force is
+> divided by **G0**, not g(h), because "g units" are standard gravity — an accelerometer is
+> calibrated in them, so is JSBSim's `accelerations/Nz`, so is a DFDR trace. So trimmed
+> level flight at altitude now reads `cos(θ₀)·g(h)/G0` = **0.9930** at 40,000 ft rather than
+> cos(θ₀) = 0.9968. That is what a real accelerometer reads there. Dividing by g(h) would
+> restore the tidier invariant and silently redefine the unit, making n_z at altitude
+> incomparable with n_z at sea level or with either external dataset. `checks.trimmed_start`
+> and `test_load_factor_in_trimmed_level_flight_is_cos_theta_not_one` carry the corrected
+> form; the old one failed by 3.8e-3 g, nearly four times its own tolerance.
+
+**3. The 737 carries JSBSim's yaw damper, in the plant.** `yaw_damper_gain = 0.35` s of
+rudder per rad/s of yaw rate, above M 0.11 — the gain measured off JSBSim's FCS in session
+17. Zero for every other aircraft, so the term adds an exact zero and they are bit-for-bit
+unmoved.
+
+| Layer 3, cruise | JSBSim | Analytic fold (sessions 17–22) | **Damper in the plant** |
+|---|---|---|---|
+| Dutch roll ωn | 2.11920 | 2.11966 (0.02%) | **2.11929 (0.004%)** |
+| Dutch roll ζ | 0.34410 | 0.34402 (0.03%) | **0.34410 (exact to 5 dp)** |
+
+**The plant form is closer than the fold, and subsumes all three of its corrections.**
+`δr = 0.35·r` reaches CY, Cl and Cn through the real `CYdr`, `Cldr` and `Cndr`, which is
+algebraically what adding `C*dr·0.35·2V/b` to `C*r` did by hand — except the fold linearised
+about one airspeed and the plant term uses the aircraft's actual yaw rate every step.
+
+> **The cost, stated plainly: a damped entry is no longer a bare airframe.** Layer 1's
+> yaw-rate sweep now moves the rudder, so it no longer isolates `Cnr`. **Layer 4 switches
+> the damper off** (`_replay` zeroes the gain) and must: that layer's whole design is that
+> surface positions are *prescribed to both engines*, with JSBSim's damper pre-compensated
+> out, so leaving atisim's on would fly a rudder JSBSim did not — worth **1.83 m/s** of
+> spurious `v` divergence on the approach rudder kick against a 0.013 m/s Earth-rotation
+> floor.
+
+**Superseded by the above:** the Fig. 8 point in §4's strip-loads table (Δθ 2.160°, Δn
+−1.261 g → **2.163° / −1.265 g**), the lee-wave thrust envelope (+0.023 → **+0.0241**, since
+weight is now m·g(h)), and every §4 mode figure for an aircraft above sea level.
 
 ### Comparison preconditions (session 21)
 
@@ -2155,7 +2379,13 @@ needed no correction at all.
 layer, since q̄ ∝ ρ. Predicted temperature errors match measured ones to four decimal places.
 Neutralised for the comparison by matching on **density rather than altitude** (43.22 ft
 lower, agreeing to 1e-16); the underlying defect is pre-existing and filed rather than fixed
-here. **Anything altitude-dependent in this ledger carries it.**
+here. ~~**Anything altitude-dependent in this ledger carries it.**~~
+
+> **FIXED IN SESSION 23.** `atmosphere.geopotential` converts at the boundary, and atisim's
+> density at a **nominal** 30,000 ft now agrees with JSBSim's to +0.000479%. The 43.22 ft
+> match is down to 0.13 ft. Session 17 filing this rather than fixing it was the right call
+> for a comparison — but it stood for five more sessions, and the workaround it installed
+> later became an error of its own size when the defect was finally repaired.
 
 *Scripts run from a git worktree import the wrong tree.* `atisim` is installed editable
 against the main checkout, so `python scripts/foo.py` from a worktree silently runs the other

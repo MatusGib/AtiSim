@@ -305,8 +305,10 @@ def test_accelerometers_report_specific_force_with_the_load_factor_sign(trimmed)
     assert float(n.n_x) == pytest.approx(float(raw[0]), abs=1e-15)
     assert float(n.n_y) == pytest.approx(float(raw[1]), abs=1e-15)
     assert float(n.n_z) == pytest.approx(-float(raw[2]), abs=1e-15)
-    # Trimmed level flight: n_z is cos(theta) (see test_dynamics), lateral quiet.
-    assert float(n.n_z) == pytest.approx(0.9967, abs=1e-3)
+    # Trimmed level flight: n_z is cos(theta)*g(h)/G0 (see test_dynamics for why
+    # the gravity ratio belongs there), lateral quiet. Was 0.9967 under constant
+    # gravity; the 0.38% is g(40,000 ft) against standard g.
+    assert float(n.n_z) == pytest.approx(0.9930, abs=1e-3)
     assert abs(float(n.n_y)) < 1e-6
 
 

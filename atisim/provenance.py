@@ -200,6 +200,60 @@ LEDGER: dict[str, Entry] = {
     # it was. The full discrepancy across the four lineages is `ASSUMPTIONS.md`
     # E12; the coherent triples are in `wind.PARKS_CASES` with their citation.
 
+    # -- the Lamb-Oseen matching constants ----------------------------------
+    "wind.LAMB_OSEEN_RC_OVER_R0": Entry(
+        "SOURCED",
+        "0.892135132495 = 1/s where s = 1.1209064228 solves exp(s^2) = 1 + 2 s^2, "
+        "the peak of the Lamb-Oseen profile (1/s)(1 - exp(-s^2)). Choosing the "
+        "core parameter rc this way puts the profile's peak AT r0, so it agrees "
+        "with Parks' Rankine core on the radius Parks actually identified. "
+        "SOURCED to the Lamb-Oseen profile itself -- a classical closed-form solution of the Navier-Stokes equations for a decaying line vortex -- rather than to any particular vortex: the number is a property of the PROFILE and is the same for every (r0, V0). Solved, not transcribed; test_wind re-derives it with brentq and fails on a typo.",
+    ),
+    "wind.LAMB_OSEEN_CIRCULATION": Entry(
+        "SOURCED",
+        "1.397952547316 = (1/s)/f(s) at the same s, so that the profile's PEAK "
+        "tangential velocity is exactly V0. Together with RC_OVER_R0 this makes "
+        "Lamb-Oseen and Rankine agree on both numbers Parks identified -- core "
+        "radius and peak tangential velocity -- and differ only in shape, which "
+        "is what makes substituting one for the other a controlled experiment. Like RC_OVER_R0 it is a property of the profile, identical for every (r0, V0), and re-derived in test_wind rather than trusted.",
+    ),
+
+    # -- the Prandtl-Glauert guard rails ------------------------------------
+    # DECLARED, not sourced, and deliberately placed where they cannot bind.
+    "aero.PG_MACH_MAX": Entry(
+        "DECLARED",
+        "0.90. Prandtl-Glauert's 1/sqrt(1-M^2) diverges at M 1 and the linearised "
+        "subsonic theory it comes from has stopped applying well before that. "
+        "0.90 is chosen to sit ABOVE every condition this project flies -- the "
+        "fastest is the 747's M 0.80 -- so it is a guard that never binds rather "
+        "than a transonic model, which this project does not have. A run that "
+        "reaches it is already outside the band checks.recovery_band gates on. "
+        "Sensitivity is therefore identically zero at every recovery point, "
+        "asserted in test_aero.",
+    ),
+    "aero.PG_FLOOR": Entry(
+        "DERIVED",
+        "1 - PG_MACH_MAX^2 = 0.19. The smallest value of 1 - M^2 the "
+        "Prandtl-Glauert denominator may see, so jacfwd gets a finite derivative "
+        "even where a root-find probes past the cap. Derived from PG_MACH_MAX and "
+        "nothing else.",
+        inputs=("aero.PG_MACH_MAX",),
+    ),
+
+    # -- the ISA's own earth radius -----------------------------------------
+    "atmosphere.R_EARTH_ISA": Entry(
+        "SOURCED",
+        "6,356,766 m, ICAO Doc 7488 / ISO 2533's nominal earth radius -- the "
+        "value the standard atmosphere's own geopotential conversion "
+        "H = R z / (R + z) is DEFINED with. It is deliberately not a geodetic "
+        "radius: 6,378,137 equatorial and 6,356,752 polar both disagree with "
+        "the ISA tables this module reproduces, because 6,356,766 is the radius "
+        "that makes those tables self-consistent at 45 deg latitude under a "
+        "constant g0. Added session 23, when the geometric/geopotential "
+        "conversion the module had documented as unnecessary was measured to "
+        "cost 0.159% of density at 30,000 ft and 0.368% at 40,000 ft.",
+    ),
+
     "wind.MICROBURST_ZM_OVER_ZSTAR": Entry(
         "SOURCED",
         "0.22, the altitude of maximum outflow over z*. THE EMPIRICAL INPUT of "
