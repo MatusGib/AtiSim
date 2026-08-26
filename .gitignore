@@ -3,6 +3,9 @@ __pycache__/
 *.pyc
 .pytest_cache/
 *.npz
+# ...except frozen reference data, which is checked in on purpose and read by
+# the test suite, exactly as the jsbsim_*_reference.xml files beside it are.
+!atisim/tests/data/*.npz
 *.egg-info/
 runs/
 
