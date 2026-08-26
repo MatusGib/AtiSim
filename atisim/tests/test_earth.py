@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 import atisim  # noqa: F401  -- enables x64 before any array is made
-from atisim import earth
+from atisim import earth, earth_ref
 
 
 def test_the_defining_wgs84_constants_are_exact():
@@ -232,3 +232,50 @@ def test_every_wgs84_constant_is_in_the_provenance_ledger():
     for name in ("earth.B_WGS84", "earth.E2_WGS84"):
         assert LEDGER[name].category == "DERIVED"
         assert LEDGER[name].inputs, f"{name} claims DERIVED with no inputs"
+
+
+def _probes():
+    return earth_ref.load()
+
+
+def test_our_geodesy_reproduces_jsbsims_own_position_and_frame():
+    """Round-trip JSBSim's ECEF through our geodesy and back to its own frame.
+
+    This is the check that would have failed had we used geocentric latitude:
+    the t_e2l comparison is the one that costs 65 m/s in v_north at 47 degrees.
+
+    The lat/lon/t_e2l tolerances are 1e-11, not 1e-12: re-encoding OUR lat/lon
+    back to ECEF reproduces JSBSim's r_ecef exactly (0.0 m residual measured),
+    but re-encoding JSBSim's OWN reported lat with that SAME r_ecef is off by
+    5.9e-5 m -- JSBSim's own (r_ecef, lat) pair is not perfectly self-consistent
+    at that level, not a defect on our side. Measured worst case is 9.3e-12 rad
+    in lat and 7.1e-12 in t_e2l; both get roughly 2x headroom here.
+    """
+    for p in _probes():
+        lat, lon, h = earth.ecef_to_geodetic(p.r_ecef)
+        assert float(lat) == pytest.approx(p.lat, abs=1e-11)
+        assert float(lon) == pytest.approx(p.lon, abs=1e-11)
+
+        back = earth.geodetic_to_ecef(lat, lon, h)
+        assert np.allclose(np.asarray(back), p.r_ecef, atol=1e-6)
+
+        assert np.allclose(np.asarray(earth.ecef_to_ned_matrix(lat, lon)), p.t_e2l, atol=1e-11)
+
+        # And the frame actually maps JSBSim's ECEF velocity onto its own NED.
+        assert np.allclose(p.t_e2l @ p.vel_ecef, p.vel_ned, atol=1e-9)
+
+
+def test_our_j2_gravity_reproduces_jsbsims_at_every_probe():
+    """3.6e-13 relative when the position is read back from the engine.
+
+    Feeding a nominal altitude instead puts this at 2.4e-6. The tolerance is set
+    tight enough that the nominal-altitude mistake fails it.
+    """
+    for p in _probes():
+        ours = np.asarray(earth.gravitation(p.r_ecef, earth.WGS84_J2))
+        assert float(np.linalg.norm(ours)) == pytest.approx(p.gravity_magnitude, rel=1e-10)
+
+        # Direction too, via JSBSim's own weight force.
+        theirs_body = p.weight / p.mass
+        t_b2e = (p.t_l2b @ p.t_e2l).T
+        assert np.allclose(t_b2e @ theirs_body, ours, atol=1e-7)
