@@ -256,6 +256,46 @@ LEDGER: dict[str, Entry] = {
         "and is asserted as the positive control in test_trim.py.",
     ),
 
+    # -- WGS-84. The ellipsoid, gravity field and rotation rate. -----------
+    # SOURCED against the standard; the JSBSim agreement recorded in `detail`
+    # is a CHECK that both implementations read the same standard, not the
+    # source itself.
+    "earth.a": Entry(
+        "SOURCED",
+        "6378137.0 m semi-major axis. WGS-84 defining parameter. Recovered from "
+        "JSBSim v1.3.1 build 1837 inertial/sea-level-radius_ft at the equator, exact",
+    ),
+    "earth.f": Entry(
+        "SOURCED",
+        "1/298.257223563 flattening. WGS-84 defining parameter. Recovered from the "
+        "JSBSim polar sea-level radius, 8e-10 relative",
+    ),
+    "earth.GM": Entry(
+        "SOURCED",
+        "3.986004418e14 m^3/s^2 geocentric gravitational constant. WGS-84. Solved "
+        "from JSBSim's equatorial and polar gravity, 4.1e-13 relative",
+    ),
+    "earth.J2": Entry(
+        "SOURCED",
+        "1.08262982e-3 second dynamic form factor. WGS-84. Solved from the same "
+        "pair, 1.3e-11 relative",
+    ),
+    "earth.omega": Entry(
+        "SOURCED",
+        "7.292115e-5 rad/s Earth rotation rate. WGS-84. Recovered from JSBSim's "
+        "d(position/epa-rad)/dt over 10 s, exact",
+    ),
+    "earth.b": Entry(
+        "DERIVED",
+        "a(1-f) = 6356752.314245 m. NOT taken from JSBSim, which reports "
+        "6356752.314186 m -- a 5.87e-5 m difference that is its internal storage "
+        "in feet round-tripping, not a different ellipsoid",
+        ("earth.a", "earth.f"),
+    ),
+    "earth.e2": Entry(
+        "DERIVED", "f(2-f), first eccentricity squared", ("earth.f",)
+    ),
+
     "airframe.tail_arm_band": Entry(
         "DECLARED",
         "Plausibility band [2.0, 6.0] chords on the derived l_eff. Brackets "

@@ -211,3 +211,23 @@ def test_the_geodesy_is_jittable_and_differentiable():
     g_mag = jax.jit(lambda r: jnp.linalg.norm(earth.gravitation(r, earth.WGS84_J2)))
     r0 = earth.geodetic_to_ecef(lat, lon, h)
     assert np.all(np.isfinite(np.asarray(jax.grad(g_mag)(r0))))
+
+
+def test_every_wgs84_constant_is_in_the_provenance_ledger():
+    """SOURCED, with the JSBSim recovery named as the CHECK, not as the source.
+
+    The distinction matters and the ledger's own rules enforce it: SOURCED means
+    read from a cited table. WGS-84 is that table. The agreement with JSBSim is
+    evidence that this model and that one read the same table, which is a
+    verification, not a provenance.
+    """
+    from atisim.provenance import LEDGER
+
+    for name in ("earth.a", "earth.f", "earth.GM", "earth.J2", "earth.omega"):
+        assert name in LEDGER, f"{name} missing from the provenance ledger"
+        assert LEDGER[name].category == "SOURCED"
+        assert "WGS-84" in LEDGER[name].detail
+
+    for name in ("earth.b", "earth.e2"):
+        assert LEDGER[name].category == "DERIVED"
+        assert LEDGER[name].inputs, f"{name} claims DERIVED with no inputs"
