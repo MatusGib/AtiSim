@@ -6,6 +6,8 @@ DEFINING values; the term-by-term agreement with JSBSim is asserted separately
 against the frozen reference.
 """
 
+import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
 
@@ -48,19 +50,39 @@ def test_geodetic_ecef_roundtrip_reaches_the_float64_floor_including_the_poles()
     singular there; this module uses the non-singular
     h = p cos(lat) + z sin(lat) - a sqrt(1 - e2 sin^2 lat) instead, and this
     test is what holds it to that.
-    """
-    worst_lat = worst_h = 0.0
-    for lat in np.radians(np.linspace(-90.0, 90.0, 721)):
-        for h in (0.0, 5.0e3, 12192.0, 2.0e4):
-            r = earth.geodetic_to_ecef(lat, 0.7, h)
-            back_lat, back_lon, back_h = earth.ecef_to_geodetic(r)
-            worst_lat = max(worst_lat, abs(float(back_lat) - lat))
-            worst_h = max(worst_h, abs(float(back_h) - h))
-            assert float(back_lon) == pytest.approx(0.7, abs=1e-12)
 
-    assert worst_h < 1.0e-8, f"altitude round-trip {worst_h:.2e} m"
-    assert np.degrees(worst_lat) * 3600 < 1.0e-9, (
-        f"latitude round-trip {np.degrees(worst_lat) * 3600:.2e} arcsec"
+    Vectorised over the whole grid with a single jit+vmap compile rather than
+    one Python-level call per point. The loop it replaced made 2,884 unjitted
+    calls to a `lax.scan`-based function, each re-tracing and re-compiling,
+    which cost three minutes and bought nothing -- the property is elementwise,
+    so batching computes exactly the same arithmetic. The argmax reporting is a
+    genuine gain: the loop could only say HOW BIG the worst error was, and this
+    says WHERE it is.
+    """
+    lats = np.radians(np.linspace(-90.0, 90.0, 721))
+    hs = np.array([0.0, 5.0e3, 12192.0, 2.0e4])
+    lat_grid, h_grid = (g.ravel() for g in np.meshgrid(lats, hs, indexing="ij"))
+    lon = 0.7
+
+    to_ecef = jax.jit(jax.vmap(earth.geodetic_to_ecef, in_axes=(0, None, 0)))
+    to_geodetic = jax.jit(jax.vmap(earth.ecef_to_geodetic))
+
+    r = to_ecef(lat_grid, lon, h_grid)
+    back_lat, back_lon, back_h = (np.asarray(x) for x in to_geodetic(r))
+
+    assert np.allclose(back_lon, lon, atol=1e-12)
+
+    lat_err = np.abs(back_lat - lat_grid)
+    h_err = np.abs(back_h - h_grid)
+    i_lat, i_h = np.argmax(lat_err), np.argmax(h_err)
+
+    assert h_err[i_h] < 1.0e-8, (
+        f"altitude round-trip {h_err[i_h]:.2e} m at "
+        f"lat={np.degrees(lat_grid[i_h]):.4f} deg, h={h_grid[i_h]:.1f} m"
+    )
+    assert np.degrees(lat_err[i_lat]) * 3600 < 1.0e-9, (
+        f"latitude round-trip {np.degrees(lat_err[i_lat]) * 3600:.2e} arcsec at "
+        f"lat={np.degrees(lat_grid[i_lat]):.4f} deg, h={h_grid[i_lat]:.1f} m"
     )
 
 
@@ -160,3 +182,32 @@ def test_an_anchor_carries_its_own_ecef_position_and_frame():
     )
     m = np.asarray(anchor.T_e2l)
     assert np.allclose(m @ m.T, np.eye(3), atol=1e-13)
+
+
+def test_the_geodesy_is_jittable_and_differentiable():
+    """The stated reason BOWRING_ITERATIONS is fixed rather than converged.
+
+    A while-loop-to-convergence would be neither, so this is the property that
+    justifies the design -- and it was asserted in a comment and tested
+    nowhere. `gravitation` is included because the equations of motion will
+    differentiate through it when the trim solver runs.
+    """
+    lat, lon, h = np.radians(47.0), np.radians(11.0), 9144.0
+
+    round_trip = jax.jit(lambda a, o, z: earth.ecef_to_geodetic(
+        earth.geodetic_to_ecef(a, o, z)
+    ))
+    back_lat, _, back_h = round_trip(lat, lon, h)
+    assert float(back_lat) == pytest.approx(lat, abs=1e-12)
+    assert float(back_h) == pytest.approx(h, abs=1e-8)
+
+    # d(altitude)/d(altitude) is exactly 1: the round trip is the identity, so
+    # this checks the derivative flows through the whole scan rather than
+    # merely that grad() returns without raising.
+    d_h = jax.grad(lambda z: round_trip(lat, lon, z)[2])(h)
+    assert float(d_h) == pytest.approx(1.0, abs=1e-6)
+
+    # Gravity must differentiate w.r.t. position for the same reason.
+    g_mag = jax.jit(lambda r: jnp.linalg.norm(earth.gravitation(r, earth.WGS84_J2)))
+    r0 = earth.geodetic_to_ecef(lat, lon, h)
+    assert np.all(np.isfinite(np.asarray(jax.grad(g_mag)(r0))))

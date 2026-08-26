@@ -120,8 +120,13 @@ WGS84_J2 = EarthModel("j2", OMEGA_WGS84, True)
 WGS84_INVERSE_SQUARE = EarthModel("inverse_square", OMEGA_WGS84, True)
 # FLAT: non-rotating, spherical, constant g along the local vertical. It is a
 # CONFIGURATION of this one plant, not a second implementation retained
-# alongside. It does NOT reproduce the pre-Earth model bit-for-bit -- see the
-# design doc section 8 and ASSUMPTIONS.md F4.
+# alongside. It does NOT reproduce the pre-Earth-model trajectories
+# bit-for-bit -- design doc section 8 explains why: an ECEF-accumulated state
+# cannot be bit-identical even where the physics agrees. The round-off floor
+# this costs is NOT YET measured. ASSUMPTIONS.md F4 covers only
+# dt/discretisation round-off today; Task 14 re-measures it and folds the FLAT
+# floor in. Until then this claim rests on the design doc's reasoning rather
+# than on a recorded number.
 FLAT = EarthModel("constant", 0.0, False)
 
 
