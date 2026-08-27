@@ -13,13 +13,19 @@ import numpy as np
 import pytest
 
 import atisim  # noqa: F401  -- enables x64 before any array is made
-from atisim import checks, integrate, trim, viz, wind
+from atisim import checks, earth, integrate, trim, viz, wind
 from atisim.aircraft import CRUISE, REGISTRY
 from atisim.manual import Mode
 from atisim.units import FT2M, KT2MS
 from atisim.wind import PARKS_CASES
 
 AIRCRAFT = "boeing747"
+
+# 47N is the latitude the rest of this project's Earth-rotation work uses, and
+# the anchor sits AT the cruise altitude -- which is what makes the vortex
+# array's `down = 0` below correct rather than a typo.
+ANCHOR = earth.anchor_at(np.radians(47.0), 0.0, CRUISE[AIRCRAFT]["altitude"])
+EARTH = earth.WGS84_J2
 
 
 @pytest.fixture(scope="module")
@@ -46,29 +52,44 @@ def parks_run():
     H = CRUISE[AIRCRAFT]["altitude"]
     case = PARKS_CASES["hannibal"]
     r0, v0, spacing = case["r0"], case["v0"], case["spacing"]
+    # down = 0, NOT -H. The array's coordinates are NED offsets from the run
+    # anchor, and the anchor is at the cruise altitude, so a core on the
+    # flightpath is level with the aircraft. -H would put both cores a whole
+    # cruise altitude above the run, which would then meet nothing.
     array = wind.VortexArray(
-        north=jnp.array([0.0, spacing]), down=jnp.array([-H, -H]),
+        north=jnp.array([0.0, spacing]), down=jnp.array([0.0, 0.0]),
         r0=jnp.array(r0), v0=jnp.array(v0),
     )
     field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
-    model = wind.field_model(field)
+    model = wind.field_model(field, ANCHOR)
 
-    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
+    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac, ANCHOR, EARTH)
     controls = trim.trimmed_controls(x[1], x[2])
-    state = trim.trimmed_state(jnp.array(float(x[0])), jnp.array(V), jnp.array(H))
     lead = 40.0 * r0
-    state = state._replace(pos_ned=jnp.array([-lead, 0.0, -H]))
+    # Built through `trimmed_state` and then displaced along the anchor frame's
+    # north axis. `x[3]` is the trimmed BANK, which is non-zero on a rotating
+    # Earth and must be carried: dropping it starts the run out of equilibrium
+    # in exactly the channel Coriolis acts in.
+    state = trim.trimmed_state(
+        jnp.array(float(x[0])), jnp.array(float(x[3])),
+        jnp.array(V), jnp.array(H), ANCHOR, jnp.array(0.0),
+    )
+    state = state._replace(
+        pos_ecef=state.pos_ecef + ANCHOR.T_e2l.T @ jnp.array([-lead, 0.0, 0.0])
+    )
 
     dt = 0.01
     n = int(round(((spacing + lead + 3.0 * r0) / V) / dt))
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
-    recorder = viz.Recorder()
+    recorder = viz.Recorder(ANCHOR)
     for i in range(n):
-        sim = integrate.step(sim, controls, jnp.array(dt), ac, wind_model=model)
+        sim = integrate.step(sim, controls, jnp.array(dt), ac, ANCHOR, EARTH,
+                             wind_model=model)
         recorder.append((i + 1) * dt, sim, controls, Mode.MANUAL)
     traj = recorder.trajectory()
     return dict(traj=traj, ac=ac, field=field, model=model, controls=controls,
-                dt=dt, r0=r0, v0=v0, spacing=spacing, V=V, H=H)
+                dt=dt, r0=r0, v0=v0, spacing=spacing, V=V, H=H,
+                anchor=ANCHOR, earth_model=EARTH)
 
 
 # --- C1 quaternion norm ------------------------------------------------------
@@ -92,7 +113,7 @@ def test_the_quaternion_norm_check_can_fail(parks_run):
 
 
 def test_every_field_in_the_project_is_solenoidal(parks_run):
-    c = checks.field_divergence(parks_run["field"], parks_run["traj"].pos_ned)
+    c = checks.field_divergence(parks_run["field"], viz.pos_ned(parks_run["traj"]))
     assert c.passed, c
     assert c.value < 1e-12
 
@@ -106,7 +127,7 @@ def test_the_divergence_check_can_fail(parks_run):
     def diverging(pos_ned):
         return 0.1 * pos_ned
 
-    c = checks.field_divergence(diverging, parks_run["traj"].pos_ned)
+    c = checks.field_divergence(diverging, viz.pos_ned(parks_run["traj"]))
     assert not c.passed
     assert c.value == pytest.approx(0.3, rel=1e-6)  # trace of 0.1 * I
 
@@ -117,7 +138,7 @@ def test_the_divergence_check_can_fail(parks_run):
 def test_the_energy_budget_closes(parks_run):
     c = checks.energy_closure(
         parks_run["traj"], parks_run["ac"], parks_run["field"]
-    )
+    , EARTH)
     assert c.passed, c
     assert c.value < 2e-3
 
@@ -131,7 +152,7 @@ def test_the_energy_residual_is_largest_at_the_core_boundaries(parks_run):
     than somewhere the eye happened to land.
     """
     run = parks_run
-    profile = checks.energy_residual_profile(run["traj"], run["ac"], run["field"])
+    profile = checks.energy_residual_profile(run["traj"], run["ac"], run["field"], EARTH)
     north, per_step = profile.north, profile.per_step
     median = float(np.median(per_step))
 
@@ -151,14 +172,21 @@ def test_the_energy_residual_is_largest_at_the_core_boundaries(parks_run):
 def _short_lead_in_run(run, lead_radii, n_steps=400):
     """Fly the same field from `lead_radii` core radii out."""
     ac, V, H, r0 = run["ac"], run["V"], run["H"], run["r0"]
-    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
+    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac, ANCHOR, EARTH)
     controls = trim.trimmed_controls(x[1], x[2])
-    state = trim.trimmed_state(jnp.array(float(x[0])), jnp.array(V), jnp.array(H))
-    state = state._replace(pos_ned=jnp.array([-lead_radii * r0, 0.0, -H]))
+    state = trim.trimmed_state(
+        jnp.array(float(x[0])), jnp.array(float(x[3])),
+        jnp.array(V), jnp.array(H), ANCHOR, jnp.array(0.0),
+    )
+    state = state._replace(
+        pos_ecef=state.pos_ecef
+        + ANCHOR.T_e2l.T @ jnp.array([-lead_radii * r0, 0.0, 0.0])
+    )
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
-    recorder = viz.Recorder()
+    recorder = viz.Recorder(ANCHOR)
     for i in range(n_steps):
-        sim = integrate.step(sim, controls, jnp.array(0.01), ac, wind_model=run["model"])
+        sim = integrate.step(sim, controls, jnp.array(0.01), ac, ANCHOR, EARTH,
+                             wind_model=run["model"])
         recorder.append((i + 1) * 0.01, sim, controls, Mode.MANUAL)
     return recorder.trajectory(), controls
 
@@ -172,7 +200,7 @@ def test_the_start_offset_is_reported_not_gated_in_a_wind_field(parks_run):
     choosing a number to make a check succeed.
     """
     run = parks_run
-    c = checks.trimmed_start(run["traj"], run["ac"], run["controls"], run["field"])
+    c = checks.trimmed_start(run["traj"], run["ac"], run["controls"], run["field"], EARTH)
     assert c.kind == "report"
     assert c.passed is None
     assert c.value < 0.10, f"40 r0 should start well inside 10% of the excursion: {c}"
@@ -185,9 +213,9 @@ def test_a_shorter_lead_in_starts_further_out_of_equilibrium(parks_run):
     of the effect rather than an invented threshold: less lead-in, more offset.
     """
     run = parks_run
-    far = checks.trimmed_start(run["traj"], run["ac"], run["controls"], run["field"])
+    far = checks.trimmed_start(run["traj"], run["ac"], run["controls"], run["field"], EARTH)
     traj_short, controls_short = _short_lead_in_run(run, 6.0)
-    near = checks.trimmed_start(traj_short, run["ac"], controls_short, run["field"])
+    near = checks.trimmed_start(traj_short, run["ac"], controls_short, run["field"], EARTH)
     assert near.value > 3.0 * far.value, (
         f"6 r0 ({near.value:.3f}) should be far worse than 40 r0 ({far.value:.3f})"
     )
@@ -201,16 +229,20 @@ def test_the_trimmed_start_check_gates_in_still_air(parks_run):
     """
     run = parks_run
     ac, V, H = run["ac"], run["V"], run["H"]
-    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
+    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac, ANCHOR, EARTH)
     controls = trim.trimmed_controls(x[1], x[2])
-    state = trim.trimmed_state(jnp.array(float(x[0])), jnp.array(V), jnp.array(H))
+    state = trim.trimmed_state(
+        jnp.array(float(x[0])), jnp.array(float(x[3])),
+        jnp.array(V), jnp.array(H), ANCHOR, jnp.array(0.0),
+    )
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
-    recorder = viz.Recorder()
+    recorder = viz.Recorder(ANCHOR)
     for i in range(50):
-        sim = integrate.step(sim, controls, jnp.array(0.01), ac, wind_model=wind.zero_wind)
+        sim = integrate.step(sim, controls, jnp.array(0.01), ac, ANCHOR, EARTH,
+                             wind_model=wind.zero_wind)
         recorder.append((i + 1) * 0.01, sim, controls, Mode.MANUAL)
 
-    c = checks.trimmed_start(recorder.trajectory(), ac, controls, None)
+    c = checks.trimmed_start(recorder.trajectory(), ac, controls, None, EARTH)
     assert c.kind == "gate"
     assert c.passed, c
     assert c.value < 1e-3
@@ -227,7 +259,7 @@ def test_the_alpha_band_is_reported_for_the_window_and_the_whole_run(parks_run):
     would flag a run whose reported result is entirely valid.
     """
     run = parks_run
-    north = run["traj"].pos_ned[:, 0]
+    north = viz.pos_ned(run["traj"])[:, 0]
     window = (north >= -run["r0"]) & (north <= run["r0"])
     c = checks.alpha_band(run["traj"], run["field"], window)
 
@@ -276,22 +308,49 @@ def test_the_amber_band_is_flagged_but_does_not_condemn_the_run(parks_run):
 
 
 def test_a_symmetric_field_produces_no_lateral_response(parks_run):
-    """The Parks vortex has NO east variation, so beta and p must be exactly zero.
+    """The Parks vortex has NO east variation, so the FIELD contributes nothing.
 
     ASSUMPTIONS.md E2: every strip on the span sees the same vertical gust, which
-    is why flying the strip path moves this encounter by 0.000000 m. The same
-    fact makes any lateral response a defect.
+    is why flying the strip path moves this encounter by 0.000000 m.
+
+    **THE `== 0.0 EXACTLY` THIS USED TO ASSERT WAS A FLAT-EARTH ZERO.** The field
+    argument still holds, but the field is no longer the only lateral input: the
+    trim is banked to balance Coriolis and `2 Omega x v` acts for the whole run.
+    So the check reports rather than gates here, and what is asserted is that the
+    lateral motion is CORIOLIS-SCALE rather than field-scale.
+
+    The bound is the free-drift figure. Uncompensated, `2 Omega V sin(lat)` =
+    0.0252 m/s^2 would reach 1.0 m/s over this 40 s traverse; measured 0.068 m/s,
+    which is 7% of it. That ratio is the trim doing its job, and a field leaking
+    into the lateral channel would not respect it.
     """
-    c = checks.lateral_symmetry(parks_run["traj"])
-    assert c.passed, c
-    assert c.value == 0.0  # exactly, not approximately
+    c = checks.lateral_symmetry(parks_run["traj"], EARTH)
+    assert c.kind == "report", "a rotating Earth has no honest threshold here"
+    assert c.passed is None, "a report must not invent a verdict"
+
+    free_drift = 2.0 * earth.OMEGA_WGS84 * parks_run["V"] * np.sin(ANCHOR.lat) * (
+        parks_run["dt"] * len(parks_run["traj"].t)
+    )
+    assert c.value < 0.25 * free_drift, (
+        f"lateral response {c.value:.4f} m/s against a {free_drift:.4f} m/s "
+        "free-drift bound -- too large to be the trimmed Coriolis residual"
+    )
 
 
 def test_the_lateral_symmetry_check_can_fail(parks_run):
+    """The negative control, and it MUST be taken under FLAT.
+
+    Under a rotating Earth this check is a `report`, so `passed` is None and
+    `assert not c.passed` would pass on None without testing anything. A
+    negative control that cannot fail is exactly what this file exists to
+    prevent, so the control is taken where the check still gates.
+    """
     traj = parks_run["traj"]
     omega = np.array(traj.omega, copy=True)
     omega[100, 0] = 1e-6  # a roll rate a symmetric field cannot produce
-    assert not checks.lateral_symmetry(traj._replace(omega=omega)).passed
+    c = checks.lateral_symmetry(traj._replace(omega=omega), earth.FLAT)
+    assert c.kind == "tripwire"
+    assert c.passed is False
 
 
 # --- C11 recorded vs analytic wind -------------------------------------------
@@ -324,10 +383,10 @@ def test_the_recorded_wind_check_can_fail(parks_run):
 
 def test_run_checks_returns_every_check_with_a_kind(parks_run):
     run = parks_run
-    north = run["traj"].pos_ned[:, 0]
+    north = viz.pos_ned(run["traj"])[:, 0]
     window = (north >= -run["r0"]) & (north <= run["r0"])
     report = checks.run_checks(
-        run["traj"], run["ac"], run["controls"], run["field"], window
+        run["traj"], run["ac"], run["controls"], run["field"], window, EARTH
     )
     assert len(report) >= 6
     for c in report:
@@ -345,10 +404,10 @@ def test_the_report_is_json_serialisable(parks_run):
     import json
 
     run = parks_run
-    north = run["traj"].pos_ned[:, 0]
+    north = viz.pos_ned(run["traj"])[:, 0]
     window = (north >= -run["r0"]) & (north <= run["r0"])
     report = checks.run_checks(
-        run["traj"], run["ac"], run["controls"], run["field"], window
+        run["traj"], run["ac"], run["controls"], run["field"], window, EARTH
     )
     text = json.dumps([c.as_dict() for c in report])
     assert json.loads(text)[0]["name"]
@@ -366,10 +425,18 @@ def _level_run(altitude_m, airspeed_ms, n=40):
     range -- which is the thing under test, not a precondition of it.
     """
     quat = np.tile(np.array([1.0, 0.0, 0.0, 0.0]), (n, 1))
+    # A SEA-LEVEL anchor, deliberately not the module's cruise ANCHOR. Straight
+    # up from the anchor is the one direction where the tangent plane and the
+    # ellipsoid still agree exactly, so a NED `down` of -altitude_m is a
+    # geodetic height of altitude_m -- but only if the anchor is at h = 0.
+    # Anchored at cruise it would have read ANCHOR.h + altitude_m, i.e. nearly
+    # double, and the band check would have been handed the wrong altitude.
+    anchor = earth.anchor_at(np.radians(47.0), 0.0, 0.0)
     return viz.Trajectory(
         t=np.linspace(0.0, 1.0, n),
-        pos_ned=np.stack([np.zeros(n), np.zeros(n),
-                          np.full(n, -altitude_m)], axis=1),
+        pos_ecef=np.stack(
+            [np.asarray(anchor.T_e2l.T @ np.array([0.0, 0.0, -altitude_m]))] * n
+        ),
         vel_body=np.stack([np.full(n, airspeed_ms), np.zeros(n), np.zeros(n)], axis=1),
         quat=quat,
         omega=np.zeros((n, 3)),
@@ -377,6 +444,7 @@ def _level_run(altitude_m, airspeed_ms, n=40):
         mode=np.zeros(n, dtype=int),
         wind_ned=np.zeros((n, 3)),
         omega_gust=np.zeros((n, 3)),
+        anchor=anchor,
     )
 
 
