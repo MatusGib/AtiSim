@@ -18,7 +18,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from atisim import trim
+from atisim import earth, trim
 from atisim.aircraft import CRUISE, REGISTRY
 from atisim.tests.modes import lateral_modes, longitudinal_modes
 from atisim.units import DEG2RAD
@@ -28,10 +28,31 @@ AC = REGISTRY[NAME]
 V = CRUISE[NAME]["airspeed"]
 H = CRUISE[NAME]["altitude"]
 
+# 47N is the latitude the rest of this project's Earth-rotation work uses, and
+# the anchor sits AT the FC9 altitude because `trim.trimmed_state` places the
+# aircraft at the anchor and Table IX-4 is a 40,000 ft flight condition.
+ANCHOR = earth.anchor_at(np.radians(47.0), 0.0, H)
+# FLOWN OVER `earth.FLAT`, NOT THE SHIPPED WGS84_J2. This is the tier-2
+# comparison `validation.py`'s header describes: CR-2144 tabulated its own
+# characteristic equations on a flat, non-rotating Earth, and the claim being
+# tested is that this model reproduces CR-2144's roots FROM CR-2144's own
+# derivatives. Flown over `WGS84_J2` the same functions would be measuring
+# something else -- and `lateral_modes` performs a wings-level lateral split,
+# which is only about the trim the solver returned if that trim is wings level.
+# Over FLAT at heading 0 it is: bank, aileron and rudder come back at
+# 6.33e-36, -2.51e-37 and 1.13e-36 rad, so `_trim`'s reading of x[0..2] alone
+# discards nothing.
+EARTH = earth.FLAT
+
 
 def _trim():
-    x, _ = trim.trim(jnp.array(V), jnp.array(H), AC)
-    return (float(v) for v in x)
+    """[alpha, elevator, throttle] out of the six-element trim solution.
+
+    The bank, aileron and rudder it drops are the ones the rotating Earth added,
+    and dropping them is exactly what `EARTH = earth.FLAT` above makes safe.
+    """
+    x, _ = trim.trim(jnp.array(V), jnp.array(H), AC, ANCHOR, EARTH)
+    return float(x[0]), float(x[1]), float(x[2])
 
 
 # --- Step 2: lateral-directional, against Table IX-9 / IX-10 -----------------
@@ -48,7 +69,9 @@ CR2144_SPIRAL_TAU = 1.0 / 0.00730
 
 def test_lateral_modes_match_cr2144_tables_ix9_and_ix10():
     alpha, elevator, throttle = _trim()
-    dutch_roll, roll_tau, spiral_tau = lateral_modes(AC, alpha, elevator, throttle, V, H)
+    dutch_roll, roll_tau, spiral_tau = lateral_modes(
+        AC, alpha, elevator, throttle, V, H, ANCHOR, EARTH
+    )
     wn, zeta = dutch_roll
 
     assert wn == pytest.approx(CR2144_DUTCH_ROLL_WN, rel=0.02)
@@ -132,7 +155,9 @@ def test_the_sims_own_unaugmented_longitudinal_modes_are_the_documented_gap():
     comparison above for why: this is attributed, not a bug.
     """
     alpha, elevator, throttle = _trim()
-    phugoid, short_period = longitudinal_modes(AC, alpha, elevator, throttle, V, H)
+    phugoid, short_period = longitudinal_modes(
+        AC, alpha, elevator, throttle, V, H, ANCHOR, EARTH
+    )
 
     assert phugoid[0] == pytest.approx(0.0554, rel=0.05)
     assert phugoid[1] == pytest.approx(0.0559, rel=0.1)
