@@ -15,7 +15,13 @@ import numpy as np
 import pytest
 
 import atisim  # noqa: F401  -- enables x64 before any array is made
-from atisim import loads
+from atisim import earth, loads
+
+# 47N is the latitude the rest of this project's Earth-rotation work uses, and
+# the anchor sits AT the flight altitude -- so a state built at `pos_ned = 0` is
+# level flight at 11,278 m and the spanwise fields below are sampled on the
+# aircraft's own plane rather than a cruise altitude away from it.
+ANCHOR = earth.anchor_at(np.radians(47.0), 0.0, 11278.0)
 
 
 def test_the_zero_increment_is_all_zeros_and_correctly_shaped():
@@ -73,24 +79,30 @@ def test_the_strip_increment_carries_roll_only_for_now():
 
     Asserted so that if someone later fills those channels, they have to change
     this test and therefore have to justify it.
+
+    `strip_roll_moment` takes a body -> NED MATRIX now. `state.quat` is
+    body -> ECEF and both are valid rotations, so passing it would have carried
+    the span stations into the wrong frame and returned a plausible wrong
+    moment rather than raising.
     """
     from atisim import airframe, wind
     from atisim.aircraft import REGISTRY
-    from atisim.state import State, euler_to_quat
+    from atisim.state import dcm_body_to_ned, euler_to_quat, pos_ned, state_from_ned
 
     ac = REGISTRY["boeing747"]
     st = airframe.stations(ac, n_span=201, n_lon=9)
     field = lambda p: jnp.array([0.0, 0.0, 1e-7 * p[1] ** 3])  # noqa: E731
-    state = State(
-        pos_ned=jnp.array([0.0, 0.0, -11278.0]),
-        vel_body=jnp.array([236.0, 0.0, 0.0]),
-        quat=euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
-        omega=jnp.zeros(3),
+    state = state_from_ned(
+        jnp.zeros(3),
+        jnp.array([236.0, 0.0, 0.0]),
+        euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
+        jnp.zeros(3),
+        ANCHOR,
     )
 
-    inc = loads.strip_increment(state, field, ac, st)
+    inc = loads.strip_increment(state, field, ac, st, ANCHOR)
     expected = wind.strip_roll_moment(
-        state.pos_ned, state.quat, field, ac, st, 236.0
+        pos_ned(state, ANCHOR), dcm_body_to_ned(state, ANCHOR), field, ac, st, 236.0
     )
     assert float(inc.Cl) == pytest.approx(float(expected), rel=1e-9)
     assert float(inc.CL) == 0.0
@@ -104,23 +116,24 @@ def test_the_strip_increment_uses_air_relative_speed_not_ground_speed():
     design exists to avoid, and it would only show up in a headwind."""
     from atisim import airframe
     from atisim.aircraft import REGISTRY
-    from atisim.state import State, euler_to_quat
+    from atisim.state import euler_to_quat, state_from_ned
 
     ac = REGISTRY["boeing747"]
     st = airframe.stations(ac, n_span=201, n_lon=9)
     field = lambda p: jnp.array([50.0, 0.0, 1e-7 * p[1] ** 3])  # noqa: E731
-    base = State(
-        pos_ned=jnp.array([0.0, 0.0, -11278.0]),
-        vel_body=jnp.array([236.0, 0.0, 0.0]),
-        quat=euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
-        omega=jnp.zeros(3),
+    base = state_from_ned(
+        jnp.zeros(3),
+        jnp.array([236.0, 0.0, 0.0]),
+        euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
+        jnp.zeros(3),
+        ANCHOR,
     )
     # A 50 m/s tailwind component leaves ground speed alone and reduces
     # airspeed, so an air-relative implementation must give a LARGER incidence
     # and therefore a larger rolling moment than a ground-speed one would.
-    inc = loads.strip_increment(base, field, ac, st)
+    inc = loads.strip_increment(base, field, ac, st, ANCHOR)
     still = loads.strip_increment(
-        base, lambda p: jnp.array([0.0, 0.0, 1e-7 * p[1] ** 3]), ac, st
+        base, lambda p: jnp.array([0.0, 0.0, 1e-7 * p[1] ** 3]), ac, st, ANCHOR
     )
     assert abs(float(inc.Cl)) > abs(float(still.Cl))
 
@@ -140,12 +153,12 @@ def test_the_strip_model_refuses_an_aircraft_that_fails_the_tail_arm_gate():
         ac = REGISTRY[name]
         assert not airframe.tail_arm_is_plausible(ac)
         with pytest.raises(ValueError, match="tail arm"):
-            loads.strip_model(lambda p: p * 0.0, ac)
+            loads.strip_model(lambda p: p * 0.0, ac, ANCHOR)
 
 
 def test_the_strip_model_accepts_both_747_configurations():
     from atisim.aircraft import REGISTRY
 
     for name in ("boeing747", "boeing747_approach"):
-        model = loads.strip_model(lambda p: p * 0.0, REGISTRY[name])
+        model = loads.strip_model(lambda p: p * 0.0, REGISTRY[name], ANCHOR)
         assert callable(model)
