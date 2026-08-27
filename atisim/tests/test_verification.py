@@ -17,13 +17,25 @@ import numpy as np
 import pytest
 
 import atisim  # noqa: F401  -- enables x64 before any array is made
-from atisim import integrate, trim, verification
+from atisim import earth, integrate, trim, verification
 from atisim.aircraft import CRUISE, REGISTRY
+
+# 47N is the latitude the rest of this project's Earth-rotation work uses, and
+# the anchor sits at the 747's cruise altitude -- the condition every rollout in
+# this file that carries an aircraft is trimmed for. WGS84_J2 is the Earth the
+# project flies, and it is what the checks below use UNLESS their reference is a
+# non-rotating closed form; the two that are say so at their own site.
+ANCHOR = earth.anchor_at(np.radians(47.0), 0.0, CRUISE["boeing747"]["altitude"])
+EARTH = earth.WGS84_J2
 
 # Captured from the integrator BEFORE rk4_step was extracted from `step`. This is
 # the whole guard on that refactor: a test that re-derives the stage weights
 # inline would compare the new code against itself and pass on an extraction that
 # changed the arithmetic.
+#
+# **IT CANNOT BE REPRODUCED ANY MORE, AND IT IS KEPT RATHER THAN REPLACED.** See
+# `test_extracting_rk4_step_did_not_move_a_single_bit` for the measurement and
+# for why re-capturing it here would destroy the guard rather than repair it.
 PRE_REFACTOR_VEL_HASH = "bbc0323e77183d73bd03817a98a530d0d563b56b4962520705aaee589f276aa4"
 
 
@@ -31,11 +43,16 @@ def _fixed_control_rollout(dt, n_steps, d_elevator=0.02):
     """747 at cruise trim with the elevator off trim, so something happens."""
     ac = REGISTRY["boeing747"]
     V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
-    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
-    state = trim.trimmed_state(x[0], jnp.array(V), jnp.array(H))
+    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac, ANCHOR, EARTH)
+    # `x[3]` is the trimmed BANK, non-zero on a rotating Earth. Dropping it --
+    # which `x[0], x[1], x[2]` unpacking does in silence -- would start the run
+    # out of equilibrium in exactly the channel Coriolis acts in.
+    state = trim.trimmed_state(
+        x[0], x[3], jnp.array(V), jnp.array(H), ANCHOR, jnp.array(0.0)
+    )
     controls = trim.trimmed_controls(x)._replace(elevator=x[1] + d_elevator)
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
-    return integrate.rollout(sim, controls, jnp.array(dt), ac, n_steps)
+    return integrate.rollout(sim, controls, jnp.array(dt), ac, n_steps, ANCHOR, EARTH)
 
 
 def test_extracting_rk4_step_did_not_move_a_single_bit():
@@ -44,6 +61,34 @@ def test_extracting_rk4_step_did_not_move_a_single_bit():
     The same instrument PROJECT.md section 4 uses for the zero-wind path. A
     tolerance would not do: the claim is that the extraction was arithmetic
     neutral, and any tolerance admits an extraction that was not.
+
+    **THE PREMISE IS GONE AND THIS TEST IS EXPECTED TO FAIL. THE HASH IS LEFT
+    EXACTLY AS IT WAS.** `PRE_REFACTOR_VEL_HASH` was captured from a plant that
+    no longer exists: a flat, non-rotating Earth with a fixed `down`, a
+    wings-level trim and `omega = 0`. The rotating Earth changes the plant by
+    construction -- the trim is banked, `trimmed_state` carries a transport
+    rate, gravity is J2 and Coriolis acts -- so no byte of `vel_body` can match.
+    Measured on this rollout, 747 cruise, dt 0.02, 500 steps:
+
+        pre-refactor (flat, non-rotating, unbanked)
+            bbc0323e77183d73bd03817a98a530d0d563b56b4962520705aaee589f276aa4
+        WGS84_J2
+            74807d2b158234ea0b3b8f0975e9dd82ae9fd56593438c8b9bcc2df2daf40b36
+        earth.FLAT
+            7a6ff050e486bcc0919dcee9d49d1b0b3643959f332a11e02749659ac8254230
+
+    `earth.FLAT` does not recover it either, and that is not a defect: earth.py
+    says so in FLAT's own docstring -- an ECEF-accumulated state cannot be
+    bit-identical to an NED-accumulated one even where the physics agrees.
+
+    **RE-CAPTURING THE HASH HERE WOULD NOT BE A MIGRATION, IT WOULD BE THE
+    FAILURE THIS TEST EXISTS TO PREVENT.** The constant's own comment says the
+    guard's whole value is that it predates the extraction; a hash taken now
+    compares the current code against itself and would pass on an extraction
+    that changed the arithmetic -- the same defect as re-deriving the stage
+    weights inline. Whether the pre-refactor guarantee can be re-established at
+    all, and against what, is a ledger decision, not one to take inside a
+    mechanical migration.
     """
     _, traj = _fixed_control_rollout(0.02, 500)
     got = hashlib.sha256(np.asarray(traj.vel_body).tobytes()).hexdigest()
@@ -80,6 +125,12 @@ def test_the_six_dof_rollout_is_fourth_order():
     it carries its own error. At dt = 1/1024 that is around 1e-14, four orders
     below the smallest error being fitted.
 
+    Flown on WGS84_J2, the Earth the project ships. An order of accuracy is a
+    property of the SCHEME against whatever right-hand side it is given, and the
+    right-hand side the project integrates is the rotating one; measured, the two
+    Earths are indistinguishable here anyway -- 3.9872 on WGS84_J2 against
+    3.9872 on earth.FLAT, with the four errors agreeing to three digits.
+
     THE FITTED WINDOW MUST STOP AT 1/32, and the reason is a measured property of
     this problem rather than a convenience. The aircraft cruises at 40,000 ft, so
     pos_ned is about [944, 0, -12184] and float64 resolves it to roughly 2.7e-12
@@ -98,12 +149,19 @@ def test_the_six_dof_rollout_is_fourth_order():
     the measurement and not a defect in the integrator. The window here keeps the
     smallest fitted error 203x above the floor, and the asymptotic range is what
     an order-of-accuracy check is defined on.
+
+    THAT FLOOR IS SUPERSEDED, NOT RE-MEASURED, and `fixed_control_refinement`'s
+    own docstring says so: the state accumulates an ECEF offset now, not an NED
+    position, so the ulp under it moves. The window is unchanged because the
+    fitted result is unchanged -- 3.9872 measured here against the 3.98913
+    PROJECT.md section 4 records -- but the 7e-11 m above is a pre-ECEF number
+    and Task 14's re-measurement of ASSUMPTIONS.md F4 owns it.
     """
     ac = REGISTRY["boeing747"]
     V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
     dts = np.array([1.0 / 4, 1.0 / 8, 1.0 / 16, 1.0 / 32])
     errors, slope = verification.fixed_control_refinement(
-        ac, V, H, dts, dt_ref=1.0 / 1024.0
+        ac, V, H, dts, dt_ref=1.0 / 1024.0, anchor=ANCHOR, earth_model=EARTH
     )
     assert slope == pytest.approx(4.0, abs=0.05), f"observed order {slope}, errors {errors}"
 
@@ -139,7 +197,7 @@ def _smooth_wind_model():
         wavelength=jnp.array(_SMOOTH_WAVELENGTH),
         north=jnp.array(0.0),
     )
-    return wind.field_model(lambda p: wind.lee_wave_wind(p, wave))
+    return wind.field_model(lambda p: wind.lee_wave_wind(p, wave), ANCHOR)
 
 
 def test_the_rollout_is_only_first_order_through_a_spatially_varying_wind():
@@ -168,6 +226,13 @@ def test_the_rollout_is_only_first_order_through_a_spatially_varying_wind():
         smooth field     1.0537   pairwise 1.073, 1.048, 1.042
         ...with the hold removed   4.0542
 
+    ON THE ROTATING EARTH THE WINDY NUMBER DID NOT MOVE AT ALL: 1.0537,
+    re-measured on WGS84_J2, the same four digits. The control moved in its last
+    digit only, 3.9891 to 3.9872. That is what says the order is a property of
+    the per-step HOLD and not of anything the Earth does -- the Earth changes the
+    right-hand side, and the hold is an O(h) perturbation of whatever
+    right-hand side it is given.
+
     The field is C-infinity, so nothing here is about the Rankine core edge --
     that is the next test, and it is a different mechanism. The core test passes
     with the probe still in, which is what says the two are separate.
@@ -176,9 +241,12 @@ def test_the_rollout_is_only_first_order_through_a_spatially_varying_wind():
     V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
     dts = np.array([1.0 / 4, 1.0 / 8, 1.0 / 16, 1.0 / 32])
 
-    _, still_air = verification.fixed_control_refinement(ac, V, H, dts, dt_ref=1.0 / 1024.0)
+    _, still_air = verification.fixed_control_refinement(
+        ac, V, H, dts, dt_ref=1.0 / 1024.0, anchor=ANCHOR, earth_model=EARTH
+    )
     errors, windy = verification.fixed_control_refinement(
-        ac, V, H, dts, dt_ref=1.0 / 1024.0, wind_model=_smooth_wind_model()
+        ac, V, H, dts, dt_ref=1.0 / 1024.0, anchor=ANCHOR, earth_model=EARTH,
+        wind_model=_smooth_wind_model(),
     )
 
     assert still_air == pytest.approx(4.0, abs=0.05), f"control moved: {still_air}"
@@ -198,6 +266,19 @@ def test_a_rankine_core_crossing_destroys_even_first_order_convergence():
     order to assert -- which is the whole point. A fitted slope through this
     sequence returns a number that describes nothing, and anything reporting one
     is reporting an artefact.
+
+    *** THE CORE'S `down` IS 0, AND THE OLD `-H` WAS MEASURED AS A LIVE TRAP. ***
+    A VortexArray's coordinates are NED offsets from the RUN ANCHOR, and the
+    anchor sits at the flight altitude, so a core on the flightpath is level with
+    the aircraft. `-H` was an altitude against an implied sea-level origin that
+    no longer exists; kept, it puts the core a whole cruise altitude BELOW the
+    run and the aircraft flies through still air. Measured both ways at this
+    window: level gives errors [0.775, 0.168, 0.182, 0.027] m, non-monotone at
+    the third refinement, which is the kink; `-H` gives
+    [1.63e-4, 8.08e-5, 3.98e-5, 1.92e-5] m -- monotone, halving with dt, and
+    below the 1e-4 m guard. So this test fails loudly rather than silently if the
+    core is ever put out of reach again, which is why the second assertion is
+    worth keeping alongside the first.
     """
     from atisim import wind
 
@@ -207,14 +288,14 @@ def test_a_rankine_core_crossing_destroys_even_first_order_convergence():
     r0 = case["r0"]
     # ONE core, so "through the core" means through exactly one kink pair.
     array = wind.VortexArray(
-        north=jnp.array([0.0]), down=jnp.array([-H]),
+        north=jnp.array([0.0]), down=jnp.array([0.0]),
         r0=jnp.array(r0), v0=jnp.array(case["v0"]),
     )
-    model = wind.field_model(lambda p: wind.vortex_wind(p, array))
+    model = wind.field_model(lambda p: wind.vortex_wind(p, array), ANCHOR)
 
     dts = np.array([1.0 / 16, 1.0 / 32, 1.0 / 64, 1.0 / 128])
     errors, _ = verification.fixed_control_refinement(
-        ac, V, H, dts, dt_ref=1.0 / 2048.0,
+        ac, V, H, dts, dt_ref=1.0 / 2048.0, anchor=ANCHOR, earth_model=EARTH,
         wind_model=model, start_north=-2.0 * r0, d_elevator=0.0,
     )
 
@@ -222,7 +303,9 @@ def test_a_rankine_core_crossing_destroys_even_first_order_convergence():
     monotone = all(b < a for a, b in zip(errors, errors[1:]))
     assert not monotone, f"expected non-monotone refinement across the core, got {errors}"
     # And it is not the round-off floor doing it: the floor at 40,000 ft is about
-    # 7e-11 m (ASSUMPTIONS.md F4) and these errors are centimetres.
+    # 7e-11 m (ASSUMPTIONS.md F4, pre-ECEF and superseded) and these errors are
+    # centimetres -- measured min 2.73e-2 m, eight orders clear of any floor the
+    # re-measurement could plausibly land on.
     assert errors.min() > 1e-4, f"errors are at the round-off floor: {errors}"
 
 
@@ -249,7 +332,39 @@ def test_a_uniform_horizontal_wind_only_translates_the_trajectory():
     at a different altitude (2 m/s over 20 s is 40 m), and density is a function
     of altitude, so the two aircraft would not see the same dynamic pressure and
     the invariance would not hold to any tolerance worth asserting.
+
+    **THE PREMISE IS NOW FALSE AND THIS TEST IS EXPECTED TO FAIL. ALL THREE
+    TOLERANCES ARE LEFT EXACTLY AS THEY WERE.** Galilean invariance is a
+    property of FLAT space, and this Earth is an ellipsoid. Two aircraft
+    separated by W*t stand at different geodetic positions, so the local vertical
+    -- and therefore gravity in body axes -- differs between them; that changes
+    alpha, which changes the pitching moment, which is how a body-force
+    difference reaches the ATTITUDE at all. Measured over the 20 s run below:
+
+        Earth       d|quat|     d|omega|    d|position - W*t|   was
+        earth.FLAT  4.811e-06   1.308e-06   2.3296e-02 m        <1e-11 / <1e-6
+        WGS84_J2    2.721e-05   1.111e-05   1.2083e-01 m        <1e-11 / <1e-6
+
+    Flown under `earth.FLAT`, which is where the claim is CLOSEST to true and
+    which therefore separates the two mechanisms: FLAT is non-rotating, so its
+    residual is the ellipsoid's curvature alone -- 140 m of northward travel is
+    2.2e-5 rad of local-vertical rotation, and the 4.8e-6 on the quaternion is
+    half of that, which is what a frame rotation looks like. The remaining
+    factor of 5 up to WGS84_J2 is `2 Omega x v` acting on a ground velocity that
+    the two runs deliberately differ in by W. Both are real physics; neither is
+    an arithmetic defect, which is what tier 0 exists to find.
+
+    WHAT SURVIVES. The bug this test was written to catch -- vel_rel in the
+    Coriolis term -- would show up as O(|omega_be| |W| t), which at the 747's
+    trimmed body rate is metres per second of velocity error, four to five orders
+    above the curvature residual measured here. So the instrument still
+    discriminates; what it lost is the ability to be asserted at 1e-11, and
+    restoring that needs a reference for translation on a curved Earth rather
+    than a looser number here.
     """
+    from atisim.state import dcm_body_to_ned
+    from atisim.state import pos_ned as state_pos_ned
+
     W = jnp.array([7.0, -3.0, 0.0])  # m/s NED, horizontal by necessity
 
     def uniform_wind(wind_state, state, key, dt):
@@ -257,30 +372,39 @@ def test_a_uniform_horizontal_wind_only_translates_the_trajectory():
 
     ac = REGISTRY["boeing747"]
     V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
-    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
-    state = trim.trimmed_state(x[0], jnp.array(V), jnp.array(H))
+    earth_model = earth.FLAT
+    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac, ANCHOR, earth_model)
+    state = trim.trimmed_state(
+        x[0], x[3], jnp.array(V), jnp.array(H), ANCHOR, jnp.array(0.0)
+    )
     controls = trim.trimmed_controls(x)._replace(elevator=x[1] + 0.01)
 
-    from atisim.state import quat_to_dcm
-
-    dcm = quat_to_dcm(state.quat)  # body -> NED
+    # A body -> NED MATRIX at the aircraft's own position. `state.quat` is
+    # body -> ECEF now, and W is stated in NED, so rotating it by the state
+    # quaternion would offset the velocity in a plausible wrong direction.
+    dcm = dcm_body_to_ned(state, ANCHOR)
     shifted = state._replace(vel_body=state.vel_body + dcm.T @ W)
 
     dt, n = jnp.array(0.02), 1000
     _, still = integrate.rollout(
-        integrate.init_sim(state, jax.random.PRNGKey(0)), controls, dt, ac, n
+        integrate.init_sim(state, jax.random.PRNGKey(0)), controls, dt, ac, n,
+        ANCHOR, earth_model,
     )
     _, blown = integrate.rollout(
         integrate.init_sim(shifted, jax.random.PRNGKey(0)),
-        controls, dt, ac, n, wind_model=uniform_wind,
+        controls, dt, ac, n, ANCHOR, earth_model, wind_model=uniform_wind,
     )
 
     np.testing.assert_allclose(np.asarray(blown.quat), np.asarray(still.quat), atol=1e-11)
     np.testing.assert_allclose(np.asarray(blown.omega), np.asarray(still.omega), atol=1e-11)
 
+    # The translation is read in the LOCAL frame, because W is stated there and
+    # a difference of ECEF offsets would depend on where on the Earth this flew.
     t = np.arange(1, n + 1) * float(dt)
-    expected = np.asarray(still.pos_ned) + t[:, None] * np.asarray(W)
-    np.testing.assert_allclose(np.asarray(blown.pos_ned), expected, atol=1e-6)
+    still_ned = np.asarray(jax.vmap(state_pos_ned, in_axes=(0, None))(still, ANCHOR))
+    blown_ned = np.asarray(jax.vmap(state_pos_ned, in_axes=(0, None))(blown, ANCHOR))
+    expected = still_ned + t[:, None] * np.asarray(W)
+    np.testing.assert_allclose(blown_ned, expected, atol=1e-6)
 
 
 # --- the other gust error PROJECT.md section 2 names ---
@@ -333,10 +457,39 @@ def test_a_time_varying_uniform_wind_adds_no_body_force():
     carries the derivation of why a closed form and not an invariance is the
     right instrument. It lives there rather than here so the notebook runs THIS
     code rather than a second copy of it that could drift.
+
+    **THIS TEST IS EXPECTED TO FAIL TWICE OVER, AND THE 1e-9 IS LEFT ALONE.**
+
+    First, it does not reach its assertions at all: `verification.py:331` calls
+    `longitudinal_controls` while line 318 imports only `trimmed_controls`, so
+    the experiment raises NameError. That is a SOURCE defect, reported rather
+    than repaired here.
+
+    Second, past that, the number has moved and the source says why in its own
+    docstring: `earth.FLAT` puts gravity along the LOCAL geodetic vertical, which
+    rotates as the body travels, while the closed form uses the anchor's. The
+    departure is GEOMETRIC and grows as t^3 -- measured 3.3222e-03 m over the 6 s
+    run here, against this assertion's 1e-9 m.
+
+    **THE CLAIM ITSELF SURVIVES INTACT, AND THAT IS MEASURED TOO.** Re-running
+    with `SWING_W0` zeroed gives 0.00332221804103483 m against the gusting run's
+    0.00332221804103483 m -- the same float, not the same to a tolerance. So the
+    WIND-DEPENDENT part of the error is exactly zero, which is the whole claim: a
+    spurious -m*dW/dt term would put up to 30 m/s of velocity error in there.
+    What has gone is only the ability to assert it against round-off through this
+    one number. The source docstring's own remedy -- "difference two wind
+    settings" -- has no route through the current signature, since the gust is
+    hardcoded and takes no argument; that gap is reported alongside the NameError.
     """
     n, dt = 300, 0.02
     ac = verification.without_aerodynamics(REGISTRY["boeing747"])
-    got = verification.free_fall_through_a_swinging_wind(ac, dt=dt, n=n)
+    # A SEA-LEVEL anchor, deliberately not this module's cruise ANCHOR. The
+    # experiment starts the body at a NED `down` of -3000 and its closed form is
+    # written in the anchor's frame, and straight up from the anchor is the one
+    # direction where the tangent plane and the ellipsoid agree exactly -- so
+    # that -3000 is a geodetic height of 3,000 m only if the anchor is at h = 0.
+    anchor = earth.anchor_at(np.radians(47.0), 0.0, 0.0)
+    got = verification.free_fall_through_a_swinging_wind(ac, anchor, dt=dt, n=n)
 
     # The wind really did swing, rather than the model quietly returning zeros
     # and the experiment passing for that reason.
@@ -373,15 +526,17 @@ def test_a_step_ignores_the_wind_the_previous_step_applied():
 
     ac = REGISTRY["boeing747"]
     V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
-    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
-    state = trim.trimmed_state(x[0], jnp.array(V), jnp.array(H))
+    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac, ANCHOR, EARTH)
+    state = trim.trimmed_state(
+        x[0], x[3], jnp.array(V), jnp.array(H), ANCHOR, jnp.array(0.0)
+    )
     controls = trim.trimmed_controls(x)._replace(elevator=x[1] + 0.01)
     base = integrate.init_sim(state, jax.random.PRNGKey(0))
 
     def one_step(cached):
         after = integrate.step(
             base._replace(wind_ned=cached), controls, jnp.array(0.02), ac,
-            wind_model=steady,
+            ANCHOR, EARTH, wind_model=steady,
         )
         return jax.tree.map(lambda leaf: np.asarray(leaf).tobytes(), after.state)
 
@@ -398,10 +553,20 @@ def test_the_trim_solve_converges_quadratically():
     is the signature that jacfwd differentiates the same function the residual
     evaluates. A finite-difference or stale Jacobian still converges, linearly,
     and the final residual alone cannot tell them apart.
+
+    Six unknowns now, not three, and the convergence survived it: measured
+    history [2.253, 4.11e-02, 7.80e-08, 2.85e-15, ...] on WGS84_J2, three usable
+    iterations and a peak exponent ratio of 3.29. `earth.FLAT` gives
+    [2.289, 4.24e-02, 8.19e-08, ...] and 3.30, so the rate is a property of the
+    Jacobian rather than of the Earth. WGS84_J2 is used because it is the solve
+    the package ships -- and the one whose lateral rows the three-unknown solver
+    did not have.
     """
     ac = REGISTRY["boeing747"]
     V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
-    history = verification.newton_residual_history(jnp.array(V), jnp.array(H), ac, 6)
+    history = verification.newton_residual_history(
+        jnp.array(V), jnp.array(H), ac, ANCHOR, EARTH, iterations=6
+    )
     assert history[0] > 1.0, "the start point is already converged; pick a worse one"
 
     # takewhile, not a filter: the residual can dip below float64 resolution and
@@ -457,9 +622,28 @@ def test_the_integrator_reproduces_torque_free_rotation():
     PROJECT.md section 4 records angular-momentum drift of 5.7e-13 over 60,000
     steps. A scheme can conserve H exactly and traverse the polhode at the wrong
     rate. This checks the trajectory instead of the invariant.
+
+    **FLOWN UNDER `earth.FLAT`, AND THAT IS NOT NEGOTIABLE HERE** -- the same
+    argument `verification.free_fall_through_a_swinging_wind` makes for its own
+    closed form. `torque_free_omega` is Landau & Lifshitz's INERTIAL solution of
+    Euler's equations. On a rotating Earth `state.omega` is the body rate
+    relative to ECEF, and the plant integrates
+    `omega_dot_be = I^-1 (M - omega_bi x I omega_bi) + omega_be x Omega_b` with
+    `omega_bi = omega_be + Omega_b`, which is a different equation; there is no
+    tolerance at which the elliptic functions are its solution. Under FLAT
+    `Omega = 0`, the two collapse together, and the closed form IS the answer.
+
+    Measured over the 3 s run below, worst |d(omega)| against the closed form:
+
+        earth.FLAT   1.1720e-14   (against this test's atol of 1e-8)
+        WGS84_J2     1.4900e-04
+
+    The J2 figure is 2.0e-4 of |omega| and about `Omega/|omega|` in size, which
+    is the frame difference and not an integrator defect -- reading it as one is
+    exactly what choosing the wrong Earth here would produce.
     """
     from atisim.aircraft import inertia_tensor
-    from atisim.state import State, euler_to_quat
+    from atisim.state import euler_to_quat, state_from_ned
     from atisim.tests.conftest import make_test_aircraft
 
     inertia = inertia_tensor(_I1, _I2, _I3, 0.0)
@@ -474,16 +658,23 @@ def test_the_integrator_reproduces_torque_free_rotation():
         inertia_inv=jnp.linalg.inv(inertia),
         **{k: jnp.array(v) for k, v in zeroed.items()},
     )
-    state = State(
-        pos_ned=jnp.array([0.0, 0.0, -3000.0]),
-        vel_body=jnp.array([60.0, 0.0, 0.0]),
-        quat=euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
-        omega=jnp.array(_OMEGA0),
+    # Its own anchor at the 3,000 m this flies, not the module's cruise ANCHOR.
+    # Altitude cannot reach the answer at all -- every coefficient and the thrust
+    # are zeroed, so density never enters -- so the aircraft sits AT the anchor
+    # and the state is built from the local description it always had.
+    anchor = earth.anchor_at(np.radians(47.0), 0.0, 3000.0)
+    state = state_from_ned(
+        jnp.zeros(3),
+        jnp.array([60.0, 0.0, 0.0]),
+        euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
+        jnp.array(_OMEGA0),
+        anchor,
     )
     controls = trim.longitudinal_controls(jnp.array(0.0), jnp.array(0.0))
     dt, n = 0.002, 1500
     _, traj = integrate.rollout(
-        integrate.init_sim(state, jax.random.PRNGKey(0)), controls, jnp.array(dt), ac, n
+        integrate.init_sim(state, jax.random.PRNGKey(0)), controls, jnp.array(dt),
+        ac, n, anchor, earth.FLAT,
     )
 
     t = np.arange(1, n + 1) * dt
