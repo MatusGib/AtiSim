@@ -13,13 +13,20 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 
-from atisim import vortex_viz, wind  # noqa: E402
+from atisim import earth, viz, vortex_viz, wind  # noqa: E402
 from atisim.aircraft import CRUISE, REGISTRY  # noqa: E402
 from atisim.units import FT2M, RAD2DEG  # noqa: E402
 
 AC = REGISTRY["boeing747"]
 V = CRUISE["boeing747"]["airspeed"]
 H = CRUISE["boeing747"]["altitude"]
+# 47N at the cruise altitude, as the rest of this project's Earth-rotation work.
+# The anchor sits AT H, which is why every vortex core below has `down = 0`
+# rather than `-H`: the field's coordinates are NED offsets from the anchor, so a
+# core on the flightpath is level with the aircraft. `-H` would put the cores a
+# whole cruise altitude above the run and the traverse would meet nothing.
+ANCHOR = earth.anchor_at(np.radians(47.0), 0.0, H)
+EARTH = earth.WGS84_J2
 # Read from PARKS_CASES rather than restated, so this file cannot go on testing
 # a core the project no longer flies. It held its own 600 ft literal until
 # session 22 moved Hannibal's radius to Fig. 4's 500 ft, at which point the two
@@ -31,12 +38,12 @@ R0, V0, SPACING = _HANNIBAL["r0"], _HANNIBAL["v0"], _HANNIBAL["spacing"]
 
 def _encounter(lead_in=40.0):
     array = wind.VortexArray(
-        north=jnp.array([0.0, SPACING]), down=jnp.array([-H, -H]),
+        north=jnp.array([0.0, SPACING]), down=jnp.array([0.0, 0.0]),
         r0=jnp.array(R0), v0=jnp.array(V0),
     )
     lead = lead_in * R0
     return vortex_viz.fly(
-        AC, lambda p: wind.vortex_wind(p, array), V, H,
+        AC, lambda p: wind.vortex_wind(p, array), V, H, ANCHOR, EARTH,
         label="vortex", start_north=-lead,
         seconds=(SPACING + lead + 6.0 * R0) / V, dt=0.01,
         window=(-R0, R0), window_name="first core",
@@ -64,7 +71,7 @@ def updraft():
         sharpness=jnp.array(6.0),
     )
     return vortex_viz.fly(
-        AC, lambda p: wind.updraft_wind(p, column), V, H,
+        AC, lambda p: wind.updraft_wind(p, column), V, H, ANCHOR, EARTH,
         label="updraft", start_north=-2.0 * radius,
         seconds=4.0 * radius / V, dt=0.01,
         window=(-radius, radius), window_name="column",
@@ -74,7 +81,7 @@ def updraft():
 @pytest.fixture(scope="module")
 def pushdown():
     return vortex_viz.manoeuvre(
-        AC, V, H, label="manoeuvre",
+        AC, V, H, ANCHOR, EARTH, label="manoeuvre",
         elevator_step=jnp.deg2rad(8.926),
         hold=PUSHDOWN_HOLD, lead_in=PUSHDOWN_LEAD,
         seconds=PUSHDOWN_LEAD + 3.0 * PUSHDOWN_HOLD, dt=0.01,
@@ -91,6 +98,10 @@ def pushdown():
 # radius could only ever fail. What that costs is worth stating plainly -- these
 # numbers no longer certify the logging refactor, because they were taken after
 # it. What they still do is hold the rollout arithmetic-exact from here on.
+#
+# **NOT RE-CAPTURED FOR THE ECEF STATE.** See the test below: the value left
+# here is the flat-Earth one, deliberately, so the migration reports the
+# movement rather than absorbing it.
 FIG8_VORTEX = (2.1601976247303707, -1.260600307461945)
 FIG8_VORTEX_BEFORE_LOGGING = FIG8_VORTEX  # old name, kept for one release
 
@@ -102,6 +113,32 @@ def test_logging_the_run_did_not_move_the_headline_numbers(encounter):
     artifact with the wind it actually flew. That is the same `step` scanned with
     a wider output, so the claim is arithmetic-neutrality, and any tolerance
     admits a change that was not.
+
+    **THIS TEST IS EXPECTED TO FAIL, AND THE PIN ABOVE IS LEFT ALONE ON
+    PURPOSE.** The ECEF state IS a change to the rollout -- a stated physical one
+    -- so this pin legitimately moves, and re-capturing it inside the migration
+    would be the migration certifying itself. Migrated mechanically, left red,
+    and measured so the re-capture has numbers:
+
+        quantity                 flat Earth (pinned)   WGS84_J2 (now)
+        pitch excursion  deg     2.1601976247303707    2.1606541112315085
+        load excursion   g      -1.260600307461945    -1.2687103475242378
+
+    +0.021% and +0.64%: the same encounter over a different plant, which is the
+    right order for a 40 r0 traverse whose response is set by the vortex.
+
+    The two coordinates move for different reasons, and `earth.FLAT` -- an ECEF
+    ellipsoid with no rotation and constant g -- separates them. It gives
+    2.1599167061613826 / -1.2682378644145114, so:
+
+        pitch  geometry -2.81e-4 deg, rotation and J2 +7.37e-4 deg
+        load   geometry -7.64e-3 g,   rotation and J2 -4.72e-4 g
+
+    The load coordinate is 94% GEOMETRY. `fig8_point` measures the excursion
+    from the run's own `n_z[0]`, and level flight round an ellipsoid needs the
+    nose-down transport rate `trim.trimmed_state` now carries -- so the point the
+    excursion is measured from moved, not just the peak. Rotation and J2 dominate
+    the pitch coordinate instead, and even there they are 3.4e-4 of it.
     """
     assert vortex_viz.fig8_point(encounter) == FIG8_VORTEX_BEFORE_LOGGING
 
@@ -111,7 +148,9 @@ def test_a_flown_encounter_carries_the_run_it_flew(encounter):
     log = encounter.log
     assert log is not None
     assert len(log.t) == len(encounter.t)
-    assert np.array_equal(log.pos_ned[:, 0], encounter.north)
+    # `viz.pos_ned`, derived: the log stores the ECEF offset, and `north` is the
+    # local-NED view of the same samples, so they must still be the same numbers.
+    assert np.array_equal(viz.pos_ned(log)[:, 0], encounter.north)
     # The recorded wind is the vertical gust the trace stack plots, one step on.
     assert np.abs(log.wind_ned).max() > 0.0
     assert np.abs(log.omega_gust).max() > 0.0
@@ -167,7 +206,7 @@ def test_the_pushdown_stays_inside_the_declared_alpha_band(pushdown):
 
     |alpha|, not alpha: a pushdown drives incidence NEGATIVE, and aero.py is
     odd-symmetric, so magnitude is what decides validity (section 6(e)).
-    Measured 10.31 deg -- marginal, inside the amber band, and the figure says
+    Measured 10.35 deg -- marginal, inside the amber band, and the figure says
     so. If this ever exceeds 12 the run proves nothing and must be reported as
     such rather than quoted.
     """
@@ -184,7 +223,7 @@ def test_air_relative_and_inertial_incidence_disagree_by_degrees(encounter):
     applying the wind.
     """
     difference = np.abs(encounter.alpha_air - encounter.alpha_inertial) * RAD2DEG
-    assert difference.max() > 3.0  # measured ~7.0 deg
+    assert difference.max() > 3.0  # measured 6.97 deg
 
 
 def test_load_factor_is_a_straight_line_in_air_relative_incidence(encounter):
@@ -197,8 +236,8 @@ def test_load_factor_is_a_straight_line_in_air_relative_incidence(encounter):
     """
     air = np.corrcoef(encounter.alpha_air, encounter.n_z)[0, 1]
     inertial = np.corrcoef(encounter.alpha_inertial, encounter.n_z)[0, 1]
-    assert air > 0.999  # measured 0.9990
-    assert inertial < 0.9  # measured 0.5572 -- the same data, wrongly derived
+    assert air > 0.999  # measured 0.9995
+    assert inertial < 0.9  # measured 0.5727 -- the same data, wrongly derived
 
 
 def test_the_lead_in_matters_and_a_short_one_starts_out_of_equilibrium():
@@ -210,29 +249,33 @@ def test_the_lead_in_matters_and_a_short_one_starts_out_of_equilibrium():
     """
     close = _encounter(lead_in=6.0)
     far = _encounter(lead_in=40.0)
-    assert close.n_z[0] > 1.15  # measured 1.2033 -- 0.2 g out of equilibrium
-    assert abs(far.n_z[0] - 0.9967) < 0.05  # measured 1.0352
+    assert close.n_z[0] > 1.15  # measured 1.1925 -- 0.2 g out of equilibrium
+    assert abs(far.n_z[0] - 0.9967) < 0.05  # measured 1.0298
     assert vortex_viz.fig8_point(far)[0] > vortex_viz.fig8_point(close)[0]
 
 
 def test_the_window_is_what_decides_the_discriminator_coordinate(encounter):
     """The windowing trap, asserted.
 
-    Measured over the whole run the pitch excursion is nearly four times the
-    in-core value, which on Fig. 8 would migrate the point out of the vortex
+    Measured over the whole run the pitch excursion is three and a half times
+    the in-core value, which on Fig. 8 would migrate the point out of the vortex
     cluster entirely. The figure draws both for exactly this reason.
     """
     in_core, _ = vortex_viz.fig8_point(encounter)
     whole = float(encounter.theta.max() - encounter.theta.min()) * RAD2DEG
     assert in_core == pytest.approx(2.20, abs=0.15)
-    assert whole > 3.0 * in_core  # measured 8.33 vs 2.20
+    assert whole > 3.0 * in_core  # measured 7.55 vs 2.16
 
 
 def test_the_figure_builds_with_every_panel_and_does_not_display(encounter):
     """Returns a Figure, never shows -- matching viz.post_flight's contract."""
-    array_cores = [(0.0, H), (SPACING, H)]
+    # The cores are stated in the FIELD's own frame -- NED height above the
+    # anchor, which `Encounter.altitude` also is -- so a core level with the
+    # flightpath is at 0, not at H. Passing H would draw the circles a cruise
+    # altitude off the top of the panel the flight path is plotted in.
+    array_cores = [(0.0, 0.0), (SPACING, 0.0)]
     array = wind.VortexArray(
-        north=jnp.array([0.0, SPACING]), down=jnp.array([-H, -H]),
+        north=jnp.array([0.0, SPACING]), down=jnp.array([0.0, 0.0]),
         r0=jnp.array(R0), v0=jnp.array(V0),
     )
     figure = vortex_viz.figure(
@@ -277,7 +320,7 @@ def test_the_measured_load_factor_sees_the_applied_increment():
     from atisim import loads
 
     array = wind.VortexArray(
-        north=jnp.array([0.0]), down=jnp.array([-H]),
+        north=jnp.array([0.0]), down=jnp.array([0.0]),
         r0=jnp.array(R0), v0=jnp.array(V0),
     )
     field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
@@ -286,9 +329,9 @@ def test_the_measured_load_factor_sees_the_applied_increment():
         seconds=12.0 * R0 / V, dt=0.01,
         window=(-R0, R0), window_name="first core",
     )
-    plain = vortex_viz.fly(AC, field, V, H, **common)
+    plain = vortex_viz.fly(AC, field, V, H, ANCHOR, EARTH, **common)
     lifted = vortex_viz.fly(
-        AC, field, V, H,
+        AC, field, V, H, ANCHOR, EARTH,
         load_model=lambda s: loads.zero_increment()._replace(CL=jnp.array(0.05)),
         **common,
     )
@@ -307,10 +350,10 @@ def test_omitting_the_load_model_leaves_the_measurement_untouched():
         window=(-R0, R0), window_name="first core",
     )
     array = wind.VortexArray(
-        north=jnp.array([0.0]), down=jnp.array([-H]),
+        north=jnp.array([0.0]), down=jnp.array([0.0]),
         r0=jnp.array(R0), v0=jnp.array(V0),
     )
     field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
-    plain = vortex_viz.fly(AC, field, V, H, **common)
-    explicit = vortex_viz.fly(AC, field, V, H, load_model=None, **common)
+    plain = vortex_viz.fly(AC, field, V, H, ANCHOR, EARTH, **common)
+    explicit = vortex_viz.fly(AC, field, V, H, ANCHOR, EARTH, load_model=None, **common)
     assert np.array_equal(plain.n_z, explicit.n_z)
