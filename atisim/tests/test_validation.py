@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 import atisim  # noqa: F401
-from atisim import trim, validation
+from atisim import earth, trim, validation
 from atisim.aircraft import REGISTRY
 from atisim.units import FT2M
 
@@ -14,27 +14,71 @@ from atisim.units import FT2M
 # against Caughey run at Caughey's speed.
 CAUGHEY_V = 279.1 * FT2M
 
+# SEA LEVEL, which is Caughey's power-approach condition. The anchor is where the
+# aircraft is now actually PLACED -- validation.py carries `H` only to keep the
+# (V, H) call shape -- so anchoring anywhere else would linearise about a
+# different flight condition from the one the source published.
+#
+# **`earth.FLAT`, AND validation.py's OWN MODULE COMMENT IS THE CITATION:** "A
+# tier-2 comparison against Caughey or CR-2144 belongs under `earth.FLAT`; the
+# same function under `WGS84_J2` is measuring something else, and the reader of a
+# residual has to be able to tell which was asked for." Every published matrix
+# element and root in this file was derived on a flat, non-rotating Earth, and
+# every tier-1 law here -- Lanchester, the neutral point, the affine mode
+# relations -- is an Earth-independent claim about the aerodynamic derivative
+# chain. FLAT is what keeps them testing what they were written to test.
+#
+# It is not a dodge: at pos_ned = 0 the aircraft sits ON the anchor, where the
+# local geodetic vertical IS the anchor's down, so FLAT's gravity is exactly the
+# `dcm.T @ [0, 0, G0]` the pre-Earth plant used, and these matrices are the same
+# arithmetic they always were. Measured below, element by element.
+ANCHOR = earth.anchor_at(np.radians(47.0), 0.0, 0.0)
+EARTH = earth.FLAT
+
 
 def _approach_trim(V=CAUGHEY_V):
+    """Caughey's power-approach trim. Returns (ac, alpha, elevator, throttle, res).
+
+    The BANK, `x[3]`, is deliberately not returned, and the assertion below is
+    what makes dropping it lossless rather than the silent discard the six-element
+    solution invites. Under `earth.FLAT` there is no Coriolis for a bank to
+    balance, so the trim is wings-level: measured phi = 2.4e-36 rad, which is the
+    `lstsq` null direction correctly left alone and not a small bank. On
+    WGS84_J2 the same aircraft banks 0.15 deg, twenty-nine orders larger, so this
+    guard fires the moment the Earth under this file changes.
+
+    `longitudinal_matrix`, `lateral_modes` and `sweep`'s `quantity` callback all
+    describe a WINGS-LEVEL trim, which is what the published references are.
+    """
     ac = REGISTRY["boeing747_approach"]
-    x, res = trim.trim(jnp.array(V), jnp.array(0.0), ac)
+    x, res = trim.trim(jnp.array(V), jnp.array(0.0), ac, ANCHOR, EARTH)
+    assert abs(float(x[3])) < 1e-15, (
+        f"FLAT must trim wings-level, got phi = {float(x[3])}"
+    )
     return ac, float(x[0]), float(x[1]), float(x[2]), res
 
 
 def _approach_A(imperial=True):
     ac, alpha, de, thr, _ = _approach_trim()
     A = validation.to_stability_axes(
-        validation.longitudinal_matrix(ac, alpha, de, thr, CAUGHEY_V, 0.0), alpha
+        validation.longitudinal_matrix(
+            ac, alpha, de, thr, CAUGHEY_V, 0.0, ANCHOR, EARTH
+        ),
+        alpha,
     )
     return validation.to_imperial_matrix(A) if imperial else A
 
 
 def _sp_wn(a, alpha, de, thr):
-    return validation.longitudinal_modes(a, alpha, de, thr, CAUGHEY_V, 0.0)[-1][0]
+    return validation.longitudinal_modes(
+        a, alpha, de, thr, CAUGHEY_V, 0.0, ANCHOR, EARTH
+    )[-1][0]
 
 
 def _ph_zeta(a, alpha, de, thr):
-    return validation.longitudinal_modes(a, alpha, de, thr, CAUGHEY_V, 0.0)[0][1]
+    return validation.longitudinal_modes(
+        a, alpha, de, thr, CAUGHEY_V, 0.0, ANCHOR, EARTH
+    )[0][1]
 
 
 # --------------------------------------------------------------------------
@@ -49,7 +93,9 @@ def test_the_stability_axis_transform_is_a_similarity_transform():
     stability-axis one, so it is asserted before it is used.
     """
     ac, alpha, de, thr, _ = _approach_trim()
-    A_body = validation.longitudinal_matrix(ac, alpha, de, thr, CAUGHEY_V, 0.0)
+    A_body = validation.longitudinal_matrix(
+        ac, alpha, de, thr, CAUGHEY_V, 0.0, ANCHOR, EARTH
+    )
     A_stab = validation.to_stability_axes(A_body, alpha)
 
     assert not np.allclose(A_body, A_stab, atol=1e-6), "the transform did nothing"
@@ -142,7 +188,7 @@ def test_the_approach_modes_match_caugheys_published_roots():
     """The end-to-end statement: units, trim, dynamics and jacfwd in four numbers."""
     ac, alpha, de, thr, _ = _approach_trim()
     (ph_wn, ph_z), (sp_wn, sp_z) = validation.longitudinal_modes(
-        ac, alpha, de, thr, CAUGHEY_V, 0.0
+        ac, alpha, de, thr, CAUGHEY_V, 0.0, ANCHOR, EARTH
     )
     R = validation.REFERENCES
     assert ph_wn == pytest.approx(R["747pa_phugoid_wn"].value, rel=0.01)
@@ -169,7 +215,7 @@ def test_the_mode_error_is_an_order_of_magnitude_smaller_on_approach():
     R = validation.REFERENCES
     ac, alpha, de, thr, _ = _approach_trim()
     (ph_wn, _), (_, sp_z) = validation.longitudinal_modes(
-        ac, alpha, de, thr, CAUGHEY_V, 0.0
+        ac, alpha, de, thr, CAUGHEY_V, 0.0, ANCHOR, EARTH
     )
 
     def rel_err(model, ref):
@@ -209,13 +255,16 @@ def test_the_sweep_helper_refuses_a_physically_absurd_trim():
     """
     ac, _, _, _, _ = _approach_trim()
     swept = ac._replace(CLa=jnp.array(0.1))
-    _, residual = trim.trim(jnp.array(CAUGHEY_V), jnp.array(0.0), swept)
+    _, residual = trim.trim(jnp.array(CAUGHEY_V), jnp.array(0.0), swept, ANCHOR, EARTH)
     assert float(jnp.linalg.norm(residual)) < validation.TRIM_RESIDUAL_LIMIT, (
         "this case is only interesting because it DOES converge"
     )
 
     with pytest.raises(RuntimeError, match="linear-aero range"):
-        validation.sweep(ac, "CLa", [0.1], lambda a, al, de, th: 0.0, CAUGHEY_V, 0.0)
+        validation.sweep(
+            ac, "CLa", [0.1], lambda a, al, de, th: 0.0, CAUGHEY_V, 0.0,
+            ANCHOR, EARTH,
+        )
 
 
 def test_the_phugoid_frequency_follows_the_lanchester_law():
@@ -233,7 +282,9 @@ def test_the_phugoid_frequency_follows_the_lanchester_law():
     from atisim.atmosphere import G0
 
     ac, alpha, de, thr, _ = _approach_trim()
-    (ph_wn, _), _ = validation.longitudinal_modes(ac, alpha, de, thr, CAUGHEY_V, 0.0)
+    (ph_wn, _), _ = validation.longitudinal_modes(
+        ac, alpha, de, thr, CAUGHEY_V, 0.0, ANCHOR, EARTH
+    )
     lanchester = np.sqrt(2.0) * float(G0) / CAUGHEY_V
     assert lanchester / ph_wn == pytest.approx(1.22, rel=0.03)
 
@@ -245,7 +296,9 @@ def test_the_phugoid_damping_follows_the_lift_to_drag_law():
     of almost 5". Measured: 0.0651 against 0.01329, a ratio of 4.9.
     """
     ac, alpha, de, thr, _ = _approach_trim()
-    (_, ph_zeta), _ = validation.longitudinal_modes(ac, alpha, de, thr, CAUGHEY_V, 0.0)
+    (_, ph_zeta), _ = validation.longitudinal_modes(
+        ac, alpha, de, thr, CAUGHEY_V, 0.0, ANCHOR, EARTH
+    )
     R = validation.REFERENCES
     L_over_D = R["747pa_CL"].value / R["747pa_CD"].value
     lanchester = 1.0 / (np.sqrt(2.0) * L_over_D)
@@ -268,7 +321,7 @@ def test_more_drag_damps_the_phugoid_linearly_in_CD0():
     base = float(ac.CD0)
     cd0s = base * np.array([1.0, 1.5, 2.0, 3.0])
 
-    zetas = validation.sweep(ac, "CD0", cd0s, _ph_zeta, CAUGHEY_V, 0.0)
+    zetas = validation.sweep(ac, "CD0", cd0s, _ph_zeta, CAUGHEY_V, 0.0, ANCHOR, EARTH)
     assert np.all(np.diff(zetas) > 0), "more drag must damp the phugoid"
 
     slope, _, worst = validation.affine_fit(cd0s, zetas)
@@ -293,7 +346,7 @@ def test_the_short_period_frequency_is_affine_in_pitch_stiffness():
     base = validation.REFERENCES["747pa_Cma"].value
     cmas = np.array([base, -0.9, -0.6, -0.3, -0.1])
 
-    wns = validation.sweep(ac, "Cma", cmas, _sp_wn, CAUGHEY_V, 0.0)
+    wns = validation.sweep(ac, "Cma", cmas, _sp_wn, CAUGHEY_V, 0.0, ANCHOR, EARTH)
     assert np.all(np.diff(wns) < 0), f"wn must fall as Cma -> 0, got {wns}"
 
     slope, intercept, worst = validation.affine_fit(cmas, wns**2)
@@ -311,14 +364,56 @@ def test_the_model_goes_statically_unstable_exactly_at_zero_pitch_stiffness():
     system must be neutrally stable there and divergent beyond. Measured: the
     largest real part is 0.00000 at Cm_alpha = 0 and +0.0475 at +0.1. Nothing was
     tuned to make that land on zero -- it falls out of the derivative chain.
+
+    **THE EXACT ZERO IS GONE AND THIS TEST IS EXPECTED TO FAIL. THE abs=1e-6 IS
+    LEFT ALONE.** It is the only test in this file sharp enough to see the
+    change, and what it sees is worth keeping visible.
+
+        largest real root at Cma = 0     was  0.000000e+00 (det exactly 0.0)
+        earth.FLAT                       now +7.980423e-05
+        WGS84_J2                         now +7.976367e-05
+
+    **IT IS NOT THE EARTH'S ROTATION.** FLAT and WGS84_J2 agree to four digits,
+    and a latitude sweep under FLAT gives 8.02e-5 at the equator, 7.98e-5 at 47N
+    and 7.94e-5 at 89N -- a 1% spread on a quantity that would go to zero with
+    Omega. It is the ELLIPSOID, through the TRANSPORT RATE, and the chain is
+    exact rather than attributed:
+
+      1. `trim.trimmed_state` now carries `transport_rate_body`, because steady
+         level flight round a curved Earth is a continuous nose-down pitch.
+         Here q0 = -1.3356e-05 rad/s. The trim solves Cm = 0 AT that pitch rate.
+      2. `validation.longitudinal_matrix` linearises at q = 0, not at q = q0.
+         So at ITS reference state Cm = -Cmq*q0*c/(2V) = -1.3591e-05, not zero.
+      3. A non-zero Cm at the reference state puts
+         d(qdot)/du = rho*u0*Cm*S*c/Iyy into A[2,0]. Predicted
+         -1.3697980087972592e-07, measured -1.369798008797381e-07 -- thirteen
+         digits, so the mechanism is identified and not merely plausible.
+      4. That element is exactly what made det(A) structurally zero. det moves
+         from 0.0 to -8.1432e-07 and the zero root lifts to +7.98e-5.
+
+    **THE LINEARISATION ITSELF DID NOT MOVE.** Feeding the PRE-ECEF trim
+    (alpha 5.571570 deg, elevator 0.00210771, throttle 0.295810) through the
+    migrated `longitudinal_matrix` under FLAT reproduces the pre-ECEF matrix to
+    2.0e-13 and returns det = 0.0 and a largest real root of exactly 0.0. So
+    `state_from_ned` and FLAT's local-vertical gravity are the same arithmetic
+    the flat plant did, and this is a TRIM/reference-state mismatch, not a plant
+    defect. Reported as a probable source question: `longitudinal_matrix` and
+    `lateral_modes` linearise about zero body rate while `trim` now returns a
+    condition that is only a fixed point at the transport rate.
+
+    Physically the root is +8e-5 s^-1, a time to double of about 2.4 hours, so
+    the aeroplane is still neutrally stable in every sense a pilot could mean.
+    What has gone is the EXACTNESS, and only an exact assertion could have shown
+    that -- which is why the tolerance is not the thing to move.
     """
     ac, _, _, _, _ = _approach_trim()
 
     def max_real_root(cma):
         swept = ac._replace(Cma=jnp.array(float(cma)))
-        x, _ = trim.trim(jnp.array(CAUGHEY_V), jnp.array(0.0), swept)
+        x, _ = trim.trim(jnp.array(CAUGHEY_V), jnp.array(0.0), swept, ANCHOR, EARTH)
         A = validation.longitudinal_matrix(
-            swept, float(x[0]), float(x[1]), float(x[2]), CAUGHEY_V, 0.0
+            swept, float(x[0]), float(x[1]), float(x[2]), CAUGHEY_V, 0.0,
+            ANCHOR, EARTH,
         )
         return max(lam.real for lam in np.linalg.eigvals(A))
 
@@ -342,9 +437,11 @@ def test_the_roll_rate_root_is_affine_in_roll_damping():
     clps = np.array([-0.30, -0.45, -0.60, -0.75])
 
     def roll_tau(a, alpha, de, thr):
-        return validation.lateral_modes(a, alpha, de, thr, CAUGHEY_V, 0.0)[1]
+        return validation.lateral_modes(
+            a, alpha, de, thr, CAUGHEY_V, 0.0, ANCHOR, EARTH
+        )[1]
 
-    taus = validation.sweep(ac, "Clp", clps, roll_tau, CAUGHEY_V, 0.0)
+    taus = validation.sweep(ac, "Clp", clps, roll_tau, CAUGHEY_V, 0.0, ANCHOR, EARTH)
     assert np.all(np.diff(taus) < 0), "more roll damping must shorten tau"
 
     slope, intercept, worst = validation.affine_fit(np.abs(clps), 1.0 / taus)
@@ -369,9 +466,11 @@ def test_the_dutch_roll_frequency_is_affine_in_weathercock_stability():
     cnbs = np.array([0.075, 0.150, 0.300, 0.600])
 
     def dr_wn(a, alpha, de, thr):
-        return validation.lateral_modes(a, alpha, de, thr, CAUGHEY_V, 0.0)[0][0]
+        return validation.lateral_modes(
+            a, alpha, de, thr, CAUGHEY_V, 0.0, ANCHOR, EARTH
+        )[0][0]
 
-    wns = validation.sweep(ac, "Cnb", cnbs, dr_wn, CAUGHEY_V, 0.0)
+    wns = validation.sweep(ac, "Cnb", cnbs, dr_wn, CAUGHEY_V, 0.0, ANCHOR, EARTH)
     assert np.all(np.diff(wns) > 0), f"wn must rise with Cnb, got {wns}"
 
     slope, intercept, worst = validation.affine_fit(cnbs, wns**2)
