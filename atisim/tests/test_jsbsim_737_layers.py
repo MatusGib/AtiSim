@@ -18,12 +18,49 @@ Design: docs/superpowers/specs/2026-08-20-jsbsim-737-verification-design.md
 import numpy as np
 import pytest
 
-from atisim import jsbsim_ref
+from atisim import earth, jsbsim_ref
 from atisim.aircraft import REGISTRY
 
 REF = jsbsim_ref.load()
 CRUISE_COND = REF.condition["cruise"]
 TRIM = REF.trim["longitudinal"]
+
+# The latitude JSBSim ACTUALLY FLEW, not a convention borrowed from elsewhere:
+# scripts/gen_jsbsim_reference.py's `trimmed()` and `fly()` both default
+# `latitude_deg=47.0`, and every sample in the frozen reference was taken there.
+# The rest of this project's Earth-rotation work happens to use the same 47N,
+# which is a coincidence worth not relying on -- this file needs JSBSim's.
+JSBSIM_LATITUDE_DEG = 47.0
+
+# WGS84_J2. The frozen reference was flown on a ROTATING Earth -- that is what
+# `coriolis_contribution` measures by re-flying at latitude 0 -- so a
+# non-rotating atisim is comparing against a rotating engine, which is the
+# situation this whole migration exists to end. `earth.FLAT` would put the
+# rotation difference back in by choice.
+#
+# IT IS NOT AN EXACT MATCH, AND THE MISMATCH IS IN GRAVITY, NOT ROTATION.
+# `fly()` sets `simulation/gravity-model = 0`, JSBSim's CONSTANT g, chosen with
+# the comment "matching atisim" back when atisim had constant g. `earth.py`
+# ships no rotating-plus-constant-g model: FLAT is constant g and non-rotating,
+# WGS84_J2 is rotating with a J2 field. So the closest available configuration
+# carries rotation exactly and gravity to about 0.08% in magnitude. Measured
+# consequences are in the layer 2, 3 and 4 docstrings; the Earth-rotation floor
+# itself is deliberately NOT re-derived here -- see the SUPERSEDED notes.
+EARTH = earth.WGS84_J2
+
+
+def anchor_for(cond):
+    """The run anchor for one recovery condition, at JSBSim's latitude.
+
+    At the MATCHED altitude, because that is the height every comparison in this
+    file is taken at: `trim.trimmed_state` places the aircraft AT the anchor, so
+    anchoring anywhere else would trim for a different condition than the one
+    the density match was built for.
+    """
+    return earth.anchor_at(
+        np.radians(JSBSIM_LATITUDE_DEG), 0.0, cond.matched_altitude
+    )
+
 
 # The two recovery conditions. One reference point cannot distinguish a solver
 # that is right from one that is right in a single place -- PROJECT.md section 4
@@ -74,13 +111,25 @@ def _atisim_coefficients(point, ac):
 
 
 def _atisim_trim(condition="cruise"):
+    """(solution, worst residual). The solution is SIX long now, not three.
+
+    `trim.trim` returns [alpha, elevator, throttle, phi, aileron, rudder]. This
+    helper deliberately returns all six rather than slicing off the first three:
+    the lateral half is not zero on a rotating Earth -- measured phi = -0.1481
+    deg at 47N -- and a three-element return would let every caller here drop it
+    without noticing, which is the trap `trim.trimmed_controls` changed its own
+    signature to prevent. Callers take `x[0], x[1], x[2]` explicitly and are
+    therefore visibly choosing to compare the longitudinal channel only, which
+    is what JSBSim's `longitudinal` trim mode is.
+    """
     import jax.numpy as jnp
 
     from atisim import trim as trim_mod
 
     _ref, cond, _trim, ac = case(condition)
     x, residual = trim_mod.trim(
-        jnp.array(cond.airspeed), jnp.array(cond.matched_altitude), ac
+        jnp.array(cond.airspeed), jnp.array(cond.matched_altitude), ac,
+        anchor_for(cond), EARTH,
     )
     return [float(v) for v in x], float(np.max(np.abs(np.asarray(residual))))
 
@@ -111,7 +160,7 @@ def _replay(ac, ref, cond, manoeuvre, decimate=1):
 
     from atisim import integrate
     from atisim.atmosphere import RHO0, density, speed_of_sound
-    from atisim.state import Controls, State, euler_to_quat
+    from atisim.state import Controls, euler_to_quat, state_from_ned
 
     samples = ref.trajectory[manoeuvre][::decimate]
     first = samples[0]
@@ -125,12 +174,20 @@ def _replay(ac, ref, cond, manoeuvre, decimate=1):
         * (1.0 + float(ac.mach_ram) * mach**2)
     )
 
+    # The anchor is at the condition's matched altitude, so the aircraft's
+    # `down` is its offset from THAT and not an altitude above a sea level the
+    # state no longer carries. JSBSim's Euler angles are local-NED angles, which
+    # is exactly what `state_from_ned` takes -- handing them to `State.quat`
+    # directly would now mean body -> ECEF and would tilt the aeroplane by the
+    # site's latitude before the replay began.
+    anchor = anchor_for(cond)
     sim = integrate.init_sim(
-        State(
-            pos_ned=jnp.array([0.0, 0.0, -altitude]),
-            vel_body=jnp.array(first.vel_body),
-            quat=euler_to_quat(*(jnp.array(v) for v in first.euler)),
-            omega=jnp.array(first.omega),
+        state_from_ned(
+            jnp.array([0.0, 0.0, -(altitude - float(anchor.h))]),
+            jnp.array(first.vel_body),
+            euler_to_quat(*(jnp.array(v) for v in first.euler)),
+            jnp.array(first.omega),
+            anchor,
         ),
         jax.random.PRNGKey(0),
     )
@@ -142,7 +199,9 @@ def _replay(ac, ref, cond, manoeuvre, decimate=1):
             rudder=jnp.array(previous.controls[2]),
             throttle=jnp.array(throttle),
         )
-        sim = integrate.step(sim, controls, jnp.array(current.t - previous.t), ac)
+        sim = integrate.step(
+            sim, controls, jnp.array(current.t - previous.t), ac, anchor, EARTH
+        )
         worst_vel = np.maximum(worst_vel, np.abs(
             np.asarray(sim.state.vel_body) - current.vel_body))
         worst_rate = max(worst_rate, float(
@@ -339,10 +398,24 @@ def test_layer1_pitching_moment_difference_is_exactly_the_alphadot_term(conditio
 def test_layer2_longitudinal_trim_matches(condition):
     """Both engines' own trim algorithms, at the same condition.
 
-    Measured: alpha 1.9807 deg against JSBSim's 1.9650, elevator -0.053362
-    against -0.051922 rad, thrust +1.12% at cruise and +1.56% at approach. The
+    Measured: alpha 1.9636 deg against JSBSim's 1.9650, elevator -0.052963
+    against -0.051922 rad, thrust +0.933% at cruise and +1.517% at approach. The
     thrust difference is the linear-throttle approximation plus the ram fit
     residual, both documented in _boeing_737's docstring; the tolerance is 2%.
+
+    ALL THREE MOVED TOWARD JSBSim WHEN THE EARTH STARTED TURNING, and none of
+    the tolerances moved with them. Alpha was 1.9807 deg, an error of +0.0157
+    deg; it is now 1.9636, an error of -0.0014 deg -- eleven times smaller, and
+    the sign flipped, so this is not a tolerance being approached from one side.
+    The elevator error went from -1.44e-3 to -1.04e-3 rad and the cruise thrust
+    from +1.12% to +0.933%. JSBSim trimmed at latitude 47 on a rotating Earth
+    and atisim now does too, which is the plainest possible reading of it.
+
+    The trim also carries a lateral half now -- phi -0.14802 deg at cruise and
+    -0.08358 at approach, with aileron 5.4e-09 and rudder 1.1e-08 rad. JSBSim's
+    `longitudinal` trim mode has no counterpart to compare it against, so it is
+    left out of the comparison EXPLICITLY, by indexing `x[0], x[1], x[2]`,
+    rather than by an unpack that would have discarded it in silence.
 
     The thrust LEVEL did not move when the ram fit was re-banded, and could not
     have: max_thrust is solved so the model reproduces JSBSim's thrust AT the
@@ -353,7 +426,13 @@ def test_layer2_longitudinal_trim_matches(condition):
     from atisim.atmosphere import RHO0, density
 
     _ref, cond, expected, ac = case(condition)
-    (alpha, elevator, throttle), residual = _atisim_trim(condition)
+    x, residual = _atisim_trim(condition)
+    # The longitudinal three, taken explicitly out of the six. JSBSim's
+    # `longitudinal` trim mode is the wings-level problem, so `x[3:]` -- the
+    # bank, aileron and rudder that balance Coriolis -- has nothing on the other
+    # side to compare against and is deliberately left out of the comparison
+    # rather than dropped by an unpack that could not say so.
+    alpha, elevator, throttle = x[0], x[1], x[2]
     assert residual < 1e-8, f"atisim's own trim did not converge: {residual:.2e}"
     assert abs(alpha - expected.alpha) < 5e-4, (
         f"{condition}: alpha {np.degrees(alpha):.5f} deg vs "
@@ -375,11 +454,27 @@ def test_layer2_longitudinal_trim_matches(condition):
 def test_layer2_turn_trim_is_recorded_but_not_yet_comparable():
     """JSBSim's 30 deg banked trim is in the reference; atisim has no banked trim.
 
-    trim.trim solves the WINGS-LEVEL problem only -- its unknowns are
-    [alpha, elevator, throttle], with no bank and no aileron or rudder. So the
-    turn case cannot be compared today. It is recorded rather than dropped: the
-    reference already holds JSBSim's converged 30 deg solution, so the
-    comparison is one banked-trim solver away.
+    *** SUPERSEDED PARAGRAPH, KEPT SO THE RECORD SHOWS WHAT CHANGED. ***
+    "trim.trim solves the WINGS-LEVEL problem only -- its unknowns are
+    [alpha, elevator, throttle], with no bank and no aileron or rudder."
+
+    THAT IS NO LONGER TRUE. `trim.trim` carries six unknowns now --
+    [alpha, elevator, throttle, phi, aileron, rudder] -- and it solves for all
+    three lateral ones, because Coriolis and the transport rate put moments in
+    that channel. Measured at this condition: phi -0.14802 deg, aileron
+    5.448e-09 rad, rudder 1.118e-08 rad.
+
+    THE CONCLUSION SURVIVES THE PARAGRAPH, which is why this test still stands
+    and still passes. What `trim` solves for is the bank that makes WINGS-LEVEL
+    flight an equilibrium on a rotating Earth -- a seventh of a degree, and an
+    OUTPUT. A turn trim takes bank as an INPUT, 30 degrees of it, and solves the
+    remaining freedoms around it; that is a different problem and there is still
+    no solver for it. So the turn case remains uncomparable, for a reason that
+    now has to be stated in terms of which variable is given rather than in
+    terms of how many unknowns there are.
+
+    It is recorded rather than dropped: the reference already holds JSBSim's
+    converged 30 deg solution, so the comparison is one banked-trim solver away.
 
     This test asserts the gap rather than skipping silently, so that adding a
     banked trim makes it fail and forces the comparison to be written.
@@ -406,8 +501,13 @@ def test_layer3_longitudinal_modes_match():
     [u, w, q, theta] one. So no basis conversion is needed and none can be got
     wrong -- the transform was in the plan and turned out to be unnecessary.
 
-    Measured: short period wn 1.76841 against 1.76918 (0.04%), zeta 0.39305
-    against 0.39294 (0.03%). At approach, 0.08% and 0.08%.
+    Measured: short period wn 1.76782 against 1.76918 (0.08%), zeta 0.39318
+    against 0.39294 (0.06%). Both were 0.04% and 0.03% before the Earth turned;
+    under `earth.FLAT` they read 0.05% and 0.04% today, so the movement is real
+    and is the rotating trim rather than the plant. It is a twentieth of the
+    2e-2 tolerance either way, and the lateral channel moved the other way by an
+    order of magnitude -- see the next test, where the same choice of Earth is
+    what buys the improvement.
 
     THE HISTORY OF THIS NUMBER IS THE POINT, because it went
     0.04% -> 3.95% -> 1.30% -> 0.04% and only the last is honest.
@@ -434,14 +534,14 @@ def test_layer3_longitudinal_modes_match():
     one of them -- "a slow drag-and-thrust energy exchange" is the DAMPING half
     and says nothing about the frequency, which is the larger error.
 
-      frequency, 6.58%: M_u, the pitching moment due to speed. atisim has none
+      frequency, 6.24%: M_u, the pitching moment due to speed. atisim has none
       beyond an alphadot coupling; JSBSim's Cmde is a Mach table, -1.20 at M 0
       and -0.30 at M 2, and delta_e times that 0.45 slope accounts for 90.5% of
       the gap at cruise and 83.1% at approach. Structural -- a
       constant-coefficient model cannot carry a Mach-tuck term. Asserted in
       test_layer3_phugoid_frequency_gap_is_the_pitching_moment_speed_derivative.
 
-      damping, 3.12%: X_u. This WAS 3.44% at cruise and 13.72% at approach,
+      damping, 2.96%: X_u. This WAS 3.44% at cruise and 13.72% at approach,
       until the generator's thrust fit was re-banded to bracket each condition
       rather than sampling M 0.60-0.95 regardless. The approach entry had been
       carrying a ram coefficient fitted entirely above its own flight condition;
@@ -454,10 +554,11 @@ def test_layer3_longitudinal_modes_match():
     """
     from atisim import validation
 
-    (alpha, elevator, throttle), _ = _atisim_trim()
+    x, _ = _atisim_trim()
     got = validation.longitudinal_modes(
-        REGISTRY["boeing737"], alpha, elevator, throttle,
+        REGISTRY["boeing737"], x[0], x[1], x[2],
         CRUISE_COND.airspeed, CRUISE_COND.matched_altitude,
+        anchor_for(CRUISE_COND), EARTH,
     )
     want = _modes_from(REF.linearization.longitudinal)
     for (wn, zeta), (wn_ref, zeta_ref), name, tol in zip(
@@ -485,10 +586,28 @@ def test_layer3_lateral_modes_match_once_the_yaw_damper_is_accounted_for():
         dCnr = Cndr * 0.35 * 2V/b = -1.147   (against a bare Cnr of -0.350)
         dClr = Cldr * 0.35 * 2V/b = +0.057
 
-    and folding those in gives zeta 0.34402 against 0.34410 and spiral 16.653 s
-    against 16.691 s. The pitch and roll channels have no such feedback -- they
+    and folding those in gives zeta 0.34411 against 0.34410 and spiral 16.6887 s
+    against 16.6911 s. The pitch and roll channels have no such feedback -- they
     are summers and gearing only -- which is why the longitudinal comparison
-    needs no correction at all and lands at 0.04%.
+    needs no correction at all and lands under a tenth of a percent.
+
+    *** THE ROTATING EARTH BOUGHT AN ORDER OF MAGNITUDE HERE, AND IT IS THE
+    SHARPEST EVIDENCE IN THIS FILE THAT JSBSim's LINEARISATION ROTATES TOO. ***
+    Same aircraft, same damper correction, same reference; only the Earth
+    differs:
+
+        mode              before the Earth   earth.FLAT   WGS84_J2
+        dutch roll wn     0.022%             0.0155%      0.0007%
+        dutch roll zeta   0.025%             0.0207%      0.0026%
+        roll TC           0.0034%            0.0021%      0.0003%
+        spiral TC         0.228%             0.2439%      0.0145%
+
+    Every one of the four improves by roughly a factor of ten under WGS84_J2 and
+    by nothing at all under FLAT. The lateral channel is where Coriolis acts, so
+    that is the pattern a rotating reference would produce and no other
+    explanation offered here would. The four tolerances below are UNCHANGED --
+    they now have twenty to a hundred times the margin they were written with,
+    and tightening them is a decision for the ledger and not for a migration.
 
     Those figures are AFTER the Ixz sign correction. With the sign as originally
     shipped they read 0.33803 and 16.647 -- a 1.76% Dutch-roll damping error
@@ -507,10 +626,11 @@ def test_layer3_lateral_modes_match_once_the_yaw_damper_is_accounted_for():
         Clr=jnp.array(float(ac.Clr) + float(ac.Cldr) * gain),
         CYr=jnp.array(float(ac.CYr) + float(ac.CYdr) * gain),
     )
-    (alpha, elevator, throttle), _ = _atisim_trim()
+    x, _ = _atisim_trim()
     (wn, zeta), roll_tc, spiral_tc = validation.lateral_modes(
-        closed_loop, alpha, elevator, throttle,
+        closed_loop, x[0], x[1], x[2],
         CRUISE_COND.airspeed, CRUISE_COND.matched_altitude,
+        anchor_for(CRUISE_COND), EARTH,
     )
 
     eigenvalues = np.linalg.eigvals(REF.linearization.lateral)
@@ -523,7 +643,8 @@ def test_layer3_lateral_modes_match_once_the_yaw_damper_is_accounted_for():
     # These were 5e-2 across the board, and that is how a wrong Ixz sign worth
     # 1.6-3.2% survived a whole comparison. With the sign taken from the
     # engine's own coupling instead, three of the four land at round-off and the
-    # tolerances can say so. Measured: 0.022%, 0.025%, 0.0034%, 0.228%.
+    # tolerances can say so. Measured: 0.0007%, 0.0026%, 0.0003%, 0.0145% --
+    # they were 0.022%, 0.025%, 0.0034%, 0.228% before the Earth turned.
     #
     # 1e-3 for the oscillatory pair and the roll mode: both are dominated by
     # terms the two engines now share exactly, so what is left is the difference
@@ -555,10 +676,11 @@ def test_layer3_bare_airframe_would_fail_without_the_damper_correction():
     """
     from atisim import validation
 
-    (alpha, elevator, throttle), _ = _atisim_trim()
+    x, _ = _atisim_trim()
     _, _, spiral_tc = validation.lateral_modes(
-        REGISTRY["boeing737"], alpha, elevator, throttle,
+        REGISTRY["boeing737"], x[0], x[1], x[2],
         CRUISE_COND.airspeed, CRUISE_COND.matched_altitude,
+        anchor_for(CRUISE_COND), EARTH,
     )
     eigenvalues = np.linalg.eigvals(REF.linearization.lateral)
     eigenvalues = eigenvalues[np.abs(eigenvalues) > 1e-8]
@@ -600,12 +722,34 @@ def test_layer4_trajectory_tracks(manoeuvre, condition):
     holds it.
 
     The two manoeuvres differ because they excite different physics, not because
-    one is worse. Measured per component, at both recovery conditions:
+    one is worse. Measured per component, at both recovery conditions, and the
+    "was" column is the same replay before atisim's Earth started turning:
 
-        cruise   doublet  u 0.507  v 0.012  w 0.558   max |beta| 0.003 deg
-        cruise   kick     u 1.556  v 0.933  w 0.573   max |beta| 2.909 deg
-        approach doublet  u 0.437  v 0.008  w 0.261
-        approach kick     u 0.818  v 0.345  w 0.252
+        case                     u              v              w
+        cruise   doublet   0.281 (0.507)  0.000 (0.012)  0.564 (0.558)
+        cruise   kick      1.334 (1.556)  0.936 (0.933)  0.576 (0.573)
+        approach doublet   0.377 (0.437)  0.000 (0.008)  0.261 (0.261)
+        approach kick      0.762 (0.818)  0.345 (0.345)  0.253 (0.252)
+
+    Max |beta| is 0.003 deg on the cruise doublet and 2.909 deg on the kick.
+
+    *** THE EARTH-ROTATION FLOOR IN THE ASSERTION MESSAGE BELOW IS SUPERSEDED
+    AS AN EXPLANATION, AND IS LEFT IN AS A NUMBER. *** The message reports
+    `coriolis_velocity_m_s` as "the Earth-rotation floor alone", which carried
+    the reading that it was unreachable. AtiSim rotates now, and the u column
+    above is what that did: -0.226 m/s at the cruise doublet and -0.222 at the
+    cruise kick, against a recorded floor of 0.4092 m/s -- so roughly half of it
+    came back, in the channel the reference says it sits in. The doublet's v
+    fell from 0.012 to 0.000, which is a lateral divergence in a purely
+    longitudinal manoeuvre disappearing entirely.
+
+    WHAT THAT FLOOR NOW MEANS IS NOT SETTLED HERE and is deliberately not
+    re-derived: `coriolis_velocity_m_s` is a VELOCITY difference JSBSim measured
+    between a latitude-0 and a latitude-47 run of the rudder kick, not a
+    rotating-versus-non-rotating difference and not a position, and turning it
+    into a bound on a now-rotating atisim is a separate piece of work with its
+    own reference. See the SUPERSEDED note in
+    test_layer4_what_survives_the_hold_is_two_residuals_and_no_more.
 
     THIS TEST IS A BACKSTOP, and its tolerances are allowances rather than
     predictions -- see _LAYER4_BACKSTOP. What these numbers mean is settled by
@@ -687,10 +831,14 @@ def test_layer4_what_survives_the_hold_is_two_residuals_and_no_more(manoeuvre, c
     worst-component number it used to report. Extrapolating the first-order hold
     to dt -> 0 with 2*f(h) - f(2h), per component, at both conditions:
 
-        cruise   doublet  u 0.507 -> 0.507   v  0.012   w 0.558 -> 0.172
-        cruise   kick     u 1.556 -> 1.561   v  0.933 -> -0.125   w 0.573 -> 0.530
-        approach doublet  u 0.437 -> 0.435   v  0.008   w 0.261 -> 0.092
-        approach kick     u 0.818 -> 0.820   v  0.345 -> -0.057   w 0.252 -> 0.253
+        cruise   doublet  u 0.281 -> 0.280   v  0.000   w 0.564 -> 0.177
+        cruise   kick     u 1.334 -> 1.338   v  0.936 -> -0.120   w 0.576 -> 0.533
+        approach doublet  u 0.377 -> 0.375   v  0.000   w 0.261 -> 0.093
+        approach kick     u 0.762 -> 0.764   v  0.345 -> -0.056   w 0.253 -> 0.254
+
+    Only the u column moved when atisim's Earth started turning; the v and w
+    extrapolations are the same to the digits shown. Before, the same four rows
+    read u 0.507 -> 0.507, 1.556 -> 1.561, 0.437 -> 0.435 and 0.818 -> 0.820.
 
     ARTIFACT, not model: the v divergence and the angular rates extrapolate to
     zero or past it. The rudder kick's headline was mostly the replay flying a
@@ -701,25 +849,52 @@ def test_layer4_what_survives_the_hold_is_two_residuals_and_no_more(manoeuvre, c
 
     REAL, and secular: u. It does not move with the interval and it is still
     growing at t = 20 s. That is the drag-and-thrust difference the ledger
-    already names -- part of it is the 0.409 m/s Earth-rotation floor, which
-    sits in u too.
+    already names -- part of it WAS the 0.409 m/s Earth-rotation floor, which
+    sits in u too, and that part has now largely gone: 0.507 -> 0.281 at the
+    cruise doublet and 1.556 -> 1.334 at the kick, a fall of 0.226 and 0.222 m/s
+    against a floor of 0.409. What is left in u is the drag-and-thrust half.
 
     REAL, and transient: w. It peaks with the sideslip excursion -- the kick
-    reaches -0.573 m/s at t = 2.66 s against a beta peak of 2.9 deg -- and
+    reaches -0.576 m/s at t = 2.66 s against a beta peak of 2.9 deg -- and
     decays to a third of that by t = 20, so it is not an integration defect.
     Divided by airspeed it is nearly the SAME ANGLE at both conditions,
 
-        doublet  0.0416 deg / 0.0395 deg      kick  0.128 deg / 0.108 deg
+        doublet  0.0429 deg / 0.0399 deg      kick  0.129 deg / 0.109 deg
 
     across a 1.77x change in speed and a 6x change in altitude, which is the
     signature of a coefficient-level difference rather than anything that
     accumulates. It is bounded here and named, not explained: no term has been
-    identified that predicts it, and this test is the record of that.
+    identified that predicts it, and this test is the record of that. It barely
+    moved with the Earth -- it was 0.0416 / 0.0395 and 0.128 / 0.108 -- which is
+    itself evidence that whatever produces it is not the frame.
 
-    The transverse bounds are set against the Earth-rotation floor the reference
-    records for each component, because that floor is what atisim cannot
-    reproduce even in principle, being flat-Earth and non-rotating. The
-    multiples are margin, and are called margin.
+    *** SUPERSEDED PARAGRAPH, KEPT SO THE RECORD SHOWS WHAT CHANGED. ***
+    "The transverse bounds are set against the Earth-rotation floor the
+    reference records for each component, because that floor is what atisim
+    cannot reproduce even in principle, being flat-Earth and non-rotating."
+
+    THE REASON IS FALSE NOW. AtiSim is neither flat-Earth nor non-rotating: this
+    file flies it under `WGS84_J2` at JSBSim's own 47N, and rotation is exactly
+    what it now reproduces. The evidence is in the numbers above -- the cruise
+    doublet's v divergence went from 0.012 m/s to 0.000 and its u from 0.507 to
+    0.281 on that change alone.
+
+    THE BOUNDS BELOW ARE UNCHANGED AND SO IS THE `floor` THEY READ, DELIBERATELY.
+    Re-deriving what the floor means for a rotating atisim is a separate piece of
+    work with its own reference, and doing it inside a migration would be
+    choosing a number to make a check succeed. Two things about the quantity are
+    worth recording here so that work does not start from the wrong reading:
+
+      - `coriolis_velocity_m_s` is a VELOCITY difference in m/s -- the worst
+        |d(vel_body)| JSBSim measured between a latitude-0 and a latitude-47 run
+        of the RUDDER KICK (`scripts/gen_jsbsim_reference.py`
+        `coriolis_contribution`). It is not a position and it is not a
+        rotating-versus-non-rotating difference.
+      - It is therefore a measure of how much the answer depends on WHERE the
+        aeroplane is flying, not of how much of it atisim was missing. Those two
+        coincided while atisim did not rotate at all. They do not any more.
+
+    The multiples are margin, and are called margin.
     """
     ref, cond, _trim, ac = case(condition)
     f = {k: _replay(ac, ref, cond, manoeuvre, decimate=k) for k in (1, 2)}
@@ -764,13 +939,15 @@ def _longitudinal_pair(ac, condition):
     from atisim.units import FT2M
 
     ref, cond, _trim, _ac = case(condition)
-    (alpha, elevator, throttle), _ = _atisim_trim(condition)
+    solution, _ = _atisim_trim(condition)
+    alpha, elevator, throttle = solution[0], solution[1], solution[2]
     V = cond.airspeed
     s, c = np.sin(alpha), np.cos(alpha)
     P = np.array([[c, s, 0.0, 0.0], [-s / V, c / V, 0.0, 0.0],
                   [0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 0.0]])
     ati = P @ np.asarray(validation.longitudinal_matrix(
-        ac, alpha, elevator, throttle, V, cond.matched_altitude)) @ np.linalg.inv(P)
+        ac, alpha, elevator, throttle, V, cond.matched_altitude,
+        anchor_for(cond), EARTH)) @ np.linalg.inv(P)
     scale = np.array([FT2M, 1.0, 1.0, 1.0])
     js = ref.linearization.A[:4, :4] * (scale[:, None] / scale[None, :])
     return ati, js
@@ -845,6 +1022,35 @@ def test_atisim_has_no_aerodynamic_speed_derivative_of_pitching_moment():
     This is what makes the frequency gap above structural rather than a defect:
     there is no coefficient here that could be adjusted to close it without
     inventing a Mach schedule the source would have to supply.
+
+    **THE MACHINE ZERO IS GONE AND THIS TEST IS EXPECTED TO FAIL. THE 1e-12 IS
+    LEFT ALONE.** The bare M_u is now -1.685792e-07 at cruise and -2.197690e-07
+    at approach, against a machine zero before. The attribution above still
+    stands -- 0.152% and 0.049% of the full M_u respectively, so what carries the
+    phugoid is still the alphadot coupling -- but the residue is real and it is
+    not aerodynamic, so the assertion's own words ("something else in the
+    build-up now carries a speed dependence") would be the wrong conclusion to
+    draw. It is not in the build-up. It is the reference state:
+
+      1. `trim.trimmed_state` now carries `transport_rate_body`, because level
+         flight round a curved Earth is a continuous nose-down pitch. Measured
+         q0 = -3.707923e-05 rad/s at cruise, -2.099432e-05 at approach. The trim
+         solves Cm = 0 AT that pitch rate.
+      2. `validation.longitudinal_matrix` linearises at q = 0. So at ITS
+         reference state Cm = -Cmq*q0*c/(2V), not zero.
+      3. d(qdot)/d(vt) then picks up the dynamic-pressure derivative acting on
+         that residual moment: rho*V*S*c*Cm/Iyy. Predicted -1.686002e-07 at
+         cruise and -2.198052e-07 at approach, measured -1.686002e-07 and
+         -2.198052e-07 under `earth.FLAT` -- every digit -- and -1.685792e-07 /
+         -2.197690e-07 under WGS84_J2, where Coriolis moves the trim slightly.
+
+    **IT IS NOT THE EARTH'S ROTATION.** FLAT and WGS84_J2 agree to four digits,
+    and FLAT has Omega = 0; the transport rate is pure ellipsoid geometry and
+    survives it. `test_validation.py`'s neutral-point test finds the SAME defect
+    by a different route -- a structurally exact zero eigenvalue lifting to
+    +7.98e-5 -- and the two together say the trim and the linearisation now
+    disagree about the reference state. Reported as a source question rather
+    than repaired here.
     """
     import jax.numpy as jnp
 
