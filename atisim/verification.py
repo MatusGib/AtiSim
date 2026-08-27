@@ -213,11 +213,30 @@ SWING_W0 = jnp.array([18.0, -20.0, 12.0])
 SWING_OMEGA = 3.0
 
 
-def _swinging_wind(wind_state, state, key, dt):
-    """Uniform in SPACE, violently varying in TIME. Sampled before the clock ticks."""
-    del state
-    gust = SWING_W0 * jnp.sin(SWING_OMEGA * wind_state.t)
-    return gust, jnp.zeros(3), WindClock(t=wind_state.t + dt), key
+def _swinging_wind_model(amplitude):
+    """A swinging-wind model at a chosen amplitude. Uniform in SPACE, violent in TIME.
+
+    Built by a factory rather than hardcoded so the experiment can be run TWICE
+    and DIFFERENCED -- which is the remedy this module's own docstring
+    prescribes and previously had no route to, because the amplitude was a
+    module constant and the signature took no argument.
+
+    That matters now: on a curved Earth the absolute free-fall residual carries
+    a GEOMETRIC term that has nothing to do with wind, so the absolute number
+    can no longer be read as "does the wind reach the trajectory". The
+    difference between two amplitudes still can, and it is the sharper
+    instrument anyway.
+    """
+
+    def model(wind_state, state, key, dt):
+        del state
+        gust = amplitude * jnp.sin(SWING_OMEGA * wind_state.t)
+        return gust, jnp.zeros(3), WindClock(t=wind_state.t + dt), key
+
+    return model
+
+
+_swinging_wind = _swinging_wind_model(SWING_W0)
 
 
 def without_aerodynamics(ac):
@@ -247,7 +266,7 @@ class FreeFallResult(NamedTuple):
     elapsed: float  # s, the clock the wind model advanced itself
 
 
-def free_fall_through_a_swinging_wind(ac, anchor, dt=0.02, n=300):
+def free_fall_through_a_swinging_wind(ac, anchor, dt=0.02, n=300, amplitude=SWING_W0):
     """Fly a de-aerodynamicised body through a violently time-varying uniform wind.
 
     The second of the two gust-modelling errors PROJECT.md section 2 names. An
@@ -315,7 +334,7 @@ def free_fall_through_a_swinging_wind(ac, anchor, dt=0.02, n=300):
     from atisim.integrate import SimState, rollout
     from atisim.loads import zero_increment
     from atisim.state import dcm_body_to_ned, euler_to_quat, pos_ned, state_from_ned
-    from atisim.trim import trimmed_controls
+    from atisim.trim import longitudinal_controls
 
     quat_ned = euler_to_quat(jnp.array(0.3), jnp.array(-0.2), jnp.array(0.7))
     start_ned = jnp.array([0.0, 0.0, -3000.0])
@@ -340,7 +359,7 @@ def free_fall_through_a_swinging_wind(ac, anchor, dt=0.02, n=300):
     )
     final, traj = rollout(
         sim, controls, jnp.array(dt), ac, n, anchor, earth.FLAT,
-        wind_model=_swinging_wind,
+        wind_model=_swinging_wind_model(amplitude),
     )
 
     t = np.arange(1, n + 1) * dt

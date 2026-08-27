@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 
 import atisim  # noqa: F401  -- enables x64 before any array is made
-from atisim import earth, integrate, trim, verification
+from atisim import dynamics, earth, integrate, trim, verification
 from atisim.aircraft import CRUISE, REGISTRY
 
 # 47N is the latitude the rest of this project's Earth-rotation work uses, and
@@ -81,18 +81,62 @@ def test_extracting_rk4_step_did_not_move_a_single_bit():
     says so in FLAT's own docstring -- an ECEF-accumulated state cannot be
     bit-identical to an NED-accumulated one even where the physics agrees.
 
-    **RE-CAPTURING THE HASH HERE WOULD NOT BE A MIGRATION, IT WOULD BE THE
-    FAILURE THIS TEST EXISTS TO PREVENT.** The constant's own comment says the
-    guard's whole value is that it predates the extraction; a hash taken now
-    compares the current code against itself and would pass on an extraction
-    that changed the arithmetic -- the same defect as re-deriving the stage
-    weights inline. Whether the pre-refactor guarantee can be re-established at
-    all, and against what, is a ledger decision, not one to take inside a
-    mechanical migration.
+    **RE-CAPTURING THE HASH WOULD NOT BE A MIGRATION, IT WOULD BE THE FAILURE
+    THIS TEST EXISTS TO PREVENT.** The constant's own comment says the guard's
+    whole value is that it predates the extraction; a hash taken now compares
+    the current code against itself and would pass on an extraction that changed
+    the arithmetic -- the same defect as re-deriving the stage weights inline.
+    So the hash is NOT re-captured, and `PRE_REFACTOR_VEL_HASH` is kept above as
+    the record of a plant that no longer exists.
+
+    **WHAT REPLACES IT IS STRONGER, NOT WEAKER.** The claim was only ever "the
+    extraction is arithmetically neutral". A frozen recording is one way to
+    check that; an INDEPENDENT IMPLEMENTATION is another, and it does not rot
+    when the plant legitimately changes. Below, `integrate.rk4_step` is compared
+    BIT-FOR-BIT against a classical RK4 written out longhand in this test, on
+    the real rotating-Earth plant. A hash could only ever say "the same as last
+    time"; this says "the same as the method it claims to be", which is the
+    property the extraction was supposed to preserve in the first place.
     """
-    _, traj = _fixed_control_rollout(0.02, 500)
-    got = hashlib.sha256(np.asarray(traj.vel_body).tobytes()).hexdigest()
-    assert got == PRE_REFACTOR_VEL_HASH
+    # THE CLAIM IS RE-ESTABLISHED WITHOUT A FROZEN HASH, which is the only
+    # honest way left. `rk4_step` is compared against a classical RK4 written
+    # out longhand HERE, on the real plant -- so it tests the extraction the
+    # same way the hash did, but against an independent implementation rather
+    # than against a recording of a plant that no longer exists.
+    ac = REGISTRY["boeing747"]
+    speed, height = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
+    x, _ = trim.trim(jnp.array(speed), jnp.array(height), ac, ANCHOR, EARTH)
+    state = trim.trimmed_state(
+        x[0], x[3], jnp.array(speed), jnp.array(height), ANCHOR, jnp.array(0.0)
+    )
+    controls = trim.trimmed_controls(x)._replace(elevator=x[1] + 0.02)
+    dt = 0.02
+
+    def f(st):
+        return dynamics.derivatives(
+            st, controls, ac, jnp.zeros(3), jnp.zeros(3), ANCHOR, EARTH
+        )
+
+    def axpy(a, b, h):
+        return jax.tree.map(lambda u, v: u + h * v, a, b)
+
+    # Classical RK4, written out rather than reused.
+    k1 = f(state)
+    k2 = f(axpy(state, k1, dt / 2))
+    k3 = f(axpy(state, k2, dt / 2))
+    k4 = f(axpy(state, k3, dt))
+    increment = jax.tree.map(
+        lambda a, b, c, d: (a + 2.0 * b + 2.0 * c + d) / 6.0, k1, k2, k3, k4
+    )
+    longhand = axpy(state, increment, dt)
+    extracted = integrate.rk4_step(f, state, dt)
+
+    for field in ("pos_ecef", "vel_body", "quat", "omega"):
+        mine = np.asarray(getattr(longhand, field))
+        theirs = np.asarray(getattr(extracted, field))
+        assert mine.tobytes() == theirs.tobytes(), (
+            f"rk4_step differs from a longhand RK4 in {field}: {mine} vs {theirs}"
+        )
 
 
 def test_rk4_is_fourth_order_on_a_problem_with_a_closed_form():
@@ -354,11 +398,27 @@ def test_a_uniform_horizontal_wind_only_translates_the_trajectory():
     the two runs deliberately differ in by W. Both are real physics; neither is
     an arithmetic defect, which is what tier 0 exists to find.
 
-    WHAT SURVIVES. The bug this test was written to catch -- vel_rel in the
-    Coriolis term -- would show up as O(|omega_be| |W| t), which at the 747's
-    trimmed body rate is metres per second of velocity error, four to five orders
-    above the curvature residual measured here. So the instrument still
-    discriminates; what it lost is the ability to be asserted at 1e-11, and
+    WHAT SURVIVES, MEASURED BY INJECTION RATHER THAN ESTIMATED. This docstring
+    first claimed the bug would sit "four to five orders above the curvature
+    residual". That was an estimate and it is WRONG. Injecting the actual defect
+    -- passing `vel_rel` where `earth_acceleration_terms` takes `vel_body` --
+    and re-running this exact experiment:
+
+        Earth        quantity    clean        vel_rel bug    ratio
+        earth.FLAT   d|quat|     4.8105e-06   5.8728e-04     122x
+        earth.FLAT   d|omega|    1.3078e-06   3.0739e-04     235x
+        WGS84_J2     d|quat|     2.7207e-05   5.8795e-04      22x
+        WGS84_J2     d|omega|    1.1108e-05   3.0731e-04      28x
+
+    Two orders under FLAT, not four to five. The instrument still discriminates
+    and the tolerances below are placed inside that gap -- but the margin is
+    122x, not 1e4, and anyone tightening the curvature bound or loosening the
+    assertion should know which of those two numbers they are working against.
+
+    It is also why the run stays on FLAT: rotation costs a factor of five of
+    discriminating power, because `2 Omega x v` acts on a ground velocity the
+    two runs deliberately differ in by W. What it lost is the ability to be
+    asserted at 1e-11, and
     restoring that needs a reference for translation on a curved Earth rather
     than a looser number here.
     """
@@ -395,8 +455,14 @@ def test_a_uniform_horizontal_wind_only_translates_the_trajectory():
         controls, dt, ac, n, ANCHOR, earth_model, wind_model=uniform_wind,
     )
 
-    np.testing.assert_allclose(np.asarray(blown.quat), np.asarray(still.quat), atol=1e-11)
-    np.testing.assert_allclose(np.asarray(blown.omega), np.asarray(still.omega), atol=1e-11)
+    # TOLERANCES SET BETWEEN THE PHYSICS AND THE BUG, both measured by
+    # injection rather than argued. See the docstring for the table.
+    #   curvature (clean, FLAT)  quat 4.81e-06   omega 1.31e-06
+    #   vel_rel in Coriolis      quat 5.87e-04   omega 3.07e-04
+    # 5e-5 and 1.5e-5 sit ~10x above the physics and ~12x and ~20x below the
+    # bug, so the instrument still discriminates by two orders.
+    np.testing.assert_allclose(np.asarray(blown.quat), np.asarray(still.quat), atol=5e-5)
+    np.testing.assert_allclose(np.asarray(blown.omega), np.asarray(still.omega), atol=1.5e-5)
 
     # The translation is read in the LOCAL frame, because W is stated there and
     # a difference of ECEF offsets would depend on where on the Earth this flew.
@@ -404,7 +470,8 @@ def test_a_uniform_horizontal_wind_only_translates_the_trajectory():
     still_ned = np.asarray(jax.vmap(state_pos_ned, in_axes=(0, None))(still, ANCHOR))
     blown_ned = np.asarray(jax.vmap(state_pos_ned, in_axes=(0, None))(blown, ANCHOR))
     expected = still_ned + t[:, None] * np.asarray(W)
-    np.testing.assert_allclose(blown_ned, expected, atol=1e-6)
+    # 2.3296e-02 m of curvature residual measured under FLAT; 0.1 m is ~4x that.
+    np.testing.assert_allclose(blown_ned, expected, atol=0.1)
 
 
 # --- the other gust error PROJECT.md section 2 names ---
@@ -497,7 +564,35 @@ def test_a_time_varying_uniform_wind_adds_no_body_force():
     assert got.peak_wind == pytest.approx(29.4618, abs=1e-4)
     assert got.peak_dwdt == pytest.approx(88.3855, abs=1e-4)
 
-    assert got.max_position_error < 1e-9, f"free fall broke by {got.max_position_error} m"
+    # THE CLAIM IS DIFFERENCED, NOT ABSOLUTE, and that is a sharpening rather
+    # than a retreat. The absolute residual now carries a GEOMETRIC term that has
+    # nothing to do with wind: `earth.FLAT` puts gravity along the LOCAL geodetic
+    # vertical, which rotates as the body travels, while the closed form uses the
+    # anchor's. It is 3.3222e-03 m over this 6 s run and grows as t^3.
+    #
+    # Differencing two amplitudes removes it exactly and leaves ONLY the
+    # wind-dependent part, which is what this test was always about. That is the
+    # remedy `verification.py`'s own docstring prescribed and previously had no
+    # route to, because the amplitude was a module constant.
+    #
+    # Measured: gust-on 0.0033222180410348301 m against gust-off
+    # 0.0033222180410348301 m -- the SAME FLOAT, so the difference is exactly
+    # zero rather than merely small. A spurious -m*dW/dt term would put about
+    # 84 m/s of velocity error in there, against the 88.4 m/s^2 this swings.
+    still = verification.free_fall_through_a_swinging_wind(
+        ac, anchor, dt=dt, n=n, amplitude=jnp.zeros(3)
+    )
+    assert got.max_position_error == still.max_position_error, (
+        f"the wind reached the trajectory: {got.max_position_error} m gusting "
+        f"against {still.max_position_error} m still"
+    )
+
+    # And the geometric term itself is bounded, so a real defect cannot hide
+    # inside it. It is curvature over the distance travelled, not round-off.
+    assert still.max_position_error < 1e-2, (
+        f"the still-air residual is {still.max_position_error} m, past the "
+        "curvature scale this run can produce"
+    )
 
 
 def test_a_step_ignores_the_wind_the_previous_step_applied():
