@@ -24,14 +24,28 @@ import jax.numpy as jnp
 import numpy as np
 
 import atisim  # noqa: F401  -- enables x64
-from atisim import dynamics, jsbsim_vortex_ref, trim, vortex_viz, wind
+from atisim import dynamics, earth, jsbsim_vortex_ref, trim, vortex_viz, wind
 from atisim.aircraft import REGISTRY
 from atisim.atmosphere import density
-from atisim.state import Controls, State, euler_to_quat
+from atisim.state import Controls, euler_to_quat, quat_to_euler_ned, state_from_ned
 from atisim.units import FT2M, RAD2DEG
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from vortex_compare import atisim_run, partial_field_model  # noqa: E402
+# EARTH and the latitude come from vortex_compare rather than being restated:
+# these experiments are read against its numbers, so an anchor that disagreed
+# with its would be comparing two different flights.
+from vortex_compare import (  # noqa: E402
+    EARTH, REFERENCE_LATITUDE_DEG, atisim_run, partial_field_model,
+)
+
+
+def _anchor(altitude):
+    """The run anchor, at the DENSITY-MATCHED altitude vortex_compare uses.
+
+    The aircraft is placed AT it, so every vortex core below sits at `down = 0`
+    rather than at `-altitude`.
+    """
+    return earth.anchor_at(np.radians(REFERENCE_LATITUDE_DEG), 0.0, altitude)
 
 CASES = [("cimarron", "wingrove"), ("hannibal", "wingrove"), ("morton", "wingrove")]
 
@@ -39,13 +53,16 @@ CASES = [("cimarron", "wingrove"), ("hannibal", "wingrove"), ("morton", "wingrov
 CIMARRON_DFDR = {"dn_plus": +0.73, "dn_minus": -1.20}
 
 
-def _state_and_controls(enc, altitude):
+def _state_and_controls(enc, anchor):
     return (
-        State(
-            pos_ned=jnp.array([0.0, 0.0, -altitude]),
-            vel_body=jnp.array(enc.initial.vel_body),
-            quat=euler_to_quat(*(jnp.array(x) for x in enc.initial.euler)),
-            omega=jnp.array(enc.initial.omega),
+        # At the anchor, and through `state_from_ned` because JSBSim reports an
+        # Euler set: that is body -> NED, and `State.quat` is body -> ECEF.
+        state_from_ned(
+            jnp.zeros(3),
+            jnp.array(enc.initial.vel_body),
+            euler_to_quat(*(jnp.array(x) for x in enc.initial.euler)),
+            jnp.array(enc.initial.omega),
+            anchor,
         ),
         Controls(
             elevator=jnp.array(enc.initial.controls[0]),
@@ -74,16 +91,19 @@ def experiment_a1(ref):
     for key in CASES:
         enc = ref.encounters[key]
         altitude = enc.values["matched_altitude"]
-        state, controls = _state_and_controls(enc, altitude)
+        anchor = _anchor(altitude)
+        state, controls = _state_and_controls(enc, anchor)
         ac = REGISTRY[enc.aircraft]
         edge = enc.values["core_north"] - enc.values["r0"]
         t_edge = next(s.t for s in enc.samples if s.north >= edge)
 
         zero = lambda p: jnp.zeros(3)  # noqa: E731
         still = vortex_viz.fly_from_state(
-            ac, zero, state, controls, label="still", seconds=t_edge, dt=0.01,
+            ac, zero, state, controls, anchor, EARTH,
+            label="still", seconds=t_edge, dt=0.01,
             window=(-1e12, 1e12), window_name="all",
-            wind_model=partial_field_model(zero, omega_gust=False, alphadot=False),
+            wind_model=partial_field_model(
+                zero, anchor, omega_gust=False, alphadot=False),
         )
         drift = float((still.theta[-1] - enc.initial.euler[1]) * RAD2DEG)
 
@@ -122,30 +142,42 @@ def experiment_a2(ref):
         v = enc.values
         ac = REGISTRY[enc.aircraft]
         altitude = v["matched_altitude"]
+        anchor = _anchor(altitude)
+        # `down = 0`: the core is level with the aircraft, and the aircraft is at
+        # the anchor. `-altitude` would put it a whole flight altitude above.
         array = wind.VortexArray(
-            north=jnp.array([v["core_north"]]), down=jnp.array([-altitude]),
+            north=jnp.array([v["core_north"]]), down=jnp.array([0.0]),
             r0=jnp.array(v["r0"]), v0=jnp.array(v["v0"]),
         )
         field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
 
-        x, _ = trim.trim(jnp.array(v["airspeed"]), jnp.array(altitude), ac)
-        own = trim.trimmed_state(jnp.array(float(x[0])), jnp.array(v["airspeed"]),
-                                 jnp.array(altitude))
-        own = own._replace(pos_ned=jnp.array([0.0, 0.0, -altitude]))
+        x, _ = trim.trim(jnp.array(v["airspeed"]), jnp.array(altitude), ac,
+                         anchor, EARTH)
+        # x[3] is the trimmed bank. This experiment's whole point is an IN-TRIM
+        # start, so dropping it would defeat the thing being measured.
+        # `trimmed_state` already places the aircraft at the anchor.
+        own = trim.trimmed_state(
+            jnp.array(float(x[0])), jnp.array(float(x[3])),
+            jnp.array(v["airspeed"]), jnp.array(altitude), anchor, jnp.array(0.0),
+        )
         own_run = vortex_viz.fly_from_state(
-            ac, field, own, trim.trimmed_controls(x[1], x[2]),
+            ac, field, own, trim.trimmed_controls(x[1], x[2]), anchor, EARTH,
             label="own-trim", seconds=v["duration"], dt=0.01,
             window=(v["core_north"] - v["r0"], v["core_north"] + v["r0"]),
             window_name="core",
-            wind_model=partial_field_model(field, omega_gust=False, alphadot=False),
+            wind_model=partial_field_model(
+                field, anchor, omega_gust=False, alphadot=False),
         )
         shared, *_ = atisim_run(enc, arm="translational")
 
         js_min = enc.pitch_increments()[1]
         sh_min = float(((shared.theta[shared.window] - enc.initial.euler[1])
                         * RAD2DEG).min())
-        # Own-trim run measures from ITS OWN trim attitude, which is theta = alpha.
-        own_theta0 = float(x[0])
+        # Own-trim run measures from ITS OWN trim attitude. READ FROM THE STATE
+        # rather than restated as `alpha`: with a trimmed bank the level-flight
+        # condition is tan(theta) = cos(phi) tan(alpha), which is theta = alpha
+        # only at phi = 0.
+        own_theta0 = float(quat_to_euler_ned(own, anchor)[1])
         ow_min = float(((own_run.theta[own_run.window] - own_theta0) * RAD2DEG).min())
         print(f"    {key[0]:12} {js_min:+11.3f} {sh_min:+13.3f} "
               f"{(sh_min - js_min) / abs(js_min) * 100:+6.0f}% {ow_min:+10.3f} "
@@ -168,12 +200,14 @@ def experiment_b(ref):
     v = enc.values
     ac = REGISTRY[enc.aircraft]
     altitude = v["matched_altitude"]
-    state, controls = _state_and_controls(enc, altitude)
+    anchor = _anchor(altitude)
+    state, controls = _state_and_controls(enc, anchor)
     datum_n = float(dynamics.load_factor(state, controls, ac, jnp.zeros(3),
-                                         jnp.zeros(3)))
+                                         jnp.zeros(3), anchor, EARTH))
 
+    # `down = 0`: the core is level with the aircraft, which is at the anchor.
     array = wind.VortexArray(
-        north=jnp.array([v["core_north"]]), down=jnp.array([-altitude]),
+        north=jnp.array([v["core_north"]]), down=jnp.array([0.0]),
         r0=jnp.array(v["r0"]), v0=jnp.array(v["v0"]),
     )
     field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
@@ -207,11 +241,12 @@ def experiment_b(ref):
             CL_table_CL=jnp.array(intercept + scale * (table - intercept)),
         )
         run = vortex_viz.fly_from_state(
-            scaled, field, state, controls, label=f"CLa x{scale}",
+            scaled, field, state, controls, anchor, EARTH, label=f"CLa x{scale}",
             seconds=v["duration"], dt=0.01,
             window=(v["core_north"] - v["r0"], v["core_north"] + v["r0"]),
             window_name="core",
-            wind_model=partial_field_model(field, omega_gust=False, alphadot=False),
+            wind_model=partial_field_model(
+                field, anchor, omega_gust=False, alphadot=False),
         )
         nz = run.n_z - datum_n
         print(f"    {base * scale:10.3f} {scale:7.2f} {nz.max():+8.3f} "
@@ -227,16 +262,17 @@ def experiment_b(ref):
     print(f"    {'V0 ft/s':>9} {'dn+':>8} {'dn-':>8} {'vs DFDR -1.20':>14}")
     for v0_ft in (50.0, 60.0, 70.0):
         arr2 = wind.VortexArray(
-            north=jnp.array([v["core_north"]]), down=jnp.array([-altitude]),
+            north=jnp.array([v["core_north"]]), down=jnp.array([0.0]),
             r0=jnp.array(v["r0"]), v0=jnp.array(v0_ft * FT2M),
         )
         f2 = lambda p: wind.vortex_wind(p, arr2)  # noqa: E731
         run = vortex_viz.fly_from_state(
-            ac, f2, state, controls, label=f"V0 {v0_ft}",
+            ac, f2, state, controls, anchor, EARTH, label=f"V0 {v0_ft}",
             seconds=v["duration"], dt=0.01,
             window=(v["core_north"] - v["r0"], v["core_north"] + v["r0"]),
             window_name="core",
-            wind_model=partial_field_model(f2, omega_gust=False, alphadot=False),
+            wind_model=partial_field_model(
+                f2, anchor, omega_gust=False, alphadot=False),
         )
         nz = run.n_z - datum_n
         print(f"    {v0_ft:9.0f} {nz.max():+8.3f} {nz.min():+8.3f} "
@@ -271,8 +307,10 @@ def experiment_c(ref):
     enc = ref.encounters[("cimarron", "wingrove")]
     v = enc.values
     altitude = v["matched_altitude"]
+    anchor = _anchor(altitude)
+    # `down = 0`: the core is level with the aircraft, which is at the anchor.
     array = wind.VortexArray(
-        north=jnp.array([v["core_north"]]), down=jnp.array([-altitude]),
+        north=jnp.array([v["core_north"]]), down=jnp.array([0.0]),
         r0=jnp.array(v["r0"]), v0=jnp.array(v["v0"]),
     )
     field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
@@ -281,18 +319,25 @@ def experiment_c(ref):
           f"{'vs DFDR':>9}")
     for name in ("boeing737", "boeing747_jsbsim", "boeing747"):
         ac = REGISTRY[name]
-        x, _ = trim.trim(jnp.array(v["airspeed"]), jnp.array(altitude), ac)
-        st = trim.trimmed_state(jnp.array(float(x[0])), jnp.array(v["airspeed"]),
-                                jnp.array(altitude))
-        st = st._replace(pos_ned=jnp.array([0.0, 0.0, -altitude]))
+        x, _ = trim.trim(jnp.array(v["airspeed"]), jnp.array(altitude), ac,
+                         anchor, EARTH)
+        # x[3] is the trimmed bank; `trimmed_state` already places the aircraft
+        # at the anchor, so the position write this used to do is simply gone.
+        st = trim.trimmed_state(
+            jnp.array(float(x[0])), jnp.array(float(x[3])),
+            jnp.array(v["airspeed"]), jnp.array(altitude), anchor, jnp.array(0.0),
+        )
         ctl = trim.trimmed_controls(x[1], x[2])
         run = vortex_viz.fly_from_state(
-            ac, field, st, ctl, label=name, seconds=v["duration"], dt=0.01,
+            ac, field, st, ctl, anchor, EARTH,
+            label=name, seconds=v["duration"], dt=0.01,
             window=(v["core_north"] - v["r0"], v["core_north"] + v["r0"]),
             window_name="core",
-            wind_model=partial_field_model(field, omega_gust=False, alphadot=False),
+            wind_model=partial_field_model(
+                field, anchor, omega_gust=False, alphadot=False),
         )
-        datum = float(dynamics.load_factor(st, ctl, ac, jnp.zeros(3), jnp.zeros(3)))
+        datum = float(dynamics.load_factor(
+            st, ctl, ac, jnp.zeros(3), jnp.zeros(3), anchor, EARTH))
         nz = run.n_z[run.window] - datum
         print(f"    {name:20} {float(ac.mass) / 1000:8.1f} "
               f"{float(ac.inertia[1, 1]):10.2e} {nz.max():+8.3f} {nz.min():+8.3f} "

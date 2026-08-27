@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import atisim  # noqa: F401  -- enables x64
-from atisim import trim, vortex_viz, wind
+from atisim import earth, trim, vortex_viz, wind
 from atisim.aircraft import CRUISE, REGISTRY
 from atisim.panel import ALPHA_INVALID_DEG, ALPHA_LINEAR_DEG
 from atisim.units import RAD2DEG
@@ -69,11 +69,27 @@ V = CRUISE[args.aircraft]["airspeed"]
 H = CRUISE[args.aircraft]["altitude"]
 r0, v0, spacing = case["r0"], case["v0"], case["spacing"]
 
-x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
-alpha, elevator, throttle = (float(v) for v in x)
+# 47N, the latitude the rest of this project's Earth-rotation work uses, at the
+# cruise altitude -- `trim.trimmed_state` puts the aircraft AT the anchor and the
+# vortex array's coordinates are NED offsets from that same point.
+ANCHOR = earth.anchor_at(np.radians(47.0), 0.0, H)
+EARTH = earth.WGS84_J2
+
+x, _ = trim.trim(jnp.array(V), jnp.array(H), ac, ANCHOR, EARTH)
+# SIX unknowns now. `phi` is the trimmed bank; `vortex_viz.fly` and `manoeuvre`
+# carry it into their own `trimmed_state` calls, and it is read here only for the
+# provenance line and the artifact metadata.
+alpha, elevator, throttle, phi = (float(v) for v in x[:4])
 
 # --- the vortex array: two cores on the flightpath, as Parks describes -------
-cores = [(0.0, H), (spacing, H)]
+#
+# **THE CORES ARE AT `down = 0`, NOT `-H`.** The pairs are (north, height above
+# the ANCHOR), and the anchor is at the cruise altitude, so a core on the
+# flightpath is level with the aircraft and its offset is zero. `-H` would put
+# both cores a whole cruise altitude above the run, which would then meet
+# nothing. This is the same frame `Encounter.altitude` and `vortex_viz.figure`
+# read, so the figure's core circles land on the flight path for the same reason.
+cores = [(0.0, 0.0), (spacing, 0.0)]
 array = wind.VortexArray(
     north=jnp.array([c[0] for c in cores]),
     down=jnp.array([-c[1] for c in cores]),
@@ -84,7 +100,7 @@ vortex_field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
 
 lead = args.lead_in * r0
 vortex = vortex_viz.fly(
-    ac, vortex_field, V, H,
+    ac, vortex_field, V, H, ANCHOR, EARTH,
     label=f"vortex ({args.case})",
     start_north=-lead,
     seconds=(spacing + lead + 6.0 * r0) / V,
@@ -102,7 +118,7 @@ column = wind.UpdraftColumn(
 )
 updraft_field = lambda p: wind.updraft_wind(p, column)  # noqa: E731
 updraft = vortex_viz.fly(
-    ac, updraft_field, V, H,
+    ac, updraft_field, V, H, ANCHOR, EARTH,
     label="updraft",
     start_north=-2.0 * radius,
     seconds=4.0 * radius / V,
@@ -122,11 +138,11 @@ hold = args.pushdown_seconds
 pushdown_lead = 2.0
 pushdown_seconds = pushdown_lead + 3.0 * hold
 elevator_step = vortex_viz.elevator_for_load(
-    ac, V, H, target=vortex_viz.FIG8_LOAD_INCREMENT,
+    ac, V, H, ANCHOR, EARTH, target=vortex_viz.FIG8_LOAD_INCREMENT,
     hold=hold, seconds=pushdown_seconds, lead_in=pushdown_lead, dt=args.dt,
 )
 pushdown = vortex_viz.manoeuvre(
-    ac, V, H, label="manoeuvre", elevator_step=elevator_step,
+    ac, V, H, ANCHOR, EARTH, label="manoeuvre", elevator_step=elevator_step,
     hold=hold, seconds=pushdown_seconds, lead_in=pushdown_lead, dt=args.dt,
 )
 
@@ -187,9 +203,11 @@ if args.artifacts:
         aircraft=ac,
         flight_condition={"airspeed_mps": float(V), "altitude_m": float(H),
                           "source": "NASA CR-2144 flight condition 9"},
+        anchor=ANCHOR,
+        earth_model=EARTH,
         trim_solution={"alpha_rad": alpha, "elevator_rad": elevator,
-                       "throttle": throttle, "residual_norm": None,
-                       "is_physical": True},
+                       "throttle": throttle, "phi_rad": phi,
+                       "residual_norm": None, "is_physical": True},
         load_model=("loads.strip_model" if args.strip else None),
         loading_shape=("elliptic" if args.strip else None),
         caveats=[
@@ -258,7 +276,8 @@ if args.artifacts:
             else (lambda p: jnp.zeros(3))
         )
         report = checks.run_checks(
-            enc.log, ac, trim.trimmed_controls(x[1], x[2]), enc_field, enc.window
+            enc.log, ac, trim.trimmed_controls(x[1], x[2]), enc_field, enc.window,
+            EARTH,
         )
         out = artifact.write_run(
             args.artifacts / f"{name}-{args.aircraft}-{sha}", enc.log, meta, report

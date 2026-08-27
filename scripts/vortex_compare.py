@@ -40,9 +40,9 @@ import jax.numpy as jnp
 import numpy as np
 
 import atisim  # noqa: F401  -- enables x64
-from atisim import dynamics, jsbsim_vortex_ref, vortex_viz, wind
+from atisim import dynamics, earth, jsbsim_vortex_ref, vortex_viz, wind
 from atisim.aircraft import REGISTRY
-from atisim.state import Controls, State, euler_to_quat
+from atisim.state import Controls, dcm_body_to_ned, euler_to_quat, pos_ned, state_from_ned
 from atisim.units import FT2M, RAD2DEG
 
 # Wingrove & Bach's own measurements, for the cases where they published one.
@@ -57,8 +57,15 @@ PAPER = {
 }
 PAPER_ENVELOPE = {"dn_max": +1.70, "dn_min": -2.01}
 
+# JSBSim flew these encounters on its own rotating WGS-84 Earth, so atisim flies
+# the same one. The reference was generated through
+# `gen_jsbsim_reference.trimmed`, whose latitude default is 47 degrees; that is
+# where the anchors below are placed.
+REFERENCE_LATITUDE_DEG = 47.0
+EARTH = earth.WGS84_J2
 
-def partial_field_model(field, *, omega_gust: bool, alphadot: bool):
+
+def partial_field_model(field, anchor, *, omega_gust: bool, alphadot: bool):
     """wind.field_model with either gradient term switchable off.
 
     The gradient the analytic Jacobian produces is TWO separate physical terms
@@ -77,10 +84,15 @@ def partial_field_model(field, *, omega_gust: bool, alphadot: bool):
     """
     def model(wind_state, state, key, dt):
         del dt
-        w = field(state.pos_ned)
-        og = (wind.gust_rates(state.pos_ned, state.quat, field)
+        # The field's frame is NED offsets from the run anchor, and the gust
+        # terms need the body -> NED MATRIX -- `state.quat` is body -> ECEF now
+        # and would have resolved both gradients in the wrong frame.
+        pos = pos_ned(state, anchor)
+        dcm_b2n = dcm_body_to_ned(state, anchor)
+        w = field(pos)
+        og = (wind.gust_rates(pos, dcm_b2n, field)
               if omega_gust else jnp.zeros(3))
-        ad = (wind.gust_alphadot(state.pos_ned, state.quat, state.vel_body, field)
+        ad = (wind.gust_alphadot(pos, dcm_b2n, state.vel_body, field)
               if alphadot else jnp.array(0.0))
         return w, og, wind_state, key, ad
     return model
@@ -99,24 +111,32 @@ def atisim_run(encounter, *, arm):
     ac = REGISTRY[encounter.aircraft]
     v = encounter.values
     altitude = v["matched_altitude"]
+    # The DENSITY-MATCHED altitude, not the nominal one: that is where atisim
+    # actually flies, and anchoring anywhere else would put the aircraft off its
+    # own matched density the moment it was placed at the anchor.
+    anchor = earth.anchor_at(np.radians(REFERENCE_LATITUDE_DEG), 0.0, altitude)
 
     # The core sits at the aircraft's own altitude in each engine's frame, so
     # the RELATIVE geometry is identical even though the two altitudes differ by
-    # the density match. Placing it at JSBSim's nominal altitude instead would
-    # leave atisim passing 21 m below the core it was supposed to fly through.
+    # the density match. In the anchored frame that is `down = 0` -- NOT
+    # `-altitude`, which would put the core a whole flight altitude above the run
+    # and leave it meeting nothing at all rather than passing 21 m below.
     array = wind.VortexArray(
         north=jnp.array([v["core_north"]]),
-        down=jnp.array([-altitude]),
+        down=jnp.array([0.0]),
         r0=jnp.array(v["r0"]),
         v0=jnp.array(v["v0"]),
     )
     field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
 
-    state = State(
-        pos_ned=jnp.array([0.0, 0.0, -altitude]),
-        vel_body=jnp.array(encounter.initial.vel_body),
-        quat=euler_to_quat(*(jnp.array(x) for x in encounter.initial.euler)),
-        omega=jnp.array(encounter.initial.omega),
+    # At the anchor, and built through `state_from_ned` because JSBSim reports an
+    # Euler set: that is body -> NED, and `State.quat` is body -> ECEF.
+    state = state_from_ned(
+        jnp.zeros(3),
+        jnp.array(encounter.initial.vel_body),
+        euler_to_quat(*(jnp.array(x) for x in encounter.initial.euler)),
+        jnp.array(encounter.initial.omega),
+        anchor,
     )
     controls = Controls(
         elevator=jnp.array(encounter.initial.controls[0]),
@@ -125,14 +145,14 @@ def atisim_run(encounter, *, arm):
         throttle=jnp.array(encounter.initial.throttle),
     )
     return vortex_viz.fly_from_state(
-        ac, field, state, controls,
+        ac, field, state, controls, anchor, EARTH,
         label=f"{encounter.case}/{encounter.radius_source} {arm}",
         seconds=v["duration"],
         dt=0.01,
         window=(v["core_north"] - v["r0"], v["core_north"] + v["r0"]),
         window_name="core",
-        wind_model=partial_field_model(field, **ARMS[arm]),
-    ), state, controls, ac
+        wind_model=partial_field_model(field, anchor, **ARMS[arm]),
+    ), state, controls, ac, anchor
 
 
 def _pct(a, b):
@@ -192,14 +212,14 @@ def main():
 
         arms = {}
         for name in ARMS:
-            run, state, controls, ac = atisim_run(enc, arm=name)
+            run, state, controls, ac, anchor = atisim_run(enc, arm=name)
             arms[name] = run
 
         # atisim's own still-air datum at the same state, so each engine is
         # measured from its own level-flight value rather than from a literal
         # 1.0 that neither of them sits at.
         datum_n = float(dynamics.load_factor(
-            state, controls, ac, jnp.zeros(3), jnp.zeros(3)))
+            state, controls, ac, jnp.zeros(3), jnp.zeros(3), anchor, EARTH))
         datum_theta = enc.initial.euler[1]
 
         js_trim = enc.load_increments() + enc.pitch_increments()
