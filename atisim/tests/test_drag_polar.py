@@ -26,13 +26,34 @@ form, not integrator or transcription bugs, so this test uses two tolerance
 bands rather than one: tight near the fit, and a documented, wider band
 (loose enough to pass today, tight enough to catch a real regression) away
 from it.
+
+FLOWN OVER `earth.FLAT`, NOT THE SHIPPED WGS84_J2, and the reason is that
+this file measures a DRAG MODEL against a 1972 figure -- the Earth it is
+flown over is not part of the claim. Trim still sets the CL the polar is
+evaluated at, so a rotating, J2 Earth does move CD a little: measured
+-2.1e-4 at M 0.80 and -3.2e-4 at M 0.70, because gravitation at 47N and
+12,192 m is 0.36% below the constant G0 and the aeroplane therefore needs
+0.36% less lift. That is 0.5% of CD, an order below this figure's own
++/-0.003 reading noise, and every point below passes under either Earth.
+What it would NOT leave alone are the two residuals quoted above: they are
+-0.0144 and +0.0060 over `FLAT`, which is what the text says, and -0.0147
+and +0.0057 over `WGS84_J2`. Those numbers describe the polar's functional
+form, so they are held fixed rather than made to drift with the gravity
+model.
+
+`FLAT` also makes this file's use of `trimmed_controls` honest. It carries
+`x[1], x[2]` and drops the bank, aileron and rudder that `trim` now solves
+for -- over `FLAT` those three come back identically zero (measured
+-1.7e-34, 4.9e-37, -3.4e-35 at M 0.80), so nothing is being discarded. Over
+`WGS84_J2` they are not zero, and the hand-built `vel_body` below would then
+describe a state the solver did not produce.
 """
 
 import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from atisim import trim
+from atisim import earth, trim
 from atisim.aero import coefficients
 from atisim.aircraft import CRUISE, REGISTRY
 from atisim.atmosphere import speed_of_sound
@@ -40,6 +61,11 @@ from atisim.atmosphere import speed_of_sound
 AC = REGISTRY["boeing747"]
 H = CRUISE["boeing747"]["altitude"]
 A_SOUND = float(speed_of_sound(jnp.array(H)))
+# 47N is the latitude the rest of this project's Earth-rotation work uses, and
+# the anchor sits AT the figure's 40,000 ft, because `trimmed_state` places the
+# aircraft at the anchor and this polar is a 40,000 ft curve.
+ANCHOR = earth.anchor_at(np.radians(47.0), 0.0, H)
+EARTH = earth.FLAT  # see the module docstring: this is a drag-model claim
 
 # Digitized from Figure IX-6's 40,000 ft curve (dash-dot line), reading its
 # own log-CD / linear-Mach axes: y = -376.8 - 997.0*log10(CD) (row per pixel,
@@ -64,10 +90,10 @@ _OFF_FIT_TOL = 0.02  # documented drag-bucket / wave-drag extrapolation gap
 
 def _sim_cd(mach: float) -> float:
     V = mach * A_SOUND
-    x, _ = trim.trim(jnp.array(V), jnp.array(H), AC)
-    alpha, elevator, throttle = (float(v) for v in x)
+    x, _ = trim.trim(jnp.array(V), jnp.array(H), AC, ANCHOR, EARTH)
+    alpha = float(x[0])
     vel_body = jnp.array([V * np.cos(alpha), 0.0, V * np.sin(alpha)])
-    controls = trim.trimmed_controls(jnp.array(elevator), jnp.array(throttle))
+    controls = trim.trimmed_controls(x[1], x[2])
     _, CD, _, _, _, _ = coefficients(vel_body, jnp.zeros(3), controls, AC, jnp.array(A_SOUND))
     return float(CD)
 
