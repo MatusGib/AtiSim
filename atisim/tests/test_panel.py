@@ -19,12 +19,12 @@ from matplotlib.backend_bases import KeyEvent
 import matplotlib.pyplot as plt
 
 from atisim import autopilot as ap_mod
-from atisim import integrate, manual as man, panel as panel_mod, trim
+from atisim import earth, integrate, manual as man, panel as panel_mod, trim, viz
 from atisim.aircraft import CRUISE, REGISTRY
 from atisim.manual import Mode
 from atisim.panel import PITCH_SPAN_DEG, _horizon_frame, _ladder
 from atisim.sensors import AirData, Accelerations, accelerometers, sense
-from atisim.state import Controls, quat_to_euler
+from atisim.state import Controls, quat_to_euler_ned
 
 AC = REGISTRY["boeing747"]
 GAINS = ap_mod.GAINS["boeing747"]
@@ -32,6 +32,20 @@ MGAINS = man.MANUAL_GAINS["boeing747"]
 V = CRUISE["boeing747"]["airspeed"]
 H = CRUISE["boeing747"]["altitude"]
 DT = 0.02
+# 47N at the cruise altitude the panel flies. WGS84_J2: a cockpit displays the
+# aircraft's actual flight behaviour. `field_ahead` reads `anchor.h` to place
+# its cores, so anchoring at H is what puts them at the aircraft's own level.
+ANCHOR = earth.anchor_at(np.radians(47.0), 0.0, H)
+EARTH = earth.WGS84_J2
+
+
+def theta_of(sim_state):
+    """Pitch in the LOCAL NED frame, which is where a horizon lives."""
+    return float(quat_to_euler_ned(sim_state, ANCHOR)[1])
+
+
+def phi_of(sim_state):
+    return float(quat_to_euler_ned(sim_state, ANCHOR)[0])
 
 
 @pytest.fixture(autouse=True)
@@ -42,9 +56,9 @@ def _close_figures():
 
 @pytest.fixture(scope="module")
 def trimmed():
-    x, _ = trim.trim(jnp.array(V), jnp.array(H), AC)
+    x, _ = trim.trim(jnp.array(V), jnp.array(H), AC, ANCHOR, EARTH)
     return (
-        trim.trimmed_state(x[0], jnp.array(V), jnp.array(H)),
+        trim.trimmed_state(x[0], x[3], jnp.array(V), jnp.array(H), ANCHOR, 0.0),
         trim.trimmed_controls(x[1], x[2]),
     )
 
@@ -60,11 +74,12 @@ def targets():
 def live(trimmed, targets):
     """Panel plus LiveSim, stepping a fixed 1/fps of sim time per frame."""
     state, controls = trimmed
-    ctl = man.start(sense(state), controls, targets, GAINS, AC)
+    ctl = man.start(sense(state, ANCHOR), controls, targets, GAINS, AC)
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
-    panel = panel_mod.Panel(targets, window=20.0, fps=20.0)
+    panel = panel_mod.Panel(targets, ANCHOR, window=20.0, fps=20.0)
     return panel_mod.LiveSim(
-        sim, ctl, targets, GAINS, MGAINS, AC, panel, dt=DT, real_time=False
+        sim, ctl, targets, GAINS, MGAINS, AC, panel, ANCHOR, EARTH,
+        dt=DT, real_time=False,
     )
 
 
@@ -165,11 +180,11 @@ def test_pressing_a_switches_mode_in_the_running_loop(live):
 
 def test_the_stick_reaches_the_plant(live):
     """A key press has to travel through the panel, the controller and the plant."""
-    before = float(quat_to_euler(live.sim.state.quat)[1])
+    before = theta_of(live.sim.state)
     press(live.panel, "down")  # stick back
     for _ in range(60):
         live.frame()
-    assert float(quat_to_euler(live.sim.state.quat)[1]) > before + np.deg2rad(1.0)
+    assert theta_of(live.sim.state) > before + np.deg2rad(1.0)
     assert float(live.controls.elevator) < 0.0  # trailing edge up
 
 
@@ -262,7 +277,7 @@ def test_the_animation_runs_blitted_and_moves_its_artists(live):
 
     assert live.t > 0.0
     # The horizon has rolled: the ground quad is no longer axis-aligned.
-    assert float(quat_to_euler(live.sim.state.quat)[0]) > np.deg2rad(1.0)
+    assert phi_of(live.sim.state) > np.deg2rad(1.0)
     assert not np.allclose(panel.ground.get_xy()[0, 1], panel.ground.get_xy()[1, 1])
     # Every strip is inside its fixed window, which is what makes blitting legal.
     for line, readout, _ in panel.strips:
@@ -301,15 +316,16 @@ def test_axis_limits_never_move_because_blitting_would_not_notice(live):
 
 def _fly_live(trimmed, targets, frames=40, **kwargs):
     state, controls = trimmed
-    ctl = man.start(sense(state), controls, targets, GAINS, AC)
+    ctl = man.start(sense(state, ANCHOR), controls, targets, GAINS, AC)
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
-    panel = panel_mod.Panel(targets, window=20.0, fps=20.0)
+    panel = panel_mod.Panel(targets, ANCHOR, window=20.0, fps=20.0)
     live = panel_mod.LiveSim(
-        sim, ctl, targets, GAINS, MGAINS, AC, panel, dt=DT, real_time=False, **kwargs
+        sim, ctl, targets, GAINS, MGAINS, AC, panel, ANCHOR, EARTH,
+        dt=DT, real_time=False, **kwargs,
     )
     for _ in range(frames):
         live.frame()
-    return np.asarray(live.trajectory().pos_ned)
+    return viz.pos_ned(live.trajectory())
 
 
 def test_a_live_run_through_a_wind_field_differs_from_still_air(trimmed, targets):
@@ -328,7 +344,9 @@ def test_a_live_run_through_a_wind_field_differs_from_still_air(trimmed, targets
     )
     blown = _fly_live(
         trimmed, targets,
-        wind_model=wind_mod.field_model(lambda p: wind_mod.updraft_wind(p, column)),
+        wind_model=wind_mod.field_model(
+            lambda p: wind_mod.updraft_wind(p, column), ANCHOR
+        ),
     )
     still = _fly_live(trimmed, targets)
     assert abs(blown[-1, 2] - still[-1, 2]) > 1.0  # metres of altitude
@@ -371,7 +389,7 @@ def a_readout(**overrides):
 
 
 def test_the_vsi_needle_moves_up_in_a_climb_and_down_in_a_descent(targets):
-    p = panel_mod.Panel(targets, window=20.0, fps=20.0, aircraft_name="boeing747")
+    p = panel_mod.Panel(targets, ANCHOR, window=20.0, fps=20.0, aircraft_name="boeing747")
     air = a_readout().air
 
     p.vsi.update(a_readout(air=air._replace(vertical_speed=jnp.array(+8.0))))
@@ -384,7 +402,7 @@ def test_the_vsi_needle_moves_up_in_a_climb_and_down_in_a_descent(targets):
 
 
 def test_the_vsi_clips_off_scale_rather_than_moving_its_axes(targets):
-    p = panel_mod.Panel(targets, window=20.0, fps=20.0, aircraft_name="boeing747")
+    p = panel_mod.Panel(targets, ANCHOR, window=20.0, fps=20.0, aircraft_name="boeing747")
     air = a_readout().air
     p.vsi.update(a_readout(air=air._replace(vertical_speed=jnp.array(500.0))))
     assert p.vsi.needle.get_ydata()[-1] == pytest.approx(1.0)
@@ -393,7 +411,7 @@ def test_the_vsi_clips_off_scale_rather_than_moving_its_axes(targets):
 
 def test_the_alpha_gauge_names_the_band_the_model_is_in(targets):
     """PROJECT.md section 7's ceiling, on the panel instead of in a footnote."""
-    p = panel_mod.Panel(targets, window=20.0, fps=20.0, aircraft_name="boeing747")
+    p = panel_mod.Panel(targets, ANCHOR, window=20.0, fps=20.0, aircraft_name="boeing747")
     air = a_readout().air
 
     p.alpha_gauge.update(a_readout(air=air._replace(alpha=jnp.deg2rad(4.0))))
@@ -412,7 +430,7 @@ def test_the_alpha_gauge_judges_negative_alpha_by_magnitude(targets):
     and a one-sided gauge would report "linear" throughout exactly the run whose
     whole purpose is to say whether the model was still inside its range.
     """
-    p = panel_mod.Panel(targets, window=20.0, fps=20.0, aircraft_name="boeing747")
+    p = panel_mod.Panel(targets, ANCHOR, window=20.0, fps=20.0, aircraft_name="boeing747")
     air = a_readout().air
 
     p.alpha_gauge.update(a_readout(air=air._replace(alpha=jnp.deg2rad(-4.0))))
@@ -426,7 +444,7 @@ def test_the_alpha_gauge_judges_negative_alpha_by_magnitude(targets):
 
 def test_the_alpha_gauge_needle_is_not_pegged_at_the_stop_by_negative_alpha(targets):
     """The state() fix alone would leave the needle lying: clipped to 0.0."""
-    p = panel_mod.Panel(targets, window=20.0, fps=20.0, aircraft_name="boeing747")
+    p = panel_mod.Panel(targets, ANCHOR, window=20.0, fps=20.0, aircraft_name="boeing747")
     air = a_readout().air
 
     p.alpha_gauge.update(a_readout(air=air._replace(alpha=jnp.deg2rad(-8.0))))
@@ -440,7 +458,7 @@ def test_the_alpha_gauge_needle_is_not_pegged_at_the_stop_by_negative_alpha(targ
 
 def test_the_load_factor_gauge_holds_the_peak_excursion(targets):
     """In an encounter the excursion IS the result, and it is over in a second."""
-    p = panel_mod.Panel(targets, window=20.0, fps=20.0, aircraft_name="boeing747")
+    p = panel_mod.Panel(targets, ANCHOR, window=20.0, fps=20.0, aircraft_name="boeing747")
     for n_z in (1.0, 2.4, 1.1, 0.2, 1.0):
         p.nz_gauge.update(a_readout(accel=Accelerations(
             n_x=jnp.array(0.0), n_y=jnp.array(0.0), n_z=jnp.array(n_z)
@@ -450,7 +468,7 @@ def test_the_load_factor_gauge_holds_the_peak_excursion(targets):
 
 
 def test_the_gust_gauge_rows_are_p_q_r_top_to_bottom(targets):
-    p = panel_mod.Panel(targets, window=20.0, fps=20.0, aircraft_name="boeing747")
+    p = panel_mod.Panel(targets, ANCHOR, window=20.0, fps=20.0, aircraft_name="boeing747")
     p.gust_gauge.update(a_readout(omega_gust=np.array([0.10, 0.05, -0.02])))
     # Bar 0 is the bottom row and is labelled r; omega_gust is ordered (p, q, r).
     assert p.gust_gauge.bars[0].get_xdata()[-1] == pytest.approx(-0.02)
@@ -459,7 +477,7 @@ def test_the_gust_gauge_rows_are_p_q_r_top_to_bottom(targets):
 
 
 def test_the_wind_arrow_points_the_way_the_air_is_moving(targets):
-    p = panel_mod.Panel(targets, window=20.0, fps=20.0, aircraft_name="boeing747")
+    p = panel_mod.Panel(targets, ANCHOR, window=20.0, fps=20.0, aircraft_name="boeing747")
     p.wind_gauge.update(a_readout(wind_ned=np.array([0.0, 20.0, 0.0])))  # blowing east
     x, y = p.wind_gauge.arrow.get_xdata()[-1], p.wind_gauge.arrow.get_ydata()[-1]
     assert x > 0.0 and abs(y) < 1e-9  # screen x is east
@@ -480,9 +498,10 @@ def test_the_ball_indicates_the_rudder_that_would_reduce_the_sideslip(live):
     for _ in range(60):
         live.frame()
 
-    air = sense(live.sim.state, live.sim.wind_ned)
+    air = sense(live.sim.state, ANCHOR, live.sim.wind_ned)
     accel = accelerometers(
-        live.sim.state, live.controls, live.ac, live.sim.wind_ned, live.sim.omega_gust
+        live.sim.state, live.controls, live.ac, ANCHOR, EARTH,
+        live.sim.wind_ned, live.sim.omega_gust,
     )
     assert abs(float(air.beta)) > np.deg2rad(0.5)  # there IS a sideslip to indicate
     assert live.panel.slip.offset == pytest.approx(
@@ -502,9 +521,10 @@ def test_the_ball_and_beta_are_different_numbers(live):
     for _ in range(60):
         live.frame()
 
-    air = sense(live.sim.state, live.sim.wind_ned)
+    air = sense(live.sim.state, ANCHOR, live.sim.wind_ned)
     accel = accelerometers(
-        live.sim.state, live.controls, live.ac, live.sim.wind_ned, live.sim.omega_gust
+        live.sim.state, live.controls, live.ac, ANCHOR, EARTH,
+        live.sim.wind_ned, live.sim.omega_gust,
     )
     # Both in their own natural units; the point is that neither is a scaling of
     # the other, so no choice of full scale makes the ball equal to beta.
@@ -557,11 +577,12 @@ def test_the_stick_ramps_per_physics_step_not_per_frame(trimmed, targets):
     """
     def fly(steps_per_frame, frames):
         state, controls = trimmed
-        ctl = man.start(sense(state), controls, targets, GAINS, AC)
+        ctl = man.start(sense(state, ANCHOR), controls, targets, GAINS, AC)
         sim = integrate.init_sim(state, jax.random.PRNGKey(0))
-        p = panel_mod.Panel(targets, window=20.0, fps=20.0)
+        p = panel_mod.Panel(targets, ANCHOR, window=20.0, fps=20.0)
         run = panel_mod.LiveSim(
-            sim, ctl, targets, GAINS, MGAINS, AC, p, dt=DT, real_time=False
+            sim, ctl, targets, GAINS, MGAINS, AC, p, ANCHOR, EARTH,
+            dt=DT, real_time=False,
         )
         press(p, "up")
         for _ in range(frames):
@@ -588,11 +609,12 @@ def test_trim_here_holds_the_surfaces_the_stick_was_holding(trimmed, targets):
     """
     def fly(trim_it):
         state, controls = trimmed
-        ctl = man.start(sense(state), controls, targets, GAINS, AC)
+        ctl = man.start(sense(state, ANCHOR), controls, targets, GAINS, AC)
         sim = integrate.init_sim(state, jax.random.PRNGKey(0))
-        p = panel_mod.Panel(targets, window=20.0, fps=20.0)
+        p = panel_mod.Panel(targets, ANCHOR, window=20.0, fps=20.0)
         run = panel_mod.LiveSim(
-            sim, ctl, targets, GAINS, MGAINS, AC, p, dt=DT, real_time=False
+            sim, ctl, targets, GAINS, MGAINS, AC, p, ANCHOR, EARTH,
+            dt=DT, real_time=False,
         )
         press(p, "up")  # stick forward: push the nose over, and HOLD it
         for _ in range(60):
@@ -605,7 +627,7 @@ def test_trim_here_holds_the_surfaces_the_stick_was_holding(trimmed, targets):
             run.frame()
         return (
             float(run.controls.elevator),
-            float(quat_to_euler(run.sim.state.quat)[1]),
+            theta_of(run.sim.state),
             float(run.ctl.manual.reference.elevator),
         )
 
@@ -641,20 +663,24 @@ def test_the_vortex_range_is_a_north_distance_with_no_bearing():
     """The cores are infinite east-west lines, so there is no bearing to report
     and no way to miss one by turning."""
     from atisim import wind as wind_mod
-    from atisim.state import State
+    from atisim.state import state_from_ned
 
     array = wind_mod.VortexArray(
-        north=jnp.array([1000.0, 2000.0]), down=jnp.array([-12192.0, -12192.0]),
+        # down = 0: field coordinates are NED offsets from the run anchor, and
+        # the anchor is AT the flight altitude, so level with the aircraft is 0
+        # rather than -12192. See `panel.field_ahead`.
+        north=jnp.array([1000.0, 2000.0]), down=jnp.array([0.0, 0.0]),
         r0=jnp.array(183.0), v0=jnp.array(25.9),
     )
-    ranger = panel_mod.vortex_range(array, label="vortex test")
+    ranger = panel_mod.vortex_range(array, ANCHOR, label="vortex test")
 
     def at(north):
-        return ranger(State(
-            pos_ned=jnp.array([north, 0.0, -12192.0]),
-            vel_body=jnp.array([236.0, 0.0, 0.0]),
-            quat=jnp.array([1.0, 0.0, 0.0, 0.0]),
-            omega=jnp.zeros(3),
+        return ranger(state_from_ned(
+            jnp.array([north, 0.0, 0.0]),
+            jnp.array([236.0, 0.0, 0.0]),
+            jnp.array([1.0, 0.0, 0.0, 0.0]),
+            jnp.zeros(3),
+            ANCHOR,
         ))
 
     assert at(1000.0).distance == pytest.approx(0.0, abs=1e-9)
@@ -668,18 +694,19 @@ def test_the_vortex_range_is_a_north_distance_with_no_bearing():
 
 def test_the_updraft_range_has_a_bearing_because_a_column_is_a_point():
     from atisim import wind as wind_mod
-    from atisim.state import State
+    from atisim.state import state_from_ned
 
     column = wind_mod.UpdraftColumn(
         north=jnp.array(0.0), east=jnp.array(3000.0), w0=jnp.array(24.0),
         radius=jnp.array(2400.0), sharpness=jnp.array(6.0),
     )
-    ranger = panel_mod.updraft_range(column, label="updraft")
-    got = ranger(State(
-        pos_ned=jnp.array([0.0, 0.0, -12192.0]),
-        vel_body=jnp.array([236.0, 0.0, 0.0]),
-        quat=jnp.array([1.0, 0.0, 0.0, 0.0]),
-        omega=jnp.zeros(3),
+    ranger = panel_mod.updraft_range(column, ANCHOR, label="updraft")
+    got = ranger(state_from_ned(
+        jnp.zeros(3),
+        jnp.array([236.0, 0.0, 0.0]),
+        jnp.array([1.0, 0.0, 0.0, 0.0]),
+        jnp.zeros(3),
+        ANCHOR,
     ))
     assert got.distance == pytest.approx(3000.0, abs=1e-9)
     assert np.degrees(got.bearing) == pytest.approx(90.0, abs=1e-6)  # due east
@@ -695,17 +722,18 @@ def test_the_updraft_range_has_a_bearing_because_a_column_is_a_point():
 
 def test_field_ahead_puts_the_first_core_where_the_lead_in_says(targets):
     model, ranger, note = panel_mod.field_ahead(
-        "hannibal", airspeed=V, altitude=H, lead_in=40.0
+        "hannibal", ANCHOR, airspeed=V, altitude=H, lead_in=40.0
     )
-    from atisim.state import State
+    from atisim.state import state_from_ned
     from atisim.wind import PARKS_CASES
 
     expected = 40.0 * PARKS_CASES["hannibal"]["r0"]
-    got = ranger(State(
-        pos_ned=jnp.array([0.0, 0.0, -H]),
-        vel_body=jnp.array([V, 0.0, 0.0]),
-        quat=jnp.array([1.0, 0.0, 0.0, 0.0]),
-        omega=jnp.zeros(3),
+    got = ranger(state_from_ned(
+        jnp.zeros(3),
+        jnp.array([V, 0.0, 0.0]),
+        jnp.array([1.0, 0.0, 0.0, 0.0]),
+        jnp.zeros(3),
+        ANCHOR,
     ))
     assert got.distance == pytest.approx(expected, rel=1e-9)
     assert got.bearing is None
@@ -713,14 +741,14 @@ def test_field_ahead_puts_the_first_core_where_the_lead_in_says(targets):
 
 
 def test_still_air_asks_for_no_field_at_all(targets):
-    model, ranger, note = panel_mod.field_ahead("none", airspeed=V, altitude=H)
+    model, ranger, note = panel_mod.field_ahead("none", ANCHOR, airspeed=V, altitude=H)
     assert ranger is None
     assert note == "still air"
 
 
 def test_an_unknown_field_is_refused_rather_than_silently_still_air():
     with pytest.raises(ValueError, match="unknown wind field"):
-        panel_mod.field_ahead("hurricane", airspeed=V, altitude=H)
+        panel_mod.field_ahead("hurricane", ANCHOR, airspeed=V, altitude=H)
 
 
 def test_flying_the_parks_array_closes_the_range_and_moves_the_gust_bars(trimmed, targets):
@@ -733,14 +761,14 @@ def test_flying_the_parks_array_closes_the_range_and_moves_the_gust_bars(trimmed
     encounter measures.
     """
     model, ranger, _ = panel_mod.field_ahead(
-        "hannibal", airspeed=V, altitude=H, lead_in=14.0
+        "hannibal", ANCHOR, airspeed=V, altitude=H, lead_in=14.0
     )
     state, controls = trimmed
-    ctl = man.start(sense(state), controls, targets, GAINS, AC)
+    ctl = man.start(sense(state, ANCHOR), controls, targets, GAINS, AC)
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
-    p = panel_mod.Panel(targets, window=20.0, fps=20.0)
+    p = panel_mod.Panel(targets, ANCHOR, window=20.0, fps=20.0)
     run = panel_mod.LiveSim(
-        sim, ctl, targets, GAINS, MGAINS, AC, p,
+        sim, ctl, targets, GAINS, MGAINS, AC, p, ANCHOR, EARTH,
         dt=DT, real_time=False, wind_model=model, field_range=ranger,
     )
 
