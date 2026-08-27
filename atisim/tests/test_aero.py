@@ -235,9 +235,12 @@ def test_the_lift_table_is_not_linearised_at_a_breakpoint():
     artifact of where the breakpoints sit. Both 737 entries must trim well
     inside a segment.
 
-    The cruise margin is the tighter one: alpha 1.98 deg against a knot at
-    0.00, so 1.98 deg of room. A model change that moved the trim toward zero
+    The cruise margin is the tighter one: alpha 1.96 deg against a knot at
+    0.00, so 1.96 deg of room. A model change that moved the trim toward zero
     incidence -- more flap, a forward CG, a heavier fuel load -- would land on it.
+    It was 1.98 deg before the Earth turned, and the trim it is taken from is
+    now flown on WGS84_J2 at JSBSim's own 47N -- see `_atisim_trim`. A 0.02 deg
+    movement against a 1.0 deg gate cannot decide this test either way.
     """
     import numpy as np
 
@@ -246,7 +249,10 @@ def test_the_lift_table_is_not_linearised_at_a_breakpoint():
 
     for name, condition in (("boeing737", "cruise"), ("boeing737_approach", "approach")):
         ac = REGISTRY[name]
-        (alpha, _de, _th), _ = _atisim_trim(condition)
+        # `_atisim_trim` returns all SIX unknowns now. Only alpha is wanted here
+        # -- the knots are a lift table -- and it is indexed rather than
+        # unpacked so the lateral half is visibly left alone.
+        alpha = _atisim_trim(condition)[0][0]
         knots = np.asarray(ac.CL_table_alpha)
         gap = np.min(np.abs(knots - alpha))
         assert gap > np.radians(1.0), (
