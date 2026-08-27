@@ -22,12 +22,22 @@ import numpy as np
 import pytest
 
 import atisim  # noqa: F401  -- enables x64
-from atisim import dynamics, trim, wind
+from atisim import dynamics, earth, trim, wind
 from atisim.aircraft import CRUISE, REGISTRY
 
 AC = REGISTRY["boeing747"]
 V = CRUISE["boeing747"]["airspeed"]
 H = CRUISE["boeing747"]["altitude"]
+
+# 47N is the latitude the rest of this project's Earth-rotation work uses, and
+# the anchor sits AT the cruise altitude, so the aircraft flies at `down = 0`.
+#
+# `LeeWave` is the one field here with NO vertical dependence at all -- its wind
+# is a function of `pos_ned[0]` alone -- so the `-H` in the field samples below
+# is inert and has been left as it was rather than churned. It is NOT the
+# `down = -H` trap: there is no core to misplace, because there is no z.
+ANCHOR = earth.anchor_at(np.radians(47.0), 0.0, H)
+EARTH = earth.WGS84_J2
 
 
 def a_wave(w0=6.0, wavelength=25_000.0, north=0.0):
@@ -88,8 +98,11 @@ def test_the_field_is_divergence_free():
 
 def test_the_lee_wave_satisfies_the_wind_model_contract():
     """Same contract every field obeys, so it composes with the others."""
-    model = wind.lee_wave_model(a_wave())
-    state = trim.trimmed_state(jnp.array(0.05), jnp.array(V), jnp.array(H))
+    model = wind.lee_wave_model(a_wave(), ANCHOR)
+    state = trim.trimmed_state(
+        jnp.array(0.05), jnp.array(0.0), jnp.array(V), jnp.array(H),
+        ANCHOR, jnp.array(0.0),
+    )
     key = jax.random.PRNGKey(0)
     wind_ned, omega_gust, wind_state, out_key, _ = model(
         wind.zero_wind_state(), state, key, jnp.array(0.01)
@@ -162,8 +175,22 @@ def test_a_long_wavelength_survives_the_average_almost_intact():
 
 
 def test_the_thrust_envelope_is_what_session_2_recorded():
-    """Recomputed, not taken on trust: section 4 carries +0.023/-0.066."""
-    x, _ = trim.trim(jnp.array(V), jnp.array(H), AC)
+    """Recomputed, not taken on trust: section 4 carries +0.023/-0.066.
+
+    THE ENVELOPE MOVED WHEN THE EARTH STARTED TURNING, and it moved because the
+    trim throttle did. Measured on the 747 at 47N and 12,192 m:
+
+        earth       throttle    full      idle
+        FLAT        0.736757   +0.023442  -0.065610
+        WGS84_J2    0.733221   +0.023757  -0.065295
+
+    0.48% of throttle, which is the J2 gravity magnitude and the centrifugal
+    relief at 47N rather than anything the wave does. Section 4's pair still
+    reproduces inside its own abs=0.001, so the assertions below are UNCHANGED
+    -- but `idle` now rounds to -0.065 rather than -0.066, so the recorded
+    figure sits 0.7 of a tolerance away instead of 0.4.
+    """
+    x, _ = trim.trim(jnp.array(V), jnp.array(H), AC, ANCHOR, EARTH)
     full, idle = dynamics.thrust_authority(AC, x[2], jnp.array(H))
     assert float(full) == pytest.approx(0.023, abs=0.001)
     assert float(idle) == pytest.approx(-0.066, abs=0.001)
@@ -177,8 +204,13 @@ def test_the_stronger_doyle_lee_wave_exceeds_the_747s_thrust_authority():
     stronger one produces an F the 747 cannot counter at cruise; the weaker one
     it can. The hazard threshold sits INSIDE the observed range, which is a
     sharper statement than "always" or "never" and is what the numbers say.
+
+    THE ROTATING EARTH NARROWS THE MARGIN BUT DOES NOT CHANGE THE VERDICT.
+    Strong F = 0.025433 against a thrust authority that rose from 0.023442
+    (FLAT) to 0.023757 (WGS84_J2), so the margin fell from 0.001991 to 0.001676
+    -- 16% of itself. Weak F = 0.012717 is half the authority either way.
     """
-    x, _ = trim.trim(jnp.array(V), jnp.array(H), AC)
+    x, _ = trim.trim(jnp.array(V), jnp.array(H), AC, ANCHOR, EARTH)
     full, _ = dynamics.thrust_authority(AC, x[2], jnp.array(H))
 
     strong = wind.LEE_WAVE_AMPLITUDE["south"] / V  # F at the trough, no shear term
