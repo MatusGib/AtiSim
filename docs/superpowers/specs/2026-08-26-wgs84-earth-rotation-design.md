@@ -192,9 +192,22 @@ it becomes `tan(theta) = cos(phi) tan(alpha)`, which reduces to the old form at
 microradian, but the constraint is written in its exact form rather than approximated,
 because nothing downstream would reveal it if it were wrong.
 
-The trimmed bank angle is a function of latitude and heading. **The 0.2° figure is an
-estimate from `atan(0.0035)` and is not yet measured** — the plan's step 3 measures it, and
-if it disagrees materially that is a finding, not a tolerance to adjust.
+**MEASURED, AND THE ESTIMATE WAS WRONG.** This section first said the trimmed bank was
+"roughly 0.2° at 47°N", from `atan(2ΩV/g) = atan(0.0035)`. That estimate **omits
+`sin(latitude)`** and is therefore only correct at the pole. The horizontal Coriolis
+acceleration is `2ΩV·sin(λ)`, which at 47°N is 0.0252 m/s² = 2.58e-3 g, not 3.5e-3 g.
+
+    measured                          -0.14910 deg
+    corrected estimate                -0.14702 deg   atan(2*Om*V*sin(lat)/g)
+    original estimate                 +0.20102 deg   atan(2*Om*V/g), no sin(lat)
+
+**And the bank is very nearly heading-INDEPENDENT**, which this section also got wrong by
+saying it "is a function of latitude and heading". Swept over 24 headings at 47°N it fits
+`phi = -0.14804 - 0.00106·sin(psi)` degrees to 1.3e-6 deg, with a `cos(psi)` coefficient of
+1.5e-6 of the constant — zero. That is right for `2Ω×V`: the local-vertical component of Ω
+is `Ω sin(λ)`, and a rotation about the vertical gives a horizontal acceleration of
+magnitude `2ΩV sin(λ)` perpendicular to the track *whatever the track's azimuth*. Heading
+enters only at the 0.7% level.
 
 `is_physical` extends to the three new unknowns: `phi` bounded, `aileron` and `rudder`
 against `ac.aileron_limit` and `ac.rudder_limit`.

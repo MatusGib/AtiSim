@@ -208,7 +208,34 @@ def trim(
         jacobian = jax.jacfwd(residual)(
             x, airspeed, altitude, ac, anchor, earth_model, heading
         )
-        return x - jnp.linalg.solve(jacobian, r), None
+        # LSTSQ, NOT SOLVE, AND THIS CLOSES ASSUMPTIONS.md F7.
+        #
+        # F7 recorded that a control channel with zero authority makes a Newton
+        # solve return NaN in silence, and called it "latent for the shipped
+        # solvers" because "`trim` does not carry rudder as an unknown, so
+        # nothing in the package hits it". Carrying rudder as an unknown is
+        # exactly what this function now does, so the latent case went live: the
+        # Cessna's CYdr = Cldr = Cndr = 0 makes the rudder column identically
+        # zero, and `solve` returned [nan, nan, nan, nan, nan, nan].
+        #
+        # `lstsq` takes the minimum-norm step instead. Measured across the
+        # registry at 47N: every aircraft converges, the Cessna's rudder comes
+        # out at exactly 0.0 -- the null direction, correctly left alone -- and
+        # all six of its residuals reach 1e-13. Its yaw is trimmed by the
+        # aileron through Cnda, which is why the system is solvable at all
+        # despite the missing column.
+        #
+        # It does NOT trade a loud failure for a silent one, which was the thing
+        # to check before adopting it. Stripping the 747 of elevator authority
+        # as well leaves qdot at 9.3e-5 -- eight orders above a converged solve
+        # -- in the residual this function already returns. A caller that checks
+        # the residual sees an unsolvable request; a NaN it would have had to
+        # catch separately, and could not, since JAX cannot raise under jit.
+        #
+        # rcond is left at the default: measured 1.090e-12 on the 747 at rcond
+        # 1e-6, 1e-10, 1e-14 and None alike, so the residual here is set by
+        # Newton convergence and not by singular-value truncation.
+        return x - jnp.linalg.lstsq(jacobian, r)[0], None
 
     x, _ = jax.lax.scan(step, x0, None, length=iterations)
     return x, residual(x, airspeed, altitude, ac, anchor, earth_model, heading)

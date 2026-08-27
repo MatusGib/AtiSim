@@ -236,3 +236,73 @@ def test_the_trimmed_bank_angle_is_measured_not_assumed():
     assert np.sign(north) == -np.sign(south), "bank does not reverse across the equator"
     print(f"\ntrimmed bank: {np.degrees(north):.4f} deg at 47N, "
           f"{np.degrees(south):.4f} deg at 47S")
+
+
+def test_a_rudderless_aircraft_trims_instead_of_returning_nan():
+    """ASSUMPTIONS.md F7, which this function has just made live.
+
+    F7 recorded that a zero-authority control channel makes a Newton solve
+    return NaN in silence, and bounded it as "latent for the shipped solvers"
+    because "`trim` does not carry rudder as an unknown, so nothing in the
+    package hits it". Carrying rudder as an unknown is what the six-unknown trim
+    now does, so the latent case went live: the Cessna's
+    CYdr = Cldr = Cndr = 0 makes the rudder column of the Jacobian identically
+    zero and `jnp.linalg.solve` returned six NaNs.
+
+    `lstsq` takes the minimum-norm step, which leaves the null direction alone.
+    The Cessna is genuinely trimmable without a rudder because the AILERON
+    carries yaw through Cnda -- that is why all six residuals vanish rather
+    than just five.
+    """
+    from atisim import earth
+    from atisim.aircraft import CRUISE, REGISTRY
+    from atisim.trim import trim
+
+    ac = REGISTRY["cessna172"]
+    condition = CRUISE["cessna172"]
+    assert float(ac.CYdr) == 0.0 and float(ac.Cldr) == 0.0 and float(ac.Cndr) == 0.0, (
+        "the Cessna gained a rudder; this test no longer exercises F7"
+    )
+
+    anchor = earth.anchor_at(np.radians(47.0), 0.0, condition["altitude"])
+    x, r = trim(
+        condition["airspeed"], condition["altitude"], ac, anchor, earth.WGS84_J2
+    )
+
+    assert not np.any(np.isnan(np.asarray(x))), "F7's NaN is back"
+    assert np.max(np.abs(np.asarray(r))) < 1e-9, (
+        f"rudderless trim did not converge: {np.asarray(r)}"
+    )
+    # The unreachable unknown is left at zero rather than wandering.
+    assert float(x[5]) == 0.0, f"rudder came out at {float(x[5])}, not the null direction"
+
+
+def test_lstsq_does_not_hide_a_genuinely_unsolvable_trim():
+    """The risk of swapping `solve` for `lstsq`, checked rather than assumed.
+
+    `lstsq` never returns NaN, which is the point -- but a solver that always
+    returns SOMETHING could return a plausible wrong answer for a request that
+    has no solution, which would be worse than F7's NaN, not better.
+
+    It does not. An aircraft with no pitch authority at all cannot be trimmed,
+    and the qdot residual stays at ~9e-5: eight orders above a converged solve,
+    in the residual `trim` already returns. The caller sees it.
+    """
+    import jax.numpy as jnp
+
+    from atisim import earth
+    from atisim.aircraft import CRUISE, REGISTRY
+    from atisim.trim import trim
+
+    condition = CRUISE["boeing747"]
+    no_pitch = REGISTRY["boeing747"]._replace(
+        Cmde=jnp.array(0.0), CLde=jnp.array(0.0)
+    )
+    anchor = earth.anchor_at(np.radians(47.0), 0.0, condition["altitude"])
+    _, r = trim(
+        condition["airspeed"], condition["altitude"], no_pitch, anchor, earth.WGS84_J2
+    )
+
+    assert np.max(np.abs(np.asarray(r))) > 1e-6, (
+        "an untrimmable aircraft converged, so lstsq is hiding the failure"
+    )

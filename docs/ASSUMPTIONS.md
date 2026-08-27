@@ -981,18 +981,40 @@ than no rudder.
 zero, so `det = 0` and `jnp.linalg.solve` returns `[nan, nan, inf]` **without raising**.
 Pinned by `test_a_control_channel_with_zero_authority_returns_nan_in_silence`.
 
-**Bound: latent for the shipped solvers.** `trim` does not carry rudder as an unknown, so
-nothing in the package hits it. A steady-turn solve is the obvious next one that would.
+**Bound: NO LONGER LATENT — it went live in session 23, exactly as predicted.** This entry
+used to read "latent for the shipped solvers: `trim` does not carry rudder as an unknown, so
+nothing in the package hits it. A steady-turn solve is the obvious next one that would." The
+rotating-Earth trim carries **rudder as an unknown**, because Coriolis has to be trimmed
+laterally — so the Cessna's zero rudder column became a real singular Jacobian and `trim`
+returned six NaNs.
+
+**Resolved, and the resolution is the one this entry asked for.** The Newton step is now
+`jnp.linalg.lstsq` rather than `jnp.linalg.solve`, which takes the minimum-norm step and
+leaves the null direction alone. Measured across the registry at 47°N: every aircraft
+converges, the Cessna's rudder comes out at **exactly 0.0**, and all six of its residuals
+reach 1e-13. It is trimmable without a rudder because the **aileron carries yaw through
+`Cnda`** — that is why six residuals vanish and not five.
+
+**The thing that had to be checked before adopting it**, since a solver that always returns
+something could hide an unsolvable request — which would be worse than a NaN, not better:
+stripping the 747 of pitch authority as well leaves `qdot` at **9.3e-5**, eight orders above
+a converged solve, in the residual `trim` already returns. A loud failure stays loud. Pinned
+by `test_a_rudderless_aircraft_trims_instead_of_returning_nan` and
+`test_lstsq_does_not_hide_a_genuinely_unsolvable_trim`.
+
+`rcond` is left at the default: measured 1.090e-12 on the 747 at 1e-6, 1e-10, 1e-14 and
+None alike, so the residual is set by Newton convergence, not by singular-value truncation.
 
 **Partial mitigation, and it is narrower than it looks:** `conftest.py` sets
 `jax_debug_nans`, so the suite catches it. That is a **test-time setting only** — nothing
 enables it for `scripts/` or for a library caller.
 
-**Verdict: documented, not guarded.** JAX cannot raise inside a jitted function, so the
-obvious guard is unavailable where it would be needed, and making `trim` non-jittable to
-get one would cost the vmap in `minimum_drag_speed`. If a guard is added it should be an
-explicit **non-jitted precondition** at the solver's entry, which is a decision about where
-solver preconditions live rather than a defect repair.
+**Verdict: CLOSED.** This entry previously read "documented, not guarded", and reasoned that
+since JAX cannot raise inside a jitted function the only available guard was an explicit
+non-jitted precondition at the solver's entry. That reasoning was sound but it framed the
+problem as *detection*, and the better answer turned out to be *not producing the NaN in the
+first place*. `lstsq` needs no precondition, stays jittable, and keeps the `vmap` in
+`minimum_drag_speed` that a non-jitted guard would have cost.
 
 ---
 
