@@ -12,15 +12,47 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from atisim import aero, integrate, wind
+from atisim import aero, earth, integrate, wind
 from atisim.aircraft import REGISTRY
 from atisim.atmosphere import RHO0, speed_of_sound
-from atisim.state import Controls, State, euler_to_quat
+from atisim.state import (
+    Controls,
+    dcm_body_to_ned,
+    euler_to_quat,
+    pos_ned,
+    state_from_ned,
+)
 from atisim.tests.conftest import make_test_aircraft
 
 A0 = float(speed_of_sound(0.0))
 ZERO = Controls(elevator=jnp.array(0.0), aileron=jnp.array(0.0),
                 rudder=jnp.array(0.0), throttle=jnp.array(0.0))
+
+# 47N is the latitude the rest of this project's Earth-rotation work uses. TWO
+# anchors, because the two flight conditions in this file are at two altitudes
+# and the anchor sits AT the flight altitude -- which is what lets each state be
+# built at `pos_ned = 0` and still be level flight where it says it is.
+EARTH = earth.WGS84_J2
+
+
+def _anchor(altitude):
+    return earth.anchor_at(np.radians(47.0), 0.0, altitude)
+
+
+def _level(anchor, vel_body, theta):
+    """Wings-level, heading north, AT the anchor. Body rates zero.
+
+    Deliberately NOT `trim.trimmed_state`: every state here is hand-chosen to
+    put a specific alpha or airspeed into one aero term, and a trim would
+    replace those with whatever the solver wanted.
+    """
+    return state_from_ned(
+        jnp.zeros(3),
+        jnp.asarray(vel_body),
+        euler_to_quat(jnp.array(0.0), jnp.array(theta), jnp.array(0.0)),
+        jnp.zeros(3),
+        anchor,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -107,22 +139,24 @@ def test_alphadot_moment_follows_stengel_3_4_26():
 
 def test_still_air_produces_exactly_zero_alphadot():
     """The term cannot disturb any still-air result, by construction."""
-    state = State(pos_ned=jnp.array([0.0, 0.0, -3000.0]),
-                  vel_body=jnp.array([60.0, 0.0, 2.0]),
-                  quat=euler_to_quat(jnp.array(0.0), jnp.array(0.03), jnp.array(0.0)),
-                  omega=jnp.zeros(3))
+    state = _level(_anchor(3000.0), [60.0, 0.0, 2.0], 0.03)
     *_, alphadot = wind.zero_wind(wind.zero_wind_state(), state,
                                   jax.random.PRNGKey(0), 0.02)
     assert float(alphadot) == 0.0
 
 
 def test_a_uniform_wind_produces_no_alphadot():
-    """alphadot comes from the field's GRADIENT, so a constant wind gives none."""
-    state = State(pos_ned=jnp.array([0.0, 0.0, -3000.0]),
-                  vel_body=jnp.array([60.0, 0.0, 2.0]),
-                  quat=euler_to_quat(jnp.array(0.0), jnp.array(0.03), jnp.array(0.0)),
-                  omega=jnp.zeros(3))
-    got = wind.gust_alphadot(state.pos_ned, state.quat, state.vel_body,
+    """alphadot comes from the field's GRADIENT, so a constant wind gives none.
+
+    `gust_alphadot` takes a body -> NED MATRIX now, not a quaternion.
+    `state.quat` is body -> ECEF, and both are valid rotations, so passing it
+    would have resolved the field's gradient in the wrong frame and returned a
+    plausible wrong number rather than raising.
+    """
+    anchor = _anchor(3000.0)
+    state = _level(anchor, [60.0, 0.0, 2.0], 0.03)
+    got = wind.gust_alphadot(pos_ned(state, anchor), dcm_body_to_ned(state, anchor),
+                             state.vel_body,
                              lambda p: jnp.array([3.0, 0.0, -2.0]))
     assert abs(float(got)) < 1e-12
 
@@ -132,14 +166,17 @@ def test_flying_into_a_vertical_gradient_produces_alphadot_of_the_right_sign():
 
     The field's downward component becomes more negative (more updraft) with
     north position, so flying north the aircraft sees w_rel fall and alpha rise.
+
+    EARTH-INDEPENDENT, and it stays exact on the ellipsoid: the aircraft sits AT
+    the anchor, so its own local frame IS the anchor frame and the body -> NED
+    matrix is the level attitude to machine precision. The +0.01 below is
+    arithmetic on the field's gradient, not a flown number.
     """
-    state = State(pos_ned=jnp.array([0.0, 0.0, -3000.0]),
-                  vel_body=jnp.array([60.0, 0.0, 0.0]),
-                  quat=euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
-                  omega=jnp.zeros(3))
+    anchor = _anchor(3000.0)
+    state = _level(anchor, [60.0, 0.0, 0.0], 0.0)
     # w_ned = -0.01 * north  ->  updraft strengthening ahead
     got = float(wind.gust_alphadot(
-        state.pos_ned, state.quat, state.vel_body,
+        pos_ned(state, anchor), dcm_body_to_ned(state, anchor), state.vel_body,
         lambda p: jnp.array([0.0, 0.0, -0.01 * p[0]])))
     # alphadot = -d(w_wind)/dt / V = -(-0.01 * 60)/60 = +0.01
     assert got == pytest.approx(0.01, rel=1e-9)
@@ -152,25 +189,25 @@ def test_the_gust_alphadot_reaches_the_pitching_moment_through_step():
     integrator rather than at the coefficient level.
     """
     ac = REGISTRY["boeing737"]
-    state = State(pos_ned=jnp.array([0.0, 0.0, -9000.0]),
-                  vel_body=jnp.array([236.0, 0.0, 8.0]),
-                  quat=euler_to_quat(jnp.array(0.0), jnp.array(0.034), jnp.array(0.0)),
-                  omega=jnp.zeros(3))
+    anchor = _anchor(9000.0)
+    state = _level(anchor, [236.0, 0.0, 8.0], 0.034)
     field = lambda p: jnp.array([0.0, 0.0, -0.05 * p[0]])  # noqa: E731
-    model = wind.field_model(field)
+    model = wind.field_model(field, anchor)
     controls = ZERO._replace(throttle=jnp.array(0.77))
 
     with_term = integrate.step(integrate.init_sim(state, jax.random.PRNGKey(0)),
-                               controls, jnp.array(0.05), ac, wind_model=model)
+                               controls, jnp.array(0.05), ac, anchor, EARTH,
+                               wind_model=model)
     without = integrate.step(integrate.init_sim(state, jax.random.PRNGKey(0)),
-                             controls, jnp.array(0.05), ac,
-                             wind_model=wind.field_model(field)) \
+                             controls, jnp.array(0.05), ac, anchor, EARTH,
+                             wind_model=wind.field_model(field, anchor)) \
         if False else None
     del without
 
     bare = ac._replace(Cmadot=jnp.array(0.0))
     no_term = integrate.step(integrate.init_sim(state, jax.random.PRNGKey(0)),
-                             controls, jnp.array(0.05), bare, wind_model=model)
+                             controls, jnp.array(0.05), bare, anchor, EARTH,
+                             wind_model=model)
     assert float(with_term.state.omega[1]) != float(no_term.state.omega[1])
 
 
