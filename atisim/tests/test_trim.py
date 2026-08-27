@@ -4,7 +4,8 @@ import numpy as np
 import pytest
 from scipy.optimize import root
 
-from atisim import earth, trim
+from atisim import dynamics, earth, trim
+from atisim import state as st
 from atisim.aircraft import CRUISE, REGISTRY
 from atisim.units import RAD2DEG
 
@@ -65,20 +66,46 @@ def test_trimmed_flight_holds_altitude_and_airspeed():
     Trim is an exact fixed point of the ODE, so the tolerance here is tight on
     purpose: any drift at all means the integrator or the state construction
     disagrees with the residual the solver drove to zero.
+
+    **THIS TEST IS EXPECTED TO FAIL, AND THE TOLERANCES BELOW ARE LEFT ALONE ON
+    PURPOSE.** `test_trim.py` is one of PROJECT.md section 4's validated baseline
+    files, whose tolerances feature work may not edit. The ECEF migration is a
+    stated physical change, so this baseline legitimately moves -- but that is a
+    decision for the ledger to record, not one to absorb here. Migrated
+    mechanically, left red, and measured so the re-measurement has numbers:
+
+        quantity                    was      now (60 s)
+        geodetic altitude drift    <1e-6 m   4.2356 m
+        tangent-plane drift        <1e-6 m   11.8577 m
+        airspeed drift             <1e-6 m   0.1493 m/s
+
+    The mechanism is NOT the Earth's rotation. `trimmed_state` sets `omega = 0`,
+    which zeroes the trim residual at t = 0 but is not a steady level-flight
+    condition over a curved Earth: holding altitude round an ellipsoid needs a
+    continuous nose-down transport rate of V/R, and this state carries none, so
+    the aircraft flies straighter than the surface curves. `earth.FLAT` --
+    non-rotating, constant-g, still an ellipsoid -- gives 4.2290 m against
+    WGS84_J2's 4.2356 m, so rotation and J2 together own 6.6 mm of the 4.2 m and
+    the geometry owns the rest.
+
+    What survives untouched is the fixed-point property itself, asserted first
+    below at machine precision: the residual the solver drove to zero really is
+    zero at t = 0. It is the EXTRAPOLATION of that fixed point over 60 s that
+    the curved Earth broke, and the two are different claims.
     """
-    integrate = pytest.importorskip(
-        "atisim.integrate",
-        exc_type=ImportError,
-        reason="integrate.py still holds the pre-Earth frame assumptions and does "
-        "not import; the consumer migration re-establishes it. Its assertions "
-        "belong to that migration too -- an ECEF-propagated trim does not hold "
-        "local-NED altitude to 1e-6 over 60 s merely because vdot vanished at "
-        "t = 0, so the body below is left on the old API deliberately, to fail "
-        "loudly rather than quietly once the import works again.",
-    )
-    x, _ = trim.trim(jnp.array(V), jnp.array(H), AC)
-    state = trim.trimmed_state(x[0], jnp.array(V), jnp.array(H))
+    integrate = pytest.importorskip("atisim.integrate")
+
+    x, _ = trim.trim(jnp.array(V), jnp.array(H), AC, ANCHOR, EARTH)
+    state = trim.trimmed_state(x[0], x[3], jnp.array(V), jnp.array(H), ANCHOR, 0.0)
     controls = trim.trimmed_controls(x[1], x[2])
+
+    # The fixed point itself, which the curved Earth did NOT break.
+    d = dynamics.derivatives(
+        state, controls, AC, jnp.zeros(3), jnp.zeros(3), ANCHOR, EARTH
+    )
+    assert float(jnp.linalg.norm(d.vel_body)) < 1e-9
+    assert float(jnp.linalg.norm(d.omega)) < 1e-9
+
     dt = 0.02
     _, hist = integrate.rollout(
         integrate.init_sim(state, jax.random.PRNGKey(0)),
@@ -86,13 +113,16 @@ def test_trimmed_flight_holds_altitude_and_airspeed():
         jnp.array(dt),
         AC,
         int(60.0 / dt),
+        ANCHOR,
+        EARTH,
     )
-    altitude = -np.asarray(hist.pos_ned)[:, 2]
+    altitude = np.asarray(jax.vmap(st.altitude, in_axes=(0, None))(hist, ANCHOR))
+    track = np.asarray(jax.vmap(st.pos_ned, in_axes=(0, None))(hist, ANCHOR))
     airspeed = np.linalg.norm(np.asarray(hist.vel_body), axis=1)
     assert np.abs(altitude - H).max() < 1e-6
     assert np.abs(airspeed - V).max() < 1e-6
     # It must still be flying, not merely frozen.
-    assert np.asarray(hist.pos_ned)[-1, 0] == pytest.approx(V * 60.0, rel=1e-9)
+    assert track[-1, 0] == pytest.approx(V * 60.0, rel=1e-9)
 
 
 def test_trim_converges_away_from_the_reference_condition():
