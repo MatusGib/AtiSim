@@ -8,16 +8,21 @@ import jax.numpy as jnp
 import numpy as np
 
 import atisim  # noqa: F401  -- enables x64
-from atisim import integrate, trim
+from atisim import earth, integrate, trim
 from atisim.aircraft import CRUISE, REGISTRY
 from atisim.dynamics import derivatives
-from atisim.state import Controls, State, euler_to_quat
+from atisim.state import Controls, altitude, euler_to_quat, pos_ned, state_from_ned
 from atisim.units import RAD2DEG
 
 NAME = "boeing747"
 ac = REGISTRY[NAME]
 V = CRUISE[NAME]["airspeed"]
 H = CRUISE[NAME]["altitude"]
+# 47N, the latitude the rest of this project's Earth-rotation work uses and the
+# one the JSBSim reference conditions are flown at. At the cruise altitude
+# because `trim.trimmed_state` puts the aircraft AT the anchor.
+ANCHOR = earth.anchor_at(np.radians(47.0), 0.0, H)
+EARTH = earth.WGS84_J2
 
 
 def longitudinal_modes(alpha, elevator, throttle):
@@ -33,13 +38,17 @@ def longitudinal_modes(alpha, elevator, throttle):
 
     def f(x):
         u, w, q, theta = x
-        state = State(
-            pos_ned=jnp.array([0.0, 0.0, -H]),
-            vel_body=jnp.array([u, 0.0, w]),
-            quat=euler_to_quat(jnp.array(0.0), theta, jnp.array(0.0)),
-            omega=jnp.array([0.0, q, 0.0]),
+        # At the anchor, so the linearisation is taken at the same place and
+        # latitude the trim above was solved at. `state_from_ned` is what turns
+        # the local-NED description into the ECEF state the plant now carries.
+        state = state_from_ned(
+            jnp.zeros(3),
+            jnp.array([u, 0.0, w]),
+            euler_to_quat(jnp.array(0.0), theta, jnp.array(0.0)),
+            jnp.array([0.0, q, 0.0]),
+            ANCHOR,
         )
-        d = derivatives(state, controls, ac, jnp.zeros(3), jnp.zeros(3))
+        d = derivatives(state, controls, ac, jnp.zeros(3), jnp.zeros(3), ANCHOR, EARTH)
         return jnp.array([d.vel_body[0], d.vel_body[2], d.omega[1], q])
 
     A = np.asarray(jax.jacfwd(f)(jnp.array([u0, w0, 0.0, alpha])))
@@ -54,25 +63,36 @@ def longitudinal_modes(alpha, elevator, throttle):
 
 print(f"=== {NAME}: CR-2144 flight condition 9, 40,000 ft, M 0.80 ===\n")
 
-x, res = trim.trim(jnp.array(V), jnp.array(H), ac)
-alpha, elevator, throttle = (float(v) for v in x)
+x, res = trim.trim(jnp.array(V), jnp.array(H), ac, ANCHOR, EARTH)
+# SIX unknowns now. The bank is the one that must not be dropped: it is what
+# balances the Coriolis acceleration, so starting the hold below at phi = 0
+# would begin the run out of equilibrium in exactly that channel. The trimmed
+# aileron and rudder are O(1e-9) rad and `trimmed_controls` holds them at zero,
+# which is what the rest of the package does with them.
+alpha, elevator, throttle, phi = (float(v) for v in x[:4])
 
 print("TRIM")
 print(f"  alpha           {alpha * RAD2DEG:+8.3f} deg     (source tabulates +4.60)")
 print(f"  elevator        {elevator * RAD2DEG:+8.3f} deg")
 print(f"  throttle        {throttle:8.4f}")
-print(f"  residual norm   {float(jnp.linalg.norm(res)):8.2e}  [udot, wdot, qdot]")
+print(f"  bank            {phi * RAD2DEG:+8.4f} deg     (Coriolis; 2 Omega V sin(lat) / g)")
+print(f"  residual norm   {float(jnp.linalg.norm(res)):8.2e}  [udot, vdot, wdot, pdot, qdot, rdot]")
 
 dt, seconds = 0.02, 60.0
 n = int(seconds / dt)
-state = trim.trimmed_state(jnp.array(alpha), jnp.array(V), jnp.array(H))
+state = trim.trimmed_state(
+    jnp.array(alpha), jnp.array(phi), jnp.array(V), jnp.array(H), ANCHOR, jnp.array(0.0)
+)
 controls = trim.trimmed_controls(jnp.array(elevator), jnp.array(throttle))
 final, hist = integrate.rollout(
-    integrate.init_sim(state, jax.random.PRNGKey(0)), controls, jnp.array(dt), ac, n
+    integrate.init_sim(state, jax.random.PRNGKey(0)), controls, jnp.array(dt), ac, n,
+    ANCHOR, EARTH,
 )
-alt = -np.asarray(hist.pos_ned)[:, 2]
+# GEODETIC altitude, not -pos_ned[2]: the two are different quantities on an
+# ellipsoid and it is the geodetic one the trim holds.
+alt = np.asarray(jax.vmap(altitude, in_axes=(0, None))(hist, ANCHOR))
 spd = np.linalg.norm(np.asarray(hist.vel_body), axis=1)
-north = np.asarray(hist.pos_ned)[:, 0]
+north = np.asarray(jax.vmap(pos_ned, in_axes=(0, None))(hist, ANCHOR))[:, 0]
 
 print(f"\nHOLD  ({seconds:.0f} s, fixed controls, dt = {dt} s)")
 print(f"  altitude drift  {alt[-1] - H:+8.4f} m   (max excursion {np.abs(alt - H).max():.4f})")

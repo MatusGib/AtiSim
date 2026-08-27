@@ -34,7 +34,9 @@ import matplotlib.pyplot as plt
 
 import atisim  # noqa: F401  -- enables x64 before any array is made
 from atisim import autopilot as ap_mod
-from atisim import checks, integrate, manual as man, panel as panel_mod, trim, viz, wind
+from atisim import (
+    checks, earth, integrate, manual as man, panel as panel_mod, trim, viz, wind
+)
 from atisim.aircraft import CRUISE, REGISTRY
 from atisim.sensors import sense
 from atisim.units import RAD2DEG
@@ -74,25 +76,38 @@ mgains = man.MANUAL_GAINS[args.aircraft]
 V = CRUISE[args.aircraft]["airspeed"]
 H = CRUISE[args.aircraft]["altitude"]
 
-x, residual = trim.trim(jnp.array(V), jnp.array(H), ac)
-alpha, elevator, throttle = (float(v) for v in x)
+# 47N, the latitude the rest of this project's Earth-rotation work uses. At the
+# cruise altitude because `trim.trimmed_state` places the aircraft AT the anchor,
+# which is also what puts `panel_mod.field_ahead`'s cores at the right height.
+ANCHOR = earth.anchor_at(jnp.radians(47.0), 0.0, H)
+EARTH = earth.WGS84_J2
+
+x, residual = trim.trim(jnp.array(V), jnp.array(H), ac, ANCHOR, EARTH)
+# SIX unknowns now, and the bank must reach `trimmed_state`: it is what balances
+# the Coriolis acceleration, so dropping it would start every flight out of
+# equilibrium in exactly the channel Coriolis acts in.
+alpha, elevator, throttle, phi = (float(v) for v in x[:4])
 print(f"{args.aircraft}: trimmed at {V:.1f} m/s, {H:.0f} m")
 print(
     f"  alpha {alpha * RAD2DEG:+.3f} deg   elevator {elevator * RAD2DEG:+.3f} deg"
-    f"   throttle {throttle:.4f}   residual {float(jnp.linalg.norm(residual)):.2e}"
+    f"   throttle {throttle:.4f}   bank {phi * RAD2DEG:+.4f} deg"
+    f"   residual {float(jnp.linalg.norm(residual)):.2e}"
 )
 
-state = trim.trimmed_state(jnp.array(alpha), jnp.array(V), jnp.array(H))
+state = trim.trimmed_state(
+    jnp.array(alpha), jnp.array(phi), jnp.array(V), jnp.array(H), ANCHOR, jnp.array(0.0)
+)
 controls = trim.trimmed_controls(jnp.array(elevator), jnp.array(throttle))
 targets = ap_mod.Targets(
     altitude=jnp.array(H), heading=jnp.array(0.0), airspeed=jnp.array(V)
 )
 mode = man.Mode.AUTOPILOT if args.autopilot else man.Mode.MANUAL
-ctl = man.start(sense(state), controls, targets, gains, ac, mode=mode)
+ctl = man.start(sense(state, ANCHOR), controls, targets, gains, ac, mode=mode)
 sim = integrate.init_sim(state, jax.random.PRNGKey(args.seed))
 
 wind_model, field_range, note = panel_mod.field_ahead(
     args.wind,
+    ANCHOR,
     airspeed=V,
     altitude=H,
     lead_in=args.lead_in,
@@ -108,6 +123,8 @@ traj = panel_mod.run_live(
     gains,
     mgains,
     ac,
+    ANCHOR,
+    EARTH,
     dt=args.dt,
     fps=args.fps,
     window=args.window,

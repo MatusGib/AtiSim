@@ -12,11 +12,12 @@ import numpy as np
 
 import atisim  # noqa: F401
 from atisim import autopilot as ap_mod
-from atisim import integrate, trim
+from atisim import earth, integrate, trim
 from atisim.aero import air_data
 from atisim.aircraft import CRUISE, REGISTRY
 from atisim.sensors import sense
-from atisim.state import quat_to_euler
+from atisim.state import altitude as geodetic_altitude
+from atisim.state import quat_to_euler_ned
 from atisim.units import RAD2DEG
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -28,6 +29,11 @@ ac = REGISTRY[NAME]
 GAINS = ap_mod.GAINS[NAME]
 V, H = CRUISE[NAME]["airspeed"], CRUISE[NAME]["altitude"]
 DT = 0.02
+# 47N, the latitude this project's Earth-rotation work uses, at the cruise
+# altitude the loops hold -- `trim.trimmed_state` places the aircraft AT the
+# anchor. WGS84_J2: gain tuning is about the aircraft's actual flight behaviour.
+ANCHOR = earth.anchor_at(np.radians(47.0), 0.0, H)
+EARTH = earth.WGS84_J2
 
 # Steps scale with the aircraft: 300 m and 15 m/s are a gentle manoeuvre for a
 # 747 and a violent one for a Cherokee.
@@ -37,14 +43,28 @@ SPD_STEP = 15.0 if V > 100.0 else 8.0
 V_MD = float(trim.minimum_drag_speed(ac, jnp.array(H)))
 
 
+def heights(hist):
+    """GEODETIC altitude over a run, which is what the altitude loop holds.
+
+    NOT `-pos_ned[:, 2]`. The ellipsoid falls away from the anchor's tangent
+    plane as d^2/2R, which is 385 m over the 70 km a 300 s run covers here --
+    read the tangent-plane height instead and every hold below would be graded
+    against an altitude the autopilot is not tracking.
+    """
+    return np.asarray(jax.vmap(geodetic_altitude, in_axes=(0, None))(hist, ANCHOR))
+
+
 def fly(targets, seconds, gains=GAINS):
-    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
-    state = trim.trimmed_state(x[0], jnp.array(V), jnp.array(H))
+    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac, ANCHOR, EARTH)
+    # x[3] is the trimmed bank, which balances Coriolis. Dropping it -- the shape
+    # this line had before the six-unknown trim -- would start every step
+    # response out of equilibrium in the lateral channel being tuned.
+    state = trim.trimmed_state(x[0], x[3], jnp.array(V), jnp.array(H), ANCHOR, 0.0)
     controls = trim.trimmed_controls(x[1], x[2])
-    ap = ap_mod.engage(sense(state), controls, targets, gains, ac)
+    ap = ap_mod.engage(sense(state, ANCHOR), controls, targets, gains, ac)
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
     (_, _), (hist, ctrl) = ap_mod.closed_loop_rollout(
-        sim, ap, targets, gains, jnp.array(DT), ac, int(seconds / DT)
+        sim, ap, targets, gains, jnp.array(DT), ac, int(seconds / DT), ANCHOR, EARTH
     )
     return hist, ctrl
 
@@ -75,7 +95,7 @@ tg = ap_mod.Targets(
     altitude=jnp.array(H + ALT_STEP), heading=jnp.array(0.0), airspeed=jnp.array(V)
 )
 hist, ctrl = fly(tg, 300.0)
-alt = -np.asarray(hist.pos_ned)[:, 2]
+alt = heights(hist)
 spd = np.linalg.norm(np.asarray(hist.vel_body), axis=1)
 ok &= summarise("altitude", alt, H + ALT_STEP, "m", 10.0, 15.0)
 ok &= summarise("airspeed (hold)", spd, V, "m/s", 3.0, 3.0)
@@ -85,8 +105,8 @@ tg = ap_mod.Targets(
     altitude=jnp.array(H), heading=jnp.array(np.deg2rad(30.0)), airspeed=jnp.array(V)
 )
 hist, ctrl = fly(tg, 300.0)
-eul = np.asarray(jax.vmap(quat_to_euler)(hist.quat))
-alt = -np.asarray(hist.pos_ned)[:, 2]
+eul = np.asarray(jax.vmap(quat_to_euler_ned, in_axes=(0, None))(hist, ANCHOR))
+alt = heights(hist)
 beta = np.asarray(jax.vmap(lambda v: air_data(v)[2])(hist.vel_body))
 ok &= summarise("heading", eul[:, 2] * RAD2DEG, 30.0, "deg", 1.0, 2.0)
 ok &= summarise("altitude (hold)", alt, H, "m", 30.0, 40.0)
@@ -107,7 +127,7 @@ for sign in (-1.0, +1.0):
     )
     hist, ctrl = fly(tg, 400.0)
     spd = np.linalg.norm(np.asarray(hist.vel_body), axis=1)
-    alt = -np.asarray(hist.pos_ned)[:, 2]
+    alt = heights(hist)
     passed = summarise("airspeed", spd, target_speed, "m/s", 1.0, 1.5)
     held = summarise("altitude (hold)", alt, H, "m", 30.0, 40.0)
     if graded:
@@ -116,9 +136,9 @@ for sign in (-1.0, +1.0):
 print("\nBumpless engagement (targets = current state, 20 s)")
 tg = ap_mod.Targets(altitude=jnp.array(H), heading=jnp.array(0.0), airspeed=jnp.array(V))
 hist, ctrl = fly(tg, 20.0)
-alt = -np.asarray(hist.pos_ned)[:, 2]
+alt = heights(hist)
 de = np.asarray(ctrl.elevator)
-x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
+x, _ = trim.trim(jnp.array(V), jnp.array(H), ac, ANCHOR, EARTH)
 print(f"  elevator at trim {float(x[1]) * RAD2DEG:+.4f} deg,"
       f" first AP output {de[0] * RAD2DEG:+.4f} deg,"
       f" max excursion {np.abs(de - float(x[1])).max() * RAD2DEG:.4f} deg")

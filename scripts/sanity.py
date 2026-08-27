@@ -11,12 +11,12 @@ import jax.numpy as jnp
 import numpy as np
 
 import atisim  # noqa: F401 -- has to be imported first, turns on float64
-from atisim import trim, verification
+from atisim import earth, trim, verification
 from atisim.aero import aero_forces_moments, air_data, coefficients
 from atisim.aircraft import CRUISE, REGISTRY, inertia_tensor
 from atisim.atmosphere import G0, density, speed_of_sound
-from atisim.dynamics import derivatives, load_factor, relative_velocity
-from atisim.state import State, euler_to_quat, quat_to_dcm
+from atisim.dynamics import derivatives, load_factor, relative_velocity_ned
+from atisim.state import State, dcm_body_to_ned, dcm_to_quat, euler_to_quat, quat_to_matrix
 
 results = []
 n = 0
@@ -42,10 +42,28 @@ h = CRUISE["boeing747"]["altitude"]
 rho = density(jnp.array(h))
 a_sound = speed_of_sound(jnp.array(h))
 
-x_trim, res = trim.trim(jnp.array(v), jnp.array(h), ac)
+# 47N, the latitude the rest of this project's Earth-rotation work uses.
+ANCHOR = earth.anchor_at(np.radians(47.0), 0.0, h)
+# FLAT, and this one is not a default. Every "expected" number below is worked
+# out BY HAND, and the hands that worked them out assumed a flat, non-rotating
+# Earth: free fall at exactly G0 straight down, an elevator input that wakes no
+# lateral motion at all, load factor exactly cos(alpha). On WGS84_J2 all three
+# are false -- gravity here is 9.7864 m/s^2 rather than G0, Coriolis puts
+# lateral acceleration into vdot, and the trim banks 0.148 deg -- so this script
+# would print FAIL for physics that is right. FLAT is the Earth these
+# hand-computed answers are answers to. The rotating-Earth equivalents are
+# checked in atisim/tests/, against numbers that were not computed by hand.
+EARTH = earth.FLAT
+
+x_trim, res = trim.trim(jnp.array(v), jnp.array(h), ac, ANCHOR, EARTH)
 alpha = float(x_trim[0])
 trim_controls = trim.trimmed_controls(x_trim[1], x_trim[2])
-trim_state = trim.trimmed_state(x_trim[0], jnp.array(v), jnp.array(h))
+# x_trim[3] is the trimmed bank. It is 0 under FLAT -- nothing to balance -- but
+# it is passed rather than assumed, so switching EARTH above changes the answer
+# instead of silently starting the run out of equilibrium.
+trim_state = trim.trimmed_state(
+    x_trim[0], x_trim[3], jnp.array(v), jnp.array(h), ANCHOR, jnp.array(0.0)
+)
 
 print(f"747 at {v:.1f} m/s, {h:.0f} m")
 print(f"trim alpha = {np.degrees(alpha):.3f} deg (residual {float(jnp.linalg.norm(res)):.2e})")
@@ -56,7 +74,11 @@ print()
 # about the aero model for these
 # =====================================================================
 
-zw = relative_velocity(trim_state.vel_body, trim_state.quat, jnp.zeros(3))
+# NOT `trim_state.quat` -- that is body -> ECEF now, and this function wants
+# body -> NED. Passing the state quaternion would compute in the wrong frame and
+# return a plausible number, which is why the old name was retired.
+trim_q_ned = dcm_to_quat(dcm_body_to_ned(trim_state, ANCHOR))
+zw = relative_velocity_ned(trim_state.vel_body, trim_q_ned, jnp.zeros(3))
 check("zero wind doesn't touch the relative velocity",
       0.0, float(jnp.abs(zw - trim_state.vel_body).max()))
 
@@ -66,9 +88,9 @@ naked = verification.without_aerodynamics(ac)
 d_free = derivatives(
     trim_state._replace(omega=jnp.zeros(3)),
     trim.trimmed_controls(jnp.array(0.0), jnp.array(1.0)),  # no thrust either way this is called
-    naked, jnp.zeros(3), jnp.zeros(3),
+    naked, jnp.zeros(3), jnp.zeros(3), ANCHOR, EARTH,
 )
-accel_ned = quat_to_dcm(trim_state.quat) @ d_free.vel_body
+accel_ned = dcm_body_to_ned(trim_state, ANCHOR) @ d_free.vel_body
 check("no aero + no thrust = straight down at g",
       G0, float(accel_ned[2]), tol=1e-12)
 check("...and nothing sideways or forwards",
@@ -92,7 +114,9 @@ diag_ac = ac._replace(
     inertia=inertia_tensor(4.678e7, 3.312e7, 6.722e7, 0.0),
     inertia_inv=jnp.linalg.inv(inertia_tensor(4.678e7, 3.312e7, 6.722e7, 0.0)),
 )
-d_diag = derivatives(slip_state, big_aileron, diag_ac, jnp.zeros(3), jnp.zeros(3))
+d_diag = derivatives(
+    slip_state, big_aileron, diag_ac, jnp.zeros(3), jnp.zeros(3), ANCHOR, EARTH
+)
 check("Cl=0 AND diagonal inertia -> aileron does nothing to roll rate",
       0.0, float(d_diag.omega[0]), tol=1e-18)
 
@@ -100,7 +124,9 @@ check("Cl=0 AND diagonal inertia -> aileron does nothing to roll rate",
 # pass/fail, just showing it's not zero anymore and that this is
 # actually correct, not a bug
 real_ac = ac._replace(**{k: jnp.array(vv) for k, vv in no_roll.items()})
-d_real = derivatives(slip_state, big_aileron, real_ac, jnp.zeros(3), jnp.zeros(3))
+d_real = derivatives(
+    slip_state, big_aileron, real_ac, jnp.zeros(3), jnp.zeros(3), ANCHOR, EARTH
+)
 print("same case but with the real inertia (Ixz != 0):")
 print(f"  p_dot = {float(d_real.omega[0]):.6e}")
 print("  not zero, and that's fine - the yaw moment leaks into roll through Ixz")
@@ -114,7 +140,7 @@ no_pitch_ac = ac._replace(
 d_nopitch = derivatives(
     slip_state,
     trim.trimmed_controls(jnp.array(0.4), x_trim[2]),
-    no_pitch_ac, jnp.zeros(3), jnp.zeros(3),
+    no_pitch_ac, jnp.zeros(3), jnp.zeros(3), ANCHOR, EARTH,
 )
 check("Cm=0 -> even a big elevator input gives zero pitch accel",
       0.0, float(d_nopitch.omega[1]), tol=1e-18)
@@ -124,7 +150,9 @@ check("Cm=0 -> even a big elevator input gives zero pitch accel",
 # =====================================================================
 
 level_q = euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0))
-headwind = relative_velocity(jnp.array([v, 0.0, 0.0]), level_q, jnp.array([-30.0, 0.0, 0.0]))
+headwind = relative_velocity_ned(
+    jnp.array([v, 0.0, 0.0]), level_q, jnp.array([-30.0, 0.0, 0.0])
+)
 check("30 m/s headwind should add 30 m/s to the airspeed",
       v + 30.0, float(air_data(headwind)[0]), tol=1e-9)
 
@@ -155,13 +183,15 @@ print()
 # =====================================================================
 
 pitched_q = euler_to_quat(jnp.array(0.0), jnp.radians(jnp.array(10.0)), jnp.array(0.0))
-g_body = quat_to_dcm(pitched_q).T @ jnp.array([0.0, 0.0, G0])
+g_body = quat_to_matrix(pitched_q).T @ jnp.array([0.0, 0.0, G0])
 check("pitched 10 deg nose-up: gravity along x_b should be -g*sin(10)",
       -G0 * np.sin(np.radians(10.0)), float(g_body[0]), tol=1e-12)
 check("...and gravity along z_b should be +g*cos(10)",
       G0 * np.cos(np.radians(10.0)), float(g_body[2]), tol=1e-12)
 
-nz = float(load_factor(trim_state, trim_controls, ac, jnp.zeros(3), jnp.zeros(3)))
+nz = float(
+    load_factor(trim_state, trim_controls, ac, jnp.zeros(3), jnp.zeros(3), ANCHOR, EARTH)
+)
 check("load factor in trimmed level flight is cos(alpha), NOT 1",
       float(np.cos(alpha)), nz, tol=1e-6)
 
@@ -172,7 +202,7 @@ check("load factor in trimmed level flight is cos(alpha), NOT 1",
 elev_only = trim.trimmed_controls(x_trim[1] + 0.15, x_trim[2])
 d_long = derivatives(
     trim_state._replace(omega=jnp.array([0.0, 0.05, 0.0])),
-    elev_only, ac, jnp.zeros(3), jnp.zeros(3),
+    elev_only, ac, jnp.zeros(3), jnp.zeros(3), ANCHOR, EARTH,
 )
 lateral_stuff = jnp.array([d_long.vel_body[1], d_long.omega[0], d_long.omega[2]])
 check("wings level, beta=0: elevator alone shouldn't wake up roll/yaw at all",
