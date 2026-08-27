@@ -20,9 +20,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import atisim  # noqa: F401  -- enables x64
-from atisim import dynamics, integrate, sensors, trim, wind
+from atisim import dynamics, earth, integrate, sensors, trim, wind
 from atisim.aircraft import CRUISE, REGISTRY
-from atisim.state import State, quat_to_dcm
+from atisim.state import altitude as geodetic_altitude
+from atisim.state import dcm_body_to_ned, pos_ned
 from atisim.units import RAD2DEG
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -45,59 +46,86 @@ ac = REGISTRY[args.aircraft]
 V = CRUISE[args.aircraft]["airspeed"]
 H = CRUISE[args.aircraft]["altitude"]
 wavelength = args.wavelength * 1000.0
+# 47N, the latitude the rest of this project's Earth-rotation work uses, at the
+# cruise altitude: `trim.trimmed_state` places the aircraft AT the anchor, and
+# the wave's coordinates are NED offsets from that same point.
+ANCHOR = earth.anchor_at(np.radians(47.0), 0.0, H)
+EARTH = earth.WGS84_J2
 
-x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
-alpha, elevator, throttle = (float(v) for v in x)
+x, _ = trim.trim(jnp.array(V), jnp.array(H), ac, ANCHOR, EARTH)
+# SIX unknowns. `phi` is the bank that balances Coriolis and it must reach
+# `trimmed_state` below -- this run is graded on how far a wave pushes the
+# aircraft out of equilibrium, so starting it out of equilibrium contaminates
+# exactly the measurement.
+alpha, elevator, throttle, phi = (float(v) for v in x[:4])
 full, idle = (float(v) for v in dynamics.thrust_authority(ac, x[2], jnp.array(H)))
 controls = trim.trimmed_controls(x[1], x[2])
 
 
 def fly(w0):
     """Fly one wave train with fixed controls, returning the flown F-factor."""
+    # Open on a ZERO CROSSING, a quarter wavelength upstream of the trough, so
+    # the aircraft starts in air that is not moving vertically and descends into
+    # the first trough from trim. A periodic field has no undisturbed region to
+    # lead in through, so this is the nearest equivalent of the vortex run's 40
+    # core radii -- and the first version of this script started on a CREST, in a
+    # 6 m/s updraft, which is 1.5 deg of alpha out of equilibrium before the run
+    # begins. Same defect as section 9, session 3.
+    #
+    # **THE TROUGH IS MOVED DOWNSTREAM RATHER THAN THE AIRCRAFT UPSTREAM**, which
+    # is the other way round from how this read before and is the same choice
+    # `panel.field_ahead` makes. Field coordinates are NED offsets from the
+    # anchor, `trimmed_state` puts the aircraft AT the anchor, and the relative
+    # geometry -- a quarter wavelength -- is all a position-only field sees.
+    # Displacing the aircraft instead would leave its attitude referred to the
+    # anchor's local vertical rather than its own: 6.25 km of ground track is
+    # 0.056 deg of pitch, which is a small version of the very error the
+    # paragraph above exists to avoid.
     wave = wind.LeeWave(
-        w0=jnp.array(w0), wavelength=jnp.array(wavelength), north=jnp.array(0.0)
+        w0=jnp.array(w0),
+        wavelength=jnp.array(wavelength),
+        north=jnp.array(0.25 * wavelength),
     )
     field = lambda p: wind.lee_wave_wind(p, wave)  # noqa: E731
-    state = trim.trimmed_state(jnp.array(alpha), jnp.array(V), jnp.array(H))
-    # Open on a ZERO CROSSING, a quarter wavelength upstream of the trough at
-    # north = 0, so the aircraft starts in air that is not moving vertically and
-    # descends into the first trough from trim. A periodic field has no
-    # undisturbed region to lead in through, so this is the nearest equivalent
-    # of the vortex run's 40 core radii -- and the first version of this script
-    # started on a CREST, in a 6 m/s updraft, which is 1.5 deg of alpha out of
-    # equilibrium before the run begins. Same defect as section 9, session 3.
-    state = state._replace(pos_ned=jnp.array([-0.25 * wavelength, 0.0, -H]))
+    state = trim.trimmed_state(
+        jnp.array(alpha), jnp.array(phi), jnp.array(V), jnp.array(H),
+        ANCHOR, jnp.array(0.0),
+    )
     n = int(round((args.waves * wavelength / V) / args.dt))
     _, hist = integrate.rollout(
         integrate.init_sim(state, jax.random.PRNGKey(0)),
-        controls, jnp.array(args.dt), ac, n, wind_model=wind.field_model(field),
+        controls, jnp.array(args.dt), ac, n, ANCHOR, EARTH,
+        wind_model=wind.field_model(field, ANCHOR),
     )
 
-    def analyse(pos_ned, vel_body, quat, omega):
-        s = State(pos_ned=pos_ned, vel_body=vel_body, quat=quat, omega=omega)
-        wind_ned = field(pos_ned)
-        air = sensors.sense(s, wind_ned)
+    def analyse(s):
+        pos = pos_ned(s, ANCHOR)
+        # ONE body -> NED matrix, at the AIRCRAFT's own position. `s.quat` is
+        # body -> ECEF now and would be silently wrong everywhere below.
+        dcm_b2n = dcm_body_to_ned(s, ANCHOR)
+        wind_ned = field(pos)
+        air = sensors.sense(s, ANCHOR, wind_ned)
         # The ground track's own rotation is part of dU_x/dt, so `along_track_shear`
         # needs the inertial acceleration to get psi_dot. Rebuilt from the same
         # dynamics the rollout flew -- one extra evaluation -- rather than assumed
         # zero, which makes "this run is straight" a measurement instead of a hope.
-        omega_gust = wind.gust_rates(pos_ned, quat, field)
-        d = dynamics.derivatives(s, controls, ac, wind_ned, omega_gust)
-        accel_ned = quat_to_dcm(quat) @ (d.vel_body + jnp.cross(omega, vel_body))
+        omega_gust = wind.gust_rates(pos, dcm_b2n, field)
+        d = dynamics.derivatives(s, controls, ac, wind_ned, omega_gust, ANCHOR, EARTH)
+        accel_ned = dcm_b2n @ (d.vel_body + jnp.cross(s.omega, s.vel_body))
         shear = wind.along_track_shear(
-            pos_ned, quat_to_dcm(quat) @ vel_body, accel_ned, field)
+            pos, dcm_b2n @ s.vel_body, accel_ned, field)
         return jnp.array([
             dynamics.f_factor(shear, -wind_ned[2], air.airspeed),
             shear / dynamics.G0, -wind_ned[2], air.airspeed,
         ])
 
-    rows = np.asarray(
-        jax.vmap(analyse)(hist.pos_ned, hist.vel_body, hist.quat, hist.omega)
-    )
+    rows = np.asarray(jax.vmap(analyse)(hist))
     return dict(
         w0=w0,
-        north=np.asarray(hist.pos_ned)[:, 0],
-        altitude=-np.asarray(hist.pos_ned)[:, 2],
+        north=np.asarray(jax.vmap(pos_ned, in_axes=(0, None))(hist, ANCHOR))[:, 0],
+        altitude=np.asarray(
+            jax.vmap(geodetic_altitude, in_axes=(0, None))(hist, ANCHOR)
+        ),
         f=rows[:, 0], shear_term=rows[:, 1], w_up=rows[:, 2], airspeed=rows[:, 3],
     )
 

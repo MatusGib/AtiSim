@@ -24,9 +24,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import atisim  # noqa: F401  -- enables x64
-from atisim import dynamics, integrate, sensors, trim, wind
+from atisim import dynamics, earth, integrate, sensors, trim, wind
 from atisim.aircraft import CRUISE, REGISTRY
-from atisim.state import State, quat_to_dcm
+from atisim.state import altitude as geodetic_altitude
+from atisim.state import dcm_body_to_ned, pos_ned
 
 # Proctor, Hinton & Bowles 2000. The FAA metric is the 1 km AVERAGE F, hazardous
 # above 0.1 with a must-alert threshold at 0.13 -- for JET TRANSPORTS. The same
@@ -74,40 +75,73 @@ ac = REGISTRY[args.aircraft]
 V = CRUISE[args.aircraft]["airspeed"]
 H = args.altitude
 
-x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
-alpha, elevator, throttle = (float(v) for v in x)
+# 47N, the latitude the rest of this project's Earth-rotation work uses. AT THE
+# PENETRATION ALTITUDE, not on the ground: `trim.trimmed_state` places the
+# aircraft at the anchor, and `trim` reads its density from the anchor's own
+# height, so anchoring at ground level would solve a sea-level trim and start
+# this run 0.03 g out of equilibrium before the microburst did anything.
+ANCHOR = earth.anchor_at(np.radians(47.0), 0.0, H)
+EARTH = earth.WGS84_J2
+
+x, _ = trim.trim(jnp.array(V), jnp.array(H), ac, ANCHOR, EARTH)
+# SIX unknowns. `phi` is the bank that balances Coriolis and it reaches
+# `trimmed_state` below: this run measures how far a field pushes the aircraft
+# out of equilibrium, so it has to begin in equilibrium.
+alpha, elevator, throttle, phi = (float(v) for v in x[:4])
 full, idle = (float(v) for v in dynamics.thrust_authority(ac, x[2], jnp.array(H)))
 controls = trim.trimmed_controls(x[1], x[2])
 
 burst = wind.microburst(u_max=args.u_max, radius=args.radius, z_m=args.z_m)
-field = lambda p: wind.microburst_wind(p, burst)  # noqa: E731
+# **THE FIELD IS LOWERED BY `H`, AND WITHOUT IT THIS RUN MEETS NOTHING.**
+# `microburst_wind` reads height as `-pos_ned[2]`, so its ground plane is
+# wherever the anchor is -- and this is the one field in the package that HAS a
+# ground. The anchor is at the penetration altitude for the trim's sake, so the
+# field is handed coordinates `H` lower, which puts its ground back on the
+# ground. Unshifted, the aircraft would sit at the field's own z = 0, where the
+# shaping function `exp(-z/z*) - exp(-z/eps)` is IDENTICALLY ZERO: the whole
+# 6.7 km traverse would fly through exactly still air and report F = 0.
+#
+# The plane this puts the ground on is the anchor's tangent plane rather than
+# the ellipsoid; over the 6.7 km flown the two part by 3.5 m, which is under the
+# wingspan the ground-contact test below already rounds to.
+GROUND_SHIFT = jnp.array([0.0, 0.0, -H])
+field = lambda p: wind.microburst_wind(p + GROUND_SHIFT, burst)  # noqa: E731
 peak_radius = wind.MICROBURST_PEAK_RADIUS_RATIO * args.radius
 
-# Enter well outside the outflow and fly straight at the axis.
+# Enter well outside the outflow and fly straight at the axis. The aircraft
+# stays AT the anchor's height -- `down = 0`, not `-H` -- because the anchor is
+# already at the penetration altitude; the field is what was moved.
 start = -3.0 * peak_radius
 seconds = (6.0 * peak_radius) / V
 n = int(round(seconds / args.dt))
-state = trim.trimmed_state(jnp.array(alpha), jnp.array(V), jnp.array(H))
-state = state._replace(pos_ned=jnp.array([start, 0.0, -H]))
+state = trim.trimmed_state(
+    jnp.array(alpha), jnp.array(phi), jnp.array(V), jnp.array(H),
+    ANCHOR, jnp.array(0.0),
+)
+state = state._replace(pos_ecef=ANCHOR.T_e2l.T @ jnp.array([start, 0.0, 0.0]))
 _, hist = integrate.rollout(
     integrate.init_sim(state, jax.random.PRNGKey(0)),
-    controls, jnp.array(args.dt), ac, n, wind_model=wind.field_model(field),
+    controls, jnp.array(args.dt), ac, n, ANCHOR, EARTH,
+    wind_model=wind.field_model(field, ANCHOR),
 )
 
 
-def analyse(pos_ned, vel_body, quat, omega):
-    s = State(pos_ned=pos_ned, vel_body=vel_body, quat=quat, omega=omega)
-    wind_ned = field(pos_ned)
-    air = sensors.sense(s, wind_ned)
+def analyse(s):
+    pos = pos_ned(s, ANCHOR)
+    # ONE body -> NED matrix, at the AIRCRAFT's own position. `s.quat` is
+    # body -> ECEF now and would be silently wrong everywhere below.
+    dcm_b2n = dcm_body_to_ned(s, ANCHOR)
+    wind_ned = field(pos)
+    air = sensors.sense(s, ANCHOR, wind_ned)
     # The ground track's own rotation is part of dU_x/dt, so `along_track_shear`
     # needs the inertial acceleration to get psi_dot. Rebuilt from the same
     # dynamics the rollout flew -- one extra evaluation -- rather than assumed
     # zero, which makes "this run is straight" a measurement instead of a hope.
-    omega_gust = wind.gust_rates(pos_ned, quat, field)
-    d = dynamics.derivatives(s, controls, ac, wind_ned, omega_gust)
-    accel_ned = quat_to_dcm(quat) @ (d.vel_body + jnp.cross(omega, vel_body))
+    omega_gust = wind.gust_rates(pos, dcm_b2n, field)
+    d = dynamics.derivatives(s, controls, ac, wind_ned, omega_gust, ANCHOR, EARTH)
+    accel_ned = dcm_b2n @ (d.vel_body + jnp.cross(s.omega, s.vel_body))
     shear = wind.along_track_shear(
-        pos_ned, quat_to_dcm(quat) @ vel_body, accel_ned, field)
+        pos, dcm_b2n @ s.vel_body, accel_ned, field)
     return jnp.array([
         dynamics.f_factor(shear, -wind_ned[2], air.airspeed),
         shear / dynamics.G0, -wind_ned[2] / air.airspeed,
@@ -115,9 +149,11 @@ def analyse(pos_ned, vel_body, quat, omega):
     ])
 
 
-rows = np.asarray(jax.vmap(analyse)(hist.pos_ned, hist.vel_body, hist.quat, hist.omega))
-north = np.asarray(hist.pos_ned)[:, 0]
-altitude = -np.asarray(hist.pos_ned)[:, 2]
+rows = np.asarray(jax.vmap(analyse)(hist))
+north = np.asarray(jax.vmap(pos_ned, in_axes=(0, None))(hist, ANCHOR))[:, 0]
+# GEODETIC, which here IS height AGL: the terrain this field stands on is the
+# ellipsoid, and the field was lowered onto it above.
+altitude = np.asarray(jax.vmap(geodetic_altitude, in_axes=(0, None))(hist, ANCHOR))
 
 # Fixed controls and a microburst mean the ground arrives, and the run is cut
 # there rather than averaged over. The cut is at one WINGSPAN, not at zero:
