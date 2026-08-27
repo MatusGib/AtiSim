@@ -12,9 +12,17 @@ import numpy as np
 import pytest
 
 import atisim  # noqa: F401  -- enables x64 before any array is made
-from atisim import airframe
+from atisim import airframe, earth
 from atisim.aircraft import REGISTRY
 from atisim.units import FT2M
+
+# 47N is the latitude the rest of this project's Earth-rotation work uses, and
+# the anchor sits AT the 37,000 ft the two sampling cases below fly. NOTHING in
+# this file depends on the Earth -- these are strip-geometry claims -- but a
+# state has to be placed somewhere now, and placing it at the flight altitude is
+# what keeps the vortex core's `down` a RELATIVE offset rather than an altitude
+# against an implied sea-level origin that no longer exists.
+ANCHOR = earth.anchor_at(np.radians(47.0), 0.0, 11278.0)
 
 
 def test_the_derived_tail_arm_matches_the_hand_computation():
@@ -149,31 +157,40 @@ def test_the_default_station_count_has_converged():
     must move the fitted rates by less than 0.1%.
     """
     from atisim import wind
-    from atisim.state import State, euler_to_quat
+    from atisim.state import dcm_body_to_ned, euler_to_quat, state_from_ned
+    from atisim.state import pos_ned as state_pos_ned
 
     ac = REGISTRY["boeing747"]
+    # down = 0 IS the core, level with the anchor. A VortexArray's coordinates
+    # are NED offsets from the run anchor and the anchor sits at the flight
+    # altitude, so the -11278.0 this used to carry -- an altitude, against an
+    # implied sea-level origin -- would now put the core 11 km below the
+    # flightpath, and the convergence study would refine the sampling of still
+    # air while still passing anything that only checks a ratio.
     array = wind.VortexArray(
         north=jnp.array([0.0]),
-        down=jnp.array([-11278.0]),
+        down=jnp.array([0.0]),
         r0=jnp.array(600.0 * FT2M),
         v0=jnp.array(85.0 * FT2M),
     )
     field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
     # Half a core radius downstream and half a radius above: inside the core but
     # off-centre, so every gradient component is non-zero.
-    state = State(
-        pos_ned=jnp.array([0.5 * 600.0 * FT2M, 0.0, -(11278.0 + 300.0 * FT2M)]),
-        vel_body=jnp.array([236.0, 0.0, 0.0]),
-        quat=euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
-        omega=jnp.zeros(3),
+    state = state_from_ned(
+        jnp.array([0.5 * 600.0 * FT2M, 0.0, -300.0 * FT2M]),
+        jnp.array([236.0, 0.0, 0.0]),
+        euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
+        jnp.zeros(3),
+        ANCHOR,
     )
 
-    coarse = wind.sampled_rates(
-        state.pos_ned, state.quat, field, airframe.stations(ac, 9, 9)
-    )
-    fine = wind.sampled_rates(
-        state.pos_ned, state.quat, field, airframe.stations(ac, 18, 18)
-    )
+    # A body -> NED MATRIX, not `state.quat`. That quaternion is body -> ECEF
+    # now, and both are rotations, so passing it would resolve the field's
+    # gradient tensor in the wrong frame and return a plausible wrong slope
+    # instead of raising.
+    pos, dcm = state_pos_ned(state, ANCHOR), dcm_body_to_ned(state, ANCHOR)
+    coarse = wind.sampled_rates(pos, dcm, field, airframe.stations(ac, 9, 9))
+    fine = wind.sampled_rates(pos, dcm, field, airframe.stations(ac, 18, 18))
     q_coarse, q_fine = float(coarse[1]), float(fine[1])
     movement = abs(q_fine - q_coarse) / abs(q_fine)
     assert movement < 1e-3, (
@@ -268,23 +285,33 @@ def test_the_loading_shape_sensitivity_is_measured_and_recorded():
     answer and no strip result could be reported at all.
     """
     from atisim import wind
-    from atisim.state import State, euler_to_quat
+    from atisim.state import dcm_body_to_ned, euler_to_quat, state_from_ned
+    from atisim.state import pos_ned as state_pos_ned
 
     ac = REGISTRY["boeing747"]
     st = airframe.stations(ac, n_span=2001, n_lon=9)
     field = lambda p: jnp.array([0.0, 0.0, 1e-7 * p[1] ** 3])  # noqa: E731
-    state = State(
-        pos_ned=jnp.array([0.0, 0.0, -11278.0]),
-        vel_body=jnp.array([236.0, 0.0, 0.0]),
-        quat=euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
-        omega=jnp.zeros(3),
+    # At the anchor. The field reads only the EAST coordinate, so the -11278.0
+    # this used to carry as `down` never entered the answer -- the aircraft sits
+    # at the origin now instead of an altitude above a sea level the state no
+    # longer has, and the spanwise profile each strip sees is unchanged.
+    state = state_from_ned(
+        jnp.zeros(3),
+        jnp.array([236.0, 0.0, 0.0]),
+        euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
+        jnp.zeros(3),
+        ANCHOR,
     )
+    # A MATRIX, for the reason `sampled_rates` gives: the span stations are
+    # carried into the FIELD's frame, so a body -> ECEF quaternion would sample
+    # the profile at the wrong stations.
+    pos, dcm = state_pos_ned(state, ANCHOR), dcm_body_to_ned(state, ANCHOR)
 
     results = {}
     for name in airframe.LOADING_SHAPES:
         with airframe.loading_shape(name):
             results[name] = float(
-                wind.strip_roll_moment(state.pos_ned, state.quat, field, ac, st, 236.0)
+                wind.strip_roll_moment(pos, dcm, field, ac, st, 236.0)
             )
 
     values = list(results.values())
