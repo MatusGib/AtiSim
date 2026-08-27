@@ -15,10 +15,19 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from atisim import earth
 from atisim.aircraft import CRUISE, REGISTRY
 from atisim.units import FT2M, SLUG_FT2_TO_KG_M2
 
 REFERENCE = Path(__file__).parent / "data" / "jsbsim_747_reference.xml"
+
+# 47N is the latitude the rest of this project's Earth-rotation work uses, and
+# the anchor sits at the entry's own recovery altitude. Only one test here flies
+# anything -- the rest read the reference XML and the entry side by side.
+ANCHOR = earth.anchor_at(
+    np.radians(47.0), 0.0, CRUISE["boeing747_jsbsim"]["altitude"]
+)
+EARTH = earth.WGS84_J2
 
 
 @pytest.fixture(scope="module")
@@ -180,16 +189,26 @@ def test_it_trims_well_inside_a_table_segment(ac):
     same check for the two 737 entries; it cannot cover this one, because it
     trims through test_jsbsim_737_layers._atisim_trim, which is 737-specific.
 
-    The margin here is large: the entry trims near alpha 4.33 deg and the
-    nearest knot is at 0.00 rad, so there is 4.33 deg of room -- against the
+    The margin here is large: the entry trims near alpha 4.30 deg and the
+    nearest knot is at 0.00 rad, so there is 4.30 deg of room -- against the
     737 cruise entry's 1.98 deg, which is the tighter of the two.
+
+    Trimmed on WGS84_J2, which is the Earth the project flies. The knot
+    placement is aircraft data and cares nothing for the Earth, but the trim
+    that has to miss the knot is a real flight condition, and the real one is
+    now banked. Measured at 47N: alpha 4.3258 deg on FLAT against 4.3014 on
+    WGS84_J2, a movement of 0.024 deg. That is 0.6% of the 4.30 deg margin and
+    2.4% of the 1.0 deg gate, so the choice of Earth cannot decide this test --
+    which is why the flown one is used rather than the convenient one.
     """
     import jax.numpy as jnp
 
     from atisim import trim as trim_mod
 
     c = CRUISE["boeing747_jsbsim"]
-    x, _ = trim_mod.trim(jnp.array(c["airspeed"]), jnp.array(c["altitude"]), ac)
+    x, _ = trim_mod.trim(
+        jnp.array(c["airspeed"]), jnp.array(c["altitude"]), ac, ANCHOR, EARTH
+    )
     alpha = float(x[0])
     knots = np.asarray(ac.CL_table_alpha)
     gap = float(np.min(np.abs(knots - alpha)))
