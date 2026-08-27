@@ -43,15 +43,29 @@ import numpy as np
 from atisim import viz
 from atisim.aircraft import Aircraft
 
-SCHEMA_VERSION = 1
+# 2: the ECEF state. `pos_n/e/d` became `pos_x/y/z`, the quaternion became
+# body -> ECEF, and `anchor` joined the metadata. A version-1 artifact is NOT
+# readable as a version-2 one: its columns carry the same shapes under different
+# frames, so it would be read in full and wrongly. `read_run` refuses instead.
+SCHEMA_VERSION = 2
 
 # Conventions travel WITH the data. `state.py` owns them; restating them in the
 # artifact means a run stays interpretable by something that never imported this
 # package, which is the whole point of writing an artifact rather than a pickle.
 CONVENTIONS = {
-    "frame": "NED inertial; body x-forward, y-right, z-down",
-    "quaternion": "[w,x,y,z], unit norm, rotates BODY vectors into NED",
-    "altitude": "-pos_d",
+    "frame": (
+        "ECEF, rotating with the Earth; body x-forward, y-right, z-down. "
+        "Position is an OFFSET from the anchor in `anchor`, not an absolute "
+        "ECEF coordinate. Local NED is a derived view, taken at the aircraft's "
+        "own geodetic position: pos_ned = anchor.T_e2l @ pos_xyz."
+    ),
+    "quaternion": "[w,x,y,z], unit norm, rotates BODY vectors into ECEF",
+    "altitude": (
+        "GEODETIC height above the WGS-84 ellipsoid, from ecef_to_geodetic. It "
+        "is NOT -pos_d: the anchor's tangent plane falls away from the "
+        "ellipsoid as d^2/2R, 785 m at 100 km of ground track."
+    ),
+    "velocity": "vel_body and omega are relative to ECEF, not to inertial space",
     "vertical_gust_sign": (
         "wind_d is positive DOWN. Plots show -wind_d, i.e. up positive, which is "
         "the sign the sources quote vertical gusts in."
@@ -62,19 +76,19 @@ CONVENTIONS = {
 # column -> (Trajectory field, component index or None, units, frame)
 _COLUMNS: list[tuple[str, str, int | None, str, str]] = [
     ("t", "t", None, "s", "elapsed"),
-    ("pos_n", "pos_ned", 0, "m", "NED"),
-    ("pos_e", "pos_ned", 1, "m", "NED"),
-    ("pos_d", "pos_ned", 2, "m", "NED, positive DOWN"),
-    ("vel_u", "vel_body", 0, "m/s", "body"),
-    ("vel_v", "vel_body", 1, "m/s", "body"),
-    ("vel_w", "vel_body", 2, "m/s", "body"),
-    ("quat_w", "quat", 0, "-", "body->NED"),
-    ("quat_x", "quat", 1, "-", "body->NED"),
-    ("quat_y", "quat", 2, "-", "body->NED"),
-    ("quat_z", "quat", 3, "-", "body->NED"),
-    ("omega_p", "omega", 0, "rad/s", "body"),
-    ("omega_q", "omega", 1, "rad/s", "body"),
-    ("omega_r", "omega", 2, "rad/s", "body"),
+    ("pos_x", "pos_ecef", 0, "m", "ECEF, OFFSET from the anchor"),
+    ("pos_y", "pos_ecef", 1, "m", "ECEF, OFFSET from the anchor"),
+    ("pos_z", "pos_ecef", 2, "m", "ECEF, OFFSET from the anchor"),
+    ("vel_u", "vel_body", 0, "m/s", "body, ECEF-relative"),
+    ("vel_v", "vel_body", 1, "m/s", "body, ECEF-relative"),
+    ("vel_w", "vel_body", 2, "m/s", "body, ECEF-relative"),
+    ("quat_w", "quat", 0, "-", "body->ECEF"),
+    ("quat_x", "quat", 1, "-", "body->ECEF"),
+    ("quat_y", "quat", 2, "-", "body->ECEF"),
+    ("quat_z", "quat", 3, "-", "body->ECEF"),
+    ("omega_p", "omega", 0, "rad/s", "body, relative to ECEF"),
+    ("omega_q", "omega", 1, "rad/s", "body, relative to ECEF"),
+    ("omega_r", "omega", 2, "rad/s", "body, relative to ECEF"),
     ("elevator", "controls", 0, "rad", "positive trailing-edge down"),
     ("aileron", "controls", 1, "rad", "positive right-roll command"),
     ("rudder", "controls", 2, "rad", "positive trailing-edge left"),
@@ -135,12 +149,34 @@ def derivative_hash(ac: Aircraft) -> str:
     return digest.hexdigest()
 
 
+def anchor_spec(anchor) -> dict:
+    """The three geodetic scalars an `earth.Anchor` is defined by.
+
+    `r_ecef` and `T_e2l` are DERIVED from these by `earth.anchor_at`, so only the
+    definition is stored. Writing the derived fields as well is how an artifact
+    ends up disagreeing with itself after a geodesy constant is corrected.
+    """
+    return {
+        "lat": float(anchor.lat),
+        "lon": float(anchor.lon),
+        "h": float(anchor.h),
+        "datum": "WGS-84, geodetic latitude, radians and metres",
+    }
+
+
 def build_meta(*, aircraft_key: str, aircraft: Aircraft, flight_condition: dict,
                trim_solution: dict, integrator: dict, wind_field: dict,
                declared_parameters: dict, caveats: list[str],
+               anchor, earth_model,
                load_model: str | None = None,
                loading_shape: str | None = None) -> dict:
     """Assemble the metadata block, and hash the parts that define the experiment.
+
+    `anchor` and `earth_model` are REQUIRED, and they are inside `config_hash`.
+    Two runs at the same airspeed and altitude but different latitudes are
+    different experiments now -- Coriolis, the gravity magnitude and the trimmed
+    bank all move with it -- and a hash that could not tell them apart would let
+    a comparison view treat them as repeats of each other.
 
     `declared_parameters` and `caveats` are not decoration and are not optional.
     The project's standing rule is flag, never invent; a declared parameter that
@@ -162,6 +198,8 @@ def build_meta(*, aircraft_key: str, aircraft: Aircraft, flight_condition: dict,
             "derivative_hash": derivative_hash(aircraft),
         },
         "flight_condition": flight_condition,
+        "anchor": anchor_spec(anchor),
+        "earth_model": dict(earth_model._asdict()),
         "trim": trim_solution,
         "integrator": {
             "scheme": "RK4 fixed step",
@@ -226,11 +264,43 @@ def write_run(directory, traj: viz.Trajectory, meta: dict, check_report) -> Path
     return directory
 
 
+def read_earth_model(meta: dict):
+    """The `earth.EarthModel` a run was flown under, from its metadata.
+
+    Rebuilt rather than looked up by name, so a model that is not one of the
+    three module constants still round-trips.
+    """
+    from atisim import earth
+
+    return earth.EarthModel(**meta["earth_model"])
+
+
 def read_run(directory) -> Run:
-    """Read a run back. Never raises on a version skew -- it reports one."""
+    """Read a run back.
+
+    A GIT SKEW IS REPORTED, NEVER RAISED -- that is what `stale` is for, and
+    re-reading old runs is the point of writing them. A SCHEMA skew past the
+    ECEF state is a different thing and IS raised. A version-1 artifact's
+    `pos_n/e/d` and body -> NED quaternion have exactly the shapes this reader
+    wants, so they would load in full and be interpreted in the wrong frame with
+    nothing to notice; and there is no anchor recorded to place them against.
+    `earth.py` ships no default anchor for precisely that reason.
+    """
     import pyarrow.parquet as pq
 
+    from atisim import earth
+
     directory = Path(directory)
+    meta = json.loads((directory / "meta.json").read_text())
+    version = meta.get("schema_version", 1)
+    if version < 2 or "anchor" not in meta:
+        raise ValueError(
+            f"{directory} is schema version {version}, written before the ECEF "
+            "state. Its position and quaternion columns are local-NED under the "
+            "names this reader gives to ECEF quantities, and it records no "
+            "anchor to place them against -- so it cannot be read, only re-flown."
+        )
+
     table = pq.read_table(directory / "run.parquet")
     columns = {name: table.column(name).to_numpy(zero_copy_only=False)
                for name, *_ in _COLUMNS}
@@ -238,9 +308,10 @@ def read_run(directory) -> Run:
     def stack(*names):
         return np.stack([columns[n] for n in names], axis=1)
 
+    spec = meta["anchor"]
     traj = viz.Trajectory(
         t=columns["t"],
-        pos_ned=stack("pos_n", "pos_e", "pos_d"),
+        pos_ecef=stack("pos_x", "pos_y", "pos_z"),
         vel_body=stack("vel_u", "vel_v", "vel_w"),
         quat=stack("quat_w", "quat_x", "quat_y", "quat_z"),
         omega=stack("omega_p", "omega_q", "omega_r"),
@@ -248,8 +319,8 @@ def read_run(directory) -> Run:
         mode=columns["mode"],
         wind_ned=stack("wind_n", "wind_e", "wind_d"),
         omega_gust=stack("gust_p", "gust_q", "gust_r"),
+        anchor=earth.anchor_at(spec["lat"], spec["lon"], spec["h"]),
     )
-    meta = json.loads((directory / "meta.json").read_text())
     checks_path = directory / "checks.json"
     report = json.loads(checks_path.read_text()) if checks_path.exists() else []
 

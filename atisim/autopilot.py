@@ -23,6 +23,7 @@ import jax
 import jax.numpy as jnp
 from jax import Array
 
+from atisim import earth
 from atisim.aircraft import Aircraft
 from atisim.integrate import SimState, step
 from atisim.sensors import AirData, sense
@@ -31,7 +32,10 @@ from atisim.wind import zero_wind
 
 
 class Targets(NamedTuple):
-    altitude: Array  # m
+    # GEODETIC, because that is what `sensors.sense` now reports and the loop
+    # differences the two. It is no longer -pos_ned[2]; the two part company by
+    # 785 m over 100 km of ground track.
+    altitude: Array  # m, geodetic
     heading: Array  # rad
     airspeed: Array  # m/s
 
@@ -231,7 +235,7 @@ def engage(
     )
 
 
-@partial(jax.jit, static_argnames=("n_steps", "wind_model"))
+@partial(jax.jit, static_argnames=("n_steps", "wind_model", "earth_model"))
 def closed_loop_rollout(
     sim: SimState,
     ap: APState,
@@ -240,12 +244,20 @@ def closed_loop_rollout(
     dt: Array,
     ac: Aircraft,
     n_steps: int,
+    anchor: earth.Anchor,
+    earth_model: earth.EarthModel,
     wind_model=zero_wind,
 ):
     """Fly the autopilot inside lax.scan.
 
     This is the Monte Carlo path: vmap it over a batch of PRNG keys and it flies
     the same profile through many turbulence realisations.
+
+    `anchor` reaches BOTH the plant and the sensor set, which is the point of it
+    being one argument. `targets.altitude` and `targets.heading` are statements
+    about the local frame, and `sense` is where the loops are told what that
+    frame currently is; an anchor that disagreed between the two would leave the
+    altitude loop chasing a height the aircraft is not flying at.
     """
 
     def body(carry, _):
@@ -254,9 +266,9 @@ def closed_loop_rollout(
         # would split the key a second time and hand the controller a different
         # realisation from the one the aircraft is flying through.
         controls, ap = autopilot(
-            sense(sim.state, sim.wind_ned), ap, targets, gains, ac, dt
+            sense(sim.state, anchor, sim.wind_ned), ap, targets, gains, ac, dt
         )
-        sim = step(sim, controls, dt, ac, wind_model=wind_model)
+        sim = step(sim, controls, dt, ac, anchor, earth_model, wind_model=wind_model)
         return (sim, ap), (sim.state, controls)
 
     return jax.lax.scan(body, (sim, ap), None, length=n_steps)

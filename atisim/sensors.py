@@ -26,7 +26,11 @@ without saying what the air is doing.
                             `aero.py` gets `omega - omega_gust` and a controller
                             does not.
     altitude                barometric. Treated as geometric here; the
-                            atmosphere model has no pressure-error term.
+                            atmosphere model has no pressure-error term. It is
+                            now the GEODETIC height, `state.altitude`, not
+                            `-pos_ned[2]`: the tangent plane falls away from the
+                            ellipsoid as d^2/2R, which is 785 m at 100 km of
+                            ground track, and an altimeter does not read that.
     vertical_speed          barometric VSI. INERTIAL. It reads the rate of
                             change of geometric height, so an updraft that
                             CARRIES the aircraft up is read -- but through the
@@ -50,18 +54,33 @@ dispatch overhead swamps the arithmetic completely: 6.56 ms eager against 0.028
 ms jitted, a factor of 234. The live panel calls `sense` once per physics step
 and `accelerometers` once per frame, so eager dispatch alone was costing about
 44 ms of every 73 ms frame -- more than the whole instrument panel took to draw.
+
+**Both readers take the run's `anchor`, and neither has a default for it.** The
+state is ECEF now, so nothing in here can be read without saying where on the
+Earth the aircraft is: the local vertical that the attitude, the VSI and the
+altimeter are all referred to is a function of position. `earth.py` deliberately
+ships no default anchor, and inventing one here would put a silently chosen
+latitude under every readout.
 """
 
+from functools import partial
 from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
 from jax import Array
 
+from atisim import earth
 from atisim.aero import air_data
 from atisim.aircraft import Aircraft
-from atisim.dynamics import relative_velocity, specific_force
-from atisim.state import Controls, State, quat_to_dcm, quat_to_euler
+from atisim.dynamics import specific_force
+from atisim.state import (
+    Controls,
+    State,
+    altitude as geodetic_altitude,
+    dcm_body_to_ned,
+    matrix_to_euler,
+)
 
 STILL_AIR = jnp.zeros(3)
 
@@ -83,20 +102,35 @@ class AirData(NamedTuple):
 
 
 @jax.jit
-def sense(state: State, wind_ned: Array = STILL_AIR) -> AirData:
+def sense(state: State, anchor: earth.Anchor, wind_ned: Array = STILL_AIR) -> AirData:
     """Read the instruments.
 
     `wind_ned` defaults to still air so that every still-air caller reads
     exactly as before, but it is a parameter rather than an assumption: passing
     the wrong wind is now a visible mistake instead of an invisible one.
+    `anchor` has NO default, because a local vertical picked for the caller is
+    exactly the invisible mistake this module exists to prevent.
+
+    ONE body -> NED matrix is formed and used three times. Every quantity below
+    that is not already in body axes -- the incidence angles, the Euler set, the
+    NED velocity -- is referred to the local frame AT THE AIRCRAFT, which is not
+    the anchor's frame once the two are any distance apart. Going through a
+    quaternion for `dynamics.relative_velocity_ned` and back would be a matrix ->
+    quat -> matrix round trip for arithmetic that is one line; the frame it
+    documents is asserted by using the named `dcm_body_to_ned` instead.
     """
-    airspeed, alpha, beta = air_data(relative_velocity(state.vel_body, state.quat, wind_ned))
-    phi, theta, psi = quat_to_euler(state.quat)
+    dcm_b2n = dcm_body_to_ned(state, anchor)
+    # AIR-RELATIVE, exactly `dynamics.relative_velocity_ned` with the matrix
+    # already in hand -- and in the LOCAL frame, which is what makes `wind_ned`
+    # mean what its name says.
+    vel_rel = state.vel_body - dcm_b2n.T @ wind_ned
+    airspeed, alpha, beta = air_data(vel_rel)
+    phi, theta, psi = matrix_to_euler(dcm_b2n)
     p, q, r = state.omega
-    # Inertial, and deliberately not built from `relative_velocity`: the VSI
-    # reads how fast the airframe is actually changing height, not how fast it
-    # is moving through the air mass.
-    vel_ned = quat_to_dcm(state.quat) @ state.vel_body
+    # Inertial, and deliberately not built from `vel_rel`: the VSI reads how
+    # fast the airframe is actually changing height, not how fast it is moving
+    # through the air mass.
+    vel_ned = dcm_b2n @ state.vel_body
     return AirData(
         airspeed=airspeed,
         alpha=alpha,
@@ -107,7 +141,9 @@ def sense(state: State, wind_ned: Array = STILL_AIR) -> AirData:
         p=p,
         q=q,
         r=r,
-        altitude=-state.pos_ned[2],
+        # GEODETIC, not -pos_ned[2]. The two differ by 785 m at 100 km of ground
+        # track, and it is the geodetic height an altimeter is calibrated to.
+        altitude=geodetic_altitude(state, anchor),
         vertical_speed=-vel_ned[2],
     )
 
@@ -130,11 +166,13 @@ class Accelerations(NamedTuple):
     n_z: Array  # g, positive UP-ish: +1 in level flight
 
 
-@jax.jit
+@partial(jax.jit, static_argnames=("earth_model",))
 def accelerometers(
     state: State,
     controls: Controls,
     ac: Aircraft,
+    anchor: earth.Anchor,
+    earth_model: earth.EarthModel,
     wind_ned: Array = STILL_AIR,
     omega_gust: Array = STILL_AIR,
 ) -> Accelerations:
@@ -143,6 +181,12 @@ def accelerometers(
     Separate from `sense` for the reason given in the module docstring: a
     specific force needs a mass and a set of deflections, and an air-data
     computer has neither.
+
+    `earth_model` is a STATIC argument, matching `dynamics` and `integrate`: it
+    is a hashable NamedTuple of str/float, so its branches resolve at trace time
+    and the jit this module's docstring measures is unaffected.
     """
-    n = specific_force(state, controls, ac, wind_ned, omega_gust)
+    n = specific_force(
+        state, controls, ac, wind_ned, omega_gust, anchor, earth_model
+    )
     return Accelerations(n_x=n[0], n_y=n[1], n_z=-n[2])

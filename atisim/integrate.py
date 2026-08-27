@@ -42,6 +42,7 @@ import jax
 import jax.numpy as jnp
 from jax import Array
 
+from atisim import earth
 from atisim.aircraft import Aircraft
 from atisim.dynamics import derivatives
 from atisim.loads import CoeffIncrement, zero_increment
@@ -61,6 +62,13 @@ class SimState(NamedTuple):
 
     Consumers therefore see the wind from one step ago. At 50 Hz that is 20 ms of
     lag, which is what a real sensor gives you anyway.
+
+    **THE ANCHOR IS NOT IN HERE, DELIBERATELY.** It is constant for the life of a
+    run, so putting it in the scan carry would replicate five arrays across every
+    step of every batch member to say something that never changes. It is an
+    argument to `step` and the rollouts instead, and `viz.Trajectory` carries it
+    on the recording side so a flown run stays interpretable without being told
+    where it was flown a second time.
     """
 
     state: State
@@ -107,16 +115,25 @@ def rk4_step(f, x, dt):
     return _axpy(x, increment, dt)
 
 
-@partial(jax.jit, static_argnames=("wind_model", "load_model"))
+@partial(jax.jit, static_argnames=("wind_model", "load_model", "earth_model"))
 def step(
     sim: SimState,
     controls: Controls,
     dt: Array,
     ac: Aircraft,
+    anchor: earth.Anchor,
+    earth_model: earth.EarthModel,
     wind_model=zero_wind,
     load_model=None,
 ) -> SimState:
     """One RK4 step. The PRNG key is threaded through the wind model.
+
+    `anchor` fixes where on the Earth the run is flying and `earth_model` which
+    Earth it is; both are forwarded to `derivatives` and neither has a default,
+    because latitude now changes the answer. `earth_model` joins the existing
+    static arguments -- it is a hashable NamedTuple of str and float, so its
+    branches resolve at trace time and cost nothing here. `anchor` carries arrays
+    and is a traced pytree, passed like any other value.
 
     `load_model` maps a `State` to a `loads.CoeffIncrement`. It is sampled once
     per step and held across the four RK4 stages, exactly as the wind is and for
@@ -147,6 +164,7 @@ def step(
 
     def f(s: State) -> State:
         return derivatives(s, controls, ac, wind_ned, omega_gust,
+                           anchor, earth_model,
                            increment=increment, alphadot_gust=alphadot_gust)
 
     new_state = rk4_step(f, sim.state, dt)
@@ -162,13 +180,15 @@ def step(
     )
 
 
-@partial(jax.jit, static_argnames=("n_steps", "wind_model", "load_model"))
+@partial(jax.jit, static_argnames=("n_steps", "wind_model", "load_model", "earth_model"))
 def rollout(
     sim: SimState,
     controls: Controls,
     dt: Array,
     ac: Aircraft,
     n_steps: int,
+    anchor: earth.Anchor,
+    earth_model: earth.EarthModel,
     wind_model=zero_wind,
     load_model=None,
 ) -> tuple[SimState, State]:
@@ -179,19 +199,22 @@ def rollout(
     """
 
     def body(carry: SimState, _) -> tuple[SimState, State]:
-        carry = step(carry, controls, dt, ac, wind_model=wind_model, load_model=load_model)
+        carry = step(carry, controls, dt, ac, anchor, earth_model,
+                     wind_model=wind_model, load_model=load_model)
         return carry, carry.state
 
     return jax.lax.scan(body, sim, None, length=n_steps)
 
 
-@partial(jax.jit, static_argnames=("n_steps", "wind_model", "load_model"))
+@partial(jax.jit, static_argnames=("n_steps", "wind_model", "load_model", "earth_model"))
 def logged_rollout(
     sim: SimState,
     controls: Controls,
     dt: Array,
     ac: Aircraft,
     n_steps: int,
+    anchor: earth.Anchor,
+    earth_model: earth.EarthModel,
     wind_model=zero_wind,
     load_model=None,
 ) -> tuple[SimState, SimState]:
@@ -211,18 +234,26 @@ def logged_rollout(
     """
 
     def body(carry: SimState, _) -> tuple[SimState, SimState]:
-        carry = step(carry, controls, dt, ac, wind_model=wind_model, load_model=load_model)
+        carry = step(carry, controls, dt, ac, anchor, earth_model,
+                     wind_model=wind_model, load_model=load_model)
         return carry, carry
 
     return jax.lax.scan(body, sim, None, length=n_steps)
 
 
-def trajectory_from_log(t, log: SimState, controls_hist: Controls, mode: int = 0):
+def trajectory_from_log(
+    t, log: SimState, controls_hist: Controls, anchor: earth.Anchor, mode: int = 0
+):
     """Turn a `logged_rollout` output into a `viz.Trajectory`.
 
     Lives here rather than in `viz.py` so that `viz` keeps its standing property
     of needing no simulator to read a run -- this function is on the writing side,
     where the simulator is already in scope.
+
+    `anchor` travels into the trajectory rather than being asked for again at
+    analysis time. Without it a recorded `pos_ecef` is an offset from nowhere in
+    particular, and `checks` and `analysis/` could not convert a run to NED or to
+    a geodetic altitude at all.
     """
     import numpy as np
 
@@ -230,7 +261,7 @@ def trajectory_from_log(t, log: SimState, controls_hist: Controls, mode: int = 0
 
     return Trajectory(
         t=np.asarray(t, dtype=float),
-        pos_ned=np.asarray(log.state.pos_ned, dtype=float),
+        pos_ecef=np.asarray(log.state.pos_ecef, dtype=float),
         vel_body=np.asarray(log.state.vel_body, dtype=float),
         quat=np.asarray(log.state.quat, dtype=float),
         omega=np.asarray(log.state.omega, dtype=float),
@@ -238,6 +269,7 @@ def trajectory_from_log(t, log: SimState, controls_hist: Controls, mode: int = 0
         mode=np.full(len(t), int(mode), dtype=int),
         wind_ned=np.asarray(log.wind_ned, dtype=float),
         omega_gust=np.asarray(log.omega_gust, dtype=float),
+        anchor=anchor,
     )
 
 
@@ -269,12 +301,20 @@ def batched_rollout(
     dt: Array,
     ac: Aircraft,
     n_steps: int,
+    anchor: earth.Anchor,
+    earth_model: earth.EarthModel,
     wind_model=zero_wind,
     load_model=None,
 ) -> tuple[SimState, State]:
-    """rollout vmapped over the leading batch axis of `sim`."""
+    """rollout vmapped over the leading batch axis of `sim`.
+
+    `anchor` is closed over rather than mapped: one run is one place on the
+    Earth, and every member of a Monte Carlo ensemble flies the same encounter
+    with only the PRNG key varying.
+    """
     return jax.vmap(
         lambda s: rollout(
-            s, controls, dt, ac, n_steps, wind_model=wind_model, load_model=load_model
+            s, controls, dt, ac, n_steps, anchor, earth_model,
+            wind_model=wind_model, load_model=load_model,
         )
     )(sim)

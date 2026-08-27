@@ -26,9 +26,10 @@ from typing import NamedTuple
 import jax.numpy as jnp
 from jax import Array
 
+from atisim import earth
 from atisim.aero import air_data
 from atisim.aircraft import Aircraft
-from atisim.state import State
+from atisim.state import State, dcm_body_to_ned, pos_ned as state_pos_ned
 
 
 class CoeffIncrement(NamedTuple):
@@ -60,7 +61,9 @@ def add(a: CoeffIncrement, b: CoeffIncrement) -> CoeffIncrement:
     )
 
 
-def strip_increment(state: State, field, ac: Aircraft, stations) -> CoeffIncrement:
+def strip_increment(
+    state: State, field, ac: Aircraft, stations, anchor: earth.Anchor
+) -> CoeffIncrement:
     """Coefficient increment from integrating a wind field across the airframe.
 
     ROLL ONLY. `wind.strip_roll_moment` is the one strip integral this project
@@ -72,33 +75,45 @@ def strip_increment(state: State, field, ac: Aircraft, stations) -> CoeffIncreme
     integral would be worse than shipping none, because it would look like
     increased fidelity.
 
-    Airspeed is AIR-RELATIVE, taken through the same `relative_velocity` the
-    rest of the model uses. Using ground speed would reintroduce precisely the
+    Airspeed is AIR-RELATIVE. Using ground speed would reintroduce precisely the
     error the air-relative design exists to prevent, and it would only reveal
     itself in a wind with a significant along-track component.
 
-    Both imports below are local, and for two different reasons. `dynamics`
-    imports `CoeffIncrement` from this module, so importing it back at module
-    level closes a cycle -- and it closes it in the unrecoverable direction,
-    because `relative_velocity` is defined AFTER that import in `dynamics.py`.
-    `wind` imports `airframe`, which imports `aircraft`; that chain is
-    currently acyclic but only by accident, and keeping it local costs nothing.
+    **THIS WAS `dynamics.relative_velocity(state.vel_body, state.quat, ...)` AND
+    THE QUATERNION IT WANTED CHANGED MEANING UNDER IT.** `state.quat` is body ->
+    ECEF now; that call needed body -> NED. Both are valid rotations, so nothing
+    would have raised -- `dynamics.relative_velocity_ned`'s docstring measures
+    what it would have returned instead: 28.3 m/s of airspeed and a sign-flipped
+    alpha, at 47N in a 27 m/s wind. So the local matrix is formed explicitly here
+    and the one-line subtraction written out, exactly as `dynamics.derivatives`
+    does with the same matrix in hand, rather than round-tripping it through a
+    quaternion to reach a function whose whole argument is that its callers held
+    the wrong frame.
+
+    The `wind` import is local because `wind` imports `airframe`, which imports
+    `aircraft`; that chain is currently acyclic but only by accident, and keeping
+    it local costs nothing.
     """
     from atisim import wind
-    from atisim.dynamics import relative_velocity
 
-    wind_at_cg = field(state.pos_ned)
-    vel_rel = relative_velocity(state.vel_body, state.quat, wind_at_cg)
+    pos = state_pos_ned(state, anchor)
+    dcm_b2n = dcm_body_to_ned(state, anchor)
+
+    wind_at_cg = field(pos)
+    vel_rel = state.vel_body - dcm_b2n.T @ wind_at_cg
     airspeed, _, _ = air_data(vel_rel)
 
-    roll = wind.strip_roll_moment(
-        state.pos_ned, state.quat, field, ac, stations, airspeed
-    )
+    roll = wind.strip_roll_moment(pos, dcm_b2n, field, ac, stations, airspeed)
     return zero_increment()._replace(Cl=roll)
 
 
-def strip_model(field, ac: Aircraft, stations=None):
+def strip_model(field, ac: Aircraft, anchor: earth.Anchor, stations=None):
     """Build a `load_model` for `integrate.step` from a wind field.
+
+    `anchor` is closed over here rather than threaded through `step`, for the
+    same reason `wind.field_model` closes over it: it is the FIELD's frame that
+    needs it, and the `load_model` contract -- a `State -> CoeffIncrement` -- is
+    the one `step` holds the load model to. No default, per `earth.py`.
 
     Raises if the aircraft fails the tail-arm plausibility gate. That check
     exists because the sample stations are built from a DERIVED tail arm, and
@@ -117,4 +132,4 @@ def strip_model(field, ac: Aircraft, stations=None):
             f"Use the point model instead."
         )
     st = airframe.stations(ac) if stations is None else stations
-    return lambda state: strip_increment(state, field, ac, st)
+    return lambda state: strip_increment(state, field, ac, st, anchor)

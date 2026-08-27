@@ -38,11 +38,18 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from atisim import dynamics
+from atisim import dynamics, earth, viz
 from atisim.aero import air_data
 from atisim.aircraft import Aircraft
 from atisim.atmosphere import G0, speed_of_sound
-from atisim.state import Controls, State, quat_to_dcm
+from atisim.state import (
+    Controls,
+    absolute_ecef,
+    altitude as geodetic_altitude,
+    dcm_body_to_ned,
+    matrix_to_euler,
+    quat_to_matrix,
+)
 from atisim.units import RAD2DEG
 
 # The declared linear-aero band. Imported rather than restated: `panel.py` owns
@@ -153,7 +160,7 @@ def field_divergence(field, positions, n_samples: int = 200) -> Check:
 # ---------------------------------------------------------------------------
 
 
-def _energy_and_power(traj, ac: Aircraft, field):
+def _energy_and_power(traj, ac: Aircraft, field, earth_model: earth.EarthModel):
     """Mechanical energy and the power of the non-gravitational forces.
 
     Power comes through `dynamics.specific_force`, which INVERTS the derivative
@@ -166,35 +173,98 @@ def _energy_and_power(traj, ac: Aircraft, field):
     flown. `field` is accepted only for the gust rate, which is not recorded at
     the precision this needs; see `recorded_wind_matches_field` for why the
     recorded translational wind is the one to trust.
+
+    `earth_model` is an argument because the trajectory does not carry one. The
+    anchor travels with a run -- it is needed to say where the recorded numbers
+    ARE -- but which Earth the plant was flown over is a statement about the
+    plant, and `specific_force` cannot invert the sum without being told. No
+    default: `FLAT` and `WGS84_J2` subtract different non-force terms.
+
+    **POTENTIAL ENERGY IS THE WORK OF THE PLANT'S OWN CONSERVATIVE
+    ACCELERATION, NOT `m*G0*h`, AND THE THREE CANDIDATES WERE MEASURED.** This
+    term used to be `m*G0*(-pos_d)`, which was exactly right for a flat Earth
+    under constant gravity and is a hand-written second copy of the potential
+    now that it is neither. Measured on a still-air 747 at 47N, 12,192 m, 30 s
+    and 7.1 km of track, as residual over |dE|max:
+
+        m*G0*(-pos_d)          1.08          the tangent plane is not level
+        m*G0*h_geodetic        0.34          right surface, wrong g
+        -integral(a_cons.dr)   9.7e-8        the plant's own gravity
+
+    The tangent plane is the worse of the two heights and by a factor of 3.2:
+    it falls away from the ellipsoid as d^2/2R, so an aircraft in level flight
+    appears to change height while doing no work against gravity. The geodetic
+    height fixes the SURFACE -- the WGS-84 ellipsoid is defined as an
+    equipotential of the normal field -- and still leaves 34%, because `G0` is
+    not the gravity this plant flew under: `earth.gravitation` gives 9.7864 m/s^2
+    at that point, and the ellipsoid is an equipotential of the full normal
+    field rather than of the J2 truncation, so the potential swing is 28.633
+    J/kg against the 27.888 that `G0 * dh` predicts.
+
+    So the potential is INVERTED FROM THE PLANT rather than modelled, exactly as
+    the power term above is and for the same reason. `earth_acceleration_terms`
+    is called with zero force AND zero velocity, which returns
+    `g_b - centrifugal_b` -- the whole conservative part, with Coriolis
+    vanishing at v = 0 and doing no work in any case, being perpendicular to v.
+    Its work along the flown path is the potential, referenced to the first
+    sample. Nothing here knows which gravity model was used, so `FLAT`,
+    `WGS84_INVERSE_SQUARE` and `WGS84_J2` all close: measured 1.4e-7, 2.6e-9 and
+    9.7e-8 on the same run, against 1.4e-7 for the pre-Earth-model `m*G0*h` on
+    `FLAT`. The check is therefore as tight as it ever was, on every Earth.
+
+    The integral is trapezoidal on the recorded samples, which is the same rule
+    the work integral above uses, so refining dt refines both together.
     """
     del field  # gust rates come from the recorded column too
-    pos = np.asarray(traj.pos_ned)
-    vel_b = jnp.asarray(traj.vel_body)
-    dcm = np.asarray(jax.vmap(quat_to_dcm)(jnp.asarray(traj.quat)))
+    anchor = traj.anchor
+    states = viz.states(traj)
+    dcm = np.asarray(jax.vmap(dcm_body_to_ned, in_axes=(0, None))(states, anchor))
     vel_ned = np.einsum("nij,nj->ni", dcm, np.asarray(traj.vel_body))
 
     mass = float(ac.mass)
-    energy = 0.5 * mass * (vel_ned**2).sum(axis=1) + mass * float(G0) * (-pos[:, 2])
+    zero3 = jnp.zeros(3)
+
+    def conservative(s):
+        """g - centrifugal at this state, in ECEF. Zero force, zero velocity."""
+        a, _ = dynamics.earth_acceleration_terms(
+            zero3, zero3, ac.mass, ac.inertia, ac.inertia_inv,
+            zero3, zero3, s.quat, absolute_ecef(s, anchor), earth_model,
+        )
+        return quat_to_matrix(s.quat) @ a
+
+    a_ecef = np.asarray(jax.vmap(conservative)(states))
+    # The stored ANCHOR-RELATIVE offset, not the absolute coordinate: only
+    # differences enter, and differencing absolute ECEF would inherit the 512x
+    # coarser ulp that storing an offset exists to avoid.
+    step_ecef = np.diff(np.asarray(traj.pos_ecef), axis=0)
+    work_against = -np.einsum(
+        "ni,ni->n", 0.5 * (a_ecef[1:] + a_ecef[:-1]), step_ecef
+    )
+    potential = np.concatenate([[0.0], np.cumsum(work_against)])
+
+    energy = 0.5 * mass * (vel_ned**2).sum(axis=1) + mass * potential
 
     controls_hist = Controls(*[jnp.asarray(traj.controls[:, i]) for i in range(4)])
 
-    def power(p, v, q, w, wn, og, el, ai, ru, th):
-        s = State(pos_ned=p, vel_body=v, quat=q, omega=w)
+    def power(s, wn, og, el, ai, ru, th):
         c = Controls(elevator=el, aileron=ai, rudder=ru, throttle=th)
-        f_body = dynamics.specific_force(s, c, ac, wn, og) * G0 * ac.mass
-        return jnp.dot(f_body, v)
+        f_body = dynamics.specific_force(
+            s, c, ac, wn, og, anchor, earth_model
+        ) * G0 * ac.mass
+        return jnp.dot(f_body, s.vel_body)
 
     p = np.asarray(
         jax.vmap(power)(
-            jnp.asarray(traj.pos_ned), vel_b, jnp.asarray(traj.quat),
-            jnp.asarray(traj.omega), jnp.asarray(traj.wind_ned),
+            states, jnp.asarray(traj.wind_ned),
             jnp.asarray(traj.omega_gust), *controls_hist,
         )
     )
     return energy, p
 
 
-def energy_closure(traj, ac: Aircraft, field) -> Check:
+def energy_closure(
+    traj, ac: Aircraft, field, earth_model: earth.EarthModel
+) -> Check:
     """|dE - integral(P dt)| over |dE|max.
 
     THE EXPECTED ORDER IS 1, NOT 4, WHENEVER A WIND MODEL IS PRESENT. The
@@ -206,7 +276,7 @@ def energy_closure(traj, ac: Aircraft, field) -> Check:
     mean the closure was wrong.
     """
     t = np.asarray(traj.t)
-    energy, power = _energy_and_power(traj, ac, field)
+    energy, power = _energy_and_power(traj, ac, field, earth_model)
     work = np.concatenate(
         [[0.0], np.cumsum(np.diff(t) * 0.5 * (power[1:] + power[:-1]))]
     )
@@ -233,16 +303,18 @@ class EnergyProfile(NamedTuple):
     median: float
 
 
-def energy_residual_profile(traj, ac: Aircraft, field) -> EnergyProfile:
+def energy_residual_profile(
+    traj, ac: Aircraft, field, earth_model: earth.EarthModel
+) -> EnergyProfile:
     t = np.asarray(traj.t)
-    energy, power = _energy_and_power(traj, ac, field)
+    energy, power = _energy_and_power(traj, ac, field, earth_model)
     work = np.concatenate(
         [[0.0], np.cumsum(np.diff(t) * 0.5 * (power[1:] + power[:-1]))]
     )
     residual = (energy - energy[0]) - work
     per_step = np.abs(np.diff(residual))
     return EnergyProfile(
-        north=np.asarray(traj.pos_ned)[1:, 0],
+        north=viz.pos_ned(traj)[1:, 0],
         per_step=per_step,
         median=float(np.median(per_step)),
     )
@@ -253,30 +325,35 @@ def energy_residual_profile(traj, ac: Aircraft, field) -> EnergyProfile:
 # ---------------------------------------------------------------------------
 
 
-def load_factor_series(traj, ac: Aircraft) -> np.ndarray:
+def load_factor_series(traj, ac: Aircraft, earth_model: earth.EarthModel) -> np.ndarray:
     """n_z at every sample, from the RECORDED wind and gust.
 
     Recorded rather than re-evaluated, for the reason `_energy_and_power` gives:
     re-evaluating is exact for a deterministic field and returns a different
     realisation for a stochastic one.
+
+    The states are rebuilt EXACTLY, not converted: `viz.Trajectory` stores the
+    ECEF columns the run flew, so what `load_factor` inverts here is the state
+    the plant produced rather than a round trip through a local frame.
     """
+    anchor = traj.anchor
     controls_hist = Controls(*[jnp.asarray(traj.controls[:, i]) for i in range(4)])
 
-    def one(p, v, q, w, wn, og, el, ai, ru, th):
-        s = State(pos_ned=p, vel_body=v, quat=q, omega=w)
+    def one(s, wn, og, el, ai, ru, th):
         c = Controls(elevator=el, aileron=ai, rudder=ru, throttle=th)
-        return dynamics.load_factor(s, c, ac, wn, og)
+        return dynamics.load_factor(s, c, ac, wn, og, anchor, earth_model)
 
     return np.asarray(
         jax.vmap(one)(
-            jnp.asarray(traj.pos_ned), jnp.asarray(traj.vel_body),
-            jnp.asarray(traj.quat), jnp.asarray(traj.omega),
-            jnp.asarray(traj.wind_ned), jnp.asarray(traj.omega_gust), *controls_hist,
+            viz.states(traj), jnp.asarray(traj.wind_ned),
+            jnp.asarray(traj.omega_gust), *controls_hist,
         )
     )
 
 
-def trimmed_start(traj, ac: Aircraft, controls: Controls, field) -> Check:
+def trimmed_start(
+    traj, ac: Aircraft, controls: Controls, field, earth_model: earth.EarthModel
+) -> Check:
     """How far out of equilibrium the run begins, in g -- and what that is worth.
 
     The load factor in trimmed level flight is cos(theta), not 1: the body-normal
@@ -297,22 +374,50 @@ def trimmed_start(traj, ac: Aircraft, controls: Controls, field) -> Check:
     dimensionless. For the canonical vortex run that is 0.0384 / 1.235 = 3.1%;
     for the -6 r0 run section 9 describes it is 0.20 / 1.235 = 16%.
 
-    **In STILL AIR it is a `gate`**, because there the right answer exists and is
-    exactly cos(theta0). That is the manoeuvring case, whose n_z[0] = 0.9967
-    PROJECT.md section 4 records as "the trimmed value, i.e. the lead-in worked".
+    **In STILL AIR it is a `gate`**, because there the right answer exists. That
+    is the manoeuvring case, whose n_z[0] = 0.9967 PROJECT.md section 4 records
+    as "the trimmed value, i.e. the lead-in worked".
+
+    **THE TRIMMED VALUE IS NO LONGER `cos(theta0)`, AND IT IS INVERTED FROM THE
+    PLANT RATHER THAN RESTATED.** At equilibrium `vdot = 0`, so the aero and
+    thrust force is exactly the negative of everything else in the sum, and the
+    accelerometer reads that remainder: `n_z_trim = non_force[2] / G0`, with
+    `non_force` what `earth_acceleration_terms` returns for a zero force. On a
+    flat non-rotating Earth that remainder is `g_b` alone and its z component is
+    `G0 cos(phi) cos(theta)` -- so this REDUCES to the old expression, and under
+    `earth.FLAT` it is BIT-IDENTICAL to `cos(phi) cos(theta)` at the trimmed
+    state, measured, not merely close. On the rotating ellipsoid
+    it does not: gravity at 47N and 12,192 m is 9.7864 m/s^2 rather than `G0`,
+    and the Coriolis and centrifugal terms are in the remainder too. Measured on
+    the still-air 747 there, the trimmed load factor is 0.993109 against
+    `cos(theta0) = 0.996777` -- 3.67e-3 g, which is 3.7x this gate's own
+    tolerance. Keeping the old expression would have failed every correct
+    rotating-Earth run, and widening the tolerance to admit it would have been
+    choosing a number to make a check pass.
     """
     del field, controls
-    n_z = load_factor_series(traj, ac)
-    dcm = np.asarray(quat_to_dcm(jnp.asarray(traj.quat[0])))
-    theta0 = float(np.arcsin(np.clip(-dcm[2, 0], -1.0, 1.0)))
-    offset = abs(float(n_z[0]) - np.cos(theta0))
+    n_z = load_factor_series(traj, ac, earth_model)
+    # theta in the LOCAL frame at the first sample's own position, which is what
+    # "level flight" means. `traj.quat[0]` is body -> ECEF and taking its pitch
+    # directly would give the angle to the equatorial plane instead.
+    first = jax.tree.map(lambda column: column[0], viz.states(traj))
+    theta0 = float(matrix_to_euler(dcm_body_to_ned(first, traj.anchor))[1])
+    non_force, _ = dynamics.earth_acceleration_terms(
+        jnp.zeros(3), jnp.zeros(3), ac.mass, ac.inertia, ac.inertia_inv,
+        first.vel_body, first.omega, first.quat,
+        absolute_ecef(first, traj.anchor), earth_model,
+    )
+    trimmed = float(non_force[2]) / float(G0)
+    offset = abs(float(n_z[0]) - trimmed)
 
     still_air = float(np.abs(np.asarray(traj.wind_ned)).max()) == 0.0
     if still_air:
         return _verdict(
             offset, 1e-3, "gate", "trimmed start",
-            f"|n_z[0] - cos(theta0)| = {offset:.3e} g in STILL AIR, where the "
-            f"trimmed value is exactly cos(theta0) = {np.cos(theta0):.6f}.",
+            f"|n_z[0] - n_z_trim| = {offset:.3e} g in STILL AIR, where the "
+            f"trimmed value is exactly {trimmed:.6f} -- the non-force remainder "
+            f"of this Earth model, which is cos(theta0) = {np.cos(theta0):.6f} "
+            f"only on a flat non-rotating one.",
             0,
         )
 
@@ -325,7 +430,7 @@ def trimmed_start(traj, ac: Aircraft, controls: Controls, field) -> Check:
         kind="report",
         passed=None,
         detail=(
-            f"starts {offset:.4f} g off cos(theta0) = {np.cos(theta0):.6f}, which "
+            f"starts {offset:.4f} g off the trimmed {trimmed:.6f}, which "
             f"is {fraction * 100:.1f}% of this run's own peak excursion "
             f"({excursion:.3f} g). In a 1/r field there is no trimmed start -- "
             f"40 core radii still leaves 0.0384 g -- so this is reported, not "
@@ -389,6 +494,29 @@ class AlphaBand(NamedTuple):
         )
 
 
+def _air_relative(traj):
+    """Body-axis velocity relative to the air, at every recorded sample.
+
+    **THIS WAS `jax.vmap(dynamics.relative_velocity)(vel_body, traj.quat, wind)`
+    AND THE MIDDLE ARGUMENT CHANGED MEANING UNDER IT.** The recorded quaternion
+    is body -> ECEF; that call needed body -> NED, and both are valid rotations,
+    so it would have gone on returning a plausible number resolved in the wrong
+    frame -- `dynamics.relative_velocity_ned` measures the damage at 28.3 m/s of
+    airspeed and a sign-flipped alpha.
+
+    The local matrix is formed here and the one-line subtraction written out, as
+    `dynamics.derivatives` and `sensors.sense` both do with the same matrix in
+    hand, rather than round-tripping a matrix through a quaternion to reach a
+    function that only accepts one. Private and shared by the two callers below,
+    so the frame is decided once rather than twice.
+    """
+    states = viz.states(traj)
+    dcm = jax.vmap(dcm_body_to_ned, in_axes=(0, None))(states, traj.anchor)
+    return states.vel_body - jnp.einsum(
+        "nji,nj->ni", dcm, jnp.asarray(traj.wind_ned)
+    )
+
+
 def _band(peak_deg: float) -> str:
     if peak_deg < ALPHA_LINEAR_DEG:
         return "linear"
@@ -408,10 +536,7 @@ def alpha_band(traj, field, window) -> AlphaBand:
     Latent bug (e) was a gauge that could not see half of its own invalid range.
     """
     del field  # alpha comes from the recorded wind, not a re-evaluated field
-    vel_rel = jax.vmap(dynamics.relative_velocity)(
-        jnp.asarray(traj.vel_body), jnp.asarray(traj.quat), jnp.asarray(traj.wind_ned)
-    )
-    _, alpha, _ = jax.vmap(air_data)(vel_rel)
+    _, alpha, _ = jax.vmap(air_data)(_air_relative(traj))
     alpha_deg = np.abs(np.asarray(alpha)) * RAD2DEG
 
     window = np.asarray(window, dtype=bool)
@@ -460,12 +585,15 @@ def recovery_band(traj, ac: Aircraft) -> Check:
     """
     mach_lo, mach_hi = (float(v) for v in ac.valid_mach)
     alt_lo, alt_hi = (float(v) for v in ac.valid_altitude)
-    altitude = -np.asarray(traj.pos_ned)[:, 2]
-
-    vel_rel = jax.vmap(dynamics.relative_velocity)(
-        jnp.asarray(traj.vel_body), jnp.asarray(traj.quat), jnp.asarray(traj.wind_ned)
+    # GEODETIC, not -pos_ned[2]. `ac.valid_altitude` is the band the derivatives
+    # were recovered at, which is a height above the ellipsoid; the tangent-plane
+    # height would drift out of it by 785 m over 100 km of level flight and
+    # report an excursion the aircraft never flew.
+    altitude = np.asarray(
+        jax.vmap(geodetic_altitude, in_axes=(0, None))(viz.states(traj), traj.anchor)
     )
-    V, _, _ = jax.vmap(air_data)(vel_rel)
+
+    V, _, _ = jax.vmap(air_data)(_air_relative(traj))
     mach = np.asarray(V) / np.asarray(speed_of_sound(jnp.asarray(altitude)))
 
     axes, worst = [], np.zeros(len(altitude))
@@ -540,6 +668,27 @@ def lateral_symmetry(traj) -> Check:
     Applies only to a symmetric encounter, so the caller decides whether to run
     it. It is exactly zero when it holds, not merely small, which is what lets
     the tolerance be this tight.
+
+    **THAT ZERO IS A FLAT-EARTH ZERO, AND ON A ROTATING ONE THIS CHECK NOW FIRES
+    ON A CORRECT RUN. IT IS DELIBERATELY LEFT ALONE.** The argument above is
+    about the FIELD and it still holds -- a field with no spanwise structure
+    still produces no lateral response. What has changed is that the field is no
+    longer the only lateral input: the trim itself is banked by 0.148 deg to
+    balance Coriolis, and `2 Omega x v` drives a real, small lateral motion for
+    the whole run. Measured on the still-air 747 at 47N, 12,192 m over 30 s:
+    5.04e-7 under `WGS84_J2` against 3.53e-15 under `earth.FLAT`, which is the
+    number this tolerance was set from and which `FLAT` still reproduces.
+
+    Nothing here is retuned, for two reasons. There is no exact non-zero value to
+    compare against -- the Coriolis lateral response is a dynamic quantity, not a
+    closed form -- and the only instrument that could separate it from a defect
+    is a second run with `Omega = 0`, which this module does not do and says why
+    in its own docstring: "a check cannot be computed by the run it is about".
+    Widening the tolerance to 1e-6 would admit the Coriolis response and would
+    also admit a genuine lateral defect an order larger than the one this was
+    built to catch, and picking a number to make a check pass is what PROJECT.md
+    forbids in as many words. So the measurement is recorded here and the
+    decision belongs to the ledger re-measurement, not to this function.
     """
     lateral = np.concatenate([
         np.abs(np.asarray(traj.vel_body)[:, 1]),
@@ -599,7 +748,9 @@ def recorded_wind_matches_field(traj, field) -> WindMatch:
     the moment a stochastic field lands: re-evaluating a Dryden model at a logged
     state splits the key again and returns a different realisation.
     """
-    analytic = np.asarray(jax.jit(jax.vmap(field))(jnp.asarray(traj.pos_ned)))
+    # The field is sampled in ITS OWN frame -- local NED offsets from the run
+    # anchor -- which is where `wind.field_model` sampled it during the flight.
+    analytic = np.asarray(jax.jit(jax.vmap(field))(jnp.asarray(viz.pos_ned(traj))))
     recorded = np.asarray(traj.wind_ned)
     unshifted = np.abs(recorded - analytic).max(axis=1)
     shifted = np.abs(recorded[1:] - analytic[:-1]).max(axis=1)
@@ -618,7 +769,7 @@ def recorded_wind_matches_field(traj, field) -> WindMatch:
 
 
 def run_checks(traj, ac: Aircraft, controls: Controls, field, window,
-               symmetric: bool = True) -> list[Check]:
+               earth_model: earth.EarthModel, symmetric: bool = True) -> list[Check]:
     """Every check this run supports, in the order a badge row should read them.
 
     Gates first, then reports, then tripwires -- so the thing that can condemn
@@ -629,10 +780,15 @@ def run_checks(traj, ac: Aircraft, controls: Controls, field, window,
     is a claim at all. It is the caller's statement about the FIELD, and getting
     it wrong would turn a real defect into a skipped check, so it has no default
     guess -- `True` is right for all four fields the project currently holds.
+
+    `earth_model` likewise has no default. The anchor rides along on the
+    trajectory because it says where the recorded numbers ARE; which Earth the
+    plant was flown over is a separate statement, and three of the checks below
+    re-invert the plant to make their measurement.
     """
     gates = [
-        trimmed_start(traj, ac, controls, field),
-        energy_closure(traj, ac, field),
+        trimmed_start(traj, ac, controls, field, earth_model),
+        energy_closure(traj, ac, field, earth_model),
         alpha_band(traj, field, window).as_check(),
         # Listed among the gates even though it degrades to `report` for an
         # aircraft that declares no band. It belongs at the top either way: a
@@ -642,7 +798,7 @@ def run_checks(traj, ac: Aircraft, controls: Controls, field, window,
         recovery_band(traj, ac),
         recorded_wind_matches_field(traj, field).as_check(),
     ]
-    profile = energy_residual_profile(traj, ac, field)
+    profile = energy_residual_profile(traj, ac, field, earth_model)
     peak = int(profile.per_step.argmax())
     reports = [
         Check(
@@ -660,7 +816,7 @@ def run_checks(traj, ac: Aircraft, controls: Controls, field, window,
             worst_index=peak + 1,
         ),
     ]
-    tripwires = [quaternion_norm(traj), field_divergence(field, traj.pos_ned)]
+    tripwires = [quaternion_norm(traj), field_divergence(field, viz.pos_ned(traj))]
     if symmetric:
         tripwires.append(lateral_symmetry(traj))
     return gates + reports + tripwires

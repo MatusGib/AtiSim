@@ -51,13 +51,14 @@ import numpy as np
 from matplotlib.animation import FuncAnimation
 from matplotlib.patches import Polygon
 
+from atisim import earth
 from atisim import manual as man
 from atisim.aircraft import Aircraft
 from atisim.autopilot import Gains, Targets, wrap_pi
 from atisim.integrate import SimState, step
 from atisim.manual import Controller, ManualGains, Mode, PilotInput
 from atisim.sensors import AirData, Accelerations, accelerometers, sense
-from atisim.state import Controls, quat_to_dcm
+from atisim.state import Controls, dcm_body_to_ned, pos_ned as state_pos_ned
 from atisim.units import RAD2DEG
 from atisim.viz import Recorder, Trajectory
 from atisim.wind import (
@@ -672,11 +673,16 @@ class Panel:
     def __init__(
         self,
         targets: Targets,
+        anchor: earth.Anchor,
         *,
         window: float = 60.0,
         fps: float = 20.0,
         aircraft_name: str = "boeing747",
     ):
+        # The run's anchor, held here rather than passed to `update` every frame:
+        # it is constant for a run, exactly like `targets`, and `sensors.sense`
+        # cannot read an attitude or an altitude without it.
+        self.anchor = anchor
         self.targets = targets
         self.window = window
         self.fps = fps
@@ -925,7 +931,7 @@ class Panel:
     ) -> list:
         # Sensed from the wind the last step applied, so the readouts are
         # air-relative under a wind field rather than quietly ground-relative.
-        air = sense(sim.state, sim.wind_ned)
+        air = sense(sim.state, self.anchor, sim.wind_ned)
         r = Readout(
             t=t,
             air=air,
@@ -1015,6 +1021,8 @@ class LiveSim:
         mgains: ManualGains,
         ac: Aircraft,
         panel: Panel,
+        anchor: earth.Anchor,
+        earth_model: earth.EarthModel,
         *,
         dt: float = 0.02,
         real_time: bool = True,
@@ -1029,6 +1037,10 @@ class LiveSim:
         self.mgains = mgains
         self.ac = ac
         self.panel = panel
+        # Where the run is flying and which Earth it is over. Neither has a
+        # default, per `earth.py`: latitude changes the answer.
+        self.anchor = anchor
+        self.earth_model = earth_model
         self.dt = dt
         self.real_time = real_time
         self.max_steps_per_frame = max_steps_per_frame
@@ -1042,7 +1054,7 @@ class LiveSim:
 
         self.t = 0.0
         self.controls = man.current_controls(ctl)
-        self.recorder = Recorder()
+        self.recorder = Recorder(anchor)
         self.recorder.append(self.t, sim, self.controls, ctl.mode)
         self._backlog = 0.0
         self._last_wall = None
@@ -1058,7 +1070,7 @@ class LiveSim:
         self._backlog += seconds
         steps = 0
         while self._backlog >= self.dt and steps < self.max_steps_per_frame:
-            air = sense(self.sim.state, self.sim.wind_ned)
+            air = sense(self.sim.state, self.anchor, self.sim.wind_ned)
             if self.panel.take_toggle_request():
                 self.ctl = man.toggle(self.ctl, air, self.targets, self.gains, self.ac)
             if self.panel.take_trim_here_request():
@@ -1075,7 +1087,10 @@ class LiveSim:
                 self.ac,
                 self.dt,
             )
-            self.sim = step(self.sim, self.controls, self.dt, self.ac, self.wind_model)
+            self.sim = step(
+                self.sim, self.controls, self.dt, self.ac,
+                self.anchor, self.earth_model, self.wind_model,
+            )
             self.t += self.dt
             self._backlog -= self.dt
             steps += 1
@@ -1125,6 +1140,7 @@ class LiveSim:
         self.advance(elapsed)
         accel = accelerometers(
             self.sim.state, self.controls, self.ac,
+            self.anchor, self.earth_model,
             self.sim.wind_ned, self.sim.omega_gust,
         )
         field = None if self.field_range is None else self.field_range(self.sim.state)
@@ -1142,7 +1158,7 @@ class LiveSim:
 # ---------------------------------------------------------------------------
 
 
-def vortex_range(array, *, label: str):
+def vortex_range(array, anchor: earth.Anchor, *, label: str):
     """Distance to the next VortexArray core ahead, as a `State -> FieldRange`.
 
     The cores are infinite line vortices running east-west: `wind.vortex_wind`
@@ -1150,15 +1166,21 @@ def vortex_range(array, *, label: str):
     component. So the distance is a perpendicular north distance whatever the
     heading, and there is no bearing -- you cannot miss a line by turning away
     from it.
+
+    `anchor` is closed over because the cores are stated in the FIELD's frame --
+    local NED offsets from the run anchor -- and a `State` is ECEF, so the two
+    can only be compared after the rotation this applies.
     """
     cores = np.sort(np.asarray(array.north, dtype=float))
 
     def ranged(state) -> FieldRange:
-        north = float(state.pos_ned[0])
+        north = float(state_pos_ned(state, anchor)[0])
         ahead = cores[cores >= north - 1e-9]
         target = float(ahead[0]) if len(ahead) else float(cores[-1])
         index = int(np.searchsorted(cores, target)) + 1
-        vel_ned = np.asarray(quat_to_dcm(state.quat) @ state.vel_body, dtype=float)
+        vel_ned = np.asarray(
+            dcm_body_to_ned(state, anchor) @ state.vel_body, dtype=float
+        )
         return FieldRange(
             label=f"{label} core {index}",
             distance=target - north,
@@ -1169,15 +1191,21 @@ def vortex_range(array, *, label: str):
     return ranged
 
 
-def updraft_range(column, *, label: str):
-    """Range and bearing to an UpdraftColumn, which IS a point and so has both."""
+def updraft_range(column, anchor: earth.Anchor, *, label: str):
+    """Range and bearing to an UpdraftColumn, which IS a point and so has both.
+
+    `anchor` is closed over for the reason `vortex_range` gives.
+    """
     north0, east0 = float(column.north), float(column.east)
 
     def ranged(state) -> FieldRange:
-        north, east = float(state.pos_ned[0]), float(state.pos_ned[1])
+        pos = state_pos_ned(state, anchor)
+        north, east = float(pos[0]), float(pos[1])
         dn, de = north0 - north, east0 - east
         distance = float(np.hypot(dn, de))
-        vel_ned = np.asarray(quat_to_dcm(state.quat) @ state.vel_body, dtype=float)
+        vel_ned = np.asarray(
+            dcm_body_to_ned(state, anchor) @ state.vel_body, dtype=float
+        )
         closing = (
             float((dn * vel_ned[0] + de * vel_ned[1]) / distance)
             if distance > 1e-9
@@ -1195,6 +1223,7 @@ def updraft_range(column, *, label: str):
 
 def field_ahead(
     name: str,
+    anchor: earth.Anchor,
     *,
     airspeed: float,
     altitude: float,
@@ -1216,6 +1245,17 @@ def field_ahead(
     `lead_in` is in core radii, matching vortex.py. Below about 12 the 1/r far
     field launches the aircraft out of equilibrium (PROJECT.md section 9,
     session 3). `sharpness` is a DECLARED modelling parameter, not source data.
+
+    **THE FIELD'S ORIGIN IS THE ANCHOR, NOT SEA LEVEL, AND THAT CHANGED HERE.**
+    Field coordinates are local NED offsets from the run anchor, and `trim`
+    places the aircraft AT the anchor -- so the anchor sits at the flight
+    altitude, not on the ground. A core at the aircraft's own altitude is
+    therefore at `down = anchor.h - altitude`, which is 0 for the ordinary case
+    where the caller anchors at the altitude it trims for. It was `-altitude`,
+    which under the anchored frame would have put the cores a whole cruise
+    altitude ABOVE the aircraft and produced a run that met nothing. The
+    expression is written from `anchor.h` rather than as a bare 0.0 so it stays
+    right for a caller that anchors somewhere else.
     """
     if name == "none":
         return zero_wind, None, "still air"
@@ -1223,9 +1263,10 @@ def field_ahead(
     if name in PARKS_CASES:
         case = PARKS_CASES[name]
         lead = lead_in * case["r0"]
+        core_down = float(anchor.h) - altitude
         array = VortexArray(
             north=jnp.array([lead, lead + case["spacing"]]),
-            down=jnp.array([-altitude, -altitude]),
+            down=jnp.array([core_down, core_down]),
             r0=jnp.array(case["r0"]),
             v0=jnp.array(case["v0"]),
         )
@@ -1234,8 +1275,8 @@ def field_ahead(
             f"first core {lead:.0f} m ahead ({lead / airspeed:.0f} s at cruise)"
         )
         return (
-            field_model(lambda p: vortex_wind(p, array)),
-            vortex_range(array, label=f"vortex {name}"),
+            field_model(lambda p: vortex_wind(p, array), anchor),
+            vortex_range(array, anchor, label=f"vortex {name}"),
             note,
         )
 
@@ -1261,8 +1302,8 @@ def field_ahead(
             f"sharpness {sharpness:.1f} (DECLARED), centre {lead:.0f} m ahead"
         )
         return (
-            field_model(lambda p: updraft_wind(p, column)),
-            updraft_range(column, label="updraft column"),
+            field_model(lambda p: updraft_wind(p, column), anchor),
+            updraft_range(column, anchor, label="updraft column"),
             note,
         )
 
@@ -1276,6 +1317,8 @@ def run_live(
     gains: Gains,
     mgains: ManualGains,
     ac: Aircraft,
+    anchor: earth.Anchor,
+    earth_model: earth.EarthModel,
     *,
     dt: float = 0.02,
     fps: float = 20.0,
@@ -1291,7 +1334,7 @@ def run_live(
     # sim's real-time budget. Both controllers are warmed, so the first press of
     # `a` does not stall either. Everything here is pure; the results are
     # discarded and `toggle` returns a new controller rather than mutating one.
-    warm_air = sense(sim.state, sim.wind_ned)
+    warm_air = sense(sim.state, anchor, sim.wind_ned)
     warm, _ = man.update(ctl, warm_air, man.NEUTRAL, targets, gains, mgains, ac, dt)
     other = man.toggle(ctl, warm_air, targets, gains, ac)
     man.update(other, warm_air, man.NEUTRAL, targets, gains, mgains, ac, dt)
@@ -1300,12 +1343,16 @@ def run_live(
     # compilation -- warming zero_wind here would leave the real one to compile
     # inside the first frame, which is precisely what this warm-up exists to
     # prevent.
-    step(sim, warm, dt, ac, wind_model)
-    accelerometers(sim.state, warm, ac, sim.wind_ned, sim.omega_gust)
+    step(sim, warm, dt, ac, anchor, earth_model, wind_model)
+    accelerometers(
+        sim.state, warm, ac, anchor, earth_model, sim.wind_ned, sim.omega_gust
+    )
 
-    panel = Panel(targets, window=window, fps=fps, aircraft_name=aircraft_name)
+    panel = Panel(
+        targets, anchor, window=window, fps=fps, aircraft_name=aircraft_name
+    )
     live = LiveSim(
-        sim, ctl, targets, gains, mgains, ac, panel,
+        sim, ctl, targets, gains, mgains, ac, panel, anchor, earth_model,
         dt=dt, wind_model=wind_model, field_range=field_range,
     )
     animation = FuncAnimation(

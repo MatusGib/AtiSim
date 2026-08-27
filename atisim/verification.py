@@ -62,7 +62,8 @@ def oscillator_refinement(dts, t_end=2.0):
     return errors, fitted_order(dts, errors)
 
 
-def fixed_control_refinement(ac, airspeed, altitude, dts, dt_ref, t_end=4.0,
+def fixed_control_refinement(ac, airspeed, altitude, dts, dt_ref, anchor,
+                             earth_model, t_end=4.0,
                              d_elevator=0.02, wind_model=None, start_north=0.0):
     """Refine the real 6-DOF rollout against a fine-step reference.
 
@@ -70,10 +71,19 @@ def fixed_control_refinement(ac, airspeed, altitude, dts, dt_ref, t_end=4.0,
     wind sample or control update applied at the wrong RK4 stage.
 
     `dts` must stay in the asymptotic range. Round-off puts a floor under the
-    error -- for the 747 at 40,000 ft that floor is about 7e-11 m, because
-    pos_ned carries a 12,184 m altitude that float64 resolves to 2.7e-12 m -- and
+    error -- for the 747 at 40,000 ft that floor was about 7e-11 m, because
+    pos_ned carried a 12,184 m altitude that float64 resolves to 2.7e-12 m -- and
     a sequence crossing it fits partly to round-off. See the test for the
     measured pairwise orders either side of the floor.
+
+    THAT FLOOR IS NOT RE-MEASURED HERE and the figure above is the pre-ECEF one.
+    The state now accumulates an ECEF OFFSET from the anchor rather than an NED
+    position, and the two carry different magnitudes at the same altitude, so the
+    round-off floor moves. Storing an offset rather than an absolute ECEF
+    coordinate is what keeps the move small -- an absolute coordinate's ulp is
+    512x coarser -- but small is not zero and it has not been measured. Task 14
+    re-measures F4 and folds this in; until then, treat the number above as
+    superseded rather than current.
 
     `wind_model` and `start_north` exist because the paragraph above promises
     this function can see a wind sample applied at the wrong stage and, with no
@@ -93,13 +103,30 @@ def fixed_control_refinement(ac, airspeed, altitude, dts, dt_ref, t_end=4.0,
     import jax
 
     from atisim.integrate import init_sim, rollout
+    from atisim.state import dcm_body_to_ned, dcm_to_quat, pos_ned, state_from_ned
     from atisim.trim import trim, trimmed_controls, trimmed_state
     from atisim.wind import zero_wind
 
-    x, _ = trim(jnp.array(airspeed), jnp.array(altitude), ac)
-    state = trimmed_state(x[0], jnp.array(airspeed), jnp.array(altitude))
-    state = state._replace(
-        pos_ned=state.pos_ned.at[0].set(jnp.asarray(start_north, dtype=float))
+    x, _ = trim(jnp.array(airspeed), jnp.array(altitude), ac, anchor, earth_model)
+    # Due north, matching `trim`'s own default heading: the refinement measures a
+    # trajectory difference and the two must be trimmed for the same track.
+    state = trimmed_state(
+        x[0], x[3], jnp.array(airspeed), jnp.array(altitude), anchor,
+        jnp.array(0.0),
+    )
+    # `start_north` used to be a one-element write into `pos_ned`. It is rebuilt
+    # through `state_from_ned` instead of by writing into `pos_ecef`, and the
+    # difference is not cosmetic: the trimmed attitude is LEVEL, and level is a
+    # statement about the local frame at the aircraft's own position. Writing the
+    # offset in directly would carry the anchor's attitude to the new place and
+    # tilt it by start_north/R. `trimmed_state` puts the aircraft AT the anchor,
+    # so the body -> NED matrix recovered here is exactly the one it built.
+    state = state_from_ned(
+        jnp.array([jnp.asarray(start_north, dtype=float), 0.0, 0.0]),
+        state.vel_body,
+        dcm_to_quat(dcm_body_to_ned(state, anchor)),
+        state.omega,
+        anchor,
     )
     controls = trimmed_controls(x[1] + d_elevator, x[2])
     model = zero_wind if wind_model is None else wind_model
@@ -107,9 +134,14 @@ def fixed_control_refinement(ac, airspeed, altitude, dts, dt_ref, t_end=4.0,
     def final_pos(dt):
         sim = init_sim(state, jax.random.PRNGKey(0))
         _, traj = rollout(
-            sim, controls, jnp.array(dt), ac, int(round(t_end / dt)), wind_model=model
+            sim, controls, jnp.array(dt), ac, int(round(t_end / dt)),
+            anchor, earth_model, wind_model=model,
         )
-        return np.asarray(traj.pos_ned[-1])
+        # The refinement is measured in the LOCAL frame, as it always was: the
+        # errors are metres of trajectory difference and reading them as ECEF
+        # components would make them depend on where on the Earth the run was.
+        final = jax.tree.map(lambda column: column[-1], traj)
+        return np.asarray(pos_ned(final, anchor))
 
     reference = final_pos(dt_ref)
     errors = np.array([
@@ -119,24 +151,37 @@ def fixed_control_refinement(ac, airspeed, altitude, dts, dt_ref, t_end=4.0,
     return errors, fitted_order(dts, errors)
 
 
-def newton_residual_history(airspeed, altitude, ac, iterations=6):
+def newton_residual_history(airspeed, altitude, ac, anchor, earth_model,
+                            heading=0.0, iterations=6):
     """Residual norm after each Newton iteration, from trim.py's own start point.
 
     `trim.trim` runs a fixed iteration count inside `lax.scan` and returns only
     the final answer, so the convergence rate is not observable through it. This
     repeats the same update -- verified against trim.py's scan body as the
-    identical undamped Newton step, no damping and no least squares -- and keeps
-    every iterate.
+    identical undamped step, no damping -- and keeps every iterate.
+
+    **THE STEP IS `lstsq`, NOT `solve`, AND THAT IS NOT A LOOSENING.** It is what
+    `trim.trim`'s scan body actually does, and this function's whole claim is
+    that it repeats that body. `trim` moved to `lstsq` when it gained `rudder` as
+    an unknown: an aircraft with no rudder authority -- the Cessna 172, whose
+    CYdr = Cldr = Cndr are all zero deliberately -- has an identically zero sixth
+    Jacobian column, and `solve` on a rank-5 system returns six NaNs in silence.
+    Keeping `solve` here would have made this measure the convergence of a solver
+    the package does not ship, and returned NaN for a registry aircraft while
+    `trim` converged for it. `trim.trim`'s own comment records the measurement
+    that settled it: every aircraft converges to 1e-13, and an unsolvable request
+    still shows up as a large residual rather than as a NaN.
     """
     from atisim.trim import INITIAL_GUESS, residual
 
+    args = (airspeed, altitude, ac, anchor, earth_model, heading)
     x = INITIAL_GUESS
-    history = [float(jnp.linalg.norm(residual(x, airspeed, altitude, ac)))]
+    history = [float(jnp.linalg.norm(residual(x, *args)))]
     for _ in range(iterations):
-        r = residual(x, airspeed, altitude, ac)
-        jacobian = jax.jacfwd(residual)(x, airspeed, altitude, ac)
-        x = x - jnp.linalg.solve(jacobian, r)
-        history.append(float(jnp.linalg.norm(residual(x, airspeed, altitude, ac))))
+        r = residual(x, *args)
+        jacobian = jax.jacfwd(residual)(x, *args)
+        x = x - jnp.linalg.lstsq(jacobian, r)[0]
+        history.append(float(jnp.linalg.norm(residual(x, *args))))
     return np.array(history)
 
 
@@ -202,7 +247,7 @@ class FreeFallResult(NamedTuple):
     elapsed: float  # s, the clock the wind model advanced itself
 
 
-def free_fall_through_a_swinging_wind(ac, dt=0.02, n=300):
+def free_fall_through_a_swinging_wind(ac, anchor, dt=0.02, n=300):
     """Fly a de-aerodynamicised body through a violently time-varying uniform wind.
 
     The second of the two gust-modelling errors PROJECT.md section 2 names. An
@@ -216,6 +261,34 @@ def free_fall_through_a_swinging_wind(ac, dt=0.02, n=300):
     is exact, so free fall is reproduced to round-off:
 
         pos_ned(t) = pos0 + v_ned(0)*t + [0, 0, g]*t^2/2
+
+    **THE RUN IS FLOWN UNDER `earth.FLAT` AND THAT IS NOT NEGOTIABLE HERE.** The
+    line above is the flat, non-rotating, constant-g solution; under `WGS84_J2`
+    the body is also subject to Coriolis, centrifugal and an inverse-square-plus-
+    J2 gravity, and it would not follow it. `FLAT` is the configuration of this
+    one plant in which the closed form IS the answer, which is what lets the
+    residual be read as "does the wind reach the trajectory" and nothing else.
+    `earth_model` is therefore NOT an argument -- offering one would let a caller
+    ask this function a question its reference cannot answer.
+
+    `FLAT` is not literally flat, and the residual it leaves is GEOMETRIC rather
+    than a defect. Its gravity is `G0` along the LOCAL geodetic vertical, which
+    rotates as the body travels, while the closed form uses the anchor's. Over
+    the default 6 s the body covers about 480 m of ground, which is 7.5e-5 rad of
+    vertical rotation, and the departure it leaves is **3.32e-3 m**, measured. It
+    grows as t^3 -- 3.32e-6 m at 0.6 s, 1.23e-4 at 2 s, 3.32e-3 at 6 s -- which
+    is the signature of an acceleration error rising linearly with distance
+    travelled, integrated twice, and not of anything stochastic or accumulating.
+
+    **THAT RESIDUAL IS BIT-IDENTICAL WITH THE WIND SWITCHED OFF, AND THAT IS THE
+    MEASUREMENT THAT MATTERS.** Re-running with the gust replaced by zeros gives
+    0.0033222180416032643 m against 0.0033222180416032643 m -- the same float,
+    not the same to a tolerance. So the wind-dependent part of this error is
+    EXACTLY zero, which is the claim the experiment exists to make, and the
+    3.3 mm is the coordinate system rather than a spurious -m dW/dt term. The
+    instrument therefore has its full discriminating power; what it lost is only
+    the ability to be asserted against round-off directly. A caller wanting that
+    should difference two wind settings rather than tighten this number.
 
     An invariance assertion is the WRONG instrument here and that is worth
     recording. Writing v~_b = v_b - C^T W(t) for the air-relative body velocity
@@ -237,18 +310,21 @@ def free_fall_through_a_swinging_wind(ac, dt=0.02, n=300):
     the result -- which is what lets the notebook and the test run the same code
     on the same aircraft.
     """
+    from atisim import earth
     from atisim.atmosphere import G0
     from atisim.integrate import SimState, rollout
     from atisim.loads import zero_increment
-    from atisim.state import State, euler_to_quat, quat_to_dcm
+    from atisim.state import dcm_body_to_ned, euler_to_quat, pos_ned, state_from_ned
     from atisim.trim import trimmed_controls
 
-    quat = euler_to_quat(jnp.array(0.3), jnp.array(-0.2), jnp.array(0.7))
-    state = State(
-        pos_ned=jnp.array([0.0, 0.0, -3000.0]),
-        vel_body=jnp.array([80.0, 0.0, 0.0]),
-        quat=quat,
-        omega=jnp.zeros(3),
+    quat_ned = euler_to_quat(jnp.array(0.3), jnp.array(-0.2), jnp.array(0.7))
+    start_ned = jnp.array([0.0, 0.0, -3000.0])
+    state = state_from_ned(
+        start_ned,
+        jnp.array([80.0, 0.0, 0.0]),
+        quat_ned,
+        jnp.zeros(3),
+        anchor,
     )
     # Throttle 0.5 against max_thrust = 0, so "no thrust" is a property of the
     # airframe rather than of the control input.
@@ -262,17 +338,25 @@ def free_fall_through_a_swinging_wind(ac, dt=0.02, n=300):
         omega_gust=jnp.zeros(3),
         increment=zero_increment(),
     )
-    final, traj = rollout(sim, controls, jnp.array(dt), ac, n, wind_model=_swinging_wind)
+    final, traj = rollout(
+        sim, controls, jnp.array(dt), ac, n, anchor, earth.FLAT,
+        wind_model=_swinging_wind,
+    )
 
     t = np.arange(1, n + 1) * dt
-    v_ned0 = np.asarray(quat_to_dcm(quat) @ state.vel_body)
+    # The initial NED velocity, taken at the aircraft's own position. Straight up
+    # from the anchor is the one place the local frame and the anchor's coincide
+    # exactly, and `start_ned` is on that line, so this is the anchor frame the
+    # closed form below is written in.
+    v_ned0 = np.asarray(dcm_body_to_ned(state, anchor) @ state.vel_body)
     gravity = np.array([0.0, 0.0, float(G0)])
     exact = (
-        np.asarray(state.pos_ned)
+        np.asarray(start_ned)
         + t[:, None] * v_ned0
         + 0.5 * (t**2)[:, None] * gravity
     )
-    error = float(np.abs(np.asarray(traj.pos_ned) - exact).max())
+    flown = np.asarray(jax.vmap(pos_ned, in_axes=(0, None))(traj, anchor))
+    error = float(np.abs(flown - exact).max())
 
     # Reported so a caller can assert the wind really swung, rather than the
     # model quietly returning zeros and the experiment passing for that reason.

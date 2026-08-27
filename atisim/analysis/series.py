@@ -20,10 +20,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from atisim import checks, dynamics, viz
+from atisim import checks, dynamics, earth, viz
 from atisim.aero import air_data
 from atisim.aircraft import Aircraft
-from atisim.state import quat_to_euler
 from atisim.units import RAD2DEG
 
 
@@ -38,9 +37,9 @@ class Series(NamedTuple):
     """
 
     t: np.ndarray  # s
-    north: np.ndarray  # m
-    east: np.ndarray  # m
-    altitude: np.ndarray  # m
+    north: np.ndarray  # m, LOCAL NED from the run anchor
+    east: np.ndarray  # m, LOCAL NED from the run anchor
+    altitude: np.ndarray  # m, GEODETIC -- not -pos_d, which is a tangent-plane height
     w_up: np.ndarray  # m/s, vertical gust POSITIVE UP (= -wind_d)
     q_gust_deg: np.ndarray  # deg/s, SIM TRUTH -- no instrument can sense it
     alpha_deg: np.ndarray  # deg, AIR-RELATIVE
@@ -53,17 +52,27 @@ class Series(NamedTuple):
     airspeed: np.ndarray  # m/s, true
 
 
-def build(traj: viz.Trajectory, ac: Aircraft) -> Series:
-    """Derive every plotted channel from one recorded run."""
+def build(
+    traj: viz.Trajectory, ac: Aircraft, earth_model: earth.EarthModel
+) -> Series:
+    """Derive every plotted channel from one recorded run.
+
+    The anchor rides along on `traj`, so the ground track and the altitude are
+    referred to the frame the run was actually flown in. `earth_model` does not
+    -- it is a statement about the plant rather than about the record -- and
+    `checks.load_factor_series` below re-inverts the plant, so it is asked for.
+    No default: `FLAT` and `WGS84_J2` give different load factors.
+    """
     air = viz.derived(traj)  # air-relative, from the RECORDED wind
 
     vel_body = jnp.asarray(traj.vel_body)
     _, alpha_inertial, _ = jax.vmap(air_data)(vel_body)
+    track = viz.pos_ned(traj)
 
     return Series(
         t=np.asarray(traj.t),
-        north=np.asarray(traj.pos_ned)[:, 0],
-        east=np.asarray(traj.pos_ned)[:, 1],
+        north=track[:, 0],
+        east=track[:, 1],
         altitude=air.altitude,
         w_up=-np.asarray(traj.wind_ned)[:, 2],
         q_gust_deg=np.asarray(traj.omega_gust)[:, 1] * RAD2DEG,
@@ -72,7 +81,7 @@ def build(traj: viz.Trajectory, ac: Aircraft) -> Series:
         beta_deg=air.beta * RAD2DEG,
         theta_deg=air.theta * RAD2DEG,
         q_deg=np.asarray(traj.omega)[:, 1] * RAD2DEG,
-        n_z=checks.load_factor_series(traj, ac),
+        n_z=checks.load_factor_series(traj, ac, earth_model),
         elevator_deg=np.asarray(traj.controls)[:, 0] * RAD2DEG,
         airspeed=air.airspeed,
     )

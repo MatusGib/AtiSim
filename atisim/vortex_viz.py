@@ -7,13 +7,21 @@ It is deliberately separate from `viz.py`. That module plots a FLOWN run --
 ground track, altitude, mode timeline -- and computes its incidence from
 `state.vel_body`, i.e. INERTIAL velocity. That is fine in still air and wrong
 under wind, where it reports ground-relative angle of attack. Everything here
-is air-relative, computed from `dynamics.relative_velocity`, which is the whole
-point: in a Parks Case 1 encounter the two differ by up to 7 deg.
+is AIR-RELATIVE, formed against the local frame at the aircraft's own position,
+which is the whole point: in a Parks Case 1 encounter the two differ by up to
+7 deg.
 
 Nothing here modifies `State`, `SimState` or `viz.Trajectory`. Load factor is
 recovered post hoc through `dynamics.load_factor`, and the wind is recovered by
 re-evaluating the model at each logged state -- exact for a deterministic
 position-dependent field, which is all this module currently handles.
+
+**ALTITUDE AND ALONG-TRACK POSITION IN AN `Encounter` ARE LOCAL-NED, NOT
+GEODETIC, AND DELIBERATELY SO.** They are plotted against a wind field, and a
+field is defined in the anchor's tangent plane -- so the coordinate that lines a
+flight path up with a vortex core is the same coordinate the core is stated in.
+The geodetic height belongs to `sensors.sense`; putting it on the field panel
+would draw the path 785 m off the cores at 100 km of track.
 """
 
 from functools import partial
@@ -25,11 +33,19 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Circle
 
-from atisim import dynamics, integrate, loads, trim, viz, wind
+from atisim import dynamics, earth, integrate, loads, trim, viz, wind
 from atisim.aero import air_data
 from atisim.aircraft import Aircraft
 from atisim.atmosphere import density
-from atisim.state import Controls, State, quat_to_euler
+from atisim.state import (
+    Controls,
+    State,
+    dcm_body_to_ned,
+    dcm_to_quat,
+    matrix_to_euler,
+    pos_ned,
+    state_from_ned,
+)
 from atisim.units import RAD2DEG
 
 # Wingrove & Bach 1994 Fig. 8, "maximum negative changes" per category. These
@@ -52,8 +68,8 @@ class Encounter(NamedTuple):
 
     label: str
     t: np.ndarray  # (n,) s
-    north: np.ndarray  # (n,) m
-    altitude: np.ndarray  # (n,) m
+    north: np.ndarray  # (n,) m, LOCAL NED from the run anchor
+    altitude: np.ndarray  # (n,) m, -pos_ned[2]: the FIELD's frame, not geodetic
     w_up: np.ndarray  # (n,) m/s, vertical gust at the aircraft, positive up
     q_gust: np.ndarray  # (n,) rad/s, pitching gust rate
     alpha_air: np.ndarray  # (n,) rad, AIR-RELATIVE
@@ -76,6 +92,8 @@ def fly(
     field,
     airspeed: float,
     altitude: float,
+    anchor: earth.Anchor,
+    earth_model: earth.EarthModel,
     *,
     label: str,
     start_north: float,
@@ -105,26 +123,53 @@ def fly(
 
     `load_model` is the general form, for a load model this function cannot
     build from the field alone. `strip=True` is exactly sugar for passing
-    `loads.strip_model(field, ac)`, so giving both is a contradiction rather
-    than an override and is refused.
+    `loads.strip_model(field, ac, anchor)`, so giving both is a contradiction
+    rather than an override and is refused.
+
+    **`start_north` IS NOW AN OFFSET FROM THE ANCHOR, AND SO IS THE ALTITUDE.**
+    `trim.trimmed_state` places the aircraft AT the anchor, so the anchor sits at
+    the flight altitude and the aircraft's NED offset from it is
+    `[start_north, 0, 0]` -- not `[start_north, 0, -altitude]`, which under the
+    anchored frame would start the run a whole cruise altitude above the field.
+    `altitude` is still carried because `trim` takes it and because the caller's
+    field is built at that height; the anchor is what actually places the
+    aircraft, exactly as `trim.trimmed_state` documents.
     """
     if strip and load_model is not None:
         raise ValueError(
             "pass strip=True or load_model, not both -- strip=True IS "
-            "load_model=loads.strip_model(field, ac), and silently preferring "
-            "one would hide which load path the run actually flew"
+            "load_model=loads.strip_model(field, ac, anchor), and silently "
+            "preferring one would hide which load path the run actually flew"
         )
-    x, _ = trim.trim(jnp.array(airspeed), jnp.array(altitude), ac)
-    alpha_trim = jnp.array(float(x[0]))
+    x, _ = trim.trim(
+        jnp.array(airspeed), jnp.array(altitude), ac, anchor, earth_model
+    )
     controls = trim.trimmed_controls(x[1], x[2])
     if strip:
-        load_model = loads.strip_model(field, ac)
+        load_model = loads.strip_model(field, ac, anchor)
 
-    state = trim.trimmed_state(alpha_trim, jnp.array(airspeed), jnp.array(altitude))
-    state = state._replace(pos_ned=jnp.array([start_north, 0.0, -altitude]))
+    # x[3] is the trimmed BANK, which the rotating-Earth trim solves for and did
+    # not exist before. Dropping it would start the run out of equilibrium in
+    # exactly the lateral channel Coriolis acts in.
+    # Heading zero: every encounter in this module flies due north, which is what
+    # makes `north` the along-track coordinate and what makes `lateral_symmetry`
+    # a claim about these fields at all.
+    state = trim.trimmed_state(
+        x[0], x[3], jnp.array(airspeed), jnp.array(altitude), anchor, jnp.array(0.0)
+    )
+    # Rebuilt through `state_from_ned` rather than written into `pos_ecef`, so
+    # the aircraft is LEVEL where it starts rather than level where the anchor
+    # is -- see the same note in `verification.fixed_control_refinement`.
+    state = state_from_ned(
+        jnp.array([start_north, 0.0, 0.0]),
+        state.vel_body,
+        dcm_to_quat(dcm_body_to_ned(state, anchor)),
+        state.omega,
+        anchor,
+    )
 
     return fly_from_state(
-        ac, field, state, controls,
+        ac, field, state, controls, anchor, earth_model,
         label=label, seconds=seconds, dt=dt, window=window,
         window_name=window_name, load_model=load_model,
     )
@@ -135,6 +180,8 @@ def fly_from_state(
     field,
     state,
     controls,
+    anchor: earth.Anchor,
+    earth_model: earth.EarthModel,
     *,
     label: str,
     seconds: float,
@@ -161,26 +208,28 @@ def fly_from_state(
     no writable gust-rate input and therefore carries no gradient at all; the
     default model would give atisim a term the other engine cannot have.
     """
-    model = wind.field_model(field) if wind_model is None else wind_model
+    model = wind.field_model(field, anchor) if wind_model is None else wind_model
     n = int(round(seconds / dt))
     # `logged_rollout`, not `rollout`: same `step`, wider scan output, so the run
     # can be written to an artifact carrying the wind it actually flew.
     # `test_vortex_viz.py` pins the headline pair against the pre-change values.
     _, log = integrate.logged_rollout(
         integrate.init_sim(state, jax.random.PRNGKey(0)),
-        controls, jnp.array(dt), ac, n, wind_model=model, load_model=load_model,
+        controls, jnp.array(dt), ac, n, anchor, earth_model,
+        wind_model=model, load_model=load_model,
     )
     hist = log.state
     controls_hist = jax.tree.map(lambda v: jnp.full(n, v), controls)
-    north = np.asarray(hist.pos_ned)[:, 0]
+    track = np.asarray(jax.vmap(pos_ned, in_axes=(0, None))(hist, anchor))
     return _measure(
-        label=label, hist=hist,
+        label=label, hist=hist, track=track,
         controls_hist=controls_hist,
         model=model, load_model=load_model, ac=ac, dt=dt,
-        window=(north >= window[0]) & (north <= window[1]),
+        anchor=anchor, earth_model=earth_model,
+        window=(track[:, 0] >= window[0]) & (track[:, 0] <= window[1]),
         window_name=window_name,
         log=integrate.trajectory_from_log(
-            np.arange(1, n + 1) * dt, log, controls_hist
+            np.arange(1, n + 1) * dt, log, controls_hist, anchor
         ),
     )
 
@@ -189,10 +238,13 @@ def _measure(
     *,
     label: str,
     hist: State,
+    track: np.ndarray,
     controls_hist: Controls,
     model,
     ac: Aircraft,
     dt: float,
+    anchor: earth.Anchor,
+    earth_model: earth.EarthModel,
     window: np.ndarray,
     window_name: str,
     load_model=None,
@@ -213,6 +265,10 @@ def _measure(
     elevator moves and `load_factor` needs the deflection that was actually
     flown at each sample.
 
+    `track` is the local-NED history, passed in rather than recomputed: the
+    caller already forms it to build the window mask, and the whole point of the
+    mask is that it and `Encounter.north` index the same coordinate.
+
     `load_model` is re-invoked per sample for exactly the reason the wind model
     is: this function receives a `State` trajectory, not a `SimState` one, so
     the increment cached on `SimState` is not in what it is handed. Omitting it
@@ -221,32 +277,38 @@ def _measure(
     `load_factor` inverts a force sum that `Cl`, `Cm` and `Cn` never enter.
     """
 
-    def analyse(pos_ned, vel_body, quat, omega, controls):
-        s = State(pos_ned=pos_ned, vel_body=vel_body, quat=quat, omega=omega)
+    def analyse(s: State, controls):
         wind_ned, omega_gust, _, _, _ = model(
             wind.zero_wind_state(), s, jax.random.PRNGKey(0), jnp.array(dt)
         )
         increment = None if load_model is None else load_model(s)
-        vel_rel = dynamics.relative_velocity(vel_body, quat, wind_ned)
+        # AIR-RELATIVE, against the LOCAL frame at the aircraft's own position.
+        # This was `dynamics.relative_velocity(vel_body, quat, wind_ned)` and
+        # `quat` changed meaning under it: body -> ECEF where body -> NED was
+        # wanted, which is 28.3 m/s of airspeed and a flipped alpha with nothing
+        # raised. Same one line as `sensors.sense` and for the same reason.
+        dcm_b2n = dcm_body_to_ned(s, anchor)
+        vel_rel = s.vel_body - dcm_b2n.T @ wind_ned
         _, alpha_air, _ = air_data(vel_rel)
-        _, alpha_inertial, _ = air_data(vel_body)
-        _, theta, _ = quat_to_euler(quat)
+        _, alpha_inertial, _ = air_data(s.vel_body)
+        _, theta, _ = matrix_to_euler(dcm_b2n)
         return jnp.array([
             -wind_ned[2], omega_gust[1], alpha_air, alpha_inertial, theta,
-            omega[1],
-            dynamics.load_factor(s, controls, ac, wind_ned, omega_gust, increment),
+            s.omega[1],
+            dynamics.load_factor(
+                s, controls, ac, wind_ned, omega_gust, anchor, earth_model,
+                increment,
+            ),
             controls.elevator,
         ])
 
-    rows = np.asarray(jax.vmap(analyse)(
-        hist.pos_ned, hist.vel_body, hist.quat, hist.omega, controls_hist
-    ))
+    rows = np.asarray(jax.vmap(analyse)(hist, controls_hist))
     n = rows.shape[0]
     return Encounter(
         label=label,
         t=np.arange(1, n + 1) * dt,
-        north=np.asarray(hist.pos_ned)[:, 0],
-        altitude=-np.asarray(hist.pos_ned)[:, 2],
+        north=track[:, 0],
+        altitude=-track[:, 2],
         w_up=rows[:, 0], q_gust=rows[:, 1],
         alpha_air=rows[:, 2], alpha_inertial=rows[:, 3],
         theta=rows[:, 4], q=rows[:, 5], n_z=rows[:, 6],
@@ -257,8 +319,9 @@ def _measure(
     )
 
 
-@partial(jax.jit, static_argnames=("n_steps",))
-def _pulse_rollout(sim, ac, elev_trim, throttle, step, dt, n_steps, lead_in, hold):
+@partial(jax.jit, static_argnames=("n_steps", "earth_model"))
+def _pulse_rollout(sim, ac, elev_trim, throttle, step, dt, n_steps, lead_in, hold,
+                   anchor, earth_model):
     """Scan an elevator pulse: trim, `step` from trim for `hold`, trim again.
 
     Zero wind throughout -- a manoeuvre is the category the paper defines by the
@@ -272,20 +335,30 @@ def _pulse_rollout(sim, ac, elev_trim, throttle, step, dt, n_steps, lead_in, hol
         controls = trim.trimmed_controls(
             elev_trim + jnp.where(pulsing, step, 0.0), throttle
         )
-        carry = integrate.step(carry, controls, dt, ac, wind_model=wind.zero_wind)
+        carry = integrate.step(
+            carry, controls, dt, ac, anchor, earth_model, wind_model=wind.zero_wind
+        )
         return carry, (carry.state, controls)
 
     _, out = jax.lax.scan(body, sim, jnp.arange(n_steps))
     return out
 
 
-def _pushdown_setup(ac: Aircraft, airspeed: float, altitude: float):
-    """Trim, and the SimState a pulse starts from. Shared by both entry points."""
-    x, _ = trim.trim(jnp.array(airspeed), jnp.array(altitude), ac)
-    state = trim.trimmed_state(
-        jnp.array(float(x[0])), jnp.array(airspeed), jnp.array(altitude)
+def _pushdown_setup(ac: Aircraft, airspeed: float, altitude: float,
+                    anchor: earth.Anchor, earth_model: earth.EarthModel):
+    """Trim, and the SimState a pulse starts from. Shared by both entry points.
+
+    The aircraft starts AT the anchor -- `trim.trimmed_state` puts it there and
+    the pushdown has no reason to move it, so the `pos_ned` write this used to do
+    is simply gone rather than translated.
+    """
+    x, _ = trim.trim(
+        jnp.array(airspeed), jnp.array(altitude), ac, anchor, earth_model
     )
-    state = state._replace(pos_ned=jnp.array([0.0, 0.0, -altitude]))
+    state = trim.trimmed_state(
+        jnp.array(float(x[0])), jnp.array(float(x[3])),
+        jnp.array(airspeed), jnp.array(altitude), anchor, jnp.array(0.0),
+    )
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
     return sim, jnp.array(float(x[1])), jnp.array(float(x[2]))
 
@@ -294,6 +367,8 @@ def manoeuvre(
     ac: Aircraft,
     airspeed: float,
     altitude: float,
+    anchor: earth.Anchor,
+    earth_model: earth.EarthModel,
     *,
     label: str,
     elevator_step: float,
@@ -325,11 +400,14 @@ def manoeuvre(
     -- the same shape of error as a too-short vortex lead-in (section 9,
     session 3), and the reason that one is 40 core radii.
     """
-    sim, elev_trim, throttle = _pushdown_setup(ac, airspeed, altitude)
+    sim, elev_trim, throttle = _pushdown_setup(
+        ac, airspeed, altitude, anchor, earth_model
+    )
     n = int(round(seconds / dt))
     hist, controls_hist = _pulse_rollout(
         sim, ac, elev_trim, throttle, jnp.array(elevator_step),
         jnp.array(dt), n, jnp.array(lead_in), jnp.array(hold),
+        anchor, earth_model,
     )
     # Sample i is the state AFTER the step driven by the controls at t = i*dt, so
     # the samples actually flown under the pulse are (lead_in, lead_in + hold].
@@ -341,7 +419,7 @@ def manoeuvre(
     zeros = np.zeros((n, 3))
     log = viz.Trajectory(
         t=t,
-        pos_ned=np.asarray(hist.pos_ned, dtype=float),
+        pos_ecef=np.asarray(hist.pos_ecef, dtype=float),
         vel_body=np.asarray(hist.vel_body, dtype=float),
         quat=np.asarray(hist.quat, dtype=float),
         omega=np.asarray(hist.omega, dtype=float),
@@ -349,10 +427,14 @@ def manoeuvre(
         mode=np.zeros(n, dtype=int),
         wind_ned=zeros,
         omega_gust=zeros,
+        anchor=anchor,
     )
     return _measure(
-        label=label, hist=hist, controls_hist=controls_hist,
+        label=label, hist=hist,
+        track=np.asarray(jax.vmap(pos_ned, in_axes=(0, None))(hist, anchor)),
+        controls_hist=controls_hist,
         model=wind.zero_wind, ac=ac, dt=dt,
+        anchor=anchor, earth_model=earth_model,
         window=(t > lead_in) & (t <= lead_in + hold),
         window_name=f"elevator pulse, {hold:g} s",
         log=log,
@@ -363,6 +445,8 @@ def elevator_for_load(
     ac: Aircraft,
     airspeed: float,
     altitude: float,
+    anchor: earth.Anchor,
+    earth_model: earth.EarthModel,
     *,
     target: float,
     hold: float,
@@ -389,7 +473,9 @@ def elevator_for_load(
     because whether it is reachable at all is exactly the question section 5
     answers for the band's absolute reading (it is not).
     """
-    sim, elev_trim, throttle = _pushdown_setup(ac, airspeed, altitude)
+    sim, elev_trim, throttle = _pushdown_setup(
+        ac, airspeed, altitude, anchor, earth_model
+    )
     n = int(round(seconds / dt))
     t = jnp.arange(1, n + 1) * dt
     mask = (t > lead_in) & (t <= lead_in + hold)
@@ -403,12 +489,13 @@ def elevator_for_load(
             hist, controls = _pulse_rollout(
                 sim, ac, elev_trim, throttle, step,
                 jnp.array(dt), n, jnp.array(lead_in), jnp.array(hold),
+                anchor, earth_model,
             )
             n_z = jax.vmap(
-                lambda p, v, q, w, c: dynamics.load_factor(
-                    State(pos_ned=p, vel_body=v, quat=q, omega=w), c, ac, zero3, zero3
+                lambda s, c: dynamics.load_factor(
+                    s, c, ac, zero3, zero3, anchor, earth_model
                 )
-            )(hist.pos_ned, hist.vel_body, hist.quat, hist.omega, controls)
+            )(hist, controls)
             return jnp.min(jnp.where(mask, n_z, jnp.inf)) - n_z[0]
 
         return jax.vmap(one)(steps)

@@ -16,19 +16,49 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from atisim import earth
 from atisim.aircraft import Aircraft
 from atisim.dynamics import derivatives
-from atisim.state import Controls, State, euler_to_quat
+from atisim.state import Controls, euler_to_quat, state_from_ned
 from atisim.units import FT2M
+
+# ---------------------------------------------------------------------------
+# WHY EVERY ENTRY POINT HERE TAKES AN `anchor` AND AN `earth_model`
+#
+# The published matrices and modes these functions are compared against were
+# derived on a flat, non-rotating Earth. That does NOT make the arguments
+# optional -- it makes them the caller's statement of which Earth the comparison
+# is being run on, which is exactly the thing a defaulted value would hide. A
+# tier-2 comparison against Caughey or CR-2144 belongs under `earth.FLAT`; the
+# same function under `WGS84_J2` is measuring something else, and the reader of
+# a residual has to be able to tell which was asked for. `earth.py` ships no
+# default anchor for the same reason: latitude changes the answer.
+#
+# `H` IS NO LONGER WHAT SETS THE ALTITUDE. As in `trim.trimmed_state`, the
+# aircraft is placed AT the anchor, so `anchor.h` is the height actually flown
+# and `H` is carried only to keep the (V, H) call shape the module and its
+# callers already use. It matters that this matches `trim`: `sweep` re-trims at
+# every sample and then linearises about that trim, and an aircraft placed at
+# `anchor.h - H` here against `anchor.h` there would be linearising about a
+# different flight condition from the one it solved for. Callers build the
+# anchor at the altitude they state.
+# ---------------------------------------------------------------------------
 
 
 def longitudinal_matrix(ac: Aircraft, alpha: float, elevator: float,
-                        throttle: float, V: float, H: float):
+                        throttle: float, V: float, H: float,
+                        anchor: earth.Anchor, earth_model: earth.EarthModel):
     """Body-axis plant matrix in [u, w, q, theta], by jacfwd of the real dynamics.
 
     Body axes, so theta0 = alpha0 and w0 = V sin(alpha0) are both non-zero. Most
     textbook longitudinal matrices are quoted in STABILITY axes, where Theta0 = 0
     -- see `to_stability_axes`, which is what makes them comparable at all.
+
+    `theta` perturbs a LOCAL-NED Euler angle, which is what the published
+    matrices mean by it, so the state is built through `state_from_ned` and the
+    quaternion it carries into the plant is body -> ECEF. Differentiating
+    straight through `euler_to_quat` into `State.quat` would have perturbed the
+    angle to the equatorial plane instead -- valid arithmetic, wrong angle.
     """
     u0, w0 = V * np.cos(alpha), V * np.sin(alpha)
     controls = Controls(
@@ -38,13 +68,16 @@ def longitudinal_matrix(ac: Aircraft, alpha: float, elevator: float,
 
     def f(x):
         u, w, q, theta = x
-        state = State(
-            pos_ned=jnp.array([0.0, 0.0, -H]),
-            vel_body=jnp.array([u, 0.0, w]),
-            quat=euler_to_quat(jnp.array(0.0), theta, jnp.array(0.0)),
-            omega=jnp.array([0.0, q, 0.0]),
+        state = state_from_ned(
+            jnp.zeros(3),
+            jnp.array([u, 0.0, w]),
+            euler_to_quat(jnp.array(0.0), theta, jnp.array(0.0)),
+            jnp.array([0.0, q, 0.0]),
+            anchor,
         )
-        d = derivatives(state, controls, ac, jnp.zeros(3), jnp.zeros(3))
+        d = derivatives(
+            state, controls, ac, jnp.zeros(3), jnp.zeros(3), anchor, earth_model
+        )
         return jnp.array([d.vel_body[0], d.vel_body[2], d.omega[1], q])
 
     return np.asarray(jax.jacfwd(f)(jnp.array([u0, w0, 0.0, alpha])))
@@ -104,22 +137,31 @@ def modes_from_matrix(A):
 
 
 def longitudinal_modes(ac: Aircraft, alpha: float, elevator: float,
-                       throttle: float, V: float, H: float):
+                       throttle: float, V: float, H: float,
+                       anchor: earth.Anchor, earth_model: earth.EarthModel):
     """Phugoid and short-period (wn, zeta), sorted low-to-high wn.
 
     Linearises in body-axis [u, w, q, theta] about the given trim, exactly as
     scripts/checkpoint.py's longitudinal_modes does for the 747.
     """
-    return modes_from_matrix(longitudinal_matrix(ac, alpha, elevator, throttle, V, H))
+    return modes_from_matrix(
+        longitudinal_matrix(
+            ac, alpha, elevator, throttle, V, H, anchor, earth_model
+        )
+    )
 
 
 def lateral_modes(ac: Aircraft, alpha: float, elevator: float, throttle: float,
-                  V: float, H: float):
+                  V: float, H: float,
+                  anchor: earth.Anchor, earth_model: earth.EarthModel):
     """Dutch roll (wn, zeta), roll-subsidence time constant, spiral time constant.
 
     4-state reduction [v, p, r, phi] about the wings-level trim, holding
     u = u0, w = w0, theta = theta0 fixed (standard small-perturbation lateral
     split, valid because the trim is wings-level and symmetric).
+
+    `phi` perturbs a LOCAL-NED bank angle, so the state is built through
+    `state_from_ned` for the reason `longitudinal_matrix` gives.
 
     thetadot's exact kinematic term keeps r*cos(phi)*tan(theta0), not just p:
     at this aircraft's trim pitch attitude that term is NOT negligible for the
@@ -137,13 +179,16 @@ def lateral_modes(ac: Aircraft, alpha: float, elevator: float, throttle: float,
 
     def f(x):
         v, p, r, phi = x
-        state = State(
-            pos_ned=jnp.array([0.0, 0.0, -H]),
-            vel_body=jnp.array([u0, v, w0]),
-            quat=euler_to_quat(phi, jnp.array(theta0), jnp.array(0.0)),
-            omega=jnp.array([p, 0.0, r]),
+        state = state_from_ned(
+            jnp.zeros(3),
+            jnp.array([u0, v, w0]),
+            euler_to_quat(phi, jnp.array(theta0), jnp.array(0.0)),
+            jnp.array([p, 0.0, r]),
+            anchor,
         )
-        d = derivatives(state, controls, ac, jnp.zeros(3), jnp.zeros(3))
+        d = derivatives(
+            state, controls, ac, jnp.zeros(3), jnp.zeros(3), anchor, earth_model
+        )
         phidot = p + r * jnp.cos(phi) * jnp.tan(theta0)
         return jnp.array([d.vel_body[1], d.omega[0], d.omega[2], phidot])
 
@@ -233,7 +278,8 @@ TRIM_RESIDUAL_LIMIT = 1e-9
 # every other caller was equally exposed. One bound, one place.
 
 
-def sweep(ac: Aircraft, field: str, values, quantity, V: float, H: float):
+def sweep(ac: Aircraft, field: str, values, quantity, V: float, H: float,
+          anchor: earth.Anchor, earth_model: earth.EarthModel):
     """Vary one coefficient and report a scalar per value.
 
     `Aircraft` is a NamedTuple, so `_replace` gives an independent airframe per
@@ -256,7 +302,7 @@ def sweep(ac: Aircraft, field: str, values, quantity, V: float, H: float):
     out = []
     for v in values:
         swept = ac._replace(**{field: jnp.array(float(v))})
-        x, res = solve_trim(jnp.array(V), jnp.array(H), swept)
+        x, res = solve_trim(jnp.array(V), jnp.array(H), swept, anchor, earth_model)
         residual_norm = float(jnp.linalg.norm(res))
         if residual_norm > TRIM_RESIDUAL_LIMIT:
             raise RuntimeError(f"{field}={v} did not trim: residual {residual_norm:.3e}")

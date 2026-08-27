@@ -16,10 +16,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 from typing import NamedTuple
 
+from atisim import earth
 from atisim.integrate import SimState
 from atisim.manual import Mode
 from atisim.sensors import sense
 from atisim.state import Controls, State
+from atisim.state import pos_ned as state_pos_ned
 from atisim.units import RAD2DEG
 
 # ---------------------------------------------------------------------------
@@ -32,19 +34,69 @@ class Trajectory(NamedTuple):
 
     `wind_ned` and `omega_gust` are recorded because without them a saved run
     cannot be corrected even in principle: every incidence angle in it would be
-    ground-relative with no way to recover the air-relative one. They are last so
-    that `.npz` files written before they existed still load -- see `load`.
+    ground-relative with no way to recover the air-relative one.
+
+    **THE RIGID-BODY COLUMNS ARE THE STATE AS FLOWN, NOT AN NED VIEW OF IT.**
+    `pos_ecef` is the anchor-relative ECEF offset and `quat` rotates BODY into
+    ECEF -- both exactly what `State` carried, stored without conversion. Two
+    reasons, and the second is the one that decided it:
+
+      - Rebuilding a `State` for `dynamics.specific_force` or `load_factor` is
+        then free and exact. Storing the NED view would mean a
+        `state_from_ned` round trip at every sample of every analysis.
+      - `state_from_ned` NORMALISES the quaternion it builds. Recording an NED
+        quaternion and rebuilding through it would therefore hand
+        `checks.quaternion_norm` a unit quaternion by construction -- turning a
+        tripwire that measures integrator drift off the unit sphere into a
+        function that cannot fail. A check that cannot fail is worse than an
+        absent one.
+
+    `anchor` is what makes those columns mean anything: an offset from nowhere in
+    particular is not a position. It is last so the field order of the array
+    columns is unchanged, and it is the one non-array field -- `save` and `load`
+    handle it as three scalars, since `r_ecef` and `T_e2l` follow from them.
+
+    Local NED and geodetic altitude are DERIVED, by `pos_ned` and `derived`
+    below. They are no longer stored, because on an ellipsoid they are two
+    different quantities and storing one invites a reader to use it as the other.
     """
 
     t: np.ndarray  # (n,) s
-    pos_ned: np.ndarray  # (n, 3) m
-    vel_body: np.ndarray  # (n, 3) m/s
-    quat: np.ndarray  # (n, 4)
-    omega: np.ndarray  # (n, 3) rad/s
+    pos_ecef: np.ndarray  # (n, 3) m, OFFSET from `anchor`
+    vel_body: np.ndarray  # (n, 3) m/s, ECEF-relative, body axes
+    quat: np.ndarray  # (n, 4) body -> ECEF
+    omega: np.ndarray  # (n, 3) rad/s, body rate relative to ECEF
     controls: np.ndarray  # (n, 4)
     mode: np.ndarray  # (n,) Mode
     wind_ned: np.ndarray  # (n, 3) m/s NED, the wind actually applied
     omega_gust: np.ndarray  # (n, 3) rad/s body, the gust rate actually applied
+    anchor: earth.Anchor  # where the local frame is pinned. NOT an array column.
+
+
+def states(traj: Trajectory) -> State:
+    """The run's rigid-body states, as one batched `State`.
+
+    Exact -- the columns ARE the state -- which is what lets `checks` invert the
+    plant at every sample without a frame conversion in the way.
+    """
+    return State(
+        pos_ecef=jnp.asarray(traj.pos_ecef),
+        vel_body=jnp.asarray(traj.vel_body),
+        quat=jnp.asarray(traj.quat),
+        omega=jnp.asarray(traj.omega),
+    )
+
+
+def pos_ned(traj: Trajectory) -> np.ndarray:
+    """(n, 3) local NED offset from the run anchor, m.
+
+    A pure rotation of the stored offset, per `state.pos_ned`. NOT a source of
+    altitude: `-pos_ned[:, 2]` is a tangent-plane height and departs from the
+    geodetic one by 785 m at 100 km of ground track. Use `derived(traj).altitude`.
+    """
+    return np.asarray(
+        jax.vmap(state_pos_ned, in_axes=(0, None))(states(traj), traj.anchor)
+    )
 
 
 def save(traj: Trajectory, path) -> None:
@@ -53,30 +105,65 @@ def save(traj: Trajectory, path) -> None:
     This matters more than it looks: comparing turbulence realisations means
     comparing runs against each other, and re-flying to change a plot loses the
     realisation unless the PRNG key is also pinned.
+
+    The anchor is written as the three geodetic scalars it is defined by, not as
+    its five fields: `r_ecef` and `T_e2l` are derived from (lat, lon, h) by
+    `earth.anchor_at`, and storing a derived quantity is how a file ends up
+    disagreeing with itself.
     """
-    np.savez_compressed(path, **traj._asdict())
+    columns = {k: v for k, v in traj._asdict().items() if k != "anchor"}
+    np.savez_compressed(
+        path,
+        anchor_lat=np.asarray(traj.anchor.lat, dtype=float),
+        anchor_lon=np.asarray(traj.anchor.lon, dtype=float),
+        anchor_h=np.asarray(traj.anchor.h, dtype=float),
+        **columns,
+    )
 
 
 def load(path) -> Trajectory:
     """Read a run back.
 
-    Files written before wind was recorded load as still air rather than being
-    rejected. That is honest for those files -- every run predating the wind
-    columns was flown in still air because nothing else was possible -- and it
-    keeps them analysable instead of stranding them.
+    A file with no anchor columns is REFUSED rather than defaulted. Every `.npz`
+    predating the ECEF state stores `pos_ned` and a body -> NED quaternion under
+    the names this reader now gives to ECEF quantities, so loading one would not
+    be a partial read -- it would be a full one, of the wrong frame, silently.
+    And there is no anchor to supply on its behalf: `earth.py` ships no default
+    precisely because latitude changes the answer.
     """
     with np.load(path) as data:
-        fields = {name: data[name] for name in Trajectory._fields if name in data}
+        if "anchor_lat" not in data:
+            raise ValueError(
+                f"{path} predates the ECEF state: its `pos_ned` and body->NED "
+                "quaternion would be read as ECEF quantities and every angle in "
+                "the run would be wrong without anything failing. Re-fly it."
+            )
+        fields = {
+            name: data[name]
+            for name in Trajectory._fields
+            if name != "anchor" and name in data
+        }
         n = len(fields["t"])
         for name in ("wind_ned", "omega_gust"):
             fields.setdefault(name, np.zeros((n, 3)))
-        return Trajectory(**fields)
+        return Trajectory(
+            **fields,
+            anchor=earth.anchor_at(
+                data["anchor_lat"], data["anchor_lon"], data["anchor_h"]
+            ),
+        )
 
 
 class Recorder:
-    """Full-rate log. One row per physics step, not per rendered frame."""
+    """Full-rate log. One row per physics step, not per rendered frame.
 
-    def __init__(self) -> None:
+    Takes the run's `anchor` at construction: it is constant for the run, so
+    asking for it once is enough, and a recorder that could not say where its
+    rows were flown would produce a trajectory nothing could interpret.
+    """
+
+    def __init__(self, anchor: earth.Anchor) -> None:
+        self._anchor = anchor
         self._rows: list[tuple] = []
 
     def append(
@@ -96,7 +183,7 @@ class Recorder:
         self._rows.append(
             (
                 t,
-                np.asarray(state.pos_ned, dtype=float),
+                np.asarray(state.pos_ecef, dtype=float),
                 np.asarray(state.vel_body, dtype=float),
                 np.asarray(state.quat, dtype=float),
                 np.asarray(state.omega, dtype=float),
@@ -111,7 +198,7 @@ class Recorder:
         columns = list(zip(*self._rows))
         return Trajectory(
             t=np.array(columns[0]),
-            pos_ned=np.stack(columns[1]),
+            pos_ecef=np.stack(columns[1]),
             vel_body=np.stack(columns[2]),
             quat=np.stack(columns[3]),
             omega=np.stack(columns[4]),
@@ -119,6 +206,7 @@ class Recorder:
             mode=np.array(columns[6], dtype=int),
             wind_ned=np.stack(columns[7]),
             omega_gust=np.stack(columns[8]),
+            anchor=self._anchor,
         )
 
 
@@ -131,7 +219,7 @@ class Derived(NamedTuple):
     phi: np.ndarray  # rad, inertial
     theta: np.ndarray  # rad, inertial
     psi: np.ndarray  # rad, inertial
-    altitude: np.ndarray  # m
+    altitude: np.ndarray  # m, GEODETIC
 
 
 def derived(traj: Trajectory) -> Derived:
@@ -140,14 +228,15 @@ def derived(traj: Trajectory) -> Derived:
     Uses the recorded wind, so the incidence angles are air-relative. Before the
     wind was recorded these were ground-relative and wrong by up to 7 deg in a
     vortex encounter, and no still-air test could see it.
+
+    The anchor comes from the trajectory rather than from the caller, which is
+    the point of it travelling with the run: the attitude angles and the altitude
+    below are all referred to the local vertical, and being asked for it a second
+    time is how an analysis ends up using a different one from the flight.
     """
-    states = State(
-        pos_ned=jnp.asarray(traj.pos_ned),
-        vel_body=jnp.asarray(traj.vel_body),
-        quat=jnp.asarray(traj.quat),
-        omega=jnp.asarray(traj.omega),
+    air = jax.vmap(sense, in_axes=(0, None, 0))(
+        states(traj), traj.anchor, jnp.asarray(traj.wind_ned)
     )
-    air = jax.vmap(sense)(states, jnp.asarray(traj.wind_ned))
     return Derived(
         airspeed=np.asarray(air.airspeed),
         alpha=np.asarray(air.alpha),
@@ -175,7 +264,8 @@ def post_flight(traj: Trajectory, *, title: str = "post-flight"):
     grid = fig.add_gridspec(3, 2, hspace=0.35, wspace=0.22)
 
     ax = fig.add_subplot(grid[0:2, 0])
-    east, north = traj.pos_ned[:, 1] / 1000.0, traj.pos_ned[:, 0] / 1000.0
+    track = pos_ned(traj)
+    east, north = track[:, 1] / 1000.0, track[:, 0] / 1000.0
     ax.plot(east, north, color="0.6", lw=1.2, label="track")
     ax.plot(
         np.ma.masked_where(~autopilot_engaged, east),

@@ -24,6 +24,21 @@ today.
 
 `state` is passed in because Dryden scale lengths and intensities are functions
 of altitude, and the filter time constants are functions of true airspeed.
+
+**EVERY WIND FIELD IN HERE STILL TAKES A LOCAL NED POSITION, UNCHANGED.** A wake
+vortex, a lee wave and a microburst are local phenomena anchored to a place on
+the ground, and the tangent plane at the run anchor is the frame they are
+defined in; their own scales run from 183 m to 6.25 km, far below the range at
+which its curvature matters. So `-pos_ned[2]` inside a field is a height within
+the field's own frame and is correct as it stands -- it is NOT the aircraft's
+geodetic altitude and must not be replaced by one.
+
+What DID change is the seam. `State` is ECEF, so the two model builders at the
+bottom take the run's `anchor` and rotate the state into the field's frame once,
+and the four gradient helpers take the body -> NED matrix rather than a bare
+quaternion. `state.quat` is body -> ECEF now; every one of those four needs
+body -> NED, and both are valid rotations, so a bare quaternion argument would
+have kept working and returned the gradient resolved in the wrong frame.
 """
 
 from typing import NamedTuple
@@ -32,10 +47,10 @@ import jax
 import jax.numpy as jnp
 from jax import Array
 
-from atisim import airframe
+from atisim import airframe, earth
 from atisim.aero import V_MIN
 from atisim.aircraft import Aircraft
-from atisim.state import State, quat_to_dcm
+from atisim.state import State, dcm_body_to_ned, pos_ned as state_pos_ned
 from atisim.units import FT2M
 
 
@@ -242,7 +257,7 @@ def vortex_wind(pos_ned: Array, array: VortexArray) -> Array:
     return jax.vmap(one)(array.north, array.down).sum(axis=0)
 
 
-def gust_rates(pos_ned: Array, quat: Array, field) -> Array:
+def gust_rates(pos_ned: Array, dcm_b2n: Array, field) -> Array:
     """Body-axis (p, q, r) gust rates from the gradient of a wind field.
 
     A gust that varies across the span is a rolling input and one that varies
@@ -261,10 +276,14 @@ def gust_rates(pos_ned: Array, quat: Array, field) -> Array:
     varies as -x*(q + dw_g/dx). The aero model sees an effective rate
     q_eff = q + dw_g/dx, and since it is handed omega - omega_gust, the gust
     rate must be the negative of the gradient.
+
+    `dcm_b2n` is body -> NED AT THE AIRCRAFT (`state.dcm_body_to_ned`), taken as
+    a matrix rather than a quaternion: the double contraction below is what
+    resolves an NED-frame gradient tensor into body axes, so the frame is
+    load-bearing and naming it in the argument is what says so.
     """
-    dcm = quat_to_dcm(quat)  # body -> NED
     jac_ned = jax.jacfwd(field)(pos_ned)  # d(wind_ned)_i / d(pos_ned)_j
-    grad_body = dcm.T @ jac_ned @ dcm  # d(gust_body)_i / d(pos_body)_j
+    grad_body = dcm_b2n.T @ jac_ned @ dcm_b2n  # d(gust_body)_i / d(pos_body)_j
     return jnp.array([grad_body[2, 1], -grad_body[2, 0], grad_body[1, 0]])
 
 
@@ -280,7 +299,7 @@ def _slope(coords: Array, values: Array) -> Array:
     return (centred * (values - values.mean())).sum() / (centred * centred).sum()
 
 
-def sampled_rates(pos_ned: Array, quat: Array, field, stations) -> Array:
+def sampled_rates(pos_ned: Array, dcm_b2n: Array, field, stations) -> Array:
     """Body-axis (p, q, r) gust rates from a fit across the airframe.
 
     Same three quantities as `gust_rates` and the same sign convention -- this
@@ -295,12 +314,15 @@ def sampled_rates(pos_ned: Array, quat: Array, field, stations) -> Array:
     its own rigid-rotation self-check by a factor of -2 -- and that question is
     left to the strip integration, which never forms an equivalent rate at all.
     See the design document, section 2.
+
+    `dcm_b2n` is body -> NED at the aircraft, as `gust_rates` takes it: the body
+    offsets below are carried into the FIELD's frame and the sample carried back,
+    so a body -> ECEF matrix would sample the field at the wrong stations.
     """
-    dcm = quat_to_dcm(quat)  # body -> NED
 
     def gust_body(offset_body: Array) -> Array:
         """Gust in BODY axes at a body-frame offset from the CG."""
-        return dcm.T @ field(pos_ned + dcm @ offset_body)
+        return dcm_b2n.T @ field(pos_ned + dcm_b2n @ offset_body)
 
     span_gusts = jax.vmap(
         lambda y: gust_body(jnp.array([0.0, y, 0.0]))
@@ -693,7 +715,7 @@ def superpose(*fields):
     return combined
 
 
-def gust_alphadot(pos_ned: Array, quat: Array, vel_body: Array, field) -> Array:
+def gust_alphadot(pos_ned: Array, dcm_b2n: Array, vel_body: Array, field) -> Array:
     """Wind-induced angle-of-attack rate, rad/s, from the field's own gradient.
 
     The aircraft flying through a frozen field sees the wind change at a rate
@@ -718,14 +740,19 @@ def gust_alphadot(pos_ned: Array, quat: Array, vel_body: Array, field) -> Array:
         alphadot = (u_rel * wdot_rel - w_rel * udot_rel) / (u_rel^2 + w_rel^2)
 
     and the gust contributes -(d(wind_body)/dt) to the relative velocity.
+
+    `dcm_b2n` is body -> NED at the aircraft, as `gust_rates` takes it. Note that
+    `vel_ned` below is the ECEF-relative velocity resolved in the local frame,
+    which is what the Taylor hypothesis wants: the field is frozen in the ROTATING
+    Earth's frame, so the rate at which the aircraft sweeps through it is its
+    ground speed and not its inertial speed.
     """
-    dcm = quat_to_dcm(quat)  # body -> NED
-    vel_ned = dcm @ vel_body
+    vel_ned = dcm_b2n @ vel_body
     wind_rate_ned = jax.jacfwd(field)(pos_ned) @ vel_ned
     # Relative velocity falls as the wind rises, hence the sign.
-    rel_rate_body = -(dcm.T @ wind_rate_ned)
+    rel_rate_body = -(dcm_b2n.T @ wind_rate_ned)
 
-    vel_rel = vel_body - dcm.T @ field(pos_ned)
+    vel_rel = vel_body - dcm_b2n.T @ field(pos_ned)
     u_rel, w_rel = vel_rel[0], vel_rel[2]
     # aero.V_MIN, squared. The SAME constant rather than a second one with the
     # same value: one NaN guard, one provenance entry, and it cannot drift.
@@ -733,7 +760,7 @@ def gust_alphadot(pos_ned: Array, quat: Array, vel_body: Array, field) -> Array:
     return (u_rel * rel_rate_body[2] - w_rel * rel_rate_body[0]) / denominator
 
 
-def field_model(field):
+def field_model(field, anchor: earth.Anchor):
     """Turn a position-only wind field into a `wind_model`.
 
     Returned closure matches the `zero_wind` signature, so it drops straight
@@ -745,21 +772,30 @@ def field_model(field):
     only the stochastic components of a composed field, so every member of a
     Monte Carlo ensemble meets the same vortex at the same place -- which is the
     experiment design an error bar on a deterministic encounter needs.
+
+    **THE ANCHOR IS CLOSED OVER HERE RATHER THAN PASSED THROUGH `step`.** It is
+    the field's own frame that needs it, not the integrator's contract, and
+    baking it in at construction leaves the `wind_model` signature -- which every
+    test double and the future Dryden layer implement -- exactly as it was. It
+    has no default for the reason `earth.py` has none: which patch of ground the
+    field is pinned to is a statement only the caller can make.
     """
 
     def model(
         wind_state: WindState, state: State, key: Array, dt: float
     ) -> tuple[Array, Array, WindState, Array]:
         del dt
-        wind_ned = field(state.pos_ned)
-        omega_gust = gust_rates(state.pos_ned, state.quat, field)
-        alphadot = gust_alphadot(state.pos_ned, state.quat, state.vel_body, field)
+        pos = state_pos_ned(state, anchor)
+        dcm_b2n = dcm_body_to_ned(state, anchor)
+        wind_ned = field(pos)
+        omega_gust = gust_rates(pos, dcm_b2n, field)
+        alphadot = gust_alphadot(pos, dcm_b2n, state.vel_body, field)
         return wind_ned, omega_gust, wind_state, key, alphadot
 
     return model
 
 
-def sampled_field_model(field, stations):
+def sampled_field_model(field, stations, anchor: earth.Anchor):
     """`field_model`, but with the gust rates fitted across the airframe.
 
     Identical contract to `field_model` -- same signature, same returned tuple,
@@ -776,9 +812,11 @@ def sampled_field_model(field, stations):
         wind_state: WindState, state: State, key: Array, dt: float
     ) -> tuple[Array, Array, WindState, Array]:
         del dt
-        wind_ned = field(state.pos_ned)
-        omega_gust = sampled_rates(state.pos_ned, state.quat, field, stations)
-        alphadot = gust_alphadot(state.pos_ned, state.quat, state.vel_body, field)
+        pos = state_pos_ned(state, anchor)
+        dcm_b2n = dcm_body_to_ned(state, anchor)
+        wind_ned = field(pos)
+        omega_gust = sampled_rates(pos, dcm_b2n, field, stations)
+        alphadot = gust_alphadot(pos, dcm_b2n, state.vel_body, field)
         return wind_ned, omega_gust, wind_state, key, alphadot
 
     return model
@@ -832,7 +870,7 @@ def strip_clp_from_rate(ac: Aircraft, stations, p_hat: Array) -> Array:
 
 
 def strip_roll_moment(
-    pos_ned: Array, quat: Array, field, ac: Aircraft, stations, airspeed: Array
+    pos_ned: Array, dcm_b2n: Array, field, ac: Aircraft, stations, airspeed: Array
 ) -> Array:
     """Rolling-moment coefficient from a wind field, integrated across the span.
 
@@ -851,39 +889,41 @@ def strip_roll_moment(
     increment is -w_g/V, not +w_g/V.
 
     This is the same convention as everywhere else in the package, and it is
-    forced by it: `dynamics.relative_velocity` forms `vel_body - dcm.T @
+    forced by it: `dynamics.relative_velocity_ned` forms `vel_body - dcm.T @
     wind_ned`, so a larger downward gust reduces the relative w and therefore
     reduces alpha. Getting this backwards produces a model that rolls the right
     way for its own motion and the wrong way for every gust, which no test of
     rigid rotation alone would catch -- which is why
     `test_a_linear_gust_gradient_matches_the_equivalent_rate_answer` compares
     the two against each other.
+
+    `dcm_b2n` is body -> NED at the aircraft, as `sampled_rates` takes it and for
+    the same reason: the span stations are carried into the FIELD's frame.
     """
-    dcm = quat_to_dcm(quat)
 
     def gust_w(y: Array) -> Array:
         offset = jnp.array([0.0, y, 0.0])
-        return (dcm.T @ field(pos_ned + dcm @ offset))[2]
+        return (dcm_b2n.T @ field(pos_ned + dcm_b2n @ offset))[2]
 
     w_gust = jax.vmap(gust_w)(stations.span)
     return _strip_rolling_coefficient(ac, stations, -w_gust / airspeed)
 
 
-def vortex_model(array: VortexArray):
+def vortex_model(array: VortexArray, anchor: earth.Anchor):
     """`wind_model` for a vortex array."""
-    return field_model(lambda pos_ned: vortex_wind(pos_ned, array))
+    return field_model(lambda pos_ned: vortex_wind(pos_ned, array), anchor)
 
 
-def updraft_model(column: UpdraftColumn):
+def updraft_model(column: UpdraftColumn, anchor: earth.Anchor):
     """`wind_model` for an updraft column."""
-    return field_model(lambda pos_ned: updraft_wind(pos_ned, column))
+    return field_model(lambda pos_ned: updraft_wind(pos_ned, column), anchor)
 
 
-def lee_wave_model(wave: LeeWave):
+def lee_wave_model(wave: LeeWave, anchor: earth.Anchor):
     """`wind_model` for a mountain lee wave train."""
-    return field_model(lambda pos_ned: lee_wave_wind(pos_ned, wave))
+    return field_model(lambda pos_ned: lee_wave_wind(pos_ned, wave), anchor)
 
 
-def microburst_model(burst: Microburst):
+def microburst_model(burst: Microburst, anchor: earth.Anchor):
     """`wind_model` for a microburst."""
-    return field_model(lambda pos_ned: microburst_wind(pos_ned, burst))
+    return field_model(lambda pos_ned: microburst_wind(pos_ned, burst), anchor)
