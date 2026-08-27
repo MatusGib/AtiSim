@@ -14,12 +14,18 @@ import numpy as np
 import pytest
 
 import atisim  # noqa: F401
-from atisim import checks, integrate, trim, viz, wind
+from atisim import checks, earth, integrate, trim, viz, wind
 from atisim.aircraft import CRUISE, REGISTRY
 from atisim.analysis import artifact
 from atisim.manual import Mode
 
 pytest.importorskip("pyarrow", reason="the artifact layer needs the `ui` extra")
+
+# 47N at the 747's cruise altitude. The anchor sits AT the flight altitude, which
+# is what makes the run's start below a pure north displacement rather than a
+# north-and-down one. WGS84_J2: an artifact records a real run.
+ANCHOR = earth.anchor_at(np.radians(47.0), 0.0, CRUISE["boeing747"]["altitude"])
+EARTH = earth.WGS84_J2
 
 
 @pytest.fixture(scope="module")
@@ -31,15 +37,25 @@ def small_run():
         radius=jnp.array(2000.0), sharpness=jnp.array(6.0),
     )
     field = lambda p: wind.updraft_wind(p, column)  # noqa: E731
-    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
+    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac, ANCHOR, EARTH)
     controls = trim.trimmed_controls(x)
-    state = trim.trimmed_state(jnp.array(float(x[0])), jnp.array(V), jnp.array(H))
-    state = state._replace(pos_ned=jnp.array([-4000.0, 0.0, -H]))
+    # `x[3]` is the trimmed BANK, which is non-zero on a rotating Earth. The run
+    # starts 4 km south of the column, as a displacement along the ANCHOR frame's
+    # north axis -- not `pos_ned = [-4000, 0, -H]`, which under an anchor already
+    # at H would have put the aircraft a whole cruise altitude ABOVE it.
+    state = trim.trimmed_state(
+        jnp.array(float(x[0])), jnp.array(float(x[3])),
+        jnp.array(V), jnp.array(H), ANCHOR, jnp.array(0.0),
+    )
+    state = state._replace(
+        pos_ecef=state.pos_ecef + ANCHOR.T_e2l.T @ jnp.array([-4000.0, 0.0, 0.0])
+    )
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
-    recorder = viz.Recorder()
+    recorder = viz.Recorder(ANCHOR)
     for i in range(120):
         sim = integrate.step(
-            sim, controls, jnp.array(0.01), ac, wind_model=wind.field_model(field)
+            sim, controls, jnp.array(0.01), ac, ANCHOR, EARTH,
+            wind_model=wind.field_model(field, ANCHOR),
         )
         recorder.append((i + 1) * 0.01, sim, controls, Mode.MANUAL)
     return recorder.trajectory(), ac, controls, field
@@ -58,6 +74,8 @@ def _meta(ac):
                     "params": {"w0": 10.0, "radius": 2000.0, "sharpness": 6.0}},
         declared_parameters={"sharpness": 6.0, "window_rule": "column"},
         caveats=["Load comparisons are ORDERING ONLY (PROJECT.md 5)."],
+        anchor=ANCHOR,
+        earth_model=EARTH,
     )
 
 
@@ -68,6 +86,13 @@ def test_a_run_round_trips_bit_identically(tmp_path, small_run):
     back = artifact.read_run(tmp_path / "run")
 
     for name in viz.Trajectory._fields:
+        if name == "anchor":
+            # Not a column: `anchor_spec` writes the three geodetic scalars and
+            # `read_run` rebuilds `r_ecef` and `T_e2l` through `anchor_at`. The
+            # rebuild has to be bit-identical too, which is what this compares.
+            for saved, loaded in zip(traj.anchor, back.trajectory.anchor):
+                assert np.array_equal(np.asarray(saved), np.asarray(loaded)), name
+            continue
         assert np.array_equal(getattr(back.trajectory, name), getattr(traj, name)), name
 
 
@@ -126,6 +151,8 @@ def test_the_config_hash_moves_when_the_experiment_moves(small_run):
         wind_field=a["wind_field"],
         declared_parameters=a["declared_parameters"],
         caveats=a["caveats"],
+        anchor=ANCHOR,
+        earth_model=EARTH,
     )
     assert a["config_hash"] != b["config_hash"]
 
@@ -141,7 +168,7 @@ def test_checks_round_trip_with_their_kind(tmp_path, small_run):
     """The UI reads these; it must never recompute them (design section 3.1)."""
     traj, ac, controls, field = small_run
     window = np.ones(len(traj.t), dtype=bool)
-    report = checks.run_checks(traj, ac, controls, field, window)
+    report = checks.run_checks(traj, ac, controls, field, window, EARTH)
     artifact.write_run(tmp_path / "run", traj, _meta(ac), report)
     back = artifact.read_run(tmp_path / "run")
 
@@ -181,7 +208,9 @@ def test_the_field_is_rebuilt_from_parameters_not_stored_as_samples(small_run):
         "wind_field": {"kind": "UpdraftColumn",
                        "params": {"w0": 10.0, "radius": 2000.0, "sharpness": 6.0}}
     })
-    probes = jnp.asarray(traj.pos_ned[::17])
+    # `viz.pos_ned`, not a column: the field's argument is a LOCAL NED offset
+    # from the anchor, which the log no longer stores and now derives.
+    probes = jnp.asarray(viz.pos_ned(traj)[::17])
     got = np.asarray(jax.vmap(rebuilt)(probes))
     want = np.asarray(jax.vmap(field)(probes))
     assert np.array_equal(got, want)
