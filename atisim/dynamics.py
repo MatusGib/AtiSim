@@ -27,14 +27,33 @@ from atisim.loads import CoeffIncrement
 from atisim.state import Controls, State, quat_derivative, quat_to_matrix
 
 
-def relative_velocity(vel_body: Array, quat: Array, wind_ned: Array) -> Array:
+def relative_velocity_ned(
+    vel_body: Array, quat_body_to_ned: Array, wind_ned: Array
+) -> Array:
     """Body-axis velocity relative to the surrounding air mass.
 
-    `quat` is body -> NED, which is the frame `wind_ned` is stated in. The state
-    quaternion is body -> ECEF and is NOT that; `derivatives` forms the local
-    frame at the aircraft's own position instead of calling this.
+    RENAMED FROM `relative_velocity` TO BREAK ITS CALLERS ON PURPOSE, the same
+    move and for the same reason as deleting `quat_to_dcm`. The arithmetic here
+    is unchanged and correct; what changed is what callers hold. Every one of
+    them passed `state.quat`, which used to be body -> NED and now means
+    body -> ECEF. Both are valid rotations, so the old name would have kept
+    returning a plausible number computed in the wrong frame.
+
+    Measured at 47N with wind [25, -10, 3] m/s:
+
+        body -> NED quat (right)  [224.413, 24.689, -1.656]  V 225.77  a -0.007
+        state.quat       (wrong)  [252.709, -0.929, 22.745]  V 253.73  a +0.090
+
+    28.3 m/s of airspeed and a sign-flipped alpha, silently. `loads.py` was the
+    dangerous one: it imports cleanly and was shielded only by an unrelated
+    AttributeError two lines earlier, so repairing that line would have quietly
+    switched this on.
+
+    `derivatives` does NOT call this. It forms the local frame at the
+    aircraft's own geodetic position, which is not the same as any anchor frame
+    once the two are any distance apart.
     """
-    dcm = quat_to_matrix(quat)  # body -> NED
+    dcm = quat_to_matrix(quat_body_to_ned)  # body -> NED
     return vel_body - dcm.T @ wind_ned
 
 

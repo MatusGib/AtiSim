@@ -113,11 +113,10 @@ class EarthModel(NamedTuple):
 
     gravity: str
     rotation_rate: float
-    ellipsoidal: bool
 
 
-WGS84_J2 = EarthModel("j2", OMEGA_WGS84, True)
-WGS84_INVERSE_SQUARE = EarthModel("inverse_square", OMEGA_WGS84, True)
+WGS84_J2 = EarthModel("j2", OMEGA_WGS84)
+WGS84_INVERSE_SQUARE = EarthModel("inverse_square", OMEGA_WGS84)
 # FLAT: non-rotating, spherical, constant g along the local vertical. It is a
 # CONFIGURATION of this one plant, not a second implementation retained
 # alongside. It does NOT reproduce the pre-Earth-model trajectories
@@ -127,7 +126,7 @@ WGS84_INVERSE_SQUARE = EarthModel("inverse_square", OMEGA_WGS84, True)
 # dt/discretisation round-off today; Task 14 re-measures it and folds the FLAT
 # floor in. Until then this claim rests on the design doc's reasoning rather
 # than on a recorded number.
-FLAT = EarthModel("constant", 0.0, False)
+FLAT = EarthModel("constant", 0.0)
 
 
 def gravitation(r_ecef: Array, model: EarthModel) -> Array:
@@ -142,7 +141,21 @@ def gravitation(r_ecef: Array, model: EarthModel) -> Array:
     direction = r_ecef / radius
 
     if model.gravity == "constant":
-        return -G0 * direction
+        # ALONG THE LOCAL GEODETIC VERTICAL, not the geocentric radial. The two
+        # differ by up to 11.5 arcmin at mid-latitude, and this model exists to
+        # reproduce the pre-Earth plant, whose gravity was exactly
+        # `dcm.T @ [0, 0, G0]` -- zero horizontal component by construction.
+        #
+        # The geocentric form was written here first and put 0.0329 m/s^2 of
+        # NORTHWARD gravity at 45 deg, which is 3.35e-3 g. That is a systematic
+        # bias, not the round-off floor the FLAT comparison is meant to measure,
+        # and it would have failed that comparison for a reason nobody would
+        # have traced back to here.
+        #
+        # `ecef_to_ned_matrix` returns rows [north, east, down] in ECEF
+        # components, so row 2 IS the local down direction.
+        lat, lon, _ = ecef_to_geodetic(r_ecef)
+        return G0 * ecef_to_ned_matrix(lat, lon)[2]
 
     magnitude = GM_WGS84 / (radius * radius)
     if model.gravity == "inverse_square":

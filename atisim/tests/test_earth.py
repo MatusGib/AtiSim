@@ -161,14 +161,39 @@ def test_j2_is_what_separates_the_two_gravity_models():
 
 
 def test_flat_is_constant_g_along_the_local_vertical_and_does_not_rotate():
-    """FLAT is a CONFIGURATION of the one plant, not a second implementation."""
+    """FLAT is a CONFIGURATION of the one plant, not a second implementation.
+
+    THE DIRECTION IS THE WHOLE TEST, and this assertion used to enforce the bug
+    it now catches. It read "FLAT is spherical, so down is -r_hat" and compared
+    against the GEOCENTRIC radial -- while the local NED frame everything else
+    uses is built on the GEODETIC normal. The two differ by up to 11.5 arcmin,
+    which put 0.0329 m/s^2 of NORTHWARD gravity into FLAT at 45 deg: 3.35e-3 g
+    of systematic bias.
+
+    That matters because FLAT exists to reproduce the pre-Earth plant, whose
+    gravity was exactly `dcm.T @ [0, 0, G0]` with no horizontal component at
+    all, and because a later task asserts FLAT differs from that plant only by
+    round-off. 3.35e-3 g is not round-off.
+
+    So the assertion is now the one the name always claimed: resolved into the
+    local NED frame, FLAT gravity is [0, 0, G0] exactly.
+    """
     from atisim.atmosphere import G0
 
-    r = earth.geodetic_to_ecef(np.radians(47.0), 0.3, 9144.0)
-    g = np.asarray(earth.gravitation(r, earth.FLAT))
-    assert float(np.linalg.norm(g)) == pytest.approx(G0, rel=1e-14)
-    # Along the inward radius: FLAT is spherical, so down is -r_hat.
-    assert np.allclose(g / np.linalg.norm(g), -np.asarray(r) / np.linalg.norm(np.asarray(r)), atol=1e-14)
+    for lat_deg in (0.0, 30.0, 45.0, 60.0, 89.0):
+        lat = np.radians(lat_deg)
+        r = earth.geodetic_to_ecef(lat, 0.3, 9144.0)
+        g_ned = np.asarray(earth.ecef_to_ned_matrix(lat, 0.3)) @ np.asarray(
+            earth.gravitation(r, earth.FLAT)
+        )
+        assert float(np.linalg.norm(g_ned)) == pytest.approx(G0, rel=1e-14)
+        assert abs(g_ned[0]) < 1e-9, (
+            f"FLAT has {g_ned[0]:.4e} m/s^2 of northward gravity at {lat_deg} deg; "
+            "the geocentric form gave 0.0329 at 45 deg"
+        )
+        assert abs(g_ned[1]) < 1e-9
+        assert g_ned[2] == pytest.approx(G0, rel=1e-14)
+
     assert earth.FLAT.rotation_rate == 0.0
     assert earth.WGS84_J2.rotation_rate == earth.OMEGA_WGS84
 
