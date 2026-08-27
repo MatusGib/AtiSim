@@ -17,7 +17,7 @@ from matplotlib.backend_bases import KeyEvent
 import matplotlib.pyplot as plt
 
 from atisim import autopilot as ap_mod
-from atisim import integrate, manual as man, panel as panel_mod, trim, viz
+from atisim import earth, integrate, manual as man, panel as panel_mod, trim, viz
 from atisim.aircraft import CRUISE, REGISTRY
 from atisim.manual import Mode
 from atisim.sensors import sense
@@ -29,6 +29,11 @@ MGAINS = man.MANUAL_GAINS["boeing747"]
 V = CRUISE["boeing747"]["airspeed"]
 H = CRUISE["boeing747"]["altitude"]
 DT = 0.02
+# 47N at the cruise altitude, the same anchor test_panel.py flies, because these
+# runs go through the same LiveSim. WGS84_J2: a `.npz` is a record of a real
+# flight, so what gets written must be what the aircraft actually did.
+ANCHOR = earth.anchor_at(np.radians(47.0), 0.0, H)
+EARTH = earth.WGS84_J2
 
 
 @pytest.fixture(autouse=True)
@@ -39,9 +44,9 @@ def _close_figures():
 
 @pytest.fixture(scope="module")
 def trimmed():
-    x, _ = trim.trim(jnp.array(V), jnp.array(H), AC)
+    x, _ = trim.trim(jnp.array(V), jnp.array(H), AC, ANCHOR, EARTH)
     return (
-        trim.trimmed_state(x[0], jnp.array(V), jnp.array(H)),
+        trim.trimmed_state(x[0], x[3], jnp.array(V), jnp.array(H), ANCHOR, 0.0),
         trim.trimmed_controls(x),
     )
 
@@ -57,11 +62,12 @@ def targets():
 def live(trimmed, targets):
     """Panel plus LiveSim, stepping a fixed 1/fps of sim time per frame."""
     state, controls = trimmed
-    ctl = man.start(sense(state), controls, targets, GAINS, AC)
+    ctl = man.start(sense(state, ANCHOR), controls, targets, GAINS, AC)
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
-    panel = panel_mod.Panel(targets, window=20.0, fps=20.0)
+    panel = panel_mod.Panel(targets, ANCHOR, window=20.0, fps=20.0)
     return panel_mod.LiveSim(
-        sim, ctl, targets, GAINS, MGAINS, AC, panel, dt=DT, real_time=False
+        sim, ctl, targets, GAINS, MGAINS, AC, panel, ANCHOR, EARTH,
+        dt=DT, real_time=False,
     )
 
 
@@ -85,8 +91,16 @@ def test_trajectory_round_trips_through_npz(live, tmp_path):
     again = viz.load(path)
 
     assert again._fields == traj._fields
-    for saved, loaded in zip(traj, again):
-        assert np.array_equal(saved, loaded)
+    for name in traj._fields:
+        if name != "anchor":
+            assert np.array_equal(getattr(traj, name), getattr(again, name))
+    # The anchor is NOT an array column: `save` writes the three geodetic scalars
+    # it is defined by and `load` rebuilds `r_ecef` and `T_e2l` through
+    # `anchor_at`. Comparing it field by field is what checks the rebuild, and
+    # `np.array_equal` on the whole Anchor would be a ragged-array error rather
+    # than a comparison.
+    for saved, loaded in zip(traj.anchor, again.anchor):
+        assert np.array_equal(np.asarray(saved), np.asarray(loaded))
 
 
 def test_the_log_has_one_row_per_step_and_the_documented_shapes(live):
@@ -94,7 +108,9 @@ def test_the_log_has_one_row_per_step_and_the_documented_shapes(live):
         live.frame()
     traj = live.trajectory()
     n = len(traj.t)
-    assert traj.pos_ned.shape == (n, 3)
+    # `pos_ecef`, not `pos_ned`: the log stores the state as flown. Local NED is
+    # derived by `viz.pos_ned` and no longer a column.
+    assert traj.pos_ecef.shape == (n, 3)
     assert traj.vel_body.shape == (n, 3)
     assert traj.quat.shape == (n, 4)
     assert traj.omega.shape == (n, 3)
