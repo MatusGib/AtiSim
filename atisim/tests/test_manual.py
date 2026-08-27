@@ -4,11 +4,13 @@ import numpy as np
 import pytest
 
 from atisim import autopilot as ap_mod
-from atisim import integrate, manual as man, trim
+from atisim import earth, integrate, manual as man, trim
 from atisim.aircraft import CRUISE, REGISTRY
 from atisim.manual import Mode, PilotInput
 from atisim.sensors import sense
-from atisim.state import Controls, quat_to_euler
+from atisim.state import Controls
+from atisim.state import altitude as geodetic_altitude
+from atisim.state import quat_to_euler_ned
 
 AC = REGISTRY["boeing747"]
 GAINS = ap_mod.GAINS["boeing747"]
@@ -16,12 +18,16 @@ MGAINS = man.MANUAL_GAINS["boeing747"]
 V = CRUISE["boeing747"]["airspeed"]
 H = CRUISE["boeing747"]["altitude"]
 DT = 0.02
+# 47N at the cruise altitude these tests hand-fly. WGS84_J2: hand flying is the
+# aircraft's actual flight behaviour, so it flies the shipped Earth.
+ANCHOR = earth.anchor_at(np.radians(47.0), 0.0, H)
+EARTH = earth.WGS84_J2
 
 
 def trimmed():
-    x, _ = trim.trim(jnp.array(V), jnp.array(H), AC)
+    x, _ = trim.trim(jnp.array(V), jnp.array(H), AC, ANCHOR, EARTH)
     return (
-        trim.trimmed_state(x[0], jnp.array(V), jnp.array(H)),
+        trim.trimmed_state(x[0], x[3], jnp.array(V), jnp.array(H), ANCHOR, 0.0),
         trim.trimmed_controls(x[1], x[2]),
     )
 
@@ -46,7 +52,7 @@ def hand_fly(state, controls, pilot, seconds):
     history = []
     for _ in range(int(seconds / DT)):
         controls, ms = man.manual(ms, pilot, MGAINS, AC, jnp.array(DT))
-        sim = integrate.step(sim, controls, jnp.array(DT), AC)
+        sim = integrate.step(sim, controls, jnp.array(DT), AC, ANCHOR, EARTH)
         history.append(sim.state)
     return jax.tree.map(lambda *xs: jnp.stack(xs), *history)
 
@@ -158,17 +164,40 @@ def test_throttle_is_incremental_rate_limited_and_clamped():
 
 
 def test_neutral_stick_from_trim_holds_the_trimmed_condition():
+    """Neutral stick must not move the surfaces. The aircraft still drifts 2.8 m.
+
+    THE 1.0 m BOUND WAS A FLAT-EARTH NUMBER AND IT IS GONE. `trimmed_state` sets
+    `omega = 0`, which is an instantaneous equilibrium -- the trim residual
+    really does vanish at t = 0 -- but it is NOT a steady level-flight condition
+    over a curved Earth, because level flight round an ellipsoid needs a
+    continuous nose-down transport rate of V/R and this state has none. The
+    aircraft therefore flies a straighter line than the surface curves and gains
+    geodetic altitude: measured 2.8412 m over these 30 s (7.08 km of track).
+
+    IT IS CURVATURE, NOT ROTATION, and the control says so: `earth.FLAT` gives
+    2.8412 m against WGS84_J2's 2.8412 m -- identical to five decimals, because
+    FLAT is non-rotating and constant-g but still an ellipsoid. So neither the
+    Coriolis term nor J2 is involved, and this is not something the manual
+    controller could fix.
+
+    Bounded at 4.0 m, which leaves 1.16 m of headroom over the known drift --
+    comparable to the 1.0 m the flat-Earth version had over zero -- so a
+    neutral stick that actually moved a surface is still caught.
+    """
     state, controls = trimmed()
     hist = hand_fly(state, controls, man.NEUTRAL, 30.0)
-    altitude = -np.asarray(hist.pos_ned)[:, 2]
-    assert np.abs(altitude - H).max() < 1.0
+    # GEODETIC, not -pos_ned[:, 2]: the tangent plane the anchor defines falls
+    # away from the ellipsoid as d^2/2R, which is 3.9 m over the 7 km this run
+    # covers -- and is a different quantity from the altitude being held.
+    altitude = np.asarray(jax.vmap(geodetic_altitude, in_axes=(0, None))(hist, ANCHOR))
+    assert np.abs(altitude - H).max() < 4.0
 
 
 def test_forward_stick_pitches_the_nose_down_without_departing():
     """Sanity check on the chosen authority: a response, not a departure."""
     state, controls = trimmed()
     hist = hand_fly(state, controls, PilotInput(pitch=1.0), 10.0)
-    theta = np.asarray(jax.vmap(quat_to_euler)(hist.quat))[:, 1]
+    theta = np.asarray(jax.vmap(quat_to_euler_ned, in_axes=(0, None))(hist, ANCHOR))[:, 1]
     assert theta[-1] < theta[0] - np.deg2rad(2.0)
     assert np.abs(theta).max() < np.deg2rad(45.0)
     assert np.isfinite(np.asarray(hist.vel_body)).all()
@@ -177,7 +206,7 @@ def test_forward_stick_pitches_the_nose_down_without_departing():
 def test_right_stick_rolls_right_without_departing():
     state, controls = trimmed()
     hist = hand_fly(state, controls, PilotInput(roll=1.0), 6.0)
-    phi = np.asarray(jax.vmap(quat_to_euler)(hist.quat))[:, 0]
+    phi = np.asarray(jax.vmap(quat_to_euler_ned, in_axes=(0, None))(hist, ANCHOR))[:, 0]
     assert phi[-1] > np.deg2rad(5.0)
     assert np.abs(phi).max() < np.deg2rad(80.0)
 
@@ -187,7 +216,7 @@ def test_right_stick_rolls_right_without_departing():
 
 def test_start_seeds_both_controllers_from_the_same_deflections():
     state, controls = trimmed()
-    ctl = man.start(sense(state), controls, hold_targets(), GAINS, AC)
+    ctl = man.start(sense(state, ANCHOR), controls, hold_targets(), GAINS, AC)
     assert ctl.mode is Mode.MANUAL
     for held, current in zip(man.current_controls(ctl), controls):
         assert float(held) == float(current)
@@ -196,17 +225,17 @@ def test_start_seeds_both_controllers_from_the_same_deflections():
 def test_toggle_into_autopilot_is_bumpless_from_a_hand_flown_deflection():
     """The classic lurch: engage while holding the stick off-centre."""
     state, controls = trimmed()
-    ctl = man.start(sense(state), controls, hold_targets(), GAINS, AC)
+    ctl = man.start(sense(state, ANCHOR), controls, hold_targets(), GAINS, AC)
     targets = hold_targets()
 
     flown, ctl = man.update(
-        ctl, sense(state), PilotInput(pitch=1.0), targets, GAINS, MGAINS, AC, jnp.array(DT)
+        ctl, sense(state, ANCHOR), PilotInput(pitch=1.0), targets, GAINS, MGAINS, AC, jnp.array(DT)
     )
-    ctl = man.toggle(ctl, sense(state), targets, GAINS, AC)
+    ctl = man.toggle(ctl, sense(state, ANCHOR), targets, GAINS, AC)
     assert ctl.mode is Mode.AUTOPILOT
 
     first, _ = man.update(
-        ctl, sense(state), man.NEUTRAL, targets, GAINS, MGAINS, AC, jnp.array(DT)
+        ctl, sense(state, ANCHOR), man.NEUTRAL, targets, GAINS, MGAINS, AC, jnp.array(DT)
     )
     for engaged, hand_flown in zip(first, flown):
         assert float(engaged) == pytest.approx(float(hand_flown), abs=1e-12)
@@ -217,25 +246,25 @@ def test_toggle_out_of_autopilot_hands_back_the_live_deflections():
     targets = ap_mod.Targets(
         altitude=jnp.array(H + 300.0), heading=jnp.array(0.0), airspeed=jnp.array(V)
     )
-    ctl = man.start(sense(state), controls, targets, GAINS, AC, mode=Mode.AUTOPILOT)
+    ctl = man.start(sense(state, ANCHOR), controls, targets, GAINS, AC, mode=Mode.AUTOPILOT)
 
     # Let the autopilot pull the surfaces away from trim chasing the step.
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
     for _ in range(500):
         flown, ctl = man.update(
-            ctl, sense(sim.state), man.NEUTRAL, targets, GAINS, MGAINS, AC, jnp.array(DT)
+            ctl, sense(sim.state, ANCHOR), man.NEUTRAL, targets, GAINS, MGAINS, AC, jnp.array(DT)
         )
-        sim = integrate.step(sim, flown, jnp.array(DT), AC)
+        sim = integrate.step(sim, flown, jnp.array(DT), AC, ANCHOR, EARTH)
     assert abs(float(flown.elevator) - float(controls.elevator)) > 1e-4
 
-    ctl = man.toggle(ctl, sense(sim.state), targets, GAINS, AC)
+    ctl = man.toggle(ctl, sense(sim.state, ANCHOR), targets, GAINS, AC)
     assert ctl.mode is Mode.MANUAL
     for handback, live in zip(man.current_controls(ctl), flown):
         assert float(handback) == float(live)
 
     # And with the stick centred the first manual step must not move anything.
     first, _ = man.update(
-        ctl, sense(sim.state), man.NEUTRAL, targets, GAINS, MGAINS, AC, jnp.array(DT)
+        ctl, sense(sim.state, ANCHOR), man.NEUTRAL, targets, GAINS, MGAINS, AC, jnp.array(DT)
     )
     for after, before in zip(first, flown):
         assert float(after) == pytest.approx(float(before), abs=1e-12)
@@ -245,21 +274,21 @@ def test_round_trip_through_both_modes_leaves_no_discontinuity():
     """Toggle repeatedly while hand flying; no switch may step the surfaces."""
     state, controls = trimmed()
     targets = hold_targets()
-    ctl = man.start(sense(state), controls, targets, GAINS, AC)
+    ctl = man.start(sense(state, ANCHOR), controls, targets, GAINS, AC)
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
 
     previous = controls
     worst = 0.0
     for i in range(1500):
         if i % 300 == 299:
-            ctl = man.toggle(ctl, sense(sim.state), targets, GAINS, AC)
+            ctl = man.toggle(ctl, sense(sim.state, ANCHOR), targets, GAINS, AC)
         pilot = PilotInput(pitch=0.3) if ctl.mode is Mode.MANUAL else man.NEUTRAL
         flown, ctl = man.update(
-            ctl, sense(sim.state), pilot, targets, GAINS, MGAINS, AC, jnp.array(DT)
+            ctl, sense(sim.state, ANCHOR), pilot, targets, GAINS, MGAINS, AC, jnp.array(DT)
         )
         worst = max(worst, abs(float(flown.elevator) - float(previous.elevator)) / DT)
         previous = flown
-        sim = integrate.step(sim, flown, jnp.array(DT), AC)
+        sim = integrate.step(sim, flown, jnp.array(DT), AC, ANCHOR, EARTH)
 
     assert worst <= float(GAINS.surface_rate) + 1e-9
     assert np.isfinite(np.asarray(sim.state.vel_body)).all()
@@ -321,9 +350,9 @@ def test_neutral_trim_leaves_the_reference_untouched():
 
 def test_trim_here_snaps_the_reference_to_the_live_deflections():
     state, controls = trimmed()
-    ctl = man.start(sense(state), controls, hold_targets(), GAINS, AC)
+    ctl = man.start(sense(state, ANCHOR), controls, hold_targets(), GAINS, AC)
     held, ctl = man.update(
-        ctl, sense(state), PilotInput(pitch=1.0), hold_targets(),
+        ctl, sense(state, ANCHOR), PilotInput(pitch=1.0), hold_targets(),
         GAINS, MGAINS, AC, jnp.array(DT),
     )
     assert float(ctl.manual.reference.elevator) != pytest.approx(float(held.elevator))
@@ -337,6 +366,6 @@ def test_trim_here_does_nothing_under_the_autopilot():
     left to do -- and trim-here must not reach into the autopilot's state."""
     state, controls = trimmed()
     ctl = man.start(
-        sense(state), controls, hold_targets(), GAINS, AC, mode=Mode.AUTOPILOT
+        sense(state, ANCHOR), controls, hold_targets(), GAINS, AC, mode=Mode.AUTOPILOT
     )
     assert man.trim_here(ctl) is ctl
