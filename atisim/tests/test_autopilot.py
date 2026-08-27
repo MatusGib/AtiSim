@@ -43,7 +43,7 @@ def trimmed():
     x, _ = trim.trim(jnp.array(V), jnp.array(H), AC, ANCHOR, EARTH)
     return (
         trim.trimmed_state(x[0], x[3], jnp.array(V), jnp.array(H), ANCHOR, 0.0),
-        trim.trimmed_controls(x[1], x[2]),
+        trim.trimmed_controls(x),
     )
 
 
@@ -78,7 +78,7 @@ def test_engagement_reproduces_the_current_controls_exactly():
 def test_engagement_from_a_non_trim_deflection_still_matches():
     """Bumpless transfer must work from any hand-flown position, not just trim."""
     state, _ = trimmed()
-    controls = trim.trimmed_controls(jnp.array(0.06), jnp.array(0.9))
+    controls = trim.longitudinal_controls(jnp.array(0.06), jnp.array(0.9))
     targets = hold_targets()
     ap = ap_mod.engage(sense(state, ANCHOR), controls, targets, GAINS, AC)
     out, _ = ap_mod.autopilot(sense(state, ANCHOR), ap, targets, GAINS, AC, jnp.array(DT))

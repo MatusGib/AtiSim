@@ -356,7 +356,7 @@ def test_each_aircraft_is_flown_by_its_own_gains(named):
     # in exactly the channel Coriolis acts in, and the loops would spend the
     # first seconds removing an upset this test created.
     state = trim.trimmed_state(x[0], x[3], jnp.array(V), jnp.array(H), anchor, 0.0)
-    controls = trim.trimmed_controls(x[1], x[2])
+    controls = trim.trimmed_controls(x)
     targets = ap_mod.Targets(
         altitude=jnp.array(H), heading=jnp.array(0.0), airspeed=jnp.array(V)
     )
@@ -383,7 +383,7 @@ def test_each_aircraft_captures_an_altitude_step(named):
     step = 300.0 if name == "boeing747" else 150.0
     x, _ = trim.trim(jnp.array(V), jnp.array(H), ac, anchor, EARTH)
     state = trim.trimmed_state(x[0], x[3], jnp.array(V), jnp.array(H), anchor, 0.0)
-    controls = trim.trimmed_controls(x[1], x[2])
+    controls = trim.trimmed_controls(x)
     targets = ap_mod.Targets(
         altitude=jnp.array(H + step), heading=jnp.array(0.0), airspeed=jnp.array(V)
     )
@@ -409,7 +409,7 @@ def test_each_aircraft_captures_a_heading_step(named):
     gains = ap_mod.GAINS[name]
     x, _ = trim.trim(jnp.array(V), jnp.array(H), ac, anchor, EARTH)
     state = trim.trimmed_state(x[0], x[3], jnp.array(V), jnp.array(H), anchor, 0.0)
-    controls = trim.trimmed_controls(x[1], x[2])
+    controls = trim.trimmed_controls(x)
     targets = ap_mod.Targets(
         altitude=jnp.array(H),
         heading=jnp.array(np.deg2rad(30.0)),
@@ -474,7 +474,7 @@ def test_every_aircraft_holds_its_trimmed_condition_for_60_s(named):
     anchor = _anchor_at(H)
     x, _ = trim.trim(jnp.array(V), jnp.array(H), ac, anchor, EARTH)
     state = trim.trimmed_state(x[0], x[3], jnp.array(V), jnp.array(H), anchor, 0.0)
-    controls = trim.trimmed_controls(x[1], x[2])
+    controls = trim.trimmed_controls(x)
     _, hist = integrate.rollout(
         integrate.init_sim(state, jax.random.PRNGKey(0)),
         controls,

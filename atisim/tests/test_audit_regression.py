@@ -991,13 +991,13 @@ def test_a_fixed_control_pull_from_trim_does_not_reach_the_energy_gaining_region
     whether the aerodynamics can pump energy, which is the bound being kept.
     """
     from atisim.integrate import init_sim, rollout
-    from atisim.trim import trimmed_controls, trimmed_state
+    from atisim.trim import longitudinal_controls, trimmed_controls, trimmed_state
     ac = REGISTRY["cherokee"]
     V, alt = CRUISE["cherokee"]["airspeed"], CRUISE["cherokee"]["altitude"]
     anchor = earth.anchor_at(np.radians(47.0), 0.0, alt)
     x, _ = trim(jnp.array(V), jnp.array(alt), ac, anchor, earth.FLAT)
     state = trimmed_state(x[0], x[3], jnp.array(V), jnp.array(alt), anchor, 0.0)
-    controls = trimmed_controls(jnp.array(-float(ac.elevator_limit)), jnp.array(0.0))
+    controls = longitudinal_controls(jnp.array(-float(ac.elevator_limit)), jnp.array(0.0))
     dt, n = 0.002, 3000
     _, traj = rollout(init_sim(state, jax.random.PRNGKey(0)),
                       controls, jnp.array(dt), ac, n, anchor, earth.FLAT)
@@ -1046,7 +1046,7 @@ def test_the_wind_hold_costs_the_headline_figure_more_than_E4_bounds_it():
     from atisim.dynamics import derivatives
     from atisim.integrate import rk4_step
     from atisim.state import matrix_to_euler, quat_normalize
-    from atisim.trim import trimmed_controls, trimmed_state
+    from atisim.trim import longitudinal_controls, trimmed_controls, trimmed_state
     from atisim import vortex_viz
 
     V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
@@ -1074,7 +1074,7 @@ def test_the_wind_hold_costs_the_headline_figure_more_than_E4_bounds_it():
     state = state._replace(
         pos_ecef=anchor.T_e2l.T @ jnp.array([-40.0 * r0, 0.0, 0.0])
     )
-    controls = trimmed_controls(x[1], x[2])
+    controls = trimmed_controls(x)
 
     def body(s, _):
         def f(y):
@@ -1783,7 +1783,7 @@ def test_the_integrator_has_no_ground_plane():
     WRITTEN TO FAIL WHEN FIXED: adding a ground plane makes this go red.
     """
     from atisim.integrate import init_sim, rollout
-    from atisim.trim import trimmed_controls, trimmed_state
+    from atisim.trim import longitudinal_controls, trimmed_controls, trimmed_state
     from atisim.wind import zero_wind
 
     ac = B747PA
@@ -1800,7 +1800,7 @@ def test_the_integrator_has_no_ground_plane():
     )
     sim = init_sim(state, jnp.zeros(2, dtype=jnp.uint32))
     _, trajectory = rollout(
-        sim, trimmed_controls(solution[1], jnp.array(0.0)), 0.01, ac, 6000,
+        sim, longitudinal_controls(solution[1], jnp.array(0.0)), 0.01, ac, 6000,
         anchor, earth.WGS84_J2, zero_wind,
     )
     # GEODETIC. "Below sea level" is a statement about the ellipsoid.
@@ -2107,7 +2107,7 @@ def test_the_shipped_runs_fly_a_genuinely_straight_track():
     anchor = earth.anchor_at(np.radians(47.0), 0.0, 300.0)
 
     x, _ = trim.trim(jnp.array(50.0), jnp.array(300.0), ac, anchor, earth.FLAT)
-    controls = trim.trimmed_controls(x[1], x[2])
+    controls = trim.trimmed_controls(x)
     state = trim.trimmed_state(
         x[0], x[3], jnp.array(50.0), jnp.array(300.0), anchor, 0.0
     )

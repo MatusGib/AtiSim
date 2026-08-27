@@ -60,7 +60,7 @@ def fly(targets, seconds, gains=GAINS):
     # this line had before the six-unknown trim -- would start every step
     # response out of equilibrium in the lateral channel being tuned.
     state = trim.trimmed_state(x[0], x[3], jnp.array(V), jnp.array(H), ANCHOR, 0.0)
-    controls = trim.trimmed_controls(x[1], x[2])
+    controls = trim.trimmed_controls(x)
     ap = ap_mod.engage(sense(state, ANCHOR), controls, targets, gains, ac)
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
     (_, _), (hist, ctrl) = ap_mod.closed_loop_rollout(

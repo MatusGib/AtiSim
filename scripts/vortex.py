@@ -276,7 +276,7 @@ if args.artifacts:
             else (lambda p: jnp.zeros(3))
         )
         report = checks.run_checks(
-            enc.log, ac, trim.trimmed_controls(x[1], x[2]), enc_field, enc.window,
+            enc.log, ac, trim.trimmed_controls(x), enc_field, enc.window,
             EARTH,
         )
         out = artifact.write_run(

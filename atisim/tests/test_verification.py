@@ -33,7 +33,7 @@ def _fixed_control_rollout(dt, n_steps, d_elevator=0.02):
     V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
     x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
     state = trim.trimmed_state(x[0], jnp.array(V), jnp.array(H))
-    controls = trim.trimmed_controls(x[1] + d_elevator, x[2])
+    controls = trim.trimmed_controls(x)._replace(elevator=x[1] + d_elevator)
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
     return integrate.rollout(sim, controls, jnp.array(dt), ac, n_steps)
 
@@ -259,7 +259,7 @@ def test_a_uniform_horizontal_wind_only_translates_the_trajectory():
     V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
     x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
     state = trim.trimmed_state(x[0], jnp.array(V), jnp.array(H))
-    controls = trim.trimmed_controls(x[1] + 0.01, x[2])
+    controls = trim.trimmed_controls(x)._replace(elevator=x[1] + 0.01)
 
     from atisim.state import quat_to_dcm
 
@@ -375,7 +375,7 @@ def test_a_step_ignores_the_wind_the_previous_step_applied():
     V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
     x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
     state = trim.trimmed_state(x[0], jnp.array(V), jnp.array(H))
-    controls = trim.trimmed_controls(x[1] + 0.01, x[2])
+    controls = trim.trimmed_controls(x)._replace(elevator=x[1] + 0.01)
     base = integrate.init_sim(state, jax.random.PRNGKey(0))
 
     def one_step(cached):
@@ -480,7 +480,7 @@ def test_the_integrator_reproduces_torque_free_rotation():
         quat=euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
         omega=jnp.array(_OMEGA0),
     )
-    controls = trim.trimmed_controls(jnp.array(0.0), jnp.array(0.0))
+    controls = trim.longitudinal_controls(jnp.array(0.0), jnp.array(0.0))
     dt, n = 0.002, 1500
     _, traj = integrate.rollout(
         integrate.init_sim(state, jax.random.PRNGKey(0)), controls, jnp.array(dt), ac, n

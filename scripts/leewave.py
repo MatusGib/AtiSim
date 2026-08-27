@@ -59,7 +59,7 @@ x, _ = trim.trim(jnp.array(V), jnp.array(H), ac, ANCHOR, EARTH)
 # exactly the measurement.
 alpha, elevator, throttle, phi = (float(v) for v in x[:4])
 full, idle = (float(v) for v in dynamics.thrust_authority(ac, x[2], jnp.array(H)))
-controls = trim.trimmed_controls(x[1], x[2])
+controls = trim.trimmed_controls(x)
 
 
 def fly(w0):

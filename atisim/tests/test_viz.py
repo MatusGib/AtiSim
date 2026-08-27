@@ -42,7 +42,7 @@ def trimmed():
     x, _ = trim.trim(jnp.array(V), jnp.array(H), AC)
     return (
         trim.trimmed_state(x[0], jnp.array(V), jnp.array(H)),
-        trim.trimmed_controls(x[1], x[2]),
+        trim.trimmed_controls(x),
     )
 
 

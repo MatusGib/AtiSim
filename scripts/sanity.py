@@ -57,7 +57,7 @@ EARTH = earth.FLAT
 
 x_trim, res = trim.trim(jnp.array(v), jnp.array(h), ac, ANCHOR, EARTH)
 alpha = float(x_trim[0])
-trim_controls = trim.trimmed_controls(x_trim[1], x_trim[2])
+trim_controls = trim.trimmed_controls(x_trim)
 # x_trim[3] is the trimmed bank. It is 0 under FLAT -- nothing to balance -- but
 # it is passed rather than assumed, so switching EARTH above changes the answer
 # instead of silently starting the run out of equilibrium.
@@ -87,7 +87,7 @@ check("zero wind doesn't touch the relative velocity",
 naked = verification.without_aerodynamics(ac)
 d_free = derivatives(
     trim_state._replace(omega=jnp.zeros(3)),
-    trim.trimmed_controls(jnp.array(0.0), jnp.array(1.0)),  # no thrust either way this is called
+    trim.longitudinal_controls(jnp.array(0.0), jnp.array(1.0)),  # no thrust either way this is called
     naked, jnp.zeros(3), jnp.zeros(3), ANCHOR, EARTH,
 )
 accel_ned = dcm_body_to_ned(trim_state, ANCHOR) @ d_free.vel_body
@@ -105,7 +105,7 @@ slip_state = trim_state._replace(
     vel_body=trim_state.vel_body + jnp.array([0.0, 12.0, 0.0]),  # roughly 3 deg sideslip
     omega=jnp.zeros(3),
 )
-big_aileron = trim.trimmed_controls(x_trim[1], x_trim[2])._replace(
+big_aileron = trim.trimmed_controls(x_trim)._replace(
     aileron=jnp.array(0.3), rudder=jnp.array(0.2)
 )
 
@@ -139,7 +139,7 @@ no_pitch_ac = ac._replace(
 )
 d_nopitch = derivatives(
     slip_state,
-    trim.trimmed_controls(jnp.array(0.4), x_trim[2]),
+    trim.longitudinal_controls(jnp.array(0.4), x_trim[2]),
     no_pitch_ac, jnp.zeros(3), jnp.zeros(3), ANCHOR, EARTH,
 )
 check("Cm=0 -> even a big elevator input gives zero pitch accel",
@@ -199,7 +199,7 @@ check("load factor in trimmed level flight is cos(alpha), NOT 1",
 # does the whole assembled model behave right structurally
 # =====================================================================
 
-elev_only = trim.trimmed_controls(x_trim[1] + 0.15, x_trim[2])
+elev_only = trim.trimmed_controls(x_trim)._replace(elevator=x_trim[1] + 0.15)
 d_long = derivatives(
     trim_state._replace(omega=jnp.array([0.0, 0.05, 0.0])),
     elev_only, ac, jnp.zeros(3), jnp.zeros(3), ANCHOR, EARTH,

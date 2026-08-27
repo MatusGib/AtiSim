@@ -34,7 +34,7 @@ def longitudinal_modes(alpha, elevator, throttle):
     inertia, atmosphere and unit conversions all have to be right together.
     """
     u0, w0 = V * np.cos(alpha), V * np.sin(alpha)
-    controls = trim.trimmed_controls(jnp.array(elevator), jnp.array(throttle))
+    controls = trim.longitudinal_controls(jnp.array(elevator), jnp.array(throttle))
 
     def f(x):
         u, w, q, theta = x
@@ -83,7 +83,7 @@ n = int(seconds / dt)
 state = trim.trimmed_state(
     jnp.array(alpha), jnp.array(phi), jnp.array(V), jnp.array(H), ANCHOR, jnp.array(0.0)
 )
-controls = trim.trimmed_controls(jnp.array(elevator), jnp.array(throttle))
+controls = trim.longitudinal_controls(jnp.array(elevator), jnp.array(throttle))
 final, hist = integrate.rollout(
     integrate.init_sim(state, jax.random.PRNGKey(0)), controls, jnp.array(dt), ac, n,
     ANCHOR, EARTH,

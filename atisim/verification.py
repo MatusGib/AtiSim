@@ -104,7 +104,7 @@ def fixed_control_refinement(ac, airspeed, altitude, dts, dt_ref, anchor,
 
     from atisim.integrate import init_sim, rollout
     from atisim.state import dcm_body_to_ned, dcm_to_quat, pos_ned, state_from_ned
-    from atisim.trim import trim, trimmed_controls, trimmed_state
+    from atisim.trim import longitudinal_controls, trim, trimmed_controls, trimmed_state
     from atisim.wind import zero_wind
 
     x, _ = trim(jnp.array(airspeed), jnp.array(altitude), ac, anchor, earth_model)
@@ -128,7 +128,7 @@ def fixed_control_refinement(ac, airspeed, altitude, dts, dt_ref, anchor,
         state.omega,
         anchor,
     )
-    controls = trimmed_controls(x[1] + d_elevator, x[2])
+    controls = trimmed_controls(x)._replace(elevator=x[1] + d_elevator)
     model = zero_wind if wind_model is None else wind_model
 
     def final_pos(dt):
@@ -328,7 +328,7 @@ def free_fall_through_a_swinging_wind(ac, anchor, dt=0.02, n=300):
     )
     # Throttle 0.5 against max_thrust = 0, so "no thrust" is a property of the
     # airframe rather than of the control input.
-    controls = trimmed_controls(jnp.array(0.0), jnp.array(0.5))
+    controls = longitudinal_controls(jnp.array(0.0), jnp.array(0.5))
 
     sim = SimState(
         state=state,

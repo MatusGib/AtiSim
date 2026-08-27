@@ -28,7 +28,7 @@ def trimmed():
     x, _ = trim.trim(jnp.array(V), jnp.array(H), AC, ANCHOR, EARTH)
     return (
         trim.trimmed_state(x[0], x[3], jnp.array(V), jnp.array(H), ANCHOR, 0.0),
-        trim.trimmed_controls(x[1], x[2]),
+        trim.trimmed_controls(x),
     )
 
 

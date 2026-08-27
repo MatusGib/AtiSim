@@ -144,7 +144,7 @@ def fly(
     x, _ = trim.trim(
         jnp.array(airspeed), jnp.array(altitude), ac, anchor, earth_model
     )
-    controls = trim.trimmed_controls(x[1], x[2])
+    controls = trim.trimmed_controls(x)
     if strip:
         load_model = loads.strip_model(field, ac, anchor)
 
@@ -320,7 +320,7 @@ def _measure(
 
 
 @partial(jax.jit, static_argnames=("n_steps", "earth_model"))
-def _pulse_rollout(sim, ac, elev_trim, throttle, step, dt, n_steps, lead_in, hold,
+def _pulse_rollout(sim, ac, base_controls, step, dt, n_steps, lead_in, hold,
                    anchor, earth_model):
     """Scan an elevator pulse: trim, `step` from trim for `hold`, trim again.
 
@@ -332,8 +332,11 @@ def _pulse_rollout(sim, ac, elev_trim, throttle, step, dt, n_steps, lead_in, hol
     def body(carry, i):
         t = i * dt
         pulsing = (t >= lead_in) & (t < lead_in + hold)
-        controls = trim.trimmed_controls(
-            elev_trim + jnp.where(pulsing, step, 0.0), throttle
+        # The trim's aileron and rudder are KEPT; only the elevator pulses.
+        # Rebuilding them as zero would drop the lateral trim the six-unknown
+        # solve found, which is worth 1.9e-5 m/s^2 at an east heading.
+        controls = base_controls._replace(
+            elevator=base_controls.elevator + jnp.where(pulsing, step, 0.0)
         )
         carry = integrate.step(
             carry, controls, dt, ac, anchor, earth_model, wind_model=wind.zero_wind
@@ -360,7 +363,10 @@ def _pushdown_setup(ac: Aircraft, airspeed: float, altitude: float,
         jnp.array(airspeed), jnp.array(altitude), anchor, jnp.array(0.0),
     )
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
-    return sim, jnp.array(float(x[1])), jnp.array(float(x[2]))
+    # The FULL trim controls, not just elevator and throttle. The six-unknown
+    # trim solves for aileron and rudder too, and a pulse that rebuilt them as
+    # zero would drop the lateral trim -- 1.9e-5 m/s^2 at an east heading.
+    return sim, trim.trimmed_controls(x)
 
 
 def manoeuvre(
@@ -400,12 +406,12 @@ def manoeuvre(
     -- the same shape of error as a too-short vortex lead-in (section 9,
     session 3), and the reason that one is 40 core radii.
     """
-    sim, elev_trim, throttle = _pushdown_setup(
+    sim, base_controls = _pushdown_setup(
         ac, airspeed, altitude, anchor, earth_model
     )
     n = int(round(seconds / dt))
     hist, controls_hist = _pulse_rollout(
-        sim, ac, elev_trim, throttle, jnp.array(elevator_step),
+        sim, ac, base_controls, jnp.array(elevator_step),
         jnp.array(dt), n, jnp.array(lead_in), jnp.array(hold),
         anchor, earth_model,
     )
@@ -473,7 +479,7 @@ def elevator_for_load(
     because whether it is reachable at all is exactly the question section 5
     answers for the band's absolute reading (it is not).
     """
-    sim, elev_trim, throttle = _pushdown_setup(
+    sim, base_controls = _pushdown_setup(
         ac, airspeed, altitude, anchor, earth_model
     )
     n = int(round(seconds / dt))
@@ -487,7 +493,7 @@ def elevator_for_load(
 
         def one(step):
             hist, controls = _pulse_rollout(
-                sim, ac, elev_trim, throttle, step,
+                sim, ac, base_controls, step,
                 jnp.array(dt), n, jnp.array(lead_in), jnp.array(hold),
                 anchor, earth_model,
             )

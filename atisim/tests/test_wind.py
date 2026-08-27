@@ -379,7 +379,7 @@ def test_the_updraft_weathercocks_where_the_vortex_does_not():
     ac = REGISTRY["boeing747"]
     v, h = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
     x, _ = trim.trim(jnp.array(v), jnp.array(h), ac)
-    controls = trim.trimmed_controls(x[1], x[2])
+    controls = trim.trimmed_controls(x)
 
     radius = 0.5 * UPDRAFT_SECONDS * v  # the paper's 20 s traverse, as a distance
     column = _column(6.0, radius=radius)
@@ -435,7 +435,7 @@ def test_a_zero_strength_vortex_is_bit_identical_to_still_air():
     v, h = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
     x, _ = trim.trim(jnp.array(v), jnp.array(h), ac)
     state = trim.trimmed_state(x[0], jnp.array(v), jnp.array(h))
-    controls = trim.trimmed_controls(x[1], x[2])
+    controls = trim.trimmed_controls(x)
 
     inert = wind.vortex_model(
         wind.VortexArray(
@@ -499,7 +499,7 @@ def test_parks_case_1_reproduces_the_gust_spacing_and_pitch_signature():
     v, h = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
     x, _ = trim.trim(jnp.array(v), jnp.array(h), ac)
     alpha = float(x[0])
-    controls = trim.trimmed_controls(x[1], x[2])
+    controls = trim.trimmed_controls(x)
 
     array = wind.VortexArray(
         north=jnp.array([0.0, CASE1_SPACING]),
@@ -843,7 +843,7 @@ def test_nothing_added_by_this_work_moves_the_existing_wind_path():
     v, h = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
     x, _ = trim.trim(jnp.array(v), jnp.array(h), ac)
     state = trim.trimmed_state(x[0], jnp.array(v), jnp.array(h))
-    controls = trim.trimmed_controls(x[1], x[2])
+    controls = trim.trimmed_controls(x)
 
     array = single()
     model = wind.vortex_model(array)
@@ -919,7 +919,7 @@ def test_flying_the_parks_vortex_with_strip_loads_leaves_the_trajectory_alone():
     v, h = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
     x, _ = trim.trim(jnp.array(v), jnp.array(h), ac)
     state = trim.trimmed_state(x[0], jnp.array(v), jnp.array(h))
-    controls = trim.trimmed_controls(x[1], x[2])
+    controls = trim.trimmed_controls(x)
 
     array = single()
     field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
@@ -966,7 +966,7 @@ def test_a_field_with_spanwise_structure_moves_the_aircraft():
     v, h = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
     x, _ = trim.trim(jnp.array(v), jnp.array(h), ac)
     state = trim.trimmed_state(x[0], jnp.array(v), jnp.array(h))
-    controls = trim.trimmed_controls(x[1], x[2])
+    controls = trim.trimmed_controls(x)
 
     # Vertical gust cubic in east. Peaks at ~4.5 m/s at the wingtip, which is
     # the same order as the Parks core and therefore not a contrived overdrive.

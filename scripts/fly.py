@@ -97,7 +97,7 @@ print(
 state = trim.trimmed_state(
     jnp.array(alpha), jnp.array(phi), jnp.array(V), jnp.array(H), ANCHOR, jnp.array(0.0)
 )
-controls = trim.trimmed_controls(jnp.array(elevator), jnp.array(throttle))
+controls = trim.longitudinal_controls(jnp.array(elevator), jnp.array(throttle))
 targets = ap_mod.Targets(
     altitude=jnp.array(H), heading=jnp.array(0.0), airspeed=jnp.array(V)
 )

@@ -250,7 +250,7 @@ def test_entry_reproduces_jsbsims_own_trim_lift(ac, reference):
     vel = jnp.array([V * np.cos(alpha), 0.0, V * np.sin(alpha)])
     CL, *_ = aero.coefficients(
         vel, jnp.zeros(3),
-        trim_mod.trimmed_controls(jnp.array(de), jnp.array(0.63)),
+        trim_mod.longitudinal_controls(jnp.array(de), jnp.array(0.63)),
         ac, speed_of_sound(jnp.array(c["altitude"])),
     )
     # atisim evaluates the TABLE, not CL0 + CLa*alpha, so the comparison has to

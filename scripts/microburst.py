@@ -89,7 +89,7 @@ x, _ = trim.trim(jnp.array(V), jnp.array(H), ac, ANCHOR, EARTH)
 # out of equilibrium, so it has to begin in equilibrium.
 alpha, elevator, throttle, phi = (float(v) for v in x[:4])
 full, idle = (float(v) for v in dynamics.thrust_authority(ac, x[2], jnp.array(H)))
-controls = trim.trimmed_controls(x[1], x[2])
+controls = trim.trimmed_controls(x)
 
 burst = wind.microburst(u_max=args.u_max, radius=args.radius, z_m=args.z_m)
 # **THE FIELD IS LOWERED BY `H`, AND WITHOUT IT THIS RUN MEETS NOTHING.**

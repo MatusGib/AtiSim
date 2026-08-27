@@ -60,7 +60,13 @@ from atisim.aero import wave_drag
 from atisim.aircraft import Aircraft
 from atisim.atmosphere import G0, density, speed_of_sound
 from atisim.dynamics import derivatives
-from atisim.state import Controls, State, euler_to_quat, state_from_ned
+from atisim.state import (
+    Controls,
+    State,
+    euler_to_quat,
+    quat_to_matrix,
+    state_from_ned,
+)
 
 
 def trimmed_state(
@@ -88,12 +94,110 @@ def trimmed_state(
     theta = jnp.arctan(jnp.cos(phi) * jnp.tan(alpha))
     quat_ned = euler_to_quat(phi, theta, heading)
     vel_body = airspeed * jnp.array([jnp.cos(alpha), 0.0, jnp.sin(alpha)])
+    omega_body = transport_rate_body(airspeed, heading, phi, theta, anchor)
     return state_from_ned(
-        jnp.array([0.0, 0.0, 0.0]), vel_body, quat_ned, jnp.zeros(3), anchor
+        jnp.array([0.0, 0.0, 0.0]), vel_body, quat_ned, omega_body, anchor
     )
 
 
-def trimmed_controls(elevator: Array, throttle: Array) -> Controls:
+def transport_rate_body(
+    airspeed: Array, heading: Array, phi: Array, theta: Array, anchor: earth.Anchor
+) -> Array:
+    """Body rate of an aircraft holding level flight over a CURVED Earth.
+
+    **STEADY LEVEL FLIGHT IS NOT A STRAIGHT LINE, AND OMITTING THIS COSTS 4 m
+    PER MINUTE.** `omega = 0` means the ECEF-relative velocity is constant in
+    body axes, which is a straight line through space -- and a straight line
+    climbs away from an ellipsoid as `d^2/2R`. To hold altitude the aircraft
+    must pitch down continuously at the transport rate.
+
+    Measured, 747 at 47N and 12,192 m over 60 s of open-loop flight from trim:
+
+        omega = 0 (what this module shipped first)   +3.828 m
+        omega = transport rate                       -0.024 m
+
+    A factor of 160, and it is what restores the "every run starts trimmed"
+    guarantee the evidence ledger rests on. The sign matters as much as the
+    term: `+V/R` instead of `-V/R` gives +7.672 m, worse than omitting it,
+    because it doubles the error rather than cancelling it.
+
+    The standard INS transport rate, in NED, with the ellipsoid's two radii of
+    curvature rather than one spherical R:
+
+        omega_en = [ V_E/(N+h),  -V_N/(M+h),  -V_E tan(lat)/(N+h) ]
+
+    `M` is the meridian radius and `N` the prime-vertical radius; they differ by
+    0.34% at 45 degrees, which is far above the residual this term leaves.
+
+    The third component is the meridian convergence -- flying east at latitude
+    the local frame yaws -- and it is carried for the same reason the exact
+    `tan(theta) = cos(phi) tan(alpha)` constraint is: nothing downstream would
+    reveal it if it were wrong.
+    """
+    lat, h = anchor.lat, anchor.h
+    sin_lat = jnp.sin(lat)
+    denom = 1.0 - earth.E2_WGS84 * sin_lat * sin_lat
+    n_radius = earth.A_WGS84 / jnp.sqrt(denom)
+    m_radius = earth.A_WGS84 * (1.0 - earth.E2_WGS84) / (denom * jnp.sqrt(denom))
+
+    v_north = airspeed * jnp.cos(heading)
+    v_east = airspeed * jnp.sin(heading)
+    omega_en_ned = jnp.array([
+        v_east / (n_radius + h),
+        -v_north / (m_radius + h),
+        -v_east * jnp.tan(lat) / (n_radius + h),
+    ])
+
+    # The body is fixed in the local frame during steady flight, so its rate
+    # relative to ECEF IS the local frame's, expressed in body axes.
+    # `quat_to_matrix` of a body->NED quaternion is body->NED, so NED->body is
+    # its TRANSPOSE. Getting that backwards is not loud: both are rotations, and
+    # the result stays the right order of magnitude while pointing wrongly.
+    dcm_b2n = quat_to_matrix(euler_to_quat(phi, theta, heading))
+    return dcm_b2n.T @ omega_en_ned
+
+
+def trimmed_controls(solution: Array) -> Controls:
+    """The controls a trim solution actually asks for. TAKES THE WHOLE VECTOR.
+
+    **IT USED TO TAKE (elevator, throttle) AND HARDCODE AILERON AND RUDDER TO
+    ZERO, WHICH SILENTLY THREW AWAY HALF THE SOLUTION.** The six-unknown trim
+    solves for `aileron` and `rudder` -- it has to, because Coriolis and the
+    transport rate put moments in the lateral channel -- and every caller then
+    wrote `trimmed_controls(x)` and dropped them.
+
+    Measured on the 747 at 47N, flying the trim it was just handed:
+
+        heading    controls dropped        all four kept
+        000        |vdot| 5.476e-08        1.092e-12
+        090        |vdot| 1.887e-05        1.092e-12
+
+    Four orders at heading 090, where the trim wants 1.06e-4 rad of aileron to
+    coordinate the latitude circle. The signature takes the SOLUTION now so that
+    the old call is a TypeError rather than a quiet loss -- the same move as
+    deleting `quat_to_dcm`.
+
+    A caller building controls by hand, rather than from a trim, should
+    construct `Controls(...)` directly and say so; it is not a trim and should
+    not borrow this name.
+    """
+    return Controls(
+        elevator=solution[1],
+        aileron=solution[4],
+        rudder=solution[5],
+        throttle=solution[2],
+    )
+
+
+def longitudinal_controls(elevator: Array, throttle: Array) -> Controls:
+    """Elevator and throttle only, with the lateral channels explicitly zero.
+
+    For callers building a control setting BY HAND rather than from a trim --
+    a deliberate elevator step, a thrust-off case, a doublet. Named apart from
+    `trimmed_controls` on purpose: that one carries a trim's aileron and rudder,
+    and the whole reason it changed signature was that callers were silently
+    dropping them. A hand-built setting has none to drop, and says so here.
+    """
     return Controls(
         elevator=elevator,
         aileron=jnp.array(0.0),

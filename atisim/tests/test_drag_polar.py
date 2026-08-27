@@ -93,7 +93,7 @@ def _sim_cd(mach: float) -> float:
     x, _ = trim.trim(jnp.array(V), jnp.array(H), AC, ANCHOR, EARTH)
     alpha = float(x[0])
     vel_body = jnp.array([V * np.cos(alpha), 0.0, V * np.sin(alpha)])
-    controls = trim.trimmed_controls(x[1], x[2])
+    controls = trim.trimmed_controls(x)
     _, CD, _, _, _, _ = coefficients(vel_body, jnp.zeros(3), controls, AC, jnp.array(A_SOUND))
     return float(CD)
 

@@ -32,7 +32,7 @@ def small_run():
     )
     field = lambda p: wind.updraft_wind(p, column)  # noqa: E731
     x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
-    controls = trim.trimmed_controls(x[1], x[2])
+    controls = trim.trimmed_controls(x)
     state = trim.trimmed_state(jnp.array(float(x[0])), jnp.array(V), jnp.array(H))
     state = state._replace(pos_ned=jnp.array([-4000.0, 0.0, -H]))
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))

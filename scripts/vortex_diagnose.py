@@ -161,7 +161,7 @@ def experiment_a2(ref):
             jnp.array(v["airspeed"]), jnp.array(altitude), anchor, jnp.array(0.0),
         )
         own_run = vortex_viz.fly_from_state(
-            ac, field, own, trim.trimmed_controls(x[1], x[2]), anchor, EARTH,
+            ac, field, own, trim.trimmed_controls(x), anchor, EARTH,
             label="own-trim", seconds=v["duration"], dt=0.01,
             window=(v["core_north"] - v["r0"], v["core_north"] + v["r0"]),
             window_name="core",
@@ -327,7 +327,7 @@ def experiment_c(ref):
             jnp.array(float(x[0])), jnp.array(float(x[3])),
             jnp.array(v["airspeed"]), jnp.array(altitude), anchor, jnp.array(0.0),
         )
-        ctl = trim.trimmed_controls(x[1], x[2])
+        ctl = trim.trimmed_controls(x)
         run = vortex_viz.fly_from_state(
             ac, field, st, ctl, anchor, EARTH,
             label=name, seconds=v["duration"], dt=0.01,

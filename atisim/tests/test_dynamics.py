@@ -378,7 +378,7 @@ def test_load_factor_in_trimmed_level_flight_is_cos_theta_not_one():
     # equilibrium the solver found.
     state = trim.trimmed_state(x[0], x[3], jnp.array(v), jnp.array(h), anchor, 0.0)
     n_z = dynamics.load_factor(
-        state, trim.trimmed_controls(x[1], x[2]), ac, jnp.zeros(3), jnp.zeros(3),
+        state, trim.trimmed_controls(x), ac, jnp.zeros(3), jnp.zeros(3),
         anchor, EARTH,
     )
     theta = float(quat_to_euler_ned(state, anchor)[1])

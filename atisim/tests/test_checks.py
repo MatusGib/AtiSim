@@ -64,7 +64,7 @@ def parks_run():
     model = wind.field_model(field, ANCHOR)
 
     x, _ = trim.trim(jnp.array(V), jnp.array(H), ac, ANCHOR, EARTH)
-    controls = trim.trimmed_controls(x[1], x[2])
+    controls = trim.trimmed_controls(x)
     lead = 40.0 * r0
     # Built through `trimmed_state` and then displaced along the anchor frame's
     # north axis. `x[3]` is the trimmed BANK, which is non-zero on a rotating
@@ -173,7 +173,7 @@ def _short_lead_in_run(run, lead_radii, n_steps=400):
     """Fly the same field from `lead_radii` core radii out."""
     ac, V, H, r0 = run["ac"], run["V"], run["H"], run["r0"]
     x, _ = trim.trim(jnp.array(V), jnp.array(H), ac, ANCHOR, EARTH)
-    controls = trim.trimmed_controls(x[1], x[2])
+    controls = trim.trimmed_controls(x)
     state = trim.trimmed_state(
         jnp.array(float(x[0])), jnp.array(float(x[3])),
         jnp.array(V), jnp.array(H), ANCHOR, jnp.array(0.0),
@@ -230,7 +230,7 @@ def test_the_trimmed_start_check_gates_in_still_air(parks_run):
     run = parks_run
     ac, V, H = run["ac"], run["V"], run["H"]
     x, _ = trim.trim(jnp.array(V), jnp.array(H), ac, ANCHOR, EARTH)
-    controls = trim.trimmed_controls(x[1], x[2])
+    controls = trim.trimmed_controls(x)
     state = trim.trimmed_state(
         jnp.array(float(x[0])), jnp.array(float(x[3])),
         jnp.array(V), jnp.array(H), ANCHOR, jnp.array(0.0),
