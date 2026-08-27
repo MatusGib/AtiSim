@@ -14,13 +14,43 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from atisim import trim
+from atisim import earth, trim
 from atisim.aircraft import CESSNA172_TABLES, CRUISE, REGISTRY
 from atisim.sensors import sense
 from atisim.atmosphere import G0
+from atisim.state import altitude as geodetic_altitude
 from atisim.units import RAD2DEG
 
 EVERY = sorted(REGISTRY)
+
+# 47N is the latitude the rest of this project's Earth-rotation work uses, and
+# WGS84_J2 is the shipped Earth: everything below that flies rather than merely
+# reads a number off the aircraft data is a claim about flight behaviour, so it
+# is made over the Earth the package actually ships.
+LATITUDE = np.radians(47.0)
+EARTH = earth.WGS84_J2
+
+
+def _anchor_at(altitude):
+    """A run anchor at this file's latitude and the stated altitude.
+
+    Built per aircraft rather than once for the file, because `trimmed_state`
+    places the aircraft AT the anchor and no two entries in REGISTRY cruise at
+    the same altitude -- they run from sea level to 12,192 m.
+    """
+    return earth.anchor_at(LATITUDE, 0.0, altitude)
+
+
+def _heights(hist, anchor):
+    """GEODETIC altitude over a run, which is what the altitude loop holds.
+
+    NOT `-pos_ned[:, 2]`. That is a tangent-plane height and the difference is
+    not small at these ranges: the ellipsoid falls away from the anchor's
+    tangent plane as d^2/2R, which is 385 m over the 70 km a 300 s cruise leg
+    covers. Reading the tangent-plane height would assert that the autopilot
+    fails to hold an altitude it is in fact holding.
+    """
+    return np.asarray(jax.vmap(geodetic_altitude, in_axes=(0, None))(hist, anchor))
 
 
 @pytest.fixture(params=EVERY)
@@ -154,9 +184,15 @@ def test_geometry_is_self_consistent(named):
 
 def test_trim_converges_and_leaves_throttle_in_range(named):
     name, ac, V, H = named
-    x, residual = trim.trim(jnp.array(V), jnp.array(H), ac)
+    x, residual = trim.trim(jnp.array(V), jnp.array(H), ac, _anchor_at(H), EARTH)
     assert float(jnp.linalg.norm(residual)) < 1e-8, name
-    alpha, elevator, throttle = (float(v) for v in x)
+    # `x` carries six unknowns now; the three read here are the three this test
+    # was written about. The bank, aileron and rudder that arrived with the
+    # rotating Earth are covered by test_trim.py, whose
+    # `test_every_real_aircraft_trims_to_a_physical_solution` puts the whole
+    # registry through `trim.is_physical` -- which checks all six against the
+    # airframe's own limits.
+    alpha, elevator, throttle = float(x[0]), float(x[1]), float(x[2])
     assert 0.0 < throttle < 1.0, name
     assert abs(alpha) < np.deg2rad(15.0), name
     assert abs(elevator) < float(ac.elevator_limit), name
@@ -232,8 +268,9 @@ def test_the_light_aircraft_trim_below_their_linear_range_limit():
     """
     for name in ("cherokee", "cessna172"):
         ac = REGISTRY[name]
+        H = CRUISE[name]["altitude"]
         x, _ = trim.trim(
-            jnp.array(CRUISE[name]["airspeed"]), jnp.array(CRUISE[name]["altitude"]), ac
+            jnp.array(CRUISE[name]["airspeed"]), jnp.array(H), ac, _anchor_at(H), EARTH
         )
         assert float(x[0]) * RAD2DEG < 8.0, name
 
@@ -310,21 +347,27 @@ def test_each_aircraft_is_flown_by_its_own_gains(named):
     from atisim import integrate
 
     name, ac, V, H = named
+    anchor = _anchor_at(H)
     gains = ap_mod.GAINS[name]
-    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
-    state = trim.trimmed_state(x[0], jnp.array(V), jnp.array(H))
+    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac, anchor, EARTH)
+    # `x[3]` is the trimmed BANK, which is a fraction of a degree on a rotating
+    # Earth and is what balances the lateral Coriolis acceleration. Carried into
+    # `trimmed_state`, not dropped: without it the run starts out of equilibrium
+    # in exactly the channel Coriolis acts in, and the loops would spend the
+    # first seconds removing an upset this test created.
+    state = trim.trimmed_state(x[0], x[3], jnp.array(V), jnp.array(H), anchor, 0.0)
     controls = trim.trimmed_controls(x[1], x[2])
     targets = ap_mod.Targets(
         altitude=jnp.array(H), heading=jnp.array(0.0), airspeed=jnp.array(V)
     )
-    ap = ap_mod.engage(sense(state), controls, targets, gains, ac)
+    ap = ap_mod.engage(sense(state, anchor), controls, targets, gains, ac)
     (_, _), (hist, ctrl) = ap_mod.closed_loop_rollout(
         integrate.init_sim(state, jax.random.PRNGKey(0)),
-        ap, targets, gains, jnp.array(0.02), ac, 3000,
+        ap, targets, gains, jnp.array(0.02), ac, 3000, anchor, EARTH,
     )
     # Bumpless: the first output is the trimmed deflection to the last bit.
     assert float(ctrl.elevator[0]) == pytest.approx(float(x[1]), abs=1e-12), name
-    altitude = -np.asarray(hist.pos_ned)[:, 2]
+    altitude = _heights(hist, anchor)
     assert np.abs(altitude - H).max() < 1.0, name
 
 
@@ -335,20 +378,21 @@ def test_each_aircraft_captures_an_altitude_step(named):
     from atisim import integrate
 
     name, ac, V, H = named
+    anchor = _anchor_at(H)
     gains = ap_mod.GAINS[name]
     step = 300.0 if name == "boeing747" else 150.0
-    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
-    state = trim.trimmed_state(x[0], jnp.array(V), jnp.array(H))
+    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac, anchor, EARTH)
+    state = trim.trimmed_state(x[0], x[3], jnp.array(V), jnp.array(H), anchor, 0.0)
     controls = trim.trimmed_controls(x[1], x[2])
     targets = ap_mod.Targets(
         altitude=jnp.array(H + step), heading=jnp.array(0.0), airspeed=jnp.array(V)
     )
-    ap = ap_mod.engage(sense(state), controls, targets, gains, ac)
+    ap = ap_mod.engage(sense(state, anchor), controls, targets, gains, ac)
     (_, _), (hist, _) = ap_mod.closed_loop_rollout(
         integrate.init_sim(state, jax.random.PRNGKey(0)),
-        ap, targets, gains, jnp.array(0.02), ac, int(300.0 / 0.02),
+        ap, targets, gains, jnp.array(0.02), ac, int(300.0 / 0.02), anchor, EARTH,
     )
-    altitude = -np.asarray(hist.pos_ned)[:, 2]
+    altitude = _heights(hist, anchor)
     assert abs(altitude[-1] - (H + step)) < 10.0, name
     assert altitude.max() < H + step + 40.0, name
 
@@ -358,36 +402,78 @@ def test_each_aircraft_captures_a_heading_step(named):
 
     from atisim import autopilot as ap_mod
     from atisim import integrate
-    from atisim.state import quat_to_euler
+    from atisim.state import quat_to_euler_ned
 
     name, ac, V, H = named
+    anchor = _anchor_at(H)
     gains = ap_mod.GAINS[name]
-    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
-    state = trim.trimmed_state(x[0], jnp.array(V), jnp.array(H))
+    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac, anchor, EARTH)
+    state = trim.trimmed_state(x[0], x[3], jnp.array(V), jnp.array(H), anchor, 0.0)
     controls = trim.trimmed_controls(x[1], x[2])
     targets = ap_mod.Targets(
         altitude=jnp.array(H),
         heading=jnp.array(np.deg2rad(30.0)),
         airspeed=jnp.array(V),
     )
-    ap = ap_mod.engage(sense(state), controls, targets, gains, ac)
+    ap = ap_mod.engage(sense(state, anchor), controls, targets, gains, ac)
     (_, _), (hist, _) = ap_mod.closed_loop_rollout(
         integrate.init_sim(state, jax.random.PRNGKey(0)),
-        ap, targets, gains, jnp.array(0.02), ac, int(300.0 / 0.02),
+        ap, targets, gains, jnp.array(0.02), ac, int(300.0 / 0.02), anchor, EARTH,
     )
-    euler = np.asarray(jax.vmap(quat_to_euler)(hist.quat))
-    altitude = -np.asarray(hist.pos_ned)[:, 2]
+    # The Euler set is a LOCAL-frame view now and has to be built at the
+    # aircraft's own geodetic position, which is what `quat_to_euler_ned` takes
+    # the anchor for. `state.quat` alone is body -> ECEF and its "heading" would
+    # be a longitude-dependent number, not the compass heading the loop holds.
+    euler = np.asarray(jax.vmap(quat_to_euler_ned, in_axes=(0, None))(hist, anchor))
+    altitude = _heights(hist, anchor)
     assert abs(euler[-1, 2] * RAD2DEG - 30.0) < 1.5, name
     assert np.abs(euler[:, 0]).max() <= float(gains.phi_limit) + 0.05, name
     assert np.abs(altitude - H).max() < 45.0, name
 
 
 def test_every_aircraft_holds_its_trimmed_condition_for_60_s(named):
+    """**EXPECTED TO FAIL FOR THE THREE FAST JETS. THE 1.0 m IS LEFT ALONE.**
+
+    This is the same finding test_trim.py's
+    `test_trimmed_flight_holds_altitude_and_airspeed` already records, now
+    measured across the whole registry. Geodetic altitude drift and airspeed
+    drift over the 60 s, per entry:
+
+        aircraft              V m/s   |dh| FLAT   |dh| J2   |dV| J2
+        boeing737             236.5     4.4956     4.4973   0.15692
+        boeing747             235.9     4.2290     4.2356   0.14928
+        boeing747_jsbsim      236.1     4.1683     4.1748   0.14340
+        boeing737_approach    133.8     0.6477     0.6447   0.03928
+        boeing747_approach     84.9     0.1354     0.1347   0.01361
+        cessna172              60.0     0.0377     0.0370   0.00376
+        cherokee               50.0     0.0211     0.0204   0.00221
+
+    All seven were under 1e-6 m before. The three above 1.0 m fail; the
+    airspeed assertion still passes everywhere, with 0.157 m/s of margin to
+    spare on the worst entry.
+
+    THE EARTH MODEL IS NOT THE MECHANISM, and the FLAT column is what says so:
+    `earth.FLAT` is non-rotating and constant-g but it is still an ELLIPSOID,
+    and it gives 4.2290 m against WGS84_J2's 4.2356 m, so rotation and J2
+    together own 6.6 mm of the 4.2 m. Putting this test on FLAT would therefore
+    not rescue it, which is why it is not on FLAT. What owns the rest is
+    `trimmed_state` setting `omega = 0`: that zeroes the trim residual at t = 0,
+    but level flight round a curved Earth needs a continuous nose-down transport
+    rate of V/R -- 3.7e-5 rad/s at 236 m/s -- and this state carries none, so
+    the aeroplane flies straighter than the surface curves. It scales with speed
+    accordingly, which is exactly the pattern in the table.
+
+    The fixed point itself is intact: `test_each_aircraft_is_flown_by_its_own_gains`
+    flies the same trim for the same 60 s with the loops closed and holds every
+    aircraft inside 1.0 m. It is the OPEN-LOOP extrapolation of the fixed point
+    that the curved Earth broke, and the two are different claims.
+    """
     from atisim import integrate
 
     name, ac, V, H = named
-    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
-    state = trim.trimmed_state(x[0], jnp.array(V), jnp.array(H))
+    anchor = _anchor_at(H)
+    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac, anchor, EARTH)
+    state = trim.trimmed_state(x[0], x[3], jnp.array(V), jnp.array(H), anchor, 0.0)
     controls = trim.trimmed_controls(x[1], x[2])
     _, hist = integrate.rollout(
         integrate.init_sim(state, jax.random.PRNGKey(0)),
@@ -395,8 +481,10 @@ def test_every_aircraft_holds_its_trimmed_condition_for_60_s(named):
         jnp.array(0.02),
         ac,
         3000,
+        anchor,
+        EARTH,
     )
-    altitude = -np.asarray(hist.pos_ned)[:, 2]
+    altitude = _heights(hist, anchor)
     speed = np.linalg.norm(np.asarray(hist.vel_body), axis=1)
     assert np.abs(altitude - H).max() < 1.0, name
     assert np.abs(speed - V).max() < 0.5, name
