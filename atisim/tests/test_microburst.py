@@ -28,11 +28,22 @@ import numpy as np
 import pytest
 
 import atisim  # noqa: F401  -- enables x64
-from atisim import wind
+from atisim import earth, wind
+from atisim.state import euler_to_quat, state_from_ned
 
 R = 1000.0
 U_MAX = 19.03  # m/s, the paper's own example figure: 37 kt of peak outflow
 Z_M = 150.0  # m, midpoint of the paper's "100 - 200 meters above the ground"
+
+# 47N is the latitude the rest of this project's Earth-rotation work uses.
+# *** THE ANCHOR IS AT h = 0, NOT AT THE FLIGHT ALTITUDE. *** This is the one
+# field in the module that has a ground: `microburst_wind` reads `-pos_ned[2]`
+# as height above it, and both velocity components are identically zero there.
+# So the anchor has to be the surface the burst sits on, and an aircraft flying
+# over it is displaced upward -- the opposite convention from the vortex and
+# lee-wave files, where the anchor sits at cruise and the field is level with
+# the aircraft at `down = 0`.
+ANCHOR = earth.anchor_at(np.radians(47.0), 0.0, 0.0)
 
 
 def a_burst(u_max=U_MAX, radius=R, z_m=Z_M):
@@ -157,10 +168,25 @@ def test_the_divergence_meets_the_definition_of_a_microburst():
 
 
 def test_the_microburst_satisfies_the_wind_model_contract():
-    from atisim import trim
+    """Shape, and that a deterministic field leaves the PRNG key untouched.
 
-    model = wind.microburst_model(a_burst())
-    state = trim.trimmed_state(jnp.array(0.05), jnp.array(50.0), jnp.array(300.0))
+    Built through `state_from_ned` rather than `trim.trimmed_state`, because
+    that helper places the aircraft AT the anchor and the anchor here is the
+    ground. A state at the anchor would sample the burst at z = 0, where both
+    components vanish identically, and the contract would then be checked
+    against an exactly zero field -- which is the one input that cannot
+    distinguish a working model from a broken one. 300 m puts it above the
+    z_m = 150 m outflow peak and inside the descending core.
+    """
+    model = wind.microburst_model(a_burst(), ANCHOR)
+    alpha = 0.05
+    state = state_from_ned(
+        jnp.array([0.0, 0.0, -300.0]),
+        50.0 * jnp.array([jnp.cos(alpha), 0.0, jnp.sin(alpha)]),
+        euler_to_quat(jnp.array(0.0), jnp.array(alpha), jnp.array(0.0)),
+        jnp.zeros(3),
+        ANCHOR,
+    )
     key = jax.random.PRNGKey(0)
     wind_ned, omega_gust, _, out_key, _ = model(
         wind.zero_wind_state(), state, key, jnp.array(0.01)
