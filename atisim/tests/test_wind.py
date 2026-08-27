@@ -20,7 +20,15 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from atisim import dynamics, wind
+from atisim import dynamics, earth, wind
+from atisim.aircraft import CRUISE
+from atisim.state import (
+    dcm_body_to_ned,
+    euler_to_quat,
+    quat_to_euler_ned,
+    state_from_ned,
+)
+from atisim.state import pos_ned as state_pos_ned
 from atisim.units import FT2M
 
 # Parks Table/prose values, Case 1 (Hannibal, MO, 3 April 1981, DC-10, 37,000 ft)
@@ -33,30 +41,56 @@ CASE2_R0 = 450.0 * FT2M
 CASE2_V0 = 70.0 * FT2M
 CASE2_SPACING = 3200.0 * FT2M
 
+# 47N is the latitude the rest of this project's Earth-rotation work uses, and
+# the anchor sits AT the 747's cruise altitude. THAT is what makes `down = 0`
+# mean "level with the aircraft" everywhere below -- see `single`.
+ANCHOR = earth.anchor_at(np.radians(47.0), 0.0, CRUISE["boeing747"]["altitude"])
+EARTH = earth.WGS84_J2
 
-def single(r0=CASE1_R0, v0=CASE1_V0, altitude=11278.0):
-    """One vortex, core centred at the origin at the given altitude."""
+
+def single(r0=CASE1_R0, v0=CASE1_V0, down=0.0):
+    """One vortex, core centred at the origin, `down` metres below the anchor.
+
+    *** `down = 0` IS LEVEL WITH THE AIRCRAFT, AND THAT IS THE WHOLE CHANGE. ***
+    A `VortexArray`'s coordinates are NED offsets from the RUN ANCHOR, and the
+    anchor sits at the flight altitude. This argument used to be an `altitude`
+    written in as `down = -altitude`, against an implied sea-level origin that
+    no longer exists. Kept, it would put every core a whole cruise altitude
+    above the flightpath, and the runs in this file would fly through still air
+    while still passing every assertion that only checks a sign or a shape.
+    """
     return wind.VortexArray(
         north=jnp.array([0.0]),
-        down=jnp.array([-altitude]),
+        down=jnp.array([down]),
         r0=jnp.array(r0),
         v0=jnp.array(v0),
     )
 
 
-def _sample(array, north, altitude):
-    return np.asarray(wind.vortex_wind(jnp.array([north, 0.0, -altitude]), array))
+def _sample(array, north, down=0.0):
+    return np.asarray(wind.vortex_wind(jnp.array([north, 0.0, down]), array))
 
 
-def _sweep(array, norths, altitude):
+def _sweep(array, norths, down=0.0):
     """Vectorised sweep along track. A Python loop here re-traces per point and
     costs tens of seconds; vmap keeps the whole module inside its budget.
     """
     points = jnp.stack(
-        [jnp.asarray(norths), jnp.zeros_like(norths), jnp.full_like(norths, -altitude)],
+        [jnp.asarray(norths), jnp.zeros_like(norths), jnp.full_like(norths, down)],
         axis=1,
     )
     return np.asarray(jax.vmap(lambda p: wind.vortex_wind(p, array))(points))
+
+
+def _field_frame(s):
+    """(pos_ned, body -> NED matrix): what every gradient helper takes now.
+
+    A MATRIX, not `s.quat`. That quaternion is body -> ECEF now and both are
+    valid rotations, so passing it would have resolved the field's gradient
+    tensor in the wrong frame and returned a plausible wrong answer instead of
+    raising -- the same trap `wind.py`'s own module docstring records.
+    """
+    return state_pos_ned(s, ANCHOR), dcm_body_to_ned(s, ANCHOR)
 
 
 # --- the three properties Parks states in prose about its own model ----------
@@ -70,9 +104,8 @@ def test_through_the_core_centre_the_vertical_wind_peaks_at_v0():
     along-track offset, so the peak sits exactly at the core edge l = r0.
     """
     array = single()
-    alt = 11278.0
     offsets = np.linspace(-4 * CASE1_R0, 4 * CASE1_R0, 2001)
-    w_up = -_sweep(array, offsets, alt)[:, 2]
+    w_up = -_sweep(array, offsets)[:, 2]
 
     assert np.abs(w_up).max() == pytest.approx(CASE1_V0, rel=1e-3)
     peak_at = offsets[np.argmax(np.abs(w_up))]
@@ -89,15 +122,14 @@ def test_through_the_core_centre_the_gust_is_an_antisymmetric_up_then_down_doubl
     asymmetry of its own.
     """
     array = single()
-    alt = 11278.0
     for offset in (0.3 * CASE1_R0, CASE1_R0, 2.5 * CASE1_R0):
-        before = _sample(array, -offset, alt)
-        after = _sample(array, +offset, alt)
+        before = _sample(array, -offset)
+        after = _sample(array, +offset)
         assert before[2] == pytest.approx(-after[2], rel=1e-9)  # odd in z
         assert abs(before[0]) < 1e-9 and abs(after[0]) < 1e-9  # no horizontal
     # Up first, then down: approaching from the south of a positive-sense core.
-    assert -_sample(array, -CASE1_R0, alt)[2] > 0.0
-    assert -_sample(array, +CASE1_R0, alt)[2] < 0.0
+    assert -_sample(array, -CASE1_R0)[2] > 0.0
+    assert -_sample(array, +CASE1_R0)[2] < 0.0
 
 
 def test_tangent_to_the_core_the_horizontal_wind_peaks_at_v0():
@@ -109,10 +141,9 @@ def test_tangent_to_the_core_the_horizontal_wind_peaks_at_v0():
     transcribed correctly -- the vertical-only tests above would pass with the
     horizontal term missing entirely.
     """
-    alt = 11278.0
-    array = single(altitude=alt - CASE1_R0)  # core one radius BELOW the aircraft
+    array = single(down=CASE1_R0)  # core one radius BELOW the aircraft
     offsets = np.linspace(-4 * CASE1_R0, 4 * CASE1_R0, 2001)
-    w_horizontal = _sweep(array, offsets, alt)[:, 0]
+    w_horizontal = _sweep(array, offsets)[:, 0]
 
     assert np.abs(w_horizontal).max() == pytest.approx(CASE1_V0, rel=1e-3)
     # and the peak is directly abeam the core, not offset along track
@@ -129,23 +160,22 @@ def test_an_array_is_the_linear_superposition_of_its_vortices():
     Superposition is exact for a velocity field, and it is what makes the whole
     component framework (vortex + wave + updraft + Dryden) legitimate.
     """
-    alt = 11278.0
     centres = np.array([-CASE1_SPACING, 0.0, CASE1_SPACING])
     array = wind.VortexArray(
         north=jnp.array(centres),
-        down=jnp.array([-alt] * 3),
+        down=jnp.zeros(3),
         r0=jnp.array(CASE1_R0),
         v0=jnp.array(CASE1_V0),
     )
     for x in (-2000.0, -300.0, 0.0, 450.0, 1800.0):
-        total = _sample(array, x, alt)
+        total = _sample(array, x)
         parts = sum(
             _sample(
                 wind.VortexArray(
-                    north=jnp.array([c]), down=jnp.array([-alt]),
+                    north=jnp.array([c]), down=jnp.zeros(1),
                     r0=jnp.array(CASE1_R0), v0=jnp.array(CASE1_V0),
                 ),
-                x, alt,
+                x,
             )
             for c in centres
         )
@@ -161,10 +191,9 @@ def test_the_core_is_solid_body_and_the_outside_is_irrotational():
     approximation at all while the whole span sits inside the core.
     """
     array = single()
-    alt = 11278.0
 
     def speed(x):
-        return np.linalg.norm(_sample(array, x, alt))
+        return np.linalg.norm(_sample(array, x))
 
     for frac in (0.25, 0.5, 0.75):
         assert speed(frac * CASE1_R0) == pytest.approx(frac * CASE1_V0, rel=1e-9)
@@ -231,14 +260,13 @@ def test_the_vortex_model_satisfies_the_wind_model_contract(test_aircraft):
     components, so a Monte Carlo ensemble hits the same vortex every time. That
     is the experiment design the Fig. 8 error bars depend on.
     """
-    from atisim.state import State, euler_to_quat
-
-    model = wind.vortex_model(single())
-    state = State(
-        pos_ned=jnp.array([0.0, 0.0, -11278.0]),
-        vel_body=jnp.array([236.0, 0.0, 0.0]),
-        quat=euler_to_quat(jnp.array(0.0), jnp.array(0.05), jnp.array(0.0)),
-        omega=jnp.zeros(3),
+    model = wind.vortex_model(single(), ANCHOR)
+    state = state_from_ned(
+        jnp.zeros(3),
+        jnp.array([236.0, 0.0, 0.0]),
+        euler_to_quat(jnp.array(0.0), jnp.array(0.05), jnp.array(0.0)),
+        jnp.zeros(3),
+        ANCHOR,
     )
     key = jax.random.PRNGKey(0)
     wind_ned, omega_gust, wind_state, out_key, _ = model(
@@ -264,16 +292,9 @@ def test_the_vortex_produces_a_pitching_gust_at_the_core_edge():
     Cmq < 0 that is a nose-down moment, matching the source's own report of the
     aircraft pitching down on entering the positive vertical gust.
     """
-    from atisim.state import State, euler_to_quat
-
     array = single()
-    model = wind.vortex_model(array)
-    state = State(
-        pos_ned=jnp.array([0.5 * CASE1_R0, 0.0, -11278.0]),
-        vel_body=jnp.array([236.0, 0.0, 0.0]),
-        quat=euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
-        omega=jnp.zeros(3),
-    )
+    model = wind.vortex_model(array, ANCHOR)
+    state = _level_state(north=0.5 * CASE1_R0)
     _, omega_gust, _, _, _ = model(
         wind.zero_wind_state(), state, jax.random.PRNGKey(0), jnp.array(0.02)
     )
@@ -307,11 +328,11 @@ def test_the_updraft_peaks_at_its_stated_magnitude_and_points_up():
     simply pitch the wrong way.
     """
     column = _column(2.0)
-    centre = np.asarray(wind.updraft_wind(jnp.array([0.0, 0.0, -11278.0]), column))
+    centre = np.asarray(wind.updraft_wind(jnp.array([0.0, 0.0, 0.0]), column))
     assert centre[2] == pytest.approx(-UPDRAFT_W0, rel=1e-9)  # negative == up
     assert abs(centre[0]) < 1e-12 and abs(centre[1]) < 1e-12
     # and it decays away from the axis
-    far = np.asarray(wind.updraft_wind(jnp.array([8000.0, 0.0, -11278.0]), column))
+    far = np.asarray(wind.updraft_wind(jnp.array([8000.0, 0.0, 0.0]), column))
     assert abs(far[2]) < 0.01 * UPDRAFT_W0
 
 
@@ -330,7 +351,7 @@ def test_the_declared_sharpness_controls_the_edge_gradient_not_the_magnitude():
         offsets = np.linspace(0.0, 2.5 * radius, 1200)
         w_up = -np.array(
             [
-                float(wind.updraft_wind(jnp.array([x, 0.0, -11278.0]), column)[2])
+                float(wind.updraft_wind(jnp.array([x, 0.0, 0.0]), column)[2])
                 for x in offsets[::40]
             ]
         )
@@ -344,14 +365,13 @@ def test_fields_superpose():
     """Parks builds arrays by superposition and aero sees only the summed field,
     so a vortex sitting inside an updraft costs nothing beyond the two parts.
     """
-    alt = 11278.0
     array = single()
     column = _column(4.0)
     combined = wind.superpose(
         lambda p: wind.vortex_wind(p, array), lambda p: wind.updraft_wind(p, column)
     )
     for x in (-500.0, 0.0, 137.0, 3000.0):
-        point = jnp.array([x, 0.0, -alt])
+        point = jnp.array([x, 0.0, 0.0])
         np.testing.assert_allclose(
             np.asarray(combined(point)),
             np.asarray(wind.vortex_wind(point, array))
@@ -373,27 +393,35 @@ def test_the_updraft_weathercocks_where_the_vortex_does_not():
     """
     from atisim import integrate, trim
     from atisim.aircraft import CRUISE, REGISTRY
-    from atisim.state import quat_to_euler
     from atisim.units import RAD2DEG
 
     ac = REGISTRY["boeing747"]
     v, h = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
-    x, _ = trim.trim(jnp.array(v), jnp.array(h), ac)
+    x, _ = trim.trim(jnp.array(v), jnp.array(h), ac, ANCHOR, EARTH)
     controls = trim.trimmed_controls(x)
 
     radius = 0.5 * UPDRAFT_SECONDS * v  # the paper's 20 s traverse, as a distance
     column = _column(6.0, radius=radius)
-    state = trim.trimmed_state(x[0], jnp.array(v), jnp.array(h))
-    state = state._replace(pos_ned=jnp.array([-2.0 * radius, 0.0, -h]))
+    # `x[3]` is the TRIMMED BANK, which is non-zero on a rotating Earth and has
+    # to be carried into the state: dropping it starts the run out of
+    # equilibrium in exactly the channel Coriolis acts in.
+    state = trim.trimmed_state(
+        jnp.array(float(x[0])), jnp.array(float(x[3])),
+        jnp.array(v), jnp.array(h), ANCHOR, jnp.array(0.0),
+    )
+    state = state._replace(
+        pos_ecef=state.pos_ecef + ANCHOR.T_e2l.T @ jnp.array([-2.0 * radius, 0.0, 0.0])
+    )
 
     dt = 0.02
     n = int(round(4.0 * radius / v / dt))
     _, hist = integrate.rollout(
         integrate.init_sim(state, jax.random.PRNGKey(0)), controls,
-        jnp.array(dt), ac, n, wind_model=wind.updraft_model(column),
+        jnp.array(dt), ac, n, ANCHOR, EARTH,
+        wind_model=wind.updraft_model(column, ANCHOR),
     )
-    theta = np.asarray(jax.vmap(quat_to_euler)(hist.quat))[:, 1]
-    north = np.asarray(hist.pos_ned)[:, 0]
+    theta = np.asarray(jax.vmap(lambda s: quat_to_euler_ned(s, ANCHOR))(hist))[:, 1]
+    north = np.asarray(jax.vmap(lambda s: state_pos_ned(s, ANCHOR))(hist))[:, 0]
 
     inside = np.abs(north) <= radius
     dtheta = (theta[inside].max() - theta[inside].min()) * RAD2DEG
@@ -403,7 +431,11 @@ def test_the_updraft_weathercocks_where_the_vortex_does_not():
     # 5.2 deg for this case, and Fig. 8's 6.2 deg updraft cluster. The spread
     # across sharpness is the whole reason that parameter is declared rather
     # than defaulted: the ANSWER depends on it, so a result must state it.
-    assert dtheta > 3.0, dtheta  # measured 4.39 at sharpness 6
+    #
+    # The sharpness-6 row moved to 4.357 on the rotating Earth, from 4.39. That
+    # is 0.7%, against a spread of 1.7 deg across the sharpness column -- the
+    # declared modelling parameter still dominates the Earth by a factor of 50.
+    assert dtheta > 3.0, dtheta  # measured 4.357 at sharpness 6
     assert dtheta > 1.5 * 1.89  # separated from the vortex case, the Fig. 8 claim
 
 
@@ -433,21 +465,27 @@ def test_a_zero_strength_vortex_is_bit_identical_to_still_air():
 
     ac = REGISTRY["boeing747"]
     v, h = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
-    x, _ = trim.trim(jnp.array(v), jnp.array(h), ac)
-    state = trim.trimmed_state(x[0], jnp.array(v), jnp.array(h))
+    x, _ = trim.trim(jnp.array(v), jnp.array(h), ac, ANCHOR, EARTH)
+    state = trim.trimmed_state(
+        jnp.array(float(x[0])), jnp.array(float(x[3])),
+        jnp.array(v), jnp.array(h), ANCHOR, jnp.array(0.0),
+    )
     controls = trim.trimmed_controls(x)
 
     inert = wind.vortex_model(
         wind.VortexArray(
-            north=jnp.array([0.0]), down=jnp.array([-h]),
+            north=jnp.array([0.0]), down=jnp.zeros(1),  # level with the aircraft
             r0=jnp.array(CASE1_R0), v0=jnp.array(0.0),  # zero strength
-        )
+        ),
+        ANCHOR,
     )
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
-    base, _ = integrate.rollout(sim, controls, jnp.array(0.02), ac, 2000)
-    off, _ = integrate.rollout(sim, controls, jnp.array(0.02), ac, 2000, wind_model=inert)
+    base, _ = integrate.rollout(sim, controls, jnp.array(0.02), ac, 2000, ANCHOR, EARTH)
+    off, _ = integrate.rollout(
+        sim, controls, jnp.array(0.02), ac, 2000, ANCHOR, EARTH, wind_model=inert
+    )
 
-    for field in ("pos_ned", "vel_body", "quat", "omega"):
+    for field in ("pos_ecef", "vel_body", "quat", "omega"):
         assert np.array_equal(
             np.asarray(getattr(base.state, field)), np.asarray(getattr(off.state, field))
         ), field  # measured: exact equality, max |diff| 0.0, over 2,000 steps
@@ -472,9 +510,10 @@ def test_parks_case_1_reproduces_the_gust_spacing_and_pitch_signature():
     3500 ft at this aircraft's 235.9 m/s gives 4.52 s.
 
     The in-core pitch excursion is the Wingrove & Bach Fig. 8 discriminator.
-    Measured here: 2.20 deg over the first core, against Fig. 8's 1.4 deg
-    extreme for the vortex category and 6.2 deg / 12 deg for the updraft and
-    manoeuvring categories -- the right cluster by a wide margin.
+    Measured here: 2.15 deg over the first core -- it was 2.20 deg before the
+    Earth started turning -- against Fig. 8's 1.4 deg extreme for the vortex
+    category and 6.2 deg / 12 deg for the updraft and manoeuvring categories.
+    The right cluster by a wide margin, and 2% is nowhere near the gap.
 
     *** THE LEAD-IN IS PART OF THE MEASUREMENT. *** The vortex far field falls
     off only as 1/r, so starting too close launches the aircraft out of
@@ -485,76 +524,107 @@ def test_parks_case_1_reproduces_the_gust_spacing_and_pitch_signature():
     understated the answer by 15% and did so invisibly, which is why the
     initial load factor is now asserted rather than assumed.
 
+    THAT TABLE WAS TAKEN BEFORE THE EARTH TURNED and its 40*r0 row has moved:
+    n_z0 is 1.0299 on WGS84_J2 against 1.0335 on FLAT and the 1.0352 recorded
+    above. The far field is identical -- the array geometry is unchanged -- so
+    the movement is in the trim and the initial state, which now carry a bank
+    and a transport rate. Well inside the abs=0.05 band, which is set by the
+    lead-in question and not by the Earth, so the assertion is unchanged.
+
     NOTE the windowing trap, which is why the assertion is on the FIRST core
-    and not the run: whole-run pitch excursion is 8.79 deg, because the
-    post-encounter phugoid dwarfs the encounter itself. Measuring that instead
-    would land in the manoeuvring cluster and "confirm" the wrong physics.
+    and not the run: whole-run pitch excursion is 7.59 deg (8.79 before the
+    Earth turned), because the post-encounter phugoid dwarfs the encounter
+    itself. Measuring that instead would land in the manoeuvring cluster and
+    "confirm" the wrong physics.
     """
     from atisim import integrate, trim
     from atisim.aircraft import CRUISE, REGISTRY
-    from atisim.state import quat_to_euler
     from atisim.units import RAD2DEG
 
     ac = REGISTRY["boeing747"]
     v, h = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
-    x, _ = trim.trim(jnp.array(v), jnp.array(h), ac)
-    alpha = float(x[0])
+    x, _ = trim.trim(jnp.array(v), jnp.array(h), ac, ANCHOR, EARTH)
     controls = trim.trimmed_controls(x)
 
+    # down = 0, NOT -h. The array's coordinates are NED offsets from the run
+    # anchor and the anchor is at the cruise altitude, so a core on the
+    # flightpath is level with the aircraft. -h would put both cores a whole
+    # cruise altitude above the run, which would then meet nothing -- and every
+    # assertion below except the pitch band would still pass.
     array = wind.VortexArray(
         north=jnp.array([0.0, CASE1_SPACING]),
-        down=jnp.array([-h, -h]),
+        down=jnp.zeros(2),
         r0=jnp.array(CASE1_R0),
         v0=jnp.array(CASE1_V0),
     )
     lead_in = 40.0 * CASE1_R0
-    state = trim.trimmed_state(jnp.array(alpha), jnp.array(v), jnp.array(h))
-    state = state._replace(pos_ned=jnp.array([-lead_in, 0.0, -h]))
+    # `x[3]` is the trimmed BANK. It is non-zero on a rotating Earth and must be
+    # carried: dropping it starts the run out of equilibrium in exactly the
+    # channel Coriolis acts in, which is what `n_z0` below is guarding.
+    state = trim.trimmed_state(
+        jnp.array(float(x[0])), jnp.array(float(x[3])),
+        jnp.array(v), jnp.array(h), ANCHOR, jnp.array(0.0),
+    )
+    state = state._replace(
+        pos_ecef=state.pos_ecef + ANCHOR.T_e2l.T @ jnp.array([-lead_in, 0.0, 0.0])
+    )
 
-    model = wind.vortex_model(array)
+    model = wind.vortex_model(array, ANCHOR)
     dt = 0.01
     n = int(round((CASE1_SPACING + lead_in + 6.0 * CASE1_R0) / v / dt))
     _, hist = integrate.rollout(
         integrate.init_sim(state, jax.random.PRNGKey(0)), controls,
-        jnp.array(dt), ac, n, wind_model=model,
+        jnp.array(dt), ac, n, ANCHOR, EARTH, wind_model=model,
     )
-    theta = np.asarray(jax.vmap(quat_to_euler)(hist.quat))[:, 1]
-    north = np.asarray(hist.pos_ned)[:, 0]
+    theta = np.asarray(jax.vmap(lambda s: quat_to_euler_ned(s, ANCHOR))(hist))[:, 1]
+    north = np.asarray(jax.vmap(lambda s: state_pos_ned(s, ANCHOR))(hist))[:, 0]
 
     # The aircraft must START in equilibrium, or the first core is measuring
     # the launch transient as much as the vortex.
     n_z0 = float(
         dynamics.load_factor(state, controls, ac, *model(
             wind.zero_wind_state(), state, jax.random.PRNGKey(0), jnp.array(dt)
-        )[:2])
+        )[:2], ANCHOR, EARTH)
     )
-    assert n_z0 == pytest.approx(0.9967, abs=0.05), n_z0  # measured 1.0352
+    assert n_z0 == pytest.approx(0.9967, abs=0.05), n_z0  # measured 1.0299
 
     # kinematics: gust spacing is airframe-independent
     assert CASE1_SPACING / v == pytest.approx(4.52, abs=0.05)
 
     in_first_core = np.abs(north - 0.0) <= CASE1_R0
     dtheta = (theta[in_first_core].max() - theta[in_first_core].min()) * RAD2DEG
-    assert 1.0 < dtheta < 3.5, dtheta  # measured 2.20 deg; Fig. 8 vortex ~1.4
+    assert 1.0 < dtheta < 3.5, dtheta  # measured 2.15 deg; Fig. 8 vortex ~1.4
 
     # and the encounter must be far smaller in pitch than the post-encounter
     # phugoid, which is the windowing trap this test exists to pin down
     whole = (theta.max() - theta.min()) * RAD2DEG
-    assert whole > 3.0 * dtheta  # measured 8.33 vs 2.20
+    assert whole > 3.0 * dtheta  # measured 7.59 vs 2.15, a ratio of 3.54
 
 
 # --- A1: sampled gradients ---------------------------------------------------
 
 
-def _level_state(north=0.0, altitude=11278.0, u=236.0):
-    """Wings-level, heading north, at altitude."""
-    from atisim.state import State, euler_to_quat
+def _level_state(north=0.0, u=236.0):
+    """Wings-level, heading north, ON THE ANCHOR'S OWN PLANE.
 
-    return State(
-        pos_ned=jnp.array([north, 0.0, -altitude]),
-        vel_body=jnp.array([u, 0.0, 0.0]),
-        quat=euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
-        omega=jnp.zeros(3),
+    `down = 0`, the same convention `single` uses, which is what makes a core at
+    `down = 0` level with this aircraft. The altitude is `ANCHOR.h` and is no
+    longer an argument.
+
+    THE ECEF ROUND TRIP IS EXACT WHERE THIS FILE NEEDS IT TO BE, which was
+    checked rather than assumed. `state.pos_ned` returns the north component bit
+    for bit and a down component of order 1e-14 m; squared that is 1e-28 against
+    an r0^2 of 3.3e4, whose ulp is 3.6e-12, so `r2` at the core edge is still
+    EXACTLY r0^2 and `vortex_wind`'s strict `r2 < r0**2` still resolves to the
+    OUTSIDE branch. `test_the_rankine_gradient_is_discontinuous_at_the_core_edge`
+    asserts that branch by its sign and would have flipped had it not held.
+    """
+    return state_from_ned(
+        jnp.array([north, 0.0, 0.0]),
+        jnp.array([u, 0.0, 0.0]),
+        euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
+        jnp.zeros(3),
+        ANCHOR,
     )
 
 
@@ -570,7 +640,7 @@ def test_a_uniform_field_produces_exactly_zero_sampled_rates():
     field = lambda p: jnp.array([3.0, -2.0, 1.5])  # noqa: E731
     s = _level_state()
 
-    rates = wind.sampled_rates(s.pos_ned, s.quat, field, st)
+    rates = wind.sampled_rates(*_field_frame(s), field, st)
     assert np.array_equal(np.asarray(rates), np.zeros(3))
 
 
@@ -590,8 +660,8 @@ def test_a_linear_field_reproduces_the_analytic_gradient_exactly():
     )
     s = _level_state()
 
-    sampled = wind.sampled_rates(s.pos_ned, s.quat, field, st)
-    analytic = wind.gust_rates(s.pos_ned, s.quat, field)
+    sampled = wind.sampled_rates(*_field_frame(s), field, st)
+    analytic = wind.gust_rates(*_field_frame(s), field)
     assert np.allclose(np.asarray(sampled), np.asarray(analytic), rtol=1e-9, atol=1e-12)
 
 
@@ -610,8 +680,8 @@ def test_the_vortex_core_gives_the_same_pitch_rate_as_the_tangent():
     field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
     s = _level_state(north=0.25 * 8000.0)
 
-    sampled = wind.sampled_rates(s.pos_ned, s.quat, field, st)
-    analytic = wind.gust_rates(s.pos_ned, s.quat, field)
+    sampled = wind.sampled_rates(*_field_frame(s), field, st)
+    analytic = wind.gust_rates(*_field_frame(s), field)
     assert float(sampled[1]) == pytest.approx(float(analytic[1]), rel=1e-9)
 
 
@@ -630,15 +700,15 @@ def test_a_curved_field_makes_the_secant_differ_from_the_tangent():
     field = lambda p: jnp.array([0.0, 0.0, 1e-4 * p[1] ** 2])  # noqa: E731
     s = _level_state()
 
-    sampled = wind.sampled_rates(s.pos_ned, s.quat, field, st)
-    analytic = wind.gust_rates(s.pos_ned, s.quat, field)
+    sampled = wind.sampled_rates(*_field_frame(s), field, st)
+    analytic = wind.gust_rates(*_field_frame(s), field)
     assert float(analytic[0]) == pytest.approx(0.0, abs=1e-12)
     assert abs(float(sampled[0])) < 1e-12, "a symmetric quadratic still has zero net slope"
 
     # Now break the symmetry: a cubic has a genuinely different secant.
     field3 = lambda p: jnp.array([0.0, 0.0, 1e-7 * p[1] ** 3])  # noqa: E731
-    sampled3 = wind.sampled_rates(s.pos_ned, s.quat, field3, st)
-    analytic3 = wind.gust_rates(s.pos_ned, s.quat, field3)
+    sampled3 = wind.sampled_rates(*_field_frame(s), field3, st)
+    analytic3 = wind.gust_rates(*_field_frame(s), field3)
     assert float(analytic3[0]) == pytest.approx(0.0, abs=1e-12)
     assert abs(float(sampled3[0])) > 1e-9, "the cubic's secant must differ from its tangent"
 
@@ -652,7 +722,7 @@ def test_the_sampled_wind_model_matches_the_contract():
     ac = REGISTRY["boeing747"]
     array = single()
     model = wind.sampled_field_model(
-        lambda p: wind.vortex_wind(p, array), airframe.stations(ac)
+        lambda p: wind.vortex_wind(p, array), airframe.stations(ac), ANCHOR
     )
     s = _level_state()
     key = jax.random.PRNGKey(0)
@@ -670,8 +740,8 @@ def _pitch_rates_at(frac_of_r0, array, stations):
 
     field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
     state = _level_state(north=frac_of_r0 * float(array.r0))
-    tangent = float(wind.gust_rates(state.pos_ned, state.quat, field)[1])
-    secant = float(wind.sampled_rates(state.pos_ned, state.quat, field, stations)[1])
+    tangent = float(wind.gust_rates(*_field_frame(state), field)[1])
+    secant = float(wind.sampled_rates(*_field_frame(state), field, stations)[1])
     return tangent, secant
 
 
@@ -788,7 +858,7 @@ def test_a_uniform_vertical_gust_produces_no_rolling_moment():
     ac, st = _b747_and_stations()
     field = lambda p: jnp.array([0.0, 0.0, 5.0])  # noqa: E731
     s = _level_state()
-    moment = wind.strip_roll_moment(s.pos_ned, s.quat, field, ac, st, 236.0)
+    moment = wind.strip_roll_moment(*_field_frame(s), field, ac, st, 236.0)
     assert abs(float(moment)) < 1e-12
 
 
@@ -804,7 +874,7 @@ def test_a_linear_gust_gradient_matches_the_equivalent_rate_answer():
     s = _level_state()
     V = 236.0
 
-    strip = float(wind.strip_roll_moment(s.pos_ned, s.quat, field, ac, st, V))
+    strip = float(wind.strip_roll_moment(*_field_frame(s), field, ac, st, V))
     # Equivalent rate: p_gust = +d(w_g)/dy, and the aero model sees -p_gust.
     p_equivalent = -gradient
     equivalent = float(
@@ -821,8 +891,8 @@ def test_a_curved_gust_profile_makes_the_strip_integral_differ_from_the_rate():
     field = lambda p: jnp.array([0.0, 0.0, 1e-7 * p[1] ** 3])  # noqa: E731
     s = _level_state()
 
-    strip = float(wind.strip_roll_moment(s.pos_ned, s.quat, field, ac, st, 236.0))
-    tangent = float(wind.gust_rates(s.pos_ned, s.quat, field)[0])
+    strip = float(wind.strip_roll_moment(*_field_frame(s), field, ac, st, 236.0))
+    tangent = float(wind.gust_rates(*_field_frame(s), field)[0])
     assert tangent == pytest.approx(0.0, abs=1e-12), "the cubic has zero centreline slope"
     assert abs(strip) > 1e-9, "yet it must still produce a rolling moment"
 
@@ -841,19 +911,26 @@ def test_nothing_added_by_this_work_moves_the_existing_wind_path():
 
     ac = REGISTRY["boeing747"]
     v, h = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
-    x, _ = trim.trim(jnp.array(v), jnp.array(h), ac)
-    state = trim.trimmed_state(x[0], jnp.array(v), jnp.array(h))
+    x, _ = trim.trim(jnp.array(v), jnp.array(h), ac, ANCHOR, EARTH)
+    state = trim.trimmed_state(
+        jnp.array(float(x[0])), jnp.array(float(x[3])),
+        jnp.array(v), jnp.array(h), ANCHOR, jnp.array(0.0),
+    )
     controls = trim.trimmed_controls(x)
 
     array = single()
-    model = wind.vortex_model(array)
+    model = wind.vortex_model(array, ANCHOR)
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
 
-    first, _ = integrate.rollout(sim, controls, jnp.array(0.02), ac, 200, wind_model=model)
-    second, _ = integrate.rollout(sim, controls, jnp.array(0.02), ac, 200, wind_model=model)
+    first, _ = integrate.rollout(
+        sim, controls, jnp.array(0.02), ac, 200, ANCHOR, EARTH, wind_model=model
+    )
+    second, _ = integrate.rollout(
+        sim, controls, jnp.array(0.02), ac, 200, ANCHOR, EARTH, wind_model=model
+    )
 
     assert np.array_equal(
-        np.asarray(first.state.pos_ned), np.asarray(second.state.pos_ned)
+        np.asarray(first.state.pos_ecef), np.asarray(second.state.pos_ecef)
     )
     assert np.array_equal(np.asarray(first.state.quat), np.asarray(second.state.quat))
 
@@ -873,12 +950,12 @@ def test_the_default_field_model_still_uses_the_analytic_gradient():
     s = _level_state(north=CASE1_R0)  # at the core edge, where they differ most
 
     key = jax.random.PRNGKey(0)
-    _, tangent_gust, _, _, _ = wind.field_model(field)(
+    _, tangent_gust, _, _, _ = wind.field_model(field, ANCHOR)(
         wind.zero_wind_state(), s, key, jnp.array(0.02)
     )
-    _, fitted_gust, _, _, _ = wind.sampled_field_model(field, airframe.stations(ac))(
-        wind.zero_wind_state(), s, key, jnp.array(0.02)
-    )
+    _, fitted_gust, _, _, _ = wind.sampled_field_model(
+        field, airframe.stations(ac), ANCHOR
+    )(wind.zero_wind_state(), s, key, jnp.array(0.02))
     assert not np.allclose(np.asarray(tangent_gust), np.asarray(fitted_gust)), (
         "field_model and sampled_field_model agree at the core edge, which means "
         "the default path is no longer the analytic gradient"
@@ -889,24 +966,41 @@ def test_the_default_field_model_still_uses_the_analytic_gradient():
 
 
 def test_flying_the_parks_vortex_with_strip_loads_leaves_the_trajectory_alone():
-    """Gate 9, and the answer is zero. MEASURED, not assumed.
+    """Gate 9. MEASURED, not assumed -- and the measurement moved.
 
-    The plan expected this to differ and it does not, for a reason that is a
-    property of the field rather than a defect in the seam: the Parks vortex
-    axes lie across the flight path and the field has NO east variation, so
-    every strip on the span sees the same vertical gust and the antisymmetric
-    roll integral cancels. The rolling coefficient comes out at order 1e-19,
-    which is round-off, and the two trajectories are bit-identical.
+    *** THE "EXACTLY ZERO" HERE WAS A LEVEL-WING ZERO, AND THE TRIM IS BANKED
+    NOW. *** The old reading was that the Parks vortex axes lie across the
+    flight path and the field has NO east variation, so every strip on the span
+    sees the same vertical gust and the antisymmetric roll integral cancels;
+    the rolling coefficient came out at order 1e-19 and the two trajectories
+    were bit-identical.
 
-    This is the same fact the rigid-rotation diagnostic below reports as
-    `p-pair n/a`: dw/dy is identically zero here. Two measurements, one cause.
+    That argument assumed the span lies in the horizontal plane. On a rotating
+    Earth the trim banks by 0.148 deg to balance Coriolis, so a body-frame
+    offset [0, y, 0] acquires a DOWN component of y sin(phi) -- 0.077 m at the
+    747's tip -- and a small ALONG-TRACK component of y sin(phi) sin(theta).
+    The Parks field varies with both, so the two half-spans no longer sample
+    the same gust and the integral no longer cancels.
 
-    So this test is a NULL RESULT and is named for one. It does not show the
-    strip path works -- `test_a_field_with_spanwise_structure_moves_the_aircraft`
-    does that, and it exists because without it a broken seam would pass here
-    just as happily. What this shows is that turning the strip path on costs
-    the headline vortex result nothing, which is worth knowing and is exactly
-    why ASSUMPTIONS.md E2 forbids reading the strip work as having fixed it.
+    Measured over the same 387-step traverse, and the earth model is the ONLY
+    thing changed between the two rows:
+
+        earth       Cl at the end     point vs strip
+        FLAT        -3.854e-19        8.8e-16 m
+        WGS84_J2    +1.792e-07        1.14e-03 m
+
+    Twelve orders in the coefficient. The practical conclusion is unchanged --
+    1.1 mm over 1,815 m of track is still nothing beside the headline vortex
+    result -- but it is no longer a null result, and calling it one would now be
+    a claim about a flat Earth.
+
+    The rigid-rotation diagnostic below still reports `p-pair n/a`, because it
+    reads the field's own Jacobian at a level attitude: dw/dy is identically
+    zero IN THE FIELD'S FRAME. It is the aircraft that is tilted, not the field.
+
+    It still does not show the strip path works --
+    `test_a_field_with_spanwise_structure_moves_the_aircraft` does that, and it
+    exists because without it a broken seam would pass here just as happily.
 
     Reported rather than bounded: the size of the difference is the RESULT, and
     fixing a tolerance around it now would be asserting the answer before
@@ -917,26 +1011,33 @@ def test_flying_the_parks_vortex_with_strip_loads_leaves_the_trajectory_alone():
 
     ac = REGISTRY["boeing747"]
     v, h = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
-    x, _ = trim.trim(jnp.array(v), jnp.array(h), ac)
-    state = trim.trimmed_state(x[0], jnp.array(v), jnp.array(h))
+    x, _ = trim.trim(jnp.array(v), jnp.array(h), ac, ANCHOR, EARTH)
+    state = trim.trimmed_state(
+        jnp.array(float(x[0])), jnp.array(float(x[3])),
+        jnp.array(v), jnp.array(h), ANCHOR, jnp.array(0.0),
+    )
     controls = trim.trimmed_controls(x)
 
     array = single()
     field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
-    model = wind.vortex_model(array)
+    model = wind.vortex_model(array, ANCHOR)
     # Start well upstream so the aircraft flies through the whole core.
-    start = state._replace(pos_ned=jnp.array([-6.0 * CASE1_R0, 0.0, -h]))
+    start = state._replace(
+        pos_ecef=state.pos_ecef + ANCHOR.T_e2l.T @ jnp.array([-6.0 * CASE1_R0, 0.0, 0.0])
+    )
     sim = integrate.init_sim(start, jax.random.PRNGKey(0))
     steps = int(12.0 * CASE1_R0 / v / 0.02)
 
-    point, _ = integrate.rollout(sim, controls, jnp.array(0.02), ac, steps, wind_model=model)
+    point, _ = integrate.rollout(
+        sim, controls, jnp.array(0.02), ac, steps, ANCHOR, EARTH, wind_model=model
+    )
     strip, _ = integrate.rollout(
-        sim, controls, jnp.array(0.02), ac, steps, wind_model=model,
-        load_model=loads.strip_model(field, ac),
+        sim, controls, jnp.array(0.02), ac, steps, ANCHOR, EARTH, wind_model=model,
+        load_model=loads.strip_model(field, ac, ANCHOR),
     )
 
     d_pos = float(
-        np.linalg.norm(np.asarray(point.state.pos_ned) - np.asarray(strip.state.pos_ned))
+        np.linalg.norm(np.asarray(point.state.pos_ecef) - np.asarray(strip.state.pos_ecef))
     )
     print(f"\nParks core traverse, {steps} steps:")
     print(f"  position difference, point vs strip: {d_pos:.6f} m")
@@ -964,28 +1065,34 @@ def test_a_field_with_spanwise_structure_moves_the_aircraft():
 
     ac = REGISTRY["boeing747"]
     v, h = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
-    x, _ = trim.trim(jnp.array(v), jnp.array(h), ac)
-    state = trim.trimmed_state(x[0], jnp.array(v), jnp.array(h))
+    x, _ = trim.trim(jnp.array(v), jnp.array(h), ac, ANCHOR, EARTH)
+    # `trimmed_state` PLACES THE AIRCRAFT AT THE ANCHOR, so the `_replace` that
+    # used to put it at `pos_ned = [0, 0, -h]` is now exactly what the helper
+    # already did and has been dropped rather than rewritten as a zero offset.
+    state = trim.trimmed_state(
+        jnp.array(float(x[0])), jnp.array(float(x[3])),
+        jnp.array(v), jnp.array(h), ANCHOR, jnp.array(0.0),
+    )
     controls = trim.trimmed_controls(x)
 
     # Vertical gust cubic in east. Peaks at ~4.5 m/s at the wingtip, which is
     # the same order as the Parks core and therefore not a contrived overdrive.
     field = lambda p: jnp.array([0.0, 0.0, 1e-6 * p[1] ** 3])  # noqa: E731
-    sim = integrate.init_sim(
-        state._replace(pos_ned=jnp.array([0.0, 0.0, -h])), jax.random.PRNGKey(0)
-    )
+    sim = integrate.init_sim(state, jax.random.PRNGKey(0))
     steps = 500
 
     point, _ = integrate.rollout(
-        sim, controls, jnp.array(0.02), ac, steps, wind_model=wind.field_model(field)
+        sim, controls, jnp.array(0.02), ac, steps, ANCHOR, EARTH,
+        wind_model=wind.field_model(field, ANCHOR),
     )
     strip, _ = integrate.rollout(
-        sim, controls, jnp.array(0.02), ac, steps, wind_model=wind.field_model(field),
-        load_model=loads.strip_model(field, ac),
+        sim, controls, jnp.array(0.02), ac, steps, ANCHOR, EARTH,
+        wind_model=wind.field_model(field, ANCHOR),
+        load_model=loads.strip_model(field, ac, ANCHOR),
     )
 
     d_pos = float(
-        np.linalg.norm(np.asarray(point.state.pos_ned) - np.asarray(strip.state.pos_ned))
+        np.linalg.norm(np.asarray(point.state.pos_ecef) - np.asarray(strip.state.pos_ecef))
     )
     roll = float(strip.increment.Cl)
     print(f"\nCubic spanwise gust, {steps} steps:")
@@ -1012,7 +1119,7 @@ def test_the_rigid_rotation_structure_diagnostic_is_reported_per_field():
     print("\nRigid-rotation-structure diagnostic (1.0 = exactly rotation-like):")
     for frac, label in ((0.5, "inside core"), (1.5, "outside core")):
         s = _level_state(north=frac * CASE1_R0)
-        dcm = np.asarray(jax.jacfwd(field)(s.pos_ned))
+        dcm = np.asarray(jax.jacfwd(field)(state_pos_ned(s, ANCHOR)))
         assert np.all(np.isfinite(dcm)), f"the {label} shear matrix is not finite"
         # body == NED here (wings level, heading north)
         dw_dy, dv_dz = dcm[2, 1], dcm[1, 2]
