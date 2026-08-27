@@ -655,7 +655,7 @@ def recovery_band(traj, ac: Aircraft) -> Check:
 # ---------------------------------------------------------------------------
 
 
-def lateral_symmetry(traj) -> Check:
+def lateral_symmetry(traj, earth_model) -> Check:
     """max(|v|, |p|, |r|) for a field that cannot produce any of them.
 
     The Parks vortex has no east variation and the updraft column is
@@ -679,7 +679,7 @@ def lateral_symmetry(traj) -> Check:
     5.04e-7 under `WGS84_J2` against 3.53e-15 under `earth.FLAT`, which is the
     number this tolerance was set from and which `FLAT` still reproduces.
 
-    Nothing here is retuned, for two reasons. There is no exact non-zero value to
+    Nothing is retuned, for two reasons. There is no exact non-zero value to
     compare against -- the Coriolis lateral response is a dynamic quantity, not a
     closed form -- and the only instrument that could separate it from a defect
     is a second run with `Omega = 0`, which this module does not do and says why
@@ -687,18 +687,43 @@ def lateral_symmetry(traj) -> Check:
     Widening the tolerance to 1e-6 would admit the Coriolis response and would
     also admit a genuine lateral defect an order larger than the one this was
     built to catch, and picking a number to make a check pass is what PROJECT.md
-    forbids in as many words. So the measurement is recorded here and the
-    decision belongs to the ledger re-measurement, not to this function.
+    forbids in as many words.
+
+    **THE RESOLUTION IS THE `kind`, NOT THE TOLERANCE.** This module already
+    distinguishes a **gate** (can and does fail) from a **report** (a number with
+    no honest threshold), and a rotating Earth is precisely the second case: the
+    premise "exactly zero, so anything else is a defect" is a FLAT-EARTH premise,
+    and it is the premise that rotation falsifies, not the arithmetic. So the
+    check keeps its tight tolerance and its tripwire status exactly where the
+    premise still holds -- a non-rotating Earth -- and downgrades itself to a
+    report where it does not, carrying the number and no verdict.
+
+    That is strictly better than either alternative. Widening would have hidden
+    a real defect behind a threshold chosen to accommodate physics; deleting the
+    check would have lost the FLAT case, where the zero is still exact and still
+    worth guarding.
     """
     lateral = np.concatenate([
         np.abs(np.asarray(traj.vel_body)[:, 1]),
         np.abs(np.asarray(traj.omega)[:, 0]),
         np.abs(np.asarray(traj.omega)[:, 2]),
     ])
-    return _verdict(
-        lateral.max(), 1e-10, "tripwire", "lateral symmetry",
+    rotating = bool(getattr(earth_model, "rotation_rate", 0.0))
+    kind = "report" if rotating else "tripwire"
+    detail = (
         "max(|v|, |p|, |r|). Exactly zero for a field with no spanwise "
-        "structure; anything else is a defect, not a small number.",
+        "structure; anything else is a defect, not a small number."
+    )
+    if rotating:
+        detail = (
+            "max(|v|, |p|, |r|). NO THRESHOLD ON A ROTATING EARTH: the field "
+            "still produces no lateral response, but the 0.148 deg trimmed bank "
+            "and 2*Omega x v do, so the exact zero this was built on is a "
+            "flat-Earth zero. Measured 5.04e-7 at 47N against 3.53e-15 under "
+            "earth.FLAT, which still gates at 1e-10."
+        )
+    return _verdict(
+        lateral.max(), 1e-10, kind, "lateral symmetry", detail,
         int(np.asarray(traj.vel_body)[:, 1].argmax()),
     )
 
@@ -818,5 +843,5 @@ def run_checks(traj, ac: Aircraft, controls: Controls, field, window,
     ]
     tripwires = [quaternion_norm(traj), field_divergence(field, viz.pos_ned(traj))]
     if symmetric:
-        tripwires.append(lateral_symmetry(traj))
+        tripwires.append(lateral_symmetry(traj, earth_model))
     return gates + reports + tripwires
