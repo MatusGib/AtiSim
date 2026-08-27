@@ -29,11 +29,18 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from atisim import airframe, provenance, wind
+from atisim import airframe, earth, provenance, wind
 from atisim.aero import aero_forces_moments, air_data
 from atisim.aircraft import CRUISE, REGISTRY, _unprime
 from atisim.atmosphere import G0, density
-from atisim.state import Controls, State, euler_to_quat, quat_to_dcm
+from atisim.state import (
+    Controls,
+    euler_to_quat,
+    quat_to_matrix,
+    state_from_ned,
+)
+from atisim.state import altitude as geodetic_altitude
+from atisim.state import dcm_body_to_ned
 from atisim.trim import trim
 from atisim.units import DEG2RAD, FT2M
 from atisim.validation import (
@@ -542,7 +549,8 @@ def test_the_accelerometer_offset_is_bounded_for_the_manoeuvring_fig8_point():
     """PREVIOUSLY UNBOUNDED, NOW BOUNDED at 8.3% of the load excursion."""
     from atisim import vortex_viz
     V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
-    enc = vortex_viz.manoeuvre(B747, V, H, label="pushdown",
+    anchor = earth.anchor_at(np.radians(47.0), 0.0, H)
+    enc = vortex_viz.manoeuvre(B747, V, H, anchor, earth.WGS84_J2, label="pushdown",
                                elevator_step=8.926 * DEG2RAD, hold=6.609,
                                seconds=12.609, dt=0.01)
     w = np.asarray(enc.window)
@@ -563,10 +571,15 @@ def test_the_sensor_offset_bites_hardest_on_the_vortex_not_the_manoeuvre():
     from atisim import vortex_viz
     V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
     hb = wind.PARKS_CASES["hannibal"]
+    anchor = earth.anchor_at(np.radians(47.0), 0.0, H)
+    # down = 0, not -H: field coordinates are NED offsets from the run anchor,
+    # and the anchor is AT the flight altitude. -H would put the cores a whole
+    # cruise altitude above the aircraft.
     arr = wind.VortexArray(north=jnp.array([0.0, hb["spacing"]]),
-                           down=jnp.array([-H, -H]),
+                           down=jnp.array([0.0, 0.0]),
                            r0=jnp.array(hb["r0"]), v0=jnp.array(hb["v0"]))
     enc = vortex_viz.fly(B747, lambda p: wind.vortex_wind(p, arr), V, H,
+                         anchor, earth.WGS84_J2,
                          label="vortex", start_north=-40 * hb["r0"], seconds=40.0,
                          dt=0.01, window=(-hb["r0"], hb["r0"]), window_name="core")
     w = np.asarray(enc.window)
@@ -662,8 +675,15 @@ def test_gust_rates_recover_a_rigid_rotation_of_the_air_mass(axis, expected_inde
     omega_air = np.zeros(3)
     omega_air[axis] = 0.37
     field = lambda p: jnp.cross(jnp.array(omega_air), p)  # noqa: E731
-    quat = euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0))
-    got = np.asarray(wind.gust_rates(jnp.array([120.0, -80.0, -3000.0]), quat, field))
+    # `gust_rates` takes a body -> NED MATRIX now, not a quaternion. Level and
+    # heading north, so it is the identity and the body axes ARE the NED ones,
+    # which is what lets the three axes be read off independently.
+    dcm_b2n = quat_to_matrix(
+        euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0))
+    )
+    got = np.asarray(
+        wind.gust_rates(jnp.array([120.0, -80.0, -3000.0]), dcm_b2n, field)
+    )
     assert got[expected_index] == pytest.approx(omega_air[axis], rel=1e-8)
     assert np.abs(np.delete(got, expected_index)).max() < 1e-8
 
@@ -759,7 +779,10 @@ def test_the_dcm_really_maps_body_to_ned_for_a_general_attitude():
         [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
         [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
         [-sp, cp * sr, cp * cr]])
-    assert np.allclose(np.asarray(quat_to_dcm(q)), expected, atol=1e-12)
+    # `quat_to_matrix`, the frame-agnostic replacement. The identity being
+    # checked is the 3-2-1 Euler convention itself, which is independent of
+    # which pair of frames the matrix is later used between.
+    assert np.allclose(np.asarray(quat_to_matrix(q)), expected, atol=1e-12)
 
 
 # ===========================================================================
@@ -956,21 +979,34 @@ def test_a_fixed_control_pull_from_trim_does_not_reach_the_energy_gaining_region
     What is pinned here is the conservative claim: no energy is gained on this
     trajectory. If that changes, the model has become reachably nonphysical and
     the bound in AUDIT.md no longer holds.
+
+    FLOWN UNDER `earth.FLAT`, because the claim is about the AERODYNAMICS and
+    the energy expression below is a flat-Earth one. `0.5 m V^2 + m g h` is the
+    exact mechanical energy of the FLAT model and of no other: FLAT's gravity is
+    `G0` along the local geodetic vertical, whose potential is exactly `G0 * h`
+    with `h` the geodetic altitude, and its `rotation_rate` is zero so `vel_body`
+    is an inertial velocity. Under `WGS84_J2` neither holds -- the potential
+    gains the J2 term and the centrifugal one, and the speed is ECEF-relative --
+    so the sum below would drift for reasons that have nothing to do with
+    whether the aerodynamics can pump energy, which is the bound being kept.
     """
     from atisim.integrate import init_sim, rollout
     from atisim.trim import trimmed_controls, trimmed_state
     ac = REGISTRY["cherokee"]
     V, alt = CRUISE["cherokee"]["airspeed"], CRUISE["cherokee"]["altitude"]
-    x, _ = trim(jnp.array(V), jnp.array(alt), ac)
-    state = trimmed_state(x[0], jnp.array(V), jnp.array(alt))
+    anchor = earth.anchor_at(np.radians(47.0), 0.0, alt)
+    x, _ = trim(jnp.array(V), jnp.array(alt), ac, anchor, earth.FLAT)
+    state = trimmed_state(x[0], x[3], jnp.array(V), jnp.array(alt), anchor, 0.0)
     controls = trimmed_controls(jnp.array(-float(ac.elevator_limit)), jnp.array(0.0))
     dt, n = 0.002, 3000
     _, traj = rollout(init_sim(state, jax.random.PRNGKey(0)),
-                      controls, jnp.array(dt), ac, n)
-    pos, vb, om = (np.asarray(traj.pos_ned), np.asarray(traj.vel_body),
-                   np.asarray(traj.omega))
+                      controls, jnp.array(dt), ac, n, anchor, earth.FLAT)
+    vb, om = np.asarray(traj.vel_body), np.asarray(traj.omega)
+    # GEODETIC height, which is the FLAT model's potential. -pos_ned[:, 2] is a
+    # tangent-plane height and is not.
+    h = np.asarray(jax.vmap(geodetic_altitude, in_axes=(0, None))(traj, anchor))
     m, g = float(ac.mass), 9.80665
-    E = 0.5 * m * np.sum(vb**2, axis=1) + m * g * (-pos[:, 2])
+    E = 0.5 * m * np.sum(vb**2, axis=1) + m * g * h
     assert np.abs(om[:, 1]).max() > 3.51, "the run must reach the threshold rate"
     assert (np.diff(E) > 0).sum() == 0, "energy was gained on a reachable trajectory"
 
@@ -1009,38 +1045,51 @@ def test_the_wind_hold_costs_the_headline_figure_more_than_E4_bounds_it():
     """
     from atisim.dynamics import derivatives
     from atisim.integrate import rk4_step
-    from atisim.state import quat_normalize, quat_to_euler
+    from atisim.state import matrix_to_euler, quat_normalize
     from atisim.trim import trimmed_controls, trimmed_state
     from atisim import vortex_viz
 
     V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
     hb = wind.PARKS_CASES["hannibal"]
     r0 = hb["r0"]
+    anchor = earth.anchor_at(np.radians(47.0), 0.0, H)
+    # down = 0: NED offsets from the anchor, which is at the flight altitude.
     arr = wind.VortexArray(north=jnp.array([0.0, hb["spacing"]]),
-                           down=jnp.array([-H, -H]),
+                           down=jnp.array([0.0, 0.0]),
                            r0=jnp.array(r0), v0=jnp.array(hb["v0"]))
     field = lambda p: wind.vortex_wind(p, arr)  # noqa: E731
     dt, seconds = 0.02, 40.0
 
-    enc = vortex_viz.fly(B747, field, V, H, label="v", start_north=-40 * r0,
+    enc = vortex_viz.fly(B747, field, V, H, anchor, earth.WGS84_J2,
+                         label="v", start_north=-40 * r0,
                          seconds=seconds, dt=dt, window=(-r0, r0),
                          window_name="core")
     w = np.asarray(enc.window)
     th = np.asarray(enc.theta)
     held = math.degrees(th[w].max() - th[w].min())
 
-    x, _ = trim(jnp.array(V), jnp.array(H), B747)
-    state = trimmed_state(x[0], jnp.array(V), jnp.array(H))
-    state = state._replace(pos_ned=state.pos_ned.at[0].set(-40.0 * r0))
+    x, _ = trim(jnp.array(V), jnp.array(H), B747, anchor, earth.WGS84_J2)
+    state = trimmed_state(x[0], x[3], jnp.array(V), jnp.array(H), anchor, 0.0)
+    # 40 core radii back along the track, stated in NED and converted once.
+    state = state._replace(
+        pos_ecef=anchor.T_e2l.T @ jnp.array([-40.0 * r0, 0.0, 0.0])
+    )
     controls = trimmed_controls(x[1], x[2])
 
     def body(s, _):
         def f(y):
-            return derivatives(y, controls, B747, field(y.pos_ned),
-                               wind.gust_rates(y.pos_ned, y.quat, field))
+            # The field and the gust rate are both stated in LOCAL NED at the
+            # aircraft. The matrix is `dcm_body_to_ned`, NOT
+            # `quat_to_matrix(y.quat)`: the latter is body -> ECEF now, and
+            # `gust_rates` takes a body -> NED matrix.
+            p = anchor.T_e2l @ y.pos_ecef
+            return derivatives(y, controls, B747, field(p),
+                               wind.gust_rates(p, dcm_body_to_ned(y, anchor), field),
+                               anchor, earth.WGS84_J2)
         ns = rk4_step(f, s, jnp.array(dt))
         ns = ns._replace(quat=quat_normalize(ns.quat))
-        return ns, (ns.pos_ned[0], quat_to_euler(ns.quat)[1])
+        return ns, ((anchor.T_e2l @ ns.pos_ecef)[0],
+                    matrix_to_euler(dcm_body_to_ned(ns, anchor))[1])
 
     _, (north, theta) = jax.lax.scan(body, state, None,
                                      length=int(round(seconds / dt)))
@@ -1093,12 +1142,15 @@ def test_the_longitudinal_station_set_is_one_sided_and_biases_the_pitch_secant()
     arr = wind.VortexArray(north=jnp.array([0.0]), down=jnp.array([0.0]),
                            r0=jnp.array(r0), v0=jnp.array(v0))
     field = lambda p: wind.vortex_wind(p, arr)  # noqa: E731
-    quat = euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0))
+    # A body -> NED matrix now; level and northbound, so the identity.
+    dcm_b2n = quat_to_matrix(
+        euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0))
+    )
 
     def correction(frac):
         p = jnp.array([frac * r0, 0.0, -1.0])
-        t = float(wind.gust_rates(p, quat, field)[1])
-        s = float(wind.sampled_rates(p, quat, field, st)[1])
+        t = float(wind.gust_rates(p, dcm_b2n, field)[1])
+        s = float(wind.sampled_rates(p, dcm_b2n, field, st)[1])
         return abs(s - t) / (v0 / r0)
 
     # downstream half, inside the core: the register's "exactly zero"
@@ -1136,12 +1188,17 @@ def test_trim_returns_absurd_roots_from_plausible_guesses_on_real_aircraft():
     from atisim.trim import is_physical
     ac = REGISTRY["boeing747"]
     V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
+    anchor = earth.anchor_at(np.radians(47.0), 0.0, H)
     absurd = []
     for a0 in np.radians([-60.0, -30.0, 30.0, 60.0]):
         for de in np.radians([-20.0, 20.0]):
             for th in (0.1, 0.9):
-                x, r = trim(jnp.array(V), jnp.array(H), ac,
-                            guess=jnp.array([a0, de, th]))
+                # SIX unknowns now: [alpha, elevator, throttle, phi, aileron,
+                # rudder]. The three lateral ones start from zero, which is the
+                # same "plausible guess" a caller would make.
+                x, r = trim(jnp.array(V), jnp.array(H), ac, anchor,
+                            earth.WGS84_J2,
+                            guess=jnp.array([a0, de, th, 0.0, 0.0, 0.0]))
                 if float(jnp.linalg.norm(r)) < 1e-9 and not is_physical(x, ac):
                     absurd.append(np.degrees(float(x[0])))
     assert absurd, (
@@ -1582,17 +1639,25 @@ def test_free_fall_reads_exactly_zero_load_factor_with_the_aerodynamics_LIVE():
     for name in sorted(REGISTRY):
         ac = REGISTRY[name]
         altitude = float(CRUISE[name]["altitude"])
-        state = State(
-            pos_ned=jnp.array([0.0, 0.0, -altitude]), vel_body=jnp.zeros(3),
-            quat=euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
-            omega=jnp.zeros(3),
+        anchor = earth.anchor_at(np.radians(47.0), 0.0, altitude)
+        state = state_from_ned(
+            jnp.zeros(3), jnp.zeros(3),
+            euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
+            jnp.zeros(3), anchor,
         )
         zeroed = ac._replace(
             CL0=jnp.array(0.0), CLa=jnp.array(0.0), CLq=jnp.array(0.0),
             CLde=jnp.array(0.0), CD0=jnp.array(0.0),
         )
-        live = float(load_factor(state, controls, ac, jnp.zeros(3), jnp.zeros(3)))
-        off = float(load_factor(state, controls, zeroed, jnp.zeros(3), jnp.zeros(3)))
+        # WGS84_J2, the shipped Earth. The identity is an exact cancellation --
+        # `specific_force` inverts the same non-force sum `derivatives` formed,
+        # so a zero aerodynamic force must come back as an exact zero whatever
+        # gravity and the centrifugal term are. Asserting it on the harder Earth
+        # is the stronger statement.
+        live = float(load_factor(state, controls, ac, jnp.zeros(3), jnp.zeros(3),
+                                 anchor, earth.WGS84_J2))
+        off = float(load_factor(state, controls, zeroed, jnp.zeros(3), jnp.zeros(3),
+                                anchor, earth.WGS84_J2))
         assert live == 0.0, f"{name}: aero-live free fall reads n_z = {live!r}"
         assert off == 0.0, f"{name}: aero-zeroed free fall reads n_z = {off!r}"
         assert math.copysign(1.0, live) == math.copysign(1.0, off) == -1.0
@@ -1675,11 +1740,16 @@ def test_a_control_channel_with_zero_authority_returns_nan_in_silence():
     ac = CESSNA
     assert float(ac.CYdr) == 0.0 and float(ac.Cldr) == 0.0 and float(ac.Cndr) == 0.0
 
+    anchor = earth.anchor_at(np.radians(47.0), 0.0, 2500.0)
+
     def angular_accel(u):
-        state = trimmed_state(jnp.array(0.05), jnp.array(60.0), jnp.array(2500.0))
+        state = trimmed_state(
+            jnp.array(0.05), jnp.array(0.0), jnp.array(60.0), jnp.array(2500.0),
+            anchor, 0.0,
+        )
         return derivatives(
             state, Controls(u[0], u[1], u[2], jnp.array(0.5)), ac,
-            jnp.zeros(3), jnp.zeros(3),
+            jnp.zeros(3), jnp.zeros(3), anchor, earth.WGS84_J2,
         ).omega
 
     jacobian = jax.jacfwd(angular_accel)(jnp.zeros(3))
@@ -1717,17 +1787,26 @@ def test_the_integrator_has_no_ground_plane():
     from atisim.wind import zero_wind
 
     ac = B747PA
-    solution, _ = trim(jnp.array(85.2), jnp.array(300.0), ac)
-    state = trimmed_state(solution[0], jnp.array(85.2), jnp.array(300.0))
-    state = state._replace(
-        quat=euler_to_quat(jnp.array(0.0), jnp.array(-0.35), jnp.array(0.0))
+    anchor = earth.anchor_at(np.radians(47.0), 0.0, 300.0)
+    solution, _ = trim(jnp.array(85.2), jnp.array(300.0), ac, anchor, earth.WGS84_J2)
+    # 20 deg nose down, restated through the NED frame: `state.quat` is
+    # body -> ECEF now, so an Euler set can no longer be assigned to it directly.
+    state = state_from_ned(
+        jnp.zeros(3),
+        trimmed_state(solution[0], solution[3], jnp.array(85.2), jnp.array(300.0),
+                      anchor, 0.0).vel_body,
+        euler_to_quat(jnp.array(0.0), jnp.array(-0.35), jnp.array(0.0)),
+        jnp.zeros(3), anchor,
     )
     sim = init_sim(state, jnp.zeros(2, dtype=jnp.uint32))
     _, trajectory = rollout(
         sim, trimmed_controls(solution[1], jnp.array(0.0)), 0.01, ac, 6000,
-        zero_wind,
+        anchor, earth.WGS84_J2, zero_wind,
     )
-    altitude = -np.asarray(trajectory.pos_ned)[:, 2]
+    # GEODETIC. "Below sea level" is a statement about the ellipsoid.
+    altitude = np.asarray(
+        jax.vmap(geodetic_altitude, in_axes=(0, None))(trajectory, anchor)
+    )
     assert np.isfinite(altitude).all(), "the run went non-finite, not through"
     assert altitude.min() < -100.0, (
         f"lowest altitude {altitude.min():.1f} m -- if a ground plane was "
@@ -1773,8 +1852,10 @@ def test_is_physical_rejects_trims_that_no_aircraft_could_fly():
     """
     from atisim.trim import is_physical
 
-    solution, _ = trim(jnp.array(471.8), jnp.array(11579.0), B747)
-    alpha, elevator, throttle = (float(v) for v in solution)
+    anchor = earth.anchor_at(np.radians(47.0), 0.0, 11579.0)
+    solution, _ = trim(jnp.array(471.8), jnp.array(11579.0), B747, anchor,
+                       earth.WGS84_J2)
+    alpha, elevator, throttle = (float(v) for v in solution[:3])
     # the root has not moved, and it is still inside the alpha gate on its own
     assert abs(math.degrees(alpha)) < 15.0, "the alpha gate no longer passes"
     assert throttle > 100.0, f"throttle {throttle:.1f} -- the pinned root moved"
@@ -1783,8 +1864,12 @@ def test_is_physical_rejects_trims_that_no_aircraft_could_fly():
         "is_physical endorses a trim demanding 567x full thrust again")
 
     # the two new conditions, isolated: each must be able to reject on its own
+    cruise_anchor = earth.anchor_at(
+        np.radians(47.0), 0.0, CRUISE["boeing747"]["altitude"]
+    )
     at_cruise, _ = trim(jnp.array(CRUISE["boeing747"]["airspeed"]),
-                        jnp.array(CRUISE["boeing747"]["altitude"]), B747)
+                        jnp.array(CRUISE["boeing747"]["altitude"]), B747,
+                        cruise_anchor, earth.WGS84_J2)
     assert is_physical(at_cruise, B747), "the positive control has gone red"
     over_throttle = at_cruise.at[2].set(1.0 + 1e-9)
     under_throttle = at_cruise.at[2].set(-1e-9)
@@ -1808,8 +1893,10 @@ def test_every_registry_aircraft_still_passes_the_widened_gate():
 
     for name in sorted(REGISTRY):
         ac = REGISTRY[name]
+        altitude = CRUISE[name]["altitude"]
+        anchor = earth.anchor_at(np.radians(47.0), 0.0, altitude)
         x, r = trim(jnp.array(CRUISE[name]["airspeed"]),
-                    jnp.array(CRUISE[name]["altitude"]), ac)
+                    jnp.array(altitude), ac, anchor, earth.WGS84_J2)
         assert float(jnp.linalg.norm(r)) < 1e-9, f"{name} did not converge"
         assert is_physical(x, ac), (
             f"{name}: alpha {math.degrees(float(x[0])):.2f} deg, elevator "
@@ -1838,10 +1925,12 @@ def test_a_wind_field_with_no_spatial_gradient_keeps_fourth_order():
     from atisim.wind import field_model
 
     dts = np.array([1.0 / 4, 1.0 / 8, 1.0 / 16, 1.0 / 32])
-    uniform = field_model(lambda pos_ned: jnp.array([12.0, 5.0, -2.0]))
+    altitude = CRUISE["boeing747"]["altitude"]
+    anchor = earth.anchor_at(np.radians(47.0), 0.0, altitude)
+    uniform = field_model(lambda pos_ned: jnp.array([12.0, 5.0, -2.0]), anchor)
     _, order = verification.fixed_control_refinement(
-        B747, CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"],
-        dts, dt_ref=1.0 / 1024.0, wind_model=uniform,
+        B747, CRUISE["boeing747"]["airspeed"], altitude,
+        dts, 1.0 / 1024.0, anchor, earth.WGS84_J2, wind_model=uniform,
     )
     assert float(order) == pytest.approx(4.0, abs=0.05), (
         f"a gradient-free field no longer keeps fourth order: {float(order)}")
@@ -1997,6 +2086,17 @@ def test_the_shipped_runs_fly_a_genuinely_straight_track():
     to end during the remediation pass: psi_dot was exactly 0.0 at all 77,036
     samples of the two lee-wave legs and the microburst penetration, and the
     printed output of both scripts was byte-identical across the change.
+
+    FLOWN UNDER `earth.FLAT`, AND THE TEST CANNOT BE RUN ANY OTHER WAY. Its
+    whole method is a run with NO east component at all, so that the turning
+    term is identically zero and the repaired expression can be compared
+    bit-for-bit against the straight-track one it replaced. A rotating Earth
+    puts `2 Omega x V` into the lateral channel the moment the aircraft moves,
+    so `accel_ned[1]` is no longer exactly 0 and there is no straight run left
+    to compare on -- the premise, not the tolerance, is what `WGS84_J2` removes.
+    `FLAT` is non-rotating, and flying due north along the lon = 0 meridian
+    keeps the motion in the ECEF x-z plane by symmetry, so the east channel is
+    exactly zero again and the identity is once more testable.
     """
     from atisim import dynamics, integrate, trim
 
@@ -2004,31 +2104,46 @@ def test_the_shipped_runs_fly_a_genuinely_straight_track():
     burst = wind.microburst(u_max=19.03, radius=1000.0, z_m=150.0)
     field = lambda p: wind.microburst_wind(p, burst)  # noqa: E731
     peak = wind.MICROBURST_PEAK_RADIUS_RATIO * 1000.0
+    anchor = earth.anchor_at(np.radians(47.0), 0.0, 300.0)
 
-    x, _ = trim.trim(jnp.array(50.0), jnp.array(300.0), ac)
+    x, _ = trim.trim(jnp.array(50.0), jnp.array(300.0), ac, anchor, earth.FLAT)
     controls = trim.trimmed_controls(x[1], x[2])
-    state = trim.trimmed_state(x[0], jnp.array(50.0), jnp.array(300.0))
-    state = state._replace(pos_ned=jnp.array([-3.0 * peak, 0.0, -300.0]))
+    state = trim.trimmed_state(
+        x[0], x[3], jnp.array(50.0), jnp.array(300.0), anchor, 0.0
+    )
+    state = state._replace(
+        pos_ecef=anchor.T_e2l.T @ jnp.array([-3.0 * peak, 0.0, 0.0])
+    )
     _, hist = integrate.rollout(
         integrate.init_sim(state, jnp.zeros(2, dtype=jnp.uint32)),
-        controls, jnp.array(0.05), ac, 400, wind_model=wind.field_model(field))
+        controls, jnp.array(0.05), ac, 400, anchor, earth.FLAT,
+        wind_model=wind.field_model(field, anchor))
 
-    def sample(pos_ned, vel_body, quat, omega):
-        s = State(pos_ned=pos_ned, vel_body=vel_body, quat=quat, omega=omega)
+    def sample(s):
+        pos_ned = anchor.T_e2l @ s.pos_ecef
+        dcm_b2n = dcm_body_to_ned(s, anchor)
         wind_ned = field(pos_ned)
-        gust = wind.gust_rates(pos_ned, quat, field)
-        d = dynamics.derivatives(s, controls, ac, wind_ned, gust)
-        accel_ned = quat_to_dcm(quat) @ (d.vel_body + jnp.cross(omega, vel_body))
-        vel_ned = quat_to_dcm(quat) @ vel_body
+        gust = wind.gust_rates(pos_ned, dcm_b2n, field)
+        d = dynamics.derivatives(
+            s, controls, ac, wind_ned, gust, anchor, earth.FLAT
+        )
+        accel_ned = dcm_b2n @ (d.vel_body + jnp.cross(s.omega, s.vel_body))
+        vel_ned = dcm_b2n @ s.vel_body
         return jnp.array([
             wind.along_track_shear(pos_ned, vel_ned, accel_ned, field),
             _straight_track_shear(pos_ned, vel_ned, field),
             accel_ned[1],
         ])
 
-    rows = np.asarray(jax.vmap(sample)(
-        hist.pos_ned, hist.vel_body, hist.quat, hist.omega))
-    assert np.abs(rows[:, 2]).max() == 0.0, "the run developed an east acceleration"
+    rows = np.asarray(jax.vmap(sample)(hist))
+    # WAS `== 0.0` EXACTLY, and the change is structural rather than a loosened
+    # tolerance. On the old local-NED plant the east channel was zero by
+    # construction; now the local frame is rebuilt through `ecef_to_geodetic`
+    # and a sin/cos pair at every sample, so due-north flight leaves round-off
+    # rather than an exact zero. Measured 1.1e-33 m/s^2 across the 400 steps,
+    # against accelerations of order 1 -- 33 orders down, and bounded three
+    # orders above what it measures.
+    assert np.abs(rows[:, 2]).max() < 1e-30, "the run developed an east acceleration"
     assert np.array_equal(rows[:, 0], rows[:, 1]), (
         "the repaired and straight-track expressions disagree on a straight run")
 

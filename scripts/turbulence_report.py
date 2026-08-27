@@ -37,7 +37,6 @@ import jax.numpy as jnp
 import atisim  # noqa: F401  -- enables x64 before any array is made
 from atisim import airframe, provenance, wind
 from atisim.aircraft import CRUISE, REGISTRY
-from atisim.state import State, euler_to_quat
 from atisim.units import FT2M
 
 OUT = Path(sys.argv[1] if len(sys.argv) > 1 else "docs/summary/turbulence-report.pdf")
@@ -209,19 +208,28 @@ TAIL_ARMS = {n: float(airframe.effective_tail_arm(REGISTRY[n])) for n in sorted(
 GATE = {n: airframe.tail_arm_is_plausible(REGISTRY[n]) for n in sorted(REGISTRY)}
 
 # The E2 correction profile, recomputed live.
-_array = wind.VortexArray(north=jnp.array([0.0]), down=jnp.array([-H747]),
+#
+# Field coordinates are NED offsets from the run anchor and the anchor sits at
+# the flight altitude, so the core and the probe positions below are both at
+# `down = 0`. What E2 measures is the gust-rate difference across the airframe at
+# a stated distance from the core, which depends only on the RELATIVE geometry --
+# and this pair was `-H747` on both sides before, so the numbers are unchanged.
+_array = wind.VortexArray(north=jnp.array([0.0]), down=jnp.array([0.0]),
                           r0=jnp.array(R0), v0=jnp.array(V0))
 _field = lambda p: wind.vortex_wind(p, _array)  # noqa: E731
 _st = airframe.stations(AC)
 
+# Level and heading north, so body -> NED is the identity and the body axes ARE
+# the NED ones. `gust_rates`, `sampled_rates` and `strip_roll_moment` take that
+# MATRIX now rather than a quaternion -- the state's own quaternion is
+# body -> ECEF and would have resolved every gradient below in the wrong frame.
+_LEVEL_NORTH = jnp.eye(3)
+
 
 def _rates_at(frac):
-    s = State(pos_ned=jnp.array([frac * R0, 0.0, -H747]),
-              vel_body=jnp.array([V747, 0.0, 0.0]),
-              quat=euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
-              omega=jnp.zeros(3))
-    tangent = float(wind.gust_rates(s.pos_ned, s.quat, _field)[1])
-    secant = float(wind.sampled_rates(s.pos_ned, s.quat, _field, _st)[1])
+    pos = jnp.array([frac * R0, 0.0, 0.0])
+    tangent = float(wind.gust_rates(pos, _LEVEL_NORTH, _field)[1])
+    secant = float(wind.sampled_rates(pos, _LEVEL_NORTH, _field, _st)[1])
     return tangent, secant
 
 
@@ -232,16 +240,15 @@ TAN_EDGE, SEC_EDGE = _rates_at(1.0)
 
 # Loading-shape sensitivity, recomputed live.
 _cubic = lambda p: jnp.array([0.0, 0.0, 1e-7 * p[1] ** 3])  # noqa: E731
-_state0 = State(pos_ned=jnp.array([0.0, 0.0, -H747]),
-                vel_body=jnp.array([V747, 0.0, 0.0]),
-                quat=euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
-                omega=jnp.zeros(3))
+# At the anchor. The shape is a pure function of the spanwise offset, so only the
+# station geometry enters and the numbers are unchanged.
+_pos0 = jnp.zeros(3)
 _st_fine = airframe.stations(AC, n_span=2001, n_lon=9)
 SHAPES = {}
 for _name in airframe.LOADING_SHAPES:
     with airframe.loading_shape(_name):
         SHAPES[_name] = float(
-            wind.strip_roll_moment(_state0.pos_ned, _state0.quat, _cubic, AC, _st_fine, V747)
+            wind.strip_roll_moment(_pos0, _LEVEL_NORTH, _cubic, AC, _st_fine, V747)
         )
 SPREAD_ALL = (max(SHAPES.values()) - min(SHAPES.values())) / abs(np.mean(list(SHAPES.values())))
 SPREAD_REAL = abs(SHAPES["tapered"] - SHAPES["elliptic"]) / abs(SHAPES["elliptic"])
@@ -249,10 +256,13 @@ SPREAD_REAL = abs(SHAPES["tapered"] - SHAPES["elliptic"]) / abs(SHAPES["elliptic
 LEDGER_COUNT = {c: sum(1 for e in provenance.LEDGER.values() if e.category == c)
                 for c in provenance.CATEGORIES}
 
-# Vortex profile for the figure.
+# Vortex profile for the figure. Sampled at the core's own height -- `down = 0`,
+# the anchored frame, as `_array` above is built in. At `-H747` it would be
+# sampling 12 km above the core, where the 1/r far field is flat and the panel
+# would show a straight line instead of the doublet it exists to draw.
 _xs = np.linspace(-4 * R0, 4 * R0, 900)
 _pts = jnp.stack([jnp.asarray(_xs), jnp.zeros_like(jnp.asarray(_xs)),
-                  jnp.full_like(jnp.asarray(_xs), -H747)], axis=1)
+                  jnp.zeros_like(jnp.asarray(_xs))], axis=1)
 _W_UP = -np.asarray(jax.vmap(lambda p: wind.vortex_wind(p, _array))(_pts))[:, 2]
 
 
@@ -335,9 +345,11 @@ emit(fig, y)
 fig = page("The engine, as it stands", "How it works now")
 y = 0.855
 y = para(fig, y, "Thirteen state variables, integrated by fixed-step RK4 at 50 Hz. Position and "
-                 "attitude in an Earth frame, velocity and rotation in a body frame, with a "
-                 "quaternion carrying the rotation between them.")
-y = eqn(fig, y, "pos_ned  (3,)   north, east, down          quat  (4,)   w x y z, body -> NED\n"
+                 "attitude in the Earth-centred Earth-fixed frame, velocity and rotation in a "
+                 "body frame, with a quaternion carrying the rotation between them. Position is "
+                 "an OFFSET from the run's anchor rather than an absolute coordinate, and local "
+                 "NED is a derived view taken at the aircraft's own geodetic position.")
+y = eqn(fig, y, "pos_ecef (3,)   offset from the anchor     quat  (4,)   w x y z, body -> ECEF\n"
                 "vel_body (3,)   u v w, body axes           omega (3,)   p q r, body axes")
 
 y = heading(fig, y, "The loop, once per step")

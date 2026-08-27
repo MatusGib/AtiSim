@@ -41,10 +41,10 @@ import jax.numpy as jnp
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import atisim  # noqa: E402, F401  -- enables x64 before any array is made
-from atisim import aero, integrate, jsbsim_ref, trim, validation  # noqa: E402
+from atisim import aero, earth, integrate, jsbsim_ref, trim, validation  # noqa: E402
 from atisim.aircraft import REGISTRY  # noqa: E402
 from atisim.atmosphere import RHO0, density, speed_of_sound  # noqa: E402
-from atisim.state import Controls, State, euler_to_quat  # noqa: E402
+from atisim.state import Controls, euler_to_quat, state_from_ned  # noqa: E402
 from atisim.units import FT2M  # noqa: E402
 
 OUT = Path(sys.argv[1] if len(sys.argv) > 1 else "docs/summary/jsbsim-737-report.pdf")
@@ -226,9 +226,26 @@ for point in REF.sweep:
         L1_CD_UNEXPLAINED,
         abs((point.coefficients[1] - got[1]) - missing_drag(point)))
 
+# --- where on the Earth ------------------------------------------------------
+# 47 deg N: `gen_jsbsim_reference.trimmed` takes `latitude_deg=47.0` by default
+# and every case in the frozen reference was flown through it, so that is where
+# JSBSim was. WGS84_J2 is the Earth JSBSim itself integrates over -- comparing on
+# a flat one would make the cross-code residuals below a statement about the
+# frames rather than about the models.
+LATITUDE = np.radians(47.0)
+EARTH = earth.WGS84_J2
+# The anchor sits at the DENSITY-MATCHED altitude for the same reason the trim
+# does: `trim.trimmed_state` places the aircraft at the anchor, so the anchor is
+# what actually decides the density the solver sees.
+COND_ANCHOR = earth.anchor_at(LATITUDE, 0.0, COND.matched_altitude)
+
 # --- layer 2 ----------------------------------------------------------------
-_x, _res = trim.trim(jnp.array(COND.airspeed), jnp.array(COND.matched_altitude), AC)
-FS_ALPHA, FS_DE, FS_THROTTLE = (float(v) for v in _x)
+_x, _res = trim.trim(jnp.array(COND.airspeed), jnp.array(COND.matched_altitude),
+                     AC, COND_ANCHOR, EARTH)
+# SIX unknowns. The bank is reported in the layer-2 table below rather than
+# dropped; `validation.longitudinal_modes` and `lateral_modes` linearise about a
+# wings-level state and take only the first three.
+FS_ALPHA, FS_DE, FS_THROTTLE, FS_PHI = (float(v) for v in _x[:4])
 _rho = float(density(COND.matched_altitude))
 _mach = COND.airspeed / COND.sound_speed
 FS_THRUST = (FS_THROTTLE * float(AC.max_thrust) * (_rho / RHO0) ** float(AC.thrust_lapse)
@@ -236,7 +253,8 @@ FS_THRUST = (FS_THROTTLE * float(AC.max_thrust) * (_rho / RHO0) ** float(AC.thru
 
 # --- layer 3 ----------------------------------------------------------------
 FS_LON = validation.longitudinal_modes(AC, FS_ALPHA, FS_DE, FS_THROTTLE,
-                                       COND.airspeed, COND.matched_altitude)
+                                       COND.airspeed, COND.matched_altitude,
+                                       COND_ANCHOR, EARTH)
 _ev = np.linalg.eigvals(REF.linearization.longitudinal)
 JS_LON = sorted((abs(l), -l.real / abs(l)) for l in _ev if l.imag > 1e-12)
 
@@ -246,9 +264,11 @@ D_CLR = float(AC.Cldr) * DAMPER_GAIN
 CLOSED = AC._replace(Cnr=jnp.array(float(AC.Cnr) + D_CNR),
                      Clr=jnp.array(float(AC.Clr) + D_CLR))
 FS_LAT_BARE = validation.lateral_modes(AC, FS_ALPHA, FS_DE, FS_THROTTLE,
-                                       COND.airspeed, COND.matched_altitude)
+                                       COND.airspeed, COND.matched_altitude,
+                                       COND_ANCHOR, EARTH)
 FS_LAT = validation.lateral_modes(CLOSED, FS_ALPHA, FS_DE, FS_THROTTLE,
-                                  COND.airspeed, COND.matched_altitude)
+                                  COND.airspeed, COND.matched_altitude,
+                                  COND_ANCHOR, EARTH)
 _evl = np.linalg.eigvals(REF.linearization.lateral)
 _evl = _evl[np.abs(_evl) > 1e-8]
 _pair = _evl[np.abs(_evl.imag) > 1e-9][0]
@@ -265,11 +285,16 @@ for case in ("elevator_doublet", "rudder_kick"):
     mach = float(np.linalg.norm(first.vel_body)) / float(speed_of_sound(altitude))
     throttle = first.thrust / (float(AC.max_thrust) * (rho / RHO0) ** float(AC.thrust_lapse)
                                * (1.0 + float(AC.mach_ram) * mach**2))
+    # The aircraft starts AT the anchor, so the anchor carries the replay's own
+    # altitude. Built through `state_from_ned` because JSBSim reports an Euler
+    # set, which is body -> NED where `State.quat` is body -> ECEF.
+    anchor = earth.anchor_at(LATITUDE, 0.0, altitude)
     sim = integrate.init_sim(
-        State(pos_ned=jnp.array([0.0, 0.0, -altitude]),
-              vel_body=jnp.array(first.vel_body),
-              quat=euler_to_quat(*(jnp.array(v) for v in first.euler)),
-              omega=jnp.array(first.omega)),
+        state_from_ned(jnp.zeros(3),
+                       jnp.array(first.vel_body),
+                       euler_to_quat(*(jnp.array(v) for v in first.euler)),
+                       jnp.array(first.omega),
+                       anchor),
         jax.random.PRNGKey(0))
     ts, fs_u, js_u, fs_r, js_r, dv = [], [], [], [], [], []
     per_axis, beta_max = [], 0.0
@@ -278,7 +303,8 @@ for case in ("elevator_doublet", "rudder_kick"):
                      aileron=jnp.array(previous.controls[1]),
                      rudder=jnp.array(previous.controls[2]),
                      throttle=jnp.array(throttle))
-        sim = integrate.step(sim, c, jnp.array(current.t - previous.t), AC)
+        sim = integrate.step(sim, c, jnp.array(current.t - previous.t), AC,
+                             anchor, EARTH)
         v = np.asarray(sim.state.vel_body)
         o = np.asarray(sim.state.omega)
         ts.append(current.t)
@@ -306,11 +332,13 @@ for case in ("elevator_doublet", "rudder_kick"):
     mach = float(np.linalg.norm(first.vel_body)) / float(speed_of_sound(altitude))
     throttle = first.thrust / (float(AC.max_thrust) * (rho / RHO0) ** float(AC.thrust_lapse)
                                * (1.0 + float(AC.mach_ram) * mach**2))
+    anchor = earth.anchor_at(LATITUDE, 0.0, altitude)
     sim = integrate.init_sim(
-        State(pos_ned=jnp.array([0.0, 0.0, -altitude]),
-              vel_body=jnp.array(first.vel_body),
-              quat=euler_to_quat(*(jnp.array(v) for v in first.euler)),
-              omega=jnp.array(first.omega)),
+        state_from_ned(jnp.zeros(3),
+                       jnp.array(first.vel_body),
+                       euler_to_quat(*(jnp.array(v) for v in first.euler)),
+                       jnp.array(first.omega),
+                       anchor),
         jax.random.PRNGKey(0))
     coarse = []
     for previous, current in zip(samples, samples[1:]):
@@ -318,7 +346,8 @@ for case in ("elevator_doublet", "rudder_kick"):
                      aileron=jnp.array(previous.controls[1]),
                      rudder=jnp.array(previous.controls[2]),
                      throttle=jnp.array(throttle))
-        sim = integrate.step(sim, c, jnp.array(current.t - previous.t), AC)
+        sim = integrate.step(sim, c, jnp.array(current.t - previous.t), AC,
+                             anchor, EARTH)
         coarse.append(np.asarray(sim.state.vel_body) - current.vel_body)
     TRAJ[case]["extrapolated"] = (
         2.0 * TRAJ[case]["per_axis"] - np.max(np.abs(np.array(coarse)), axis=0))
@@ -546,7 +575,10 @@ fig = page("Layer 2 - trim", kicker="each engine's own solver")
 y = 0.86
 y = para(fig, y,
          "JSBSim's do_simple_trim against this project's Newton solve, at the same "
-         "condition and the same density.")
+         "condition and the same density. The bank row is the one place the two are not "
+         "solving the same problem: do_simple_trim's wings-level mode holds phi at zero "
+         "and therefore leaves the Coriolis acceleration in vdot, while this solver "
+         "carries bank as an unknown and cancels it.")
 y = table(fig, y, [
     ("alpha, deg", f"{np.degrees(FS_ALPHA):.5f}", f"{np.degrees(TRIM.alpha):.5f}",
      f"{np.degrees(FS_ALPHA - TRIM.alpha):+.5f}"),
@@ -554,6 +586,10 @@ y = table(fig, y, [
     ("thrust, N", f"{FS_THRUST:.1f}", f"{TRIM.thrust:.1f}",
      f"{100 * (FS_THRUST - TRIM.thrust) / TRIM.thrust:+.3f}%"),
     ("throttle", f"{FS_THROTTLE:.6f}", f"{TRIM.throttle:.6f}", ""),
+    # The bank arrived with the rotating Earth. Both solvers now report one at
+    # this condition, so it is compared rather than assumed zero on either side.
+    ("bank, deg", f"{np.degrees(FS_PHI):.5f}", f"{np.degrees(TRIM.bank):.5f}",
+     f"{np.degrees(FS_PHI - TRIM.bank):+.5f}"),
 ], [0.20, 0.20, 0.20, 0.20],
     header=("", "atisim", "JSBSim", "difference"), mono_cols=(1, 2, 3))
 y = para(fig, y,
@@ -565,10 +601,13 @@ y = para(fig, y,
 y = callout(fig, y, "The turn case is recorded but not yet comparable",
             "JSBSim also ships a steady-turn trim, and the reference holds its converged "
             f"{np.degrees(REF.trim['turn'].bank):.0f} deg banked solution. This project's "
-            "trim.trim solves the WINGS-LEVEL problem only: its unknowns are alpha, "
-            "elevator and throttle, with no bank and no aileron or rudder. The comparison "
-            "is one banked-trim solver away, and the test asserts the gap rather than "
-            "skipping quietly, so that adding one forces the comparison to be written.",
+            "trim.trim solves the LEVEL-FLIGHT problem only. It now carries six "
+            "unknowns -- alpha, elevator, throttle, bank, aileron and rudder -- but its "
+            "residual still imposes zero body rate relative to ECEF, and a steady turn "
+            "has a turn rate. The bank it finds is the fraction of a degree that balances "
+            "Coriolis, not a turn. The comparison is still one turning-trim solver away, "
+            "and the test asserts the gap rather than skipping quietly, so that adding "
+            "one forces the comparison to be written.",
             colour=AMBER)
 emit(fig, y)
 
