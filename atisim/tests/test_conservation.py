@@ -12,13 +12,23 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from atisim import integrate, trim
+from atisim import earth, integrate, trim
 from atisim.aircraft import CRUISE, REGISTRY
 from atisim.atmosphere import G0
 from atisim.dynamics import derivatives
-from atisim.state import Controls, State, euler_to_quat, quat_to_dcm, quat_to_euler
+from atisim.state import (
+    Controls,
+    euler_to_quat,
+    quat_to_euler_ned,
+    quat_to_matrix,
+    state_from_ned,
+)
 from atisim.tests.conftest import make_test_aircraft
 from atisim.units import DEG2RAD
+
+# 47N, the latitude this project's Earth-rotation work uses throughout, at each
+# test's own altitude. There is no default anchor: latitude changes the answer.
+ANCHOR_1KM = earth.anchor_at(np.radians(47.0), 0.0, 1000.0)
 
 _ZERO_AERO_FIELDS = [
     "CD0", "CL0", "CLa", "CLq", "CLde", "Cm0", "Cma", "Cmq", "Cmde",
@@ -49,14 +59,25 @@ def test_free_rigid_body_conserves_angular_momentum_and_energy():
     measured on this run (float64 RK4, ~2.4e5 derivative evaluations), which
     leaves headroom for platform variance while still catching a real
     integrator or cross-product-term regression.
+
+    FLOWN UNDER `earth.FLAT`, AND THAT IS THE WHOLE POINT OF THIS TEST. The
+    invariant is a statement about the INERTIAL frame; `state.omega` is the body
+    rate relative to ECEF, and ECEF is only inertial when the Earth is not
+    turning. Under `WGS84_J2` the conserved quantity is `I omega_bi` with
+    `omega_bi = omega_be + Omega_b`, so rotating `I omega_be` into ECEF and
+    calling it conserved would be measuring the Earth's rotation, not the
+    integrator's drift -- which is what this file exists to bound. `FLAT` sets
+    `rotation_rate = 0`, `omega_bi = omega_be`, and ECEF IS inertial, so the
+    assertion below is once again exactly the classical one.
     """
     ac = _zero_aero_aircraft()
     omega0 = jnp.array([0.5, 0.3, -0.2])  # not aligned with any principal axis
-    state0 = State(
-        pos_ned=jnp.array([0.0, 0.0, -1000.0]),
-        vel_body=jnp.zeros(3),
-        quat=euler_to_quat(jnp.array(0.3), jnp.array(-0.2), jnp.array(0.5)),
-        omega=omega0,
+    state0 = state_from_ned(
+        jnp.zeros(3),
+        jnp.zeros(3),
+        euler_to_quat(jnp.array(0.3), jnp.array(-0.2), jnp.array(0.5)),
+        omega0,
+        ANCHOR_1KM,
     )
     controls = Controls(
         elevator=jnp.array(0.0), aileron=jnp.array(0.0),
@@ -66,7 +87,8 @@ def test_free_rigid_body_conserves_angular_momentum_and_energy():
     dt, seconds = 0.01, 600.0
     n = int(round(seconds / dt))
     _, hist = integrate.rollout(
-        integrate.init_sim(state0, jax.random.PRNGKey(0)), controls, jnp.array(dt), ac, n
+        integrate.init_sim(state0, jax.random.PRNGKey(0)), controls, jnp.array(dt), ac,
+        n, ANCHOR_1KM, earth.FLAT,
     )
 
     omega_hist = np.asarray(hist.omega)
@@ -74,7 +96,9 @@ def test_free_rigid_body_conserves_angular_momentum_and_energy():
     I = np.asarray(ac.inertia)
 
     L_body = omega_hist @ I.T
-    dcms = np.asarray(jax.vmap(quat_to_dcm)(jnp.asarray(quat_hist)))
+    # body -> ECEF, and under FLAT that frame is inertial, which is the frame
+    # the invariant is a statement about.
+    dcms = np.asarray(jax.vmap(quat_to_matrix)(jnp.asarray(quat_hist)))
     L_ned = np.einsum("nij,nj->ni", dcms, L_body)
 
     L_mag = np.linalg.norm(L_ned, axis=1)
@@ -105,8 +129,12 @@ def test_coordinated_turn_matches_g_tan_phi_over_v():
     V = CRUISE["boeing747"]["airspeed"]
     H = CRUISE["boeing747"]["altitude"]
 
-    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
-    alpha0, elevator0, throttle0 = (float(v) for v in x)
+    anchor = earth.anchor_at(np.radians(47.0), 0.0, H)
+
+    # WGS84_J2, not FLAT: this one IS a statement about how the aircraft flies,
+    # and g*tan(phi)/V is the textbook flat-Earth answer it is measured against.
+    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac, anchor, earth.WGS84_J2)
+    alpha0, elevator0, throttle0 = float(x[0]), float(x[1]), float(x[2])
 
     phi = 25.4 * DEG2RAD
     theta = alpha0
@@ -118,13 +146,16 @@ def test_coordinated_turn_matches_g_tan_phi_over_v():
     vel_body = jnp.array([V * np.cos(alpha0), 0.0, V * np.sin(alpha0)])
     omega0 = jnp.array([p, q, r])
     quat0 = euler_to_quat(jnp.array(phi), jnp.array(theta), jnp.array(0.0))
-    pos0 = jnp.array([0.0, 0.0, -H])
+    # AT the anchor, whose h is already H, so the aircraft starts at the trim
+    # altitude with a zero offset rather than 12 km down the tangent plane.
+    state0 = state_from_ned(jnp.zeros(3), vel_body, quat0, omega0, anchor)
 
     def rotational_residual(u):
         de, da, dr = u
         controls = Controls(elevator=de, aileron=da, rudder=dr, throttle=jnp.array(throttle0))
-        state = State(pos_ned=pos0, vel_body=vel_body, quat=quat0, omega=omega0)
-        return derivatives(state, controls, ac, jnp.zeros(3), jnp.zeros(3)).omega
+        return derivatives(
+            state0, controls, ac, jnp.zeros(3), jnp.zeros(3), anchor, earth.WGS84_J2
+        ).omega
 
     @jax.jit
     def solve(u0):
@@ -140,16 +171,22 @@ def test_coordinated_turn_matches_g_tan_phi_over_v():
     assert float(jnp.linalg.norm(rotational_residual(u))) < 1e-10
 
     controls = Controls(elevator=u[0], aileron=u[1], rudder=u[2], throttle=jnp.array(throttle0))
-    state = State(pos_ned=pos0, vel_body=vel_body, quat=quat0, omega=omega0)
 
     dt, seconds = 0.02, 1.0
     n = int(round(seconds / dt))
     _, hist = integrate.rollout(
-        integrate.init_sim(state, jax.random.PRNGKey(0)), controls, jnp.array(dt), ac, n
+        integrate.init_sim(state0, jax.random.PRNGKey(0)), controls, jnp.array(dt), ac,
+        n, anchor, earth.WGS84_J2,
     )
-    euler = np.asarray(jax.vmap(quat_to_euler)(hist.quat))
+    euler = np.asarray(jax.vmap(quat_to_euler_ned, in_axes=(0, None))(hist, anchor))
     psi_rate = np.unwrap(euler[:, 2])[-1] / seconds
 
     error = abs(psi_rate - omega_analytic) / omega_analytic
-    assert error < 0.03  # measured ~1.1%; source's own ad hoc figure was 1.55%
+    # measured ~1.1%; source's own ad hoc figure was 1.55%. THE ROTATING EARTH
+    # DID NOT MOVE THIS: 1.0998% under WGS84_J2 against 1.1206% under FLAT, so
+    # the 1.1% is the beta = 0 / theta = alpha approximation above and not the
+    # Earth model. Worth the two numbers, because a §4 baseline that survives a
+    # stated physical change is evidence, and a reader would otherwise assume
+    # this one had simply not been re-measured.
+    assert error < 0.03
     assert abs(euler[-1, 0] - phi) < 1.0 * DEG2RAD  # bank actually held
