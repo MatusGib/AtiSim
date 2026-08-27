@@ -37,9 +37,10 @@ actually the meaningful bar here.
 import math
 
 import jax.numpy as jnp
+import numpy as np
 import pytest
 
-from atisim import trim
+from atisim import earth, trim
 from atisim.aircraft import Aircraft, inertia_tensor
 from atisim.atmosphere import G0
 from atisim.tests.modes import lateral_modes, longitudinal_modes
@@ -119,22 +120,49 @@ NAVION = _navion()
 U0 = 176.0 * FT2M
 H0 = 0.0
 
+# 47N is the latitude the rest of this project's Earth-rotation work uses, and
+# the anchor sits AT sea level because `trim.trimmed_state` places the aircraft
+# at the anchor and the source's condition is U0 = 176 ft/s at sea level.
+ANCHOR = earth.anchor_at(np.radians(47.0), 0.0, H0)
+# FLOWN OVER `earth.FLAT`, NOT THE SHIPPED WGS84_J2. Every claim in this file is
+# a statement about Nelson's/Etkin's Navion derivative set -- the mode bands a
+# correctly wired aero-to-dynamics chain must reproduce FROM THAT DATA -- and the
+# Earth it is flown over is not part of the claim. This is the same reading
+# `validation.py`'s header states for a tier-2 comparison, and it is what keeps
+# `_trim`'s discard of the lateral channels honest: over `FLAT` at heading 0 the
+# trim is symmetric, so bank, aileron and rudder come back at 1e-34 or below
+# (asserted in `test_navion_trims_and_reproduces_the_sources_trim_lift`) and
+# nothing is being dropped. Over `WGS84_J2` they are not zero and the
+# wings-level lateral split `lateral_modes` performs would not be about the
+# trim the solver actually returned.
+EARTH = earth.FLAT
+
 
 def _trim():
-    x, res = trim.trim(jnp.array(U0), jnp.array(H0), NAVION)
-    return (float(v) for v in x), float(jnp.linalg.norm(res))
+    """The six-element trim solution, as floats, and its residual norm."""
+    x, res = trim.trim(jnp.array(U0), jnp.array(H0), NAVION, ANCHOR, EARTH)
+    return [float(v) for v in x], float(jnp.linalg.norm(res))
 
 
 def test_navion_trims_and_reproduces_the_sources_trim_lift():
-    (alpha, elevator, throttle), residual = _trim()
+    x, residual = _trim()
+    alpha, _elevator, throttle, phi, aileron, rudder = x
     assert residual < 1e-8
     assert abs(alpha) * RAD2DEG < 2.0  # source assumes level flight, alpha0 = 0
     assert 0.0 < throttle < 1.0
+    # The three unknowns the rotating Earth added. Under `FLAT` at heading 0
+    # there is nothing for them to cancel, so they must come back at zero --
+    # measured -3.13e-34, 4.05e-36 and -4.24e-35 rad. This is the positive
+    # control for the rest of the file discarding them.
+    assert max(abs(phi), abs(aileron), abs(rudder)) < 1e-15
 
 
 def test_navion_phugoid_and_short_period_are_in_the_expected_bands():
-    (alpha, elevator, throttle), _ = _trim()
-    phugoid, short_period = longitudinal_modes(NAVION, alpha, elevator, throttle, U0, H0)
+    x, _ = _trim()
+    alpha, elevator, throttle = x[0], x[1], x[2]
+    phugoid, short_period = longitudinal_modes(
+        NAVION, alpha, elevator, throttle, U0, H0, ANCHOR, EARTH
+    )
 
     assert 0.08 < phugoid[0] < 0.4  # rad/s: slow
     assert 0.0 < phugoid[1] < 0.25  # lightly damped, stable
@@ -144,8 +172,11 @@ def test_navion_phugoid_and_short_period_are_in_the_expected_bands():
 
 
 def test_navion_lateral_modes_are_in_the_expected_bands():
-    (alpha, elevator, throttle), _ = _trim()
-    dutch_roll, roll_tau, spiral_tau = lateral_modes(NAVION, alpha, elevator, throttle, U0, H0)
+    x, _ = _trim()
+    alpha, elevator, throttle = x[0], x[1], x[2]
+    dutch_roll, roll_tau, spiral_tau = lateral_modes(
+        NAVION, alpha, elevator, throttle, U0, H0, ANCHOR, EARTH
+    )
     wn, zeta = dutch_roll
 
     assert 1.0 < wn < 4.0
