@@ -31,11 +31,14 @@ stability-derivative definitions (printed A-16 to A-18).
 | Quantity | FD2e | CR-2144 | code | conversion |
 |---|---|---|---|---|
 | Body axes | x forward, y right (starboard), z down | same; Appendix A §1 "AXIS SYSTEMS" | `state.py`: x-fwd, y-right, z-down | none |
-| Earth frame | inertial, z down | — | NED, z down, treated as inertial | none |
+| Earth frame | inertial, z down | — | **ECEF is the propagation frame** — x through (0 lat, 0 lon), z through the north pole, rotating at `Ω = 7.292115e-5` rad/s. Nothing is treated as inertial | **the sources tabulate a flat, non-rotating Earth; that is the `earth.FLAT` configuration, `Ω = 0` — ASSUMPTIONS A1 and F4** |
+| Local NED | — | — | a derived **view**, `state.pos_ned` / `dcm_body_to_ned`, taken at the **aircraft's own** geodetic latitude and not at the anchor's | rotation by `T_e2l(lat, lon)` |
+| Run anchor | — | — | `earth.Anchor` — the geodetic origin `(lat, lon, h)` a run's NED view is pinned to, carrying `r_ecef` and `T_e2l`. `State.pos_ecef` is an offset from it, so a state is meaningless without its anchor | **no default exists, deliberately: latitude changes the answer** |
+| Latitude | — | — | **geodetic** everywhere unless a name says `geocentric` | geocentric instead costs 65 m/s in v_north at 47° |
 | Axis system of the data | n/a | **Tables IX-4, IX-5, IX-6, IX-8 each print "(BODY AXIS SYSTEM)" in their own headers** — verified by reading the pages | body throughout | **none needed; verified, not assumed** |
 | **Table IX-2 (approach non-dim)** | n/a | **states h, V_To, α₀, δ_s and NO axis system at all** | used verbatim as body-axis | **CONFLICT/GAP — see §7.1** |
 | Stability axes | body rotated about y by α | "The same symbols are used for body- and stability-axis dimensional derivatives. Care should be exercised so that a consistent set of quantities are used." (A-16) | `validation.to_stability_axes`, `aircraft.stability_to_body` | rotate by α₀ |
-| Altitude | up positive | `H(FT)` | `-pos_ned[2]` | sign flip |
+| Altitude | up positive | `H(FT)` | **geodetic**, `state.altitude(state, anchor)`. It is NOT `-pos_ned[2]` any more: the tangent plane falls away as `d²/2R`, 785 m at 100 km | sign flip, then `ecef_to_geodetic` |
 
 ## 2. Incidence angles
 

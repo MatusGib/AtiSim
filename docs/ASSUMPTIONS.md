@@ -33,19 +33,43 @@ and **A2 turned out to pass** — the 0.383% gravity error reaches the phugoid 1
 lateral modes only at 0.06–0.08%, so it does not threaten the agreements it appeared to.
 **E2, the vortex span ratio, still fails (2)** and is the one to respect.
 
+**Session 23 retired A1 and A2 by modelling them, and found a third entry failing (2)
+while doing it.** A3 — a geometric height fed to a geopotential atmosphere — had its bound
+quoted on the *altitude* difference rather than on the density difference the aero forces
+actually see. Re-measured, that is **0.37% at 747 cruise**, the same size as the gravity
+error A2 was worried about and independent of it. It is a one-line fix that would move §4
+rows, so it is recorded rather than taken in a documentation pass.
+
 ---
 
 ## A. Frames and Earth
 
-### A1. Flat, non-rotating Earth; NED is an inertial frame
+### A1. RETIRED session 23 — flat, non-rotating Earth; NED is an inertial frame
 
-**Where:** `dynamics.derivatives` — the Newton-Euler equations carry no Earth-rate or
-transport terms. `state.py` treats NED as inertial.
+**This is no longer assumed. It is modelled.** `atisim/earth.py` carries the WGS-84
+ellipsoid and `dynamics.earth_acceleration_terms` carries the rotating-Earth equations, in
+the formulation JSBSim 1.3.1 uses, established from the running binary rather than
+transcribed. The entry is kept below because it records what the assumption cost, and
+because §4's older rows were measured under it.
 
-**Why:** an encounter lasts 1.5 s (a vortex core) to 95 s (a microburst to ground) and
-covers a few kilometres.
+**What is modelled now:**
 
-**Bound, measured:**
+| | |
+|---|---|
+| Geometry | WGS-84 ellipsoid. `a` and `f` are the defining pair; `b` and `e²` are derived, never quoted |
+| Position | ECEF, as an offset from a run anchor. Geodetic ↔ ECEF by Bowring at three iterations, which reaches the float64 floor |
+| Local frame | NED at the **aircraft's own** geodetic latitude, a derived view rather than the propagation frame |
+| Gravitation | `GM/r²` with the J2 zonal harmonic, `J2 = 1.08262982e-3` |
+| Rotation | `Ω = 7.292115e-5` rad/s — Coriolis `2Ω×v`, centrifugal `Ω×(Ω×r)`, and the body-rate frame transfer, all three |
+| Verification | Term-by-term against a frozen JSBSim reference over a latitude × altitude × attitude probe grid; geodesy to 2e-11 rad, gravity to 4.6e-13 relative |
+
+**What is still not modelled** — each has its own entry below, because none of them is
+covered by the JSBSim comparison: gravity truncated at J2 (A5), no polar motion, nutation
+or time-varying gravity (A6). Position is stored anchor-relative rather than absolute,
+which is a deliberate deviation from JSBSim's `FGPropagate` (A7), and trim is now a
+function of latitude and heading (A8).
+
+**What the retired assumption cost, measured session 11** — kept as the record. It lived in `dynamics.derivatives`, whose Newton-Euler equations carried no Earth-rate or transport terms, and in `state.py`, which treated NED as inertial; it was justified by the encounter lasting 1.5 s (a vortex core) to 95 s (a microburst to ground) and covering a few kilometres:
 
 | | 747 at 235.9 m/s, 12,192 m | Cherokee at 50 m/s, 1,500 m |
 |---|---|---|
@@ -53,14 +77,56 @@ covers a few kilometres.
 | Transport `V²/(R+h)` | 0.00872 m/s² = 0.00089 g | 0.00039 m/s² = 0.00004 g |
 | Position error over a 20 s window | **6.88 m** | 1.46 m |
 
-**Verdict: sound for this use case.** Load-factor excursions the project reports are of
-order 1 g (−1.23 g for the vortex, −1.90 g for the manoeuvre), so 0.0035 g is 0.35% of the
-signal and does not accumulate within a window.
+**Verdict at the time: sound for this use case.** Load-factor excursions the project
+reports are of order 1 g (−1.23 g for the vortex, −1.90 g for the manoeuvre), so 0.0035 g
+is 0.35% of the signal and does not accumulate within a window. The limit it named — "not
+sound for any claim about ground track over hundreds of km, or a run longer than about ten
+minutes", 6.88 m per 20 s growing as t² — is the limit this change removes.
 
-**Not sound for:** any claim about ground track over hundreds of km, or a run longer than
-about ten minutes. 6.88 m per 20 s grows as t².
+### A2. RETIRED session 23 — constant gravity, g = 9.80665 m/s²
 
-### A2. Constant gravity, g = 9.80665 m/s²
+**Session 12 decided `g(h)` was not worth modelling, and session 23 modelled it anyway —
+not because that decision was wrong, but because it was overtaken.** `earth.gravitation`
+is now `GM/r²` with J2, and the centrifugal term is in the equations of motion, so the
+gravity the aircraft feels falls out of the Earth model rather than being chosen. The
+session-12 measurement below is what says the change was *safe*, and it is kept in full.
+
+**What the change was actually worth, measured session 23.** The same 747 cruise
+comparison, re-run as `earth.FLAT` (constant `G0` along the local vertical) against the
+shipped `earth.WGS84_J2` at 47N, using `validation.longitudinal_modes` and
+`lateral_modes` — the same functions §4's rows are asserted through:
+
+| Mode at 747 cruise | FLAT, g = 9.80665 | WGS84_J2 at 47N | Movement | Session 12 predicted |
+|---|---|---|---|---|
+| phugoid ωn | 0.055292 | 0.055089 | **−0.3666%** | −0.3798% |
+| phugoid ζ | 0.055842 | 0.055548 | −0.5263% | −0.5385% |
+| short period ωn | 0.950773 | 0.950775 | **+0.0002%** | +0.0002% |
+| short period ζ | 0.342524 | 0.342509 | −0.0044% | −0.0046% |
+| Dutch roll ωn | 0.943052 | 0.942335 | −0.0761% | −0.0788% |
+| Dutch roll ζ | 0.035998 | 0.035849 | −0.4146% | −0.4288% |
+| roll τ | 1.794822 | 1.793781 | −0.0580% | −0.0602% |
+| spiral τ | 137.9664 | 138.0403 | +0.0536% | +0.0552% |
+| *trim α* | *4.629171°* | *4.599953°* | *−0.6312%* | *−0.6535%* |
+
+**Session 12's prediction has the right sign in every row and is slightly high in magnitude
+wherever the movement is large enough to tell — short-period ωn at +0.0002% has no digits
+left to differ in — and there is one reason for it.** It used `g(h) = g₀(R/(R+h))² = 9.76922`, a spherical inverse-square value. The
+apparent gravity the rotating WGS-84 model actually produces at 47N and 12,192 m is
+**9.770541** — J2 gravitation 9.786389 less the 0.015848 m/s² centrifugal term along the
+local vertical — which is −0.3682% against `G0` rather than −0.3816%. That is a ratio of 0.965, and
+dividing each measured row by its predicted one gives **0.963 to 0.977** — the same
+number to within the residual differences of baseline, since the FLAT column is itself
+the six-unknown trim on an ECEF state and not the plant session 12 measured.
+
+**Lanchester's 1:1 is now measured against a gravity the model computes rather than one
+imposed for the experiment: phugoid ωn −0.3666% against an apparent-gravity change of
+−0.3682%.** That is the strongest form the claim has had.
+
+**Apparent gravity now varies with latitude, which is what a constant g could never carry:**
+9.780282 m/s² at the equator, 9.808052 at 47N, 9.832067 at the pole — a **0.53% spread**,
+an order above the worst movement in the table. Session 12's closing caveat ("revisit if
+the project ever compares one aircraft across two altitudes") extends to latitude, and is
+the case this change serves.
 
 **Where:** `atmosphere.G0`, used by `dynamics.derivatives`, `trim`, `specific_force`.
 
@@ -110,6 +176,12 @@ all five modes recomputed. §4's tolerance is the one each mode is actually asse
    less lift — and the derivatives are then read at a different α. That is why the lateral
    movement is an order of magnitude below the phugoid's.
 
+**Decision, session 12 — SUPERSEDED session 23, and the reasoning is kept because it was
+sound at the time.** Two of its three grounds have since gone: `G0` did not have to move
+after all (`earth.gravitation` computes gravity, and `atmosphere.G0` stays what it is, so
+no §4 baseline was moved to get here), and the project now does compare one aircraft
+across latitudes, which is the case it named as the one a constant g cannot serve.
+
 **Decision, session 12: `g(h)` is NOT modelled, and this bound closes the entry.** Every
 movement is comfortably inside the tolerance of the check it would affect — the worst
 consumes 7.6% of its band. Against that, `G0` is imported by `dynamics`, `trim`, `aircraft`
@@ -123,15 +195,42 @@ phugoid**, which carries the full 0.38%. It is safe for the lateral modes (0.06�
 for the short period (~0). Revisit if the project ever compares one aircraft across two
 altitudes, which is the case a constant g genuinely cannot serve.
 
-### A3. Altitude is geopotential, not geometric
+### A3. A GEOMETRIC altitude is fed to a GEOPOTENTIAL atmosphere
 
-**Where:** `atmosphere.py`, and its docstring already says so.
+**Rewritten session 23, and the mismatch is now nameable in a way it was not.** Before the
+Earth model there was one height and its kind was ambiguous. Now there are two and the
+code picks: `dynamics.derivatives` takes `h` from `earth.ecef_to_geodetic` — a **geodetic,
+that is geometric, height above the ellipsoid** — and hands it straight to
+`atmosphere.density`, whose docstring says it treats its argument as **geopotential**.
 
-**Bound:** 0.17% at 11 km, 0.31% at 20 km — stated in the source module.
+**Where:** `dynamics.py:155` produces it, `dynamics.py:161-162` consumes it. `sensors.py`
+and `state.altitude` return the same geodetic height.
 
-**Verdict: sound**, and it is the smaller sibling of A2. Both are altitude-dependent
-systematic errors of a few tenths of a percent, and both should be revisited together if
-either is.
+**Bound, measured session 23 — and the old bound was on the wrong quantity.** A3 used to
+quote "0.17% at 11 km, 0.31% at 20 km" from `atmosphere.py`. Those are the *altitude*
+differences `h − H`, where `H = Rh/(R+h)`. What the aero forces see is the **density**
+error, which is two to three times larger because density falls exponentially:
+
+| h (m) | H geopotential (m) | h − H (m) | ρ(h) | ρ(H) | error in ρ |
+|---|---|---|---|---|---|
+| 0 | 0.0 | 0.00 | 1.225000 | 1.225000 | 0.0000% |
+| 300 (747 approach) | 300.0 | 0.01 | 1.190106 | 1.190107 | −0.0001% |
+| 1524 (737 approach) | 1523.6 | 0.36 | 1.055546 | 1.055585 | −0.0036% |
+| 2500 | 2499.0 | 0.98 | 0.956859 | 0.956954 | −0.0100% |
+| 11278 (737 cruise) | 11258.1 | 19.93 | 0.348309 | 0.349405 | **−0.3138%** |
+| 12192 (747 cruise) | 12168.7 | 23.29 | 0.301558 | 0.302668 | **−0.3665%** |
+| 20000 | 19937.4 | 62.59 | 0.088035 | 0.088908 | −0.9821% |
+
+**Verdict: sound at approach, and it is NOT the smaller sibling of A2 at cruise — it is the
+same size.** 0.37% of density at 747 cruise sits directly on lift, drag and thrust, against
+the 0.37% of gravity that A2 measured and that reaches the phugoid 1:1. The two are
+independent and the same order, so a sub-0.5% claim at cruise altitude carries both.
+
+**It is not fixed here, deliberately.** The fix is one line — convert `h` to `H` before
+calling the atmosphere — and it would move every §4 row taken at cruise, which is exactly
+the kind of change §4's standing rule keeps out of a documentation pass. It is recorded as
+a known, bounded, one-line defect with its cost measured, which is what this file is for.
+Below 3 km it is under 0.01% and nothing needs to wait for it.
 
 ### A4. There is no ground
 
@@ -155,6 +254,118 @@ guard where the reader will look for one, not a ground plane in the engine — J
 raise inside `jit`, so a clamp inside `step` would silently bounce a trajectory instead of
 stopping it, which is worse than integrating through. Anything flying below ~1 km AGL
 should truncate at its own clearance and say so.
+
+### A5. Gravity is truncated at J2, because JSBSim's is
+
+**Where:** `earth.gravitation`, the `"j2"` branch. `GM/r²` with the second zonal harmonic
+and nothing beyond it. J3 onwards, the tesseral terms and the geoid are all absent.
+
+**Why:** the whole Earth model exists to reproduce JSBSim's, term by term, and JSBSim
+1.3.1's `FGInertial` stops at J2. Adding a term JSBSim does not have would break the
+comparison this work is verified by, and would be a change nothing in this repository
+could check.
+
+**Bound, measured session 23 — and it needs its own entry precisely because no JSBSim
+comparison can see it.** Both engines are truncated the same way, so the cross-code check
+is blind to it. The reference has to be WGS-84's own closed-form normal gravity, whose
+defining values `γ_e = 9.7803267715` and `γ_p = 9.8321863685` m/s² are recorded in
+`docs/superpowers/plans/2026-08-26-wgs84-earth-rotation.md`:
+
+| | model apparent g | WGS-84 normal gravity | error | relative |
+|---|---|---|---|---|
+| equator, h = 0 | 9.780282 | 9.7803267715 | −4.48e-05 | **4.6e-06** |
+| pole, h = 0 | 9.832067 | 9.8321863685 | −1.19e-04 | **1.2e-05** |
+
+**Verdict: sound, with a factor of 288 of margin over the term this change was about.**
+1.2e-04 m/s² at worst, against a Coriolis acceleration of 0.03441 m/s² at 747 cruise —
+a factor of 288. In relative terms it is 1.2e-05 against A3's 3.7e-03 density error at 747 cruise, so it is 300x below the other systematic error in this section.
+
+**Not sound for:** anything that needs absolute gravity to better than about 1e-5 relative
+— gravimetry, precise geoid work, or a comparison against a source that used full normal
+gravity. It is worth knowing that the J2-truncated value is **not** the WGS-84 normal
+gravity constant, because it looks as though it should be: an early version of the tier-0
+invariant test asserted `9.7803267715` at `rel=1e-6` and would have failed at 4.6e-6.
+
+### A6. No polar motion, no nutation, no time-varying gravity
+
+**Where:** by omission. `earth.OMEGA_WGS84` is a scalar constant, the ECEF z-axis is fixed
+through the pole, and `gravitation` is a function of position alone.
+
+**UNMEASURED, AND STATED AS SUCH.** None of the three has been given a number here, and
+this entry exists so that absence is on the record rather than invisible. What can be said
+without measuring: all three are below A5's J2 truncation over a flight of minutes — polar
+motion moves the pole by metres over months, nutation is an arcsecond-scale effect on a
+timescale of days to years, and solid-Earth and ocean tides perturb g in the 1e-7 range —
+and **JSBSim does not model any of them either**, so they are invisible to the comparison
+in exactly the way A5 is.
+
+**Verdict: acceptable for this project's scope**, which §"What this model is scoped to"
+puts at seconds to minutes. It fails the standard this file sets — an assumption without a
+number is asserted, not documented — and it fails it deliberately, because bounding any of
+the three properly needs a source this repository does not have and inventing one is worse
+than the gap.
+
+### A7. Position is stored anchor-relative, not as an absolute ECEF coordinate
+
+**Where:** `State.pos_ecef`, and `state.py`'s header calls it out as the one deliberate
+deviation from JSBSim's `FGPropagate`.
+
+**Why: numerical, not physical.** The equations are identical either way — every term in
+`earth_acceleration_terms` takes the absolute position, and `state.absolute_ecef`
+reconstitutes it — but what gets *differenced* by a convergence study or a trajectory
+comparison is the stored quantity, and float64 resolves a small number far better than a
+large one.
+
+**Bound, measured:** float64's ulp doubles at each power of two, so the ratio depends on
+the offset a run reaches and is exactly a power of two:
+
+| stored quantity | magnitude | ulp |
+|---|---|---|
+| absolute ECEF coordinate | 6,390,329 m | 9.313e-10 m |
+| offset, F4's original 12 km case | 12,184 m | 1.819e-12 m — **512× finer** |
+| offset, the 20 s cruise run of F4 below | 4,718 m | 9.095e-13 m — **1024× finer** |
+
+**Verdict: sound, and it is the reason F4 has a floor worth having.** The cost is that
+`pos_ecef` is meaningless without its `Anchor`, which is why `earth.Anchor` has no default
+and every caller states where it is flying.
+
+### A8. Trim is a function of latitude and heading
+
+**Where:** `trim.trim`, six unknowns `[alpha, elevator, throttle, phi, aileron, rudder]`
+against six residuals, with `beta = 0` closing the system. It was three unknowns against
+three residuals before session 23.
+
+**This is not an assumption so much as a change in what "trimmed" means, and it is here
+because it invalidates the reflex that a trim is a property of the aircraft and the flight
+condition.** On a rotating Earth the lateral rows of the residual are not identically
+zero, so steady flight requires a small bank and a little aileron and rudder to hold it.
+
+**Measured, 747 at cruise on `WGS84_J2`:**
+
+| latitude | heading | trim α | bank φ | aileron (rad) | rudder (rad) | throttle |
+|---|---|---|---|---|---|---|
+| 0° | 000 | 4.577395° | −0.000000° | −7.0e-09 | 7.4e-09 | 0.730260 |
+| 0° | 090 | 4.549582° | 0.000000° | −3.9e-20 | −3.7e-22 | 0.726795 |
+| 47°N | 000 | 4.599953° | **−0.148170°** | 2.2e-07 | 3.2e-08 | 0.733221 |
+| 47°N | 090 | 4.581012° | **−0.204368°** | 1.06e-04 | 1.11e-05 | 0.730712 |
+| 47°S | 000 | 4.599977° | **+0.148170°** | −2.3e-07 | −2.2e-08 | 0.732949 |
+| 47°S | 090 | 4.581012° | **+0.204368°** | −1.06e-04 | −1.11e-05 | 0.730712 |
+| 70°N | 000 | 4.614575° | −0.190031° | 2.9e-07 | 3.7e-08 | 0.735061 |
+| 70°N | 090 | 4.605152° | −0.331661° | 2.7e-04 | 2.8e-05 | 0.733736 |
+
+**The bank is antisymmetric in latitude to every digit shown, and vanishes on the equator**, which is
+what says it is the Earth's rotation and not a solver artefact — a sign error would be
+symmetric. Heading matters as much as latitude at 70°N, where 000 → 090 nearly doubles it.
+
+**Verdict: sound, and the trap it replaces is the reason `trimmed_controls` changed
+signature.** Callers used to build controls from `(elevator, throttle)` and silently drop
+the aileron and rudder the trim had solved for; taking the whole solution makes the old
+call a `TypeError`. Measured cost of dropping them, 747 at 47N flying the trim it was just
+handed: `|vdot|` 1.887e-05 at heading 090 against 1.092e-12 with all four kept.
+
+**Not sound for:** reading a trim as a property of (aircraft, airspeed, altitude) alone.
+Every stored or quoted trim now carries a latitude and a heading, and comparing two of them
+across sites compares two different equilibria.
 
 ---
 
@@ -911,6 +1122,63 @@ difference of two trajectories at altitude.** It is why the order-of-accuracy wi
 at dt = 1/32. Any future convergence study must check it is above the floor before
 believing its own slope.
 
+**Re-measured session 23 on the ECEF state, and the floor MOVED DOWN because the
+differenced quantity got smaller.** Position is now an offset from the anchor (A7), so a
+trajectory difference no longer carries the aircraft's altitude at all — what gets
+differenced is the ground track. It is isolated here two independent ways, and they agree.
+The first is an exact symmetry: under `earth.FLAT` the Earth does not rotate and gravity's magnitude
+depends on neither latitude nor longitude, so the whole problem is invariant under a
+rotation about the Earth's axis. Flying the frozen 747 case from anchors at longitude 0 and
+137° therefore runs **identical physics through different ECEF numbers**, and all of the
+difference is round-off. Pinned by
+`test_the_round_off_floor_on_an_anchor_relative_ecef_trajectory`:
+
+| | |
+|---|---|
+| floor over the 20 s run | **1.153e-11 m** |
+| ground-track offset reached | 4,717.87 m |
+| ulp of that offset | 9.095e-13 m |
+| floor, in ulp | **12.7** |
+
+**The second route is session 11's own: a dt refinement sweep, which lands on the same
+number and is what makes it believable.** Re-run
+on the ECEF state (747 cruise, `WGS84_J2` at 47N, `dt_ref = 1/16384`):
+
+| dt | error (m) | pairwise order |
+|---|---|---|
+| 1/32 | 1.4629e-08 | — |
+| 1/64 | 9.2853e-10 | 3.978 |
+| 1/128 | 7.1654e-11 | 3.696 |
+| 1/256 | 1.6152e-11 | 2.149 |
+| 1/512 | **1.2171e-11** | 0.408 |
+| 1/1024 | 1.3799e-11 | **−0.181** ← refining now makes it worse |
+
+**1.2e-11 m, against 1.153e-11 m from the longitude symmetry — a 5% agreement between a
+discretisation experiment and an algebraic one.** Session 11's floor was 7e-11 m and was
+reached at dt = 1/128; the same 7e-11 m is now merely a point still converging at order
+3.7, and the sequence runs two more octaves before it stalls. **The gain is A7's**: the
+differenced quantity no longer carries the aircraft's 12,184 m altitude.
+
+**The shipped order-of-accuracy window is unchanged at 1/4 … 1/32 and did not need to
+move** — the fitted order there is 3.9872, against the 3.98913 §4 records — but it now sits
+even further above the floor than it was written to.
+
+**And the FLAT-vs-pre-Earth comparison is NOT a measurement of this floor, though the
+design doc expected it to be.** `earth.FLAT` was meant to reproduce the pre-Earth plant to
+round-off; measured against the frozen pre-Earth trajectory it diverges by **4.892e-01 m**
+over the same 20 s — ten orders above the floor above, and physics rather than arithmetic.
+`FLAT` is a *curved* Earth: its constant gravity points along the local geodetic vertical
+at the aircraft's own position, so gravity's **direction** rotates by `Vt/R` along the
+flight path, where the pre-Earth plant had one fixed NED frame. The divergence is that term
+and only that term — it matches `g V t³/(6R)` to better than 1.4% across the whole window
+and grows cubically (1009.9× from 2 s to 20 s). Pinned by
+`test_flat_is_a_curved_earth_and_its_cost_is_the_local_verticals_rotation`.
+
+**Verdict: the ceiling is 6× lower than it was, and `FLAT` is a configuration of the
+rotating plant rather than a way back to the old one.** Anything that needs bit-comparable
+flat-Earth behaviour should compare against the frozen trajectory and expect 0.49 m at
+20 s, not zero.
+
 ### F5. The strip integral at the shipped station count returns 82.6% of its own calibration
 
 **Where:** `airframe.N_SPAN = 9`, which is what `loads.strip_model` builds.
@@ -1065,6 +1333,15 @@ or `atisim.validation`, and every one of those numbers is also asserted by a tes
 `atisim/tests/`. So the notebook cannot drift from the code, and it cannot quietly
 disagree with the suite. `pytest --nbval-lax notebooks/` executes it as a required gate, so
 a notebook that stops working fails the build rather than rotting.
+
+**Since session 23 it also states which Earth each register is asking for, because the same
+function under the other one measures something else.** Tier 0 runs on `WGS84_J2` at 47N,
+the Earth the package ships. The Caughey and CR-2144 comparisons run on `earth.FLAT` at sea
+level, because every published matrix element and root they are checked against was derived
+on a flat, non-rotating Earth, and because every tier-1 law here — Lanchester, the neutral
+point, the affine mode relations — is a claim about the aerodynamic derivative chain and
+not about the Earth. The notebook mirrors `test_verification.py` and `test_validation.py`
+in this exactly, which is what keeps "the notebook runs the code the suite asserts on" true.
 
 It demonstrates validity in three distinct registers, and the distinction is the point:
 

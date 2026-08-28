@@ -61,20 +61,22 @@ without a core rewrite. Both have now been exercised and both held.
 | Module | Responsibility | Notes |
 |---|---|---|
 | `units.py` | conversion constants only | no logic; factors are never inlined elsewhere |
+| **`earth.py`** | WGS-84 geodesy, gravity and the frames of a rotating Earth — `geodetic_to_ecef`, `ecef_to_geodetic`, `ecef_to_ned_matrix`, `gravitation`, `EarthModel`, `Anchor`, `anchor_at` | pure functions; imports nothing from `atisim` but `units` and `atmosphere.G0`. **Every constant was recovered from the running JSBSim 1.3.1 binary, not transcribed** — the wheel ships no C++ source, so a transcription could not have been checked. `a` and `f` are defining; `b`, `e²`, `e'²` are derived and never quoted. `WGS84_J2` is what ships; `FLAT` is a *configuration* of the same plant (Ω = 0, constant g along the local vertical), **not** the pre-Earth model — ASSUMPTIONS F4 |
+| **`earth_ref.py`** | reader for the frozen JSBSim Earth reference XML | must not import `jsbsim`, exactly as `jsbsim_ref.py` must not. The suite runs on a machine with no JSBSim and reference drift shows up in `git diff` |
 | `verification.py` | **tier 0** — `fitted_order`, `oscillator_refinement`, `fixed_control_refinement`, `newton_residual_history`, `torque_free_omega`, `without_aerodynamics`, `free_fall_through_a_swinging_wind` | takes **no aircraft data as a reference**; a failure here is a defect in the core. Every check lives here rather than inside its test, so the notebook runs the same code the suite asserts on |
 | `validation.py` | **tiers 1–2** — `longitudinal_matrix`, `to_stability_axes`, `to_imperial_matrix`, `longitudinal_modes`, `lateral_modes`, `Reference`/`REFERENCES`, `CAUGHEY_A`, `sweep`, `affine_fit` | the linearisation lives here, not in `tests/modes.py`, which is now a re-export. Every reference number carries its citation as a `Reference.source` field, enforced by a test |
 | **`docs/ASSUMPTIONS.md`** | not code — the **assumption register**: what the model assumes, why, and a measured bound on each | this document records what has been *measured*; that one records what has been *assumed*. Read it before quoting any result to better than ~0.5%, before flying far from a trim point, and before adding a wind field whose scale approaches a wingspan |
 | **`provenance.py`** | the **ledger**: a constant's category and citation, as data — SOURCED / DERIVED / CALIBRATED / DECLARED | `test_provenance.py` enforces the entries' internal consistency; coverage is enforced separately and only over six modules' module-level constants — see §2's point 4, which corrects what this row used to claim. Answers "which numbers are bulletproof?" as a query rather than a memory |
 | **`airframe.py`** | where on the airframe the field is sampled: derived tail arm, sample stations, spanwise loading | the tail arm is DERIVED from `Cmq`/`CLq`, never sourced; the loading shape is DECLARED and carries a measured sensitivity |
-| `state.py` | `State`/`Controls`, quaternion utilities | NED inertial, body x-fwd/y-right/z-down; quat is `[w,x,y,z]`, body→NED |
+| `state.py` | `State`/`Controls`, quaternion utilities, and the **NED view** — `pos_ned`, `altitude`, `dcm_body_to_ned`, `quat_to_euler_ned`, `state_from_ned` | **ECEF is the propagation frame.** `pos_ecef` is an offset from a run `Anchor`; quat is `[w,x,y,z]`, **body→ECEF**; `omega` is the body rate relative to ECEF; altitude is **geodetic**. Local NED is a derived view taken at the aircraft's own position. `quat_to_dcm` was DELETED rather than redefined — it meant body→NED and would silently have become body→ECEF at 40-odd call sites |
 | `atmosphere.py` | ISA to 20 km | two layers — the 747 cruise sits above the tropopause |
 | `aero.py` | coefficient build-up | **takes `vel_rel`/`omega_rel` only; never sees inertial velocity** |
-| `dynamics.py` | 6-DOF Newton-Euler, `load_factor`, `f_factor`, `average_f_factor`, `thrust_authority` | wind enters here and nowhere else |
+| `dynamics.py` | 6-DOF rotating-Earth equations — `earth_acceleration_terms`, `derivatives`, `load_factor`, `f_factor`, `average_f_factor`, `thrust_authority` | wind enters here and nowhere else. `earth_acceleration_terms` is isolated so it can be tested against JSBSim term by term; it carries Coriolis, centrifugal and the body-rate frame transfer |
 | `wind.py` | wind fields and composition | vortex array, updraft column, lee wave, microburst, `superpose`, `field_model`, `along_track_shear` |
-| `integrate.py` | RK4 `step`, `rollout`, batched rollout | wind sampled once per step, held across the four stages |
+| `integrate.py` | RK4 `step`, `rollout`, batched rollout | wind sampled once per step, held across the four stages. `step`/`rollout`/`logged_rollout` now take `anchor` and `earth_model`; `earth_model` is a **static** argument, so every gravity branch resolves at trace time |
 | `aircraft.py` | three aircraft + `REGISTRY`/`CRUISE` | every derivative cites its source table; `FlightCondition` + `from_dimensional_*` do the conversions |
 | `sensors.py` | `AirData`, `sense(state, wind_ned)` | **the only supported way to ask what the aircraft is doing**; air-relative where a real sensor is |
-| `trim.py` | Newton solve for steady level flight | still-air by construction, and must stay so |
+| `trim.py` | Newton solve for steady level flight — **six unknowns** `[alpha, elevator, throttle, phi, aileron, rudder]` against six residuals, `beta = 0` closing the system | still-air by construction, and must stay so. A trim is now a function of **latitude and heading** (ASSUMPTIONS A8). `trimmed_controls` takes the whole solution so the old `(elevator, throttle)` call is a `TypeError` rather than a silent loss of the lateral half; `longitudinal_controls` is the name for a hand-built setting |
 | `autopilot.py` | cascaded PID | per-aircraft gains; bumpless engage |
 | `manual.py` | manual control, mode switching, pitch trim | trim moves the stick's centring point, never `controls` |
 | `panel.py` | live cockpit, instruments, `Stick`, `LiveSim`, `run_live` | basic T + test overlay; takes a `wind_model` and a `field_range` |
@@ -102,8 +104,10 @@ without a core rewrite. Both have now been exercised and both held.
 wind_model(wind_state, state, key, dt) -> (wind_ned, omega_gust, wind_state, key)
 ```
 `wind_ned` is NED; **`omega_gust` is body-axis** (it is subtracted from `state.omega`).
-`state.pos_ned` is available, so a spatial field needs no signature change.
-`field_model(field)` wraps any position-only field and derives `omega_gust` from its
+A spatial field still takes an NED position — which is why the Earth change touched no
+wind field — but `pos_ned` is now anchor-relative, so `field_model(field, anchor)` takes
+the anchor and forms it.
+`field_model(field, anchor)` wraps any position-only field and derives `omega_gust` from its
 analytic gradient, so a component cannot contribute a translational gust while silently
 omitting its rotational one.
 
@@ -189,6 +193,81 @@ spacing from a free parameter into a cited one.
 ## 4. Evidence ledger
 
 Every figure below is measured, with the tolerance the test asserts.
+
+### The rotating WGS-84 Earth (session 23)
+
+**AtiSim's Earth is now WGS-84 with J2 gravitation and rotation, in JSBSim 1.3.1's own
+formulation, established by reading the running binary.** Term-by-term against a frozen
+reference over six probes spanning both hemispheres, latitude, altitude and attitude:
+
+| Quantity | Worst residual | Tolerance | What the tolerance is set against |
+|---|---|---|---|
+| geodetic ↔ ECEF, latitude | 9.255e-12 rad | 2e-11 abs | the `b` discrepancy, 5.87e-05 m — **not** the observation |
+| geodetic ↔ ECEF, longitude | 3.100e-13 rad | 2e-11 abs | same |
+| `T_e2l` (ECEF→NED) | 7.050e-12 | 2e-11 abs | same |
+| J2 gravity magnitude | 4.599e-13 relative | 1e-10 rel | 217× above the read-back figure, four orders below the nominal-position mistake |
+| translational EOM `u̇v̇ẇ` | — | 1e-9 abs | the design measured these closing to machine zero |
+| rotational EOM `ṗq̇ṙ` | — | 1e-12 abs | same |
+| frame transfer `pqr_i − pqr` | — | 1e-12 abs | JSBSim states the relation directly |
+
+**The `b` residual is a disagreement about the fifth decimal of one constant, and it is
+deliberately not closed.** `earth.B_WGS84` is derived as `a(1−f) = 6356752.314245`;
+JSBSim reports `6356752.314186`, its own value round-tripped through feet. Adopting
+JSBSim's `b` would be picking a constant to make a test pass. 0.06 mm of ground position
+is far below anything this project reports.
+
+**What the change is worth, and what it costs.** The 747 cruise modes moved by the amounts
+`ASSUMPTIONS.md` A2 tabulates — phugoid ωn −0.3666%, everything else under 0.08% except
+the phugoid's damping — and session 12's prediction was right in every row. Two things
+are new and neither existed to be measured before:
+
+| | |
+|---|---|
+| apparent gravity spread, equator to pole | 9.780282 → 9.832067 m/s², **0.53%** |
+| trimmed bank at 47N, heading 000 / 090 | **−0.148170° / −0.204368°**, antisymmetric in latitude to every digit shown and zero on the equator |
+| round-off floor on a trajectory difference | **1.153e-11 m** over 20 s, 12.7 ulp of the offset — 6× below session 11's 7e-11 m, and reached two octaves further down the dt sweep, because position is now anchor-relative |
+| `earth.FLAT` against the frozen pre-Earth trajectory | **4.892e-01 m** over 20 s — **not** the round-off the design predicted |
+
+**The FLAT figure is the one that overturned a design claim.** Design §8 said `FLAT`
+differs from the pre-Earth plant only by ECEF arithmetic. It does not: `FLAT` is a
+*curved* Earth whose constant gravity points along the local vertical at the aircraft's own
+position, so gravity's **direction** rotates by `Vt/R` along the path. The divergence
+matches `g V t³/(6R)` to better than 1.4% across the window and grows cubically. Recorded
+in `ASSUMPTIONS.md` F4 and asserted against that closed form rather than against a bound.
+
+**`earth.FLAT` removes rotation and variable gravity; it does not remove curvature, and the
+sanity ladder found the same thing independently.** `scripts/sanity.py`'s check 10 asserted
+that trimmed level flight has `n_z = cos(alpha)` exactly, and chose `FLAT` specifically so
+that hand-derived answer would hold. It does not: level flight round a curved Earth is a
+*curved path*, so the wings carry less than the weight by the centripetal term. Re-derived
+by hand, the closed form **identifies which radius** rather than assuming one:
+
+| candidate | predicted `n_z` | error against the model |
+|---|---|---|
+| meridian radius `M` | 0.9958515209 | **1.1e-13** |
+| prime-vertical radius `N` | 0.9958542855 | 2.8e-06 |
+| spherical `a + h` | 0.9958543879 | 2.9e-06 |
+
+`cos(α)·(1 − V²/(g(M+h)))` to thirteen digits, and `M` is the same radius
+`trim.transport_rate_body` uses flying north. The ladder is back to **11/11**, with the
+tolerance left at 1e-6 — three orders inside the new term and still tight enough to reject
+either wrong radius.
+
+**AtiSim's latitude sensitivity is no longer zero, and it is not JSBSim's number.** Worst
+`|Δ(vel_body)|` between latitude 0 and 47 on the 737 rudder kick, m/s in u:
+
+| | cruise | approach |
+|---|---|---|
+| JSBSim, re-trimmed at each latitude | 0.4092 | 0.3610 |
+| atisim, same initial state and surfaces | 0.1511 | 0.0931 |
+| atisim, re-trimmed at each latitude | 0.0261 | 0.0103 |
+
+The two engines' figures come from different experiments and the gap is **not** resolved:
+JSBSim re-trims with `do_simple_trim` mode 0, and whether that leaves a latitude-dependent
+residual atisim's six-unknown trim does not is a question about the JSBSim binary. What is
+established is that every atisim figure sits under the corresponding JSBSim one, so
+layer 4's bounds stay conservative, and that re-trimming absorbs 5.8× (cruise) to 9.0×
+(approach) of the sensitivity — which is what a rotating-Earth trim is for.
 
 ### AtiSim against JSBSim through a Kelvin–Helmholtz vortex (session 21)
 
@@ -834,7 +913,21 @@ so the error bottoms out near **7e-11 m at dt = 1/128** and refining past it mak
 answer *worse*. The fitted window stops at 1/32, 203× above the floor. Anything
 measuring a difference of trajectories at 40,000 ft has this ceiling.
 
-### What constant gravity costs, and why it stays (session 12)
+### What constant gravity costs, and why it stays (session 12) — SUPERSEDED session 23
+
+**The decision this section records was reversed, and its measurement is what says the
+reversal was safe.** Session 23 replaced constant gravity with WGS-84 J2 gravitation plus
+the centrifugal term. Re-measured on the shipped Earth, every row below came out slightly
+smaller in magnitude and in the same direction — phugoid ωn **−0.3666%** against the
+−0.3798% predicted here, and so on down the table — because the apparent gravity the
+rotating model produces at 47N is 9.770541 m/s² rather than the 9.76922 assumed for this
+experiment. The full re-measurement is in `ASSUMPTIONS.md` A2. **Nothing below is
+withdrawn; the section is superseded, per this document's standing rule.**
+
+Two of the three grounds for the "it stays" decision have since gone: `G0` did not have to
+move after all, because `earth.gravitation` computes gravity and `atmosphere.G0` stays what
+it is — no §4 baseline was moved to get here — and the project now does compare one
+aircraft across latitudes, the case this section named as the one constant g cannot serve.
 
 `ASSUMPTIONS.md` §A2 records that `G0 = 9.80665` is **+0.383% high** at the 747's cruise
 altitude. Session 11 reasoned from Lanchester that this threatened every sub-0.5% claim.
@@ -992,6 +1085,14 @@ The floor is 0.403 m/s in **u**; the doublet's 0.410 is in **w**. Per component:
 | elevator doublet | 0.296 | 0.012 | **0.410** | 0.003° |
 | rudder kick | **1.462** | 1.234 | 0.522 | 2.909° |
 | Coriolis floor (lat 0 vs 47) | 0.403 | 0.012 | 0.067 | — |
+
+**What "Coriolis floor" means changed in session 23, and the row did not.** It is JSBSim's
+own figure — the worst `|Δ(vel_body)|` between a latitude-0 and a latitude-47 run of the
+same case — and it was a bound on what atisim could not reproduce only for as long as
+atisim had no latitude. It now has one, measured at 0.1511 m/s in u at cruise against
+JSBSim's 0.4092 (see "The rotating WGS-84 Earth" above). **The number below is unchanged
+and so are the bounds that read it**; what it measures is how much the answer depends on
+where the aeroplane is flying, in JSBSim, which is not the same quantity.
 
 So the doublet's **u** divergence is *below* the floor, and its **w** divergence is six times the
 floor in that component — a real residual needing its own explanation, which is the α̇ fold: `Cmq`
@@ -1947,8 +2048,100 @@ source exactly. A smoother interpolant would agree with the source less.
   that is not its own, at 0.95% of C_L, over eight to nine seconds. It is the price of the
   identical initial condition, it is now measured rather than assumed, and it does not
   touch the core response.
+- **Does `trim` return a state the linearisation can linearise about?** Session 23 left
+  **three tests deliberately red** and two of them are this one question. `trim` now
+  returns a condition that is a fixed point only *at the transport rate* — steady level
+  flight round an ellipsoid needs a continuous nose-down pitch rate — while
+  `validation.longitudinal_matrix` and `lateral_modes` linearise about **zero body rate**.
+  The mismatch shows up twice:
+  `test_the_model_goes_statically_unstable_exactly_at_zero_pitch_stiffness` measures the
+  largest real root at the neutral point as **+7.980e-05** where it used to be exactly 0,
+  and `test_atisim_has_no_aerodynamic_speed_derivative_of_pitching_moment` measures
+  **M_u = −1.686e-07** with the α̇ terms removed where it used to be exactly 0. Both are
+  the same element, `d(q̇)/du`, and its value is *predicted* to thirteen digits by
+  `rho·u0·Cm·S·c/Iyy`, so the mechanism is identified rather than guessed.
+  **The plant is not implicated:** feeding the pre-ECEF trim through the migrated
+  `longitudinal_matrix` under `FLAT` reproduces the pre-ECEF matrix to 2.0e-13 and returns
+  det = 0 and a largest real root of exactly 0. Physically +8e-5 s⁻¹ is a time to double of
+  2.4 hours — still neutral in any sense a pilot means. **What was lost is the exactness,
+  and only an exact assertion could have shown it, which is why neither tolerance is the
+  thing to move.** Resolving it means deciding whether the linearisation should be taken
+  about the transport-rate state or the trim should return a zero-rate one.
+- **What are the vortex headline numbers on the rotating Earth?**
+  `test_logging_the_run_did_not_move_the_headline_numbers` is the third deliberate red. Its
+  pin legitimately moved — pitch excursion 2.1601976 → 2.1606541 deg (+0.021%), load
+  excursion −1.2606003 → −1.2687103 g (+0.64%) — and `earth.FLAT` separates the two causes:
+  the load coordinate is **94% geometry** (the excursion is measured from the run's own
+  `n_z[0]`, and that datum moved when `trimmed_state` gained the transport rate), while
+  rotation and J2 dominate the pitch coordinate. **Re-capturing the pin inside the
+  migration would be the migration certifying itself**, which is why it is still red.
 
 ## 9. Session log
+
+### Session 23 — the Earth turns, and two predictions are falsified by measuring them
+
+**AtiSim's flat, non-rotating Earth is gone.** `atisim/earth.py` carries the WGS-84
+ellipsoid, J2 gravitation and Earth rotation in JSBSim 1.3.1's own formulation, and the
+state changed meaning to match: `pos_ecef` is an offset from a run `Anchor`, the quaternion
+is body→ECEF, and `omega` is the body rate relative to ECEF. Local NED became a derived
+*view*, which is why **no wind field needed changing** — they take NED positions and still
+do. `quat_to_dcm` was deleted rather than redefined, because it meant body→NED, would
+silently have become body→ECEF, and had 40-odd call sites that would all have kept running.
+
+**Every constant was recovered from the running binary, not transcribed.** JSBSim ships as
+a compiled wheel with no C++ source, so a transcription could not have been checked. The
+agreement is term-by-term over six probes spanning both hemispheres: geodesy to 9.255e-12
+rad, gravity to 4.599e-13 relative, and the EOM rows to the tolerances §4 tabulates.
+
+**Two things this session predicted and then measured, and the measurement won both times.**
+
+*`earth.FLAT` does not reproduce the pre-Earth plant to round-off.* Design §8 said the only
+difference was ECEF arithmetic, predicted at ~3.6e-8 m over a 20 s 747 run. Measured
+**4.892e-01 m** — seven orders out. `FLAT` is a *curved* Earth: its constant gravity points
+along the local vertical at the aircraft's own position, so gravity's direction rotates by
+`Vt/R` along the path where the pre-Earth plant had one fixed frame. The divergence matches
+`g V t³/(6R)` to better than 1.4% across the window and grows cubically, so the test now
+asserts that closed form rather than a bound. The round-off floor the design meant to claim
+is real and was measured separately, by an exact symmetry — two anchors at different
+longitudes run identical physics through different ECEF numbers — at **1.153e-11 m**,
+12.7 ulp of the offset.
+
+*JSBSim's 0.409 m/s Earth-rotation floor is not "matched".* The plan asked for that
+assertion. AtiSim's own latitude sensitivity is **0.1511 m/s** in u at cruise flying the
+same initial state and surfaces, and **0.0261** re-trimmed at each latitude. It is no
+longer zero, which is the substantive change, and it is the same order as JSBSim's — but
+the two figures come from different experiments and the gap is left open rather than
+closed by choosing a number. Layer 4's bounds and the floor they read are unchanged.
+
+**A third prediction held exactly.** Session 12 measured what constant gravity cost and
+decided not to model `g(h)`. Re-measured on the shipped Earth, every mode moved in the
+direction and very nearly the amount session 12 predicted — phugoid ωn −0.3666% against
+−0.3798% — the shortfall being entirely the difference between its spherical `g(h)` and the
+9.770541 m/s² apparent gravity the rotating WGS-84 model actually produces at 47N.
+Lanchester's 1:1 is now measured against a gravity the model computes.
+
+**The notebook gate was broken and is fixed; the sanity ladder was wrong and is corrected.**
+The notebook still called the pre-Earth signatures — Task 12 migrated `scripts/` and the
+tests and missed it — so eleven of its thirteen cells failed. It now states which Earth
+each tier is asking for, `WGS84_J2` for tier 0 and `FLAT` for the Caughey comparison,
+mirroring the two test modules whose code it runs. `scripts/sanity.py` check 10 asserted
+`n_z = cos(alpha)` in trimmed level flight and chose `FLAT` so that hand-derived answer
+would hold; it does not, because **`FLAT` removes rotation and variable gravity but not
+curvature**. The corrected hand derivation is in §4 and it identifies the meridian radius
+to thirteen digits. Ladder back to 11/11.
+
+**A3 was found to have its bound on the wrong quantity.** It quoted 0.17%/0.31% — the
+*altitude* difference between geometric and geopotential height. The **density** error,
+which is what the aero forces see, is **0.37% at 747 cruise**, the same size as the gravity
+error A2 was worried about and independent of it. Recorded, not fixed: the fix is one line
+and would move §4 rows.
+
+**Three tests are deliberately red and each one's reason is in §8.** Two are the same
+trim/linearisation question; the third is a pin that legitimately moved and must not be
+re-captured by the change that moved it. The suite is **747 passed, 3 failed, 1 skipped**,
+against a 743/3/1 baseline measured before this session's four new tests were added — so
+the three reds are unchanged in identity and count, not merely in number. The notebook
+gate is **13 passed** and `scripts/sanity.py` is **11/11**.
 
 ### Session 21 — the Wingrove paper arrives, and JSBSim gains a 747
 
@@ -2793,6 +2986,7 @@ worktree, all four rows:
 |---|---|
 | `.venv/Scripts/python.exe -m pytest`, cwd = **worktree root** | **the worktree.** `-m` puts cwd on `sys.path` first |
 | `pytest` / `pytest.exe`, cwd = worktree root | **the main checkout.** The console script does not put cwd on `sys.path`, and `atisim/tests/conftest.py` imports `atisim` before pytest's own insertion helps. `sys.path[0]` *is* the worktree by the time a test body runs, which is why this one looks fine and is not |
+| `.venv/Scripts/python.exe scripts/anything.py`, cwd = **worktree root** | **the main checkout.** Running a script *by path* puts the **script's own directory** on `sys.path[0]`, not cwd — so `scripts/` is first and the worktree root is nowhere. Measured session 23: `scripts/sanity.py` raised `ImportError: cannot import name 'earth' from 'atisim'` pointing at `C:\...\Claude_Flight_Sim\atisim\__init__.py`, the main checkout. It raised at all only because the main checkout has no `earth.py` yet; once it does, this row goes silent again like the others. **This is why every script's header says `PYTHONPATH=.`** |
 | anything, cwd = **any other directory** — `notebooks/`, `scripts/` | **the main checkout** |
 | any of the above with `PYTHONPATH` set to the **absolute** worktree root | **the worktree** |
 

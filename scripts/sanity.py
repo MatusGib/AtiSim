@@ -53,6 +53,13 @@ ANCHOR = earth.anchor_at(np.radians(47.0), 0.0, h)
 # would print FAIL for physics that is right. FLAT is the Earth these
 # hand-computed answers are answers to. The rotating-Earth equivalents are
 # checked in atisim/tests/, against numbers that were not computed by hand.
+#
+# BUT FLAT DOES NOT BUY BACK THE THIRD ONE, and that was found by running this
+# script rather than by reasoning about it. FLAT removes the Earth's rotation and
+# its variable gravity; it leaves the ellipsoid, so level flight is still a
+# CURVED path and the load factor is still not cos(alpha). Check 10 below carries
+# the corrected hand derivation. The other two hold exactly, and the first two
+# checks are what say so.
 EARTH = earth.FLAT
 
 x_trim, res = trim.trim(jnp.array(v), jnp.array(h), ac, ANCHOR, EARTH)
@@ -192,8 +199,29 @@ check("...and gravity along z_b should be +g*cos(10)",
 nz = float(
     load_factor(trim_state, trim_controls, ac, jnp.zeros(3), jnp.zeros(3), ANCHOR, EARTH)
 )
-check("load factor in trimmed level flight is cos(alpha), NOT 1",
-      float(np.cos(alpha)), nz, tol=1e-6)
+# It is NOT cos(alpha) any more, and FLAT does not bring it back: FLAT removes
+# the Earth's ROTATION and its variable gravity, and leaves its CURVATURE. Level
+# flight round a curved Earth is a curved path, so it needs a centripetal
+# acceleration V^2/(M+h) downward and the wings carry that much less than the
+# weight. `trim.trimmed_state` puts exactly that transport rate into omega --
+# measured q = -3.696680e-05 rad/s against V/(M+h) = 3.696680e-05.
+#
+# Worked out by hand, as everything in this file is, and it discriminates:
+#
+#   R = MERIDIAN radius M          0.9958515209   matches to 1.1e-13
+#   R = prime-vertical radius N    0.9958542855   wrong by 2.8e-06
+#   R = a + h (spherical)          0.9958543879   wrong by 2.9e-06
+#
+# so the meridian radius is IDENTIFIED here rather than assumed, which is the
+# same radius `trim.transport_rate_body` uses for the north-flying case. The
+# tolerance stays at 1e-6: that is 886x inside the 8.864e-04 term being added,
+# and it still rejects either wrong radius -- but only by 2.8x, so this check is
+# now discriminating between radii rather than merely confirming one.
+sin_lat = np.sin(ANCHOR.lat)
+_denom = 1.0 - earth.E2_WGS84 * sin_lat * sin_lat
+meridian = earth.A_WGS84 * (1.0 - earth.E2_WGS84) / (_denom * np.sqrt(_denom))
+check("load factor in trimmed level flight is cos(alpha)*(1 - V^2/(g(M+h)))",
+      float(np.cos(alpha) * (1.0 - v * v / (G0 * (meridian + h)))), nz, tol=1e-6)
 
 # =====================================================================
 # does the whole assembled model behave right structurally
