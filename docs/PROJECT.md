@@ -4,7 +4,7 @@ A 6-DOF fixed-wing flight-dynamics core in JAX, built as a foundation for turbul
 modelling. This document is the standing record: what exists, what is validated, what is
 known-broken, and what happens next.
 
-**Last updated:** session 18 (the AtiSim rename, and correcting five stale claims).
+**Last updated:** session 23 (WGS-84 and Earth rotation, in JSBSim's formulation).
 
 **To run any of it, see §10.**
 
@@ -1949,6 +1949,50 @@ source exactly. A smoother interpolant would agree with the source less.
   touch the core response.
 
 ## 9. Session log
+
+### Session 23 — WGS-84 and Earth rotation, in the formulation JSBSim uses
+
+**The flat, non-rotating Earth is gone.** `ASSUMPTIONS.md` A1 and A2 are retired, `audit/INVENTORY.md` R2 stops being an assumption held *by omission* and becomes an explicit cited model, and `test_jsbsim_737_layers.py` no longer says the Earth-rotation floor is something atisim "cannot reproduce even in principle".
+
+**The formulation was read off the JSBSim binary, not transcribed.** JSBSim ships as a compiled wheel with no C++ source, so a transcription could not have been checked. Driving the running engine and solving for the relations that close gives
+
+```
+rdot_e   = T_b2e . v
+vdot     = F_b/m + g_b - (w_be + 2 Om_b) x v - [Om x (Om x r_e)]_b     [0.0, exact]
+qdot     = 0.5 q (x) [0, w_be]                        (q: body -> ECEF)
+wdot_be  = I^-1 (M - w_bi x I.w_bi) + w_be x Om_b               [2.4e-14, 6.9e-18]
+```
+
+with all five WGS-84 constants recovered to 1e-11 or better. Three conventions that are easy to get wrong are pinned by measurement rather than assumed: the local frame uses **geodetic** latitude (geocentric costs 65 m/s in `v_north` at 47°N), the inertia off-diagonal enters as **+Ixz** (independently corroborating session 19), and `g` is J2 **gravitation** with the centrifugal term separate.
+
+**THE AGREEMENT WITH JSBSIM IMPROVED, WHICH IS THE HEADLINE.** Every layer the Earth touches:
+
+| | before | after |
+|---|---|---|
+| layer 2 alpha error | 1.9807° | **1.9636°** (11× smaller, sign flipped) |
+| layer 3 Dutch-roll ωn | 0.022% | **0.0007%** |
+| layer 3 spiral | 0.228% | **0.0145%** |
+| layer 4 cruise doublet, `v` | 0.012 m/s | **0.000** |
+| layer 4 cruise doublet, `u` | 0.507 m/s | **0.281 m/s** |
+
+**Four latent defects surfaced, each invisible before because the quantity that exposes it was identically zero.**
+
+1. **An autopilot sign error, eight tests deep.** `engage` seeded the pitch integrator with `− q_d·q` where the loop needs `+ q_d·q`, leaving an engage transient of exactly `2·q_d·q` — zero whenever `q` is zero, and on a flat Earth trim's `q` was always exactly zero. Measured −2.2180e-04 against a predicted −2.2180e-04, from which the implied `q_d` is 3.000000 against the 747's actual 3.0.
+2. **`trimmed_controls` discarded half the trim solution**, hardcoding aileron and rudder to zero while the six-unknown solve computed them. Worth 1.9e-5 m/s² at an east heading.
+3. **`relative_velocity` was a silent trap.** `loads.py` imports it lazily and was shielded only by an unrelated `AttributeError` two lines earlier; repairing that line would have switched on 28.3 m/s of airspeed error with a sign-flipped alpha.
+4. **FLAT gravity pointed along the geocentric radial** while every local frame is built on the geodetic normal — 0.0329 m/s² of northward gravity at 45°, 3.35e-3 g of systematic bias in the one configuration whose entire purpose is reproducing the old plant. The test named "along the local vertical" was *asserting the bug*.
+
+**Steady level flight is not a straight line, and finding that out cost a factor of 143.** `trimmed_state` set `omega = 0`, which zeroes the residual at t = 0 but flies straighter than the Earth curves: 4.2356 m of altitude drift per minute. `trim.transport_rate_body` supplies the nose-down rate and it falls to 0.0295 m. The sign matters as much as the term — `+V/R` instead of `−V/R` gives 7.672 m, *worse* than omitting it. Its meridian-convergence yaw component is why flying east at constant heading follows a latitude circle, which is a turn, and needs 0.055° of coordination bank **even with the Earth switched off**.
+
+**Two design estimates were wrong and are corrected against measurement.** The trimmed bank was estimated at 0.2° from `atan(2ΩV/g)`; that omits `sin(latitude)` and is only right at the pole. Measured **−0.14910°** against a corrected estimate of −0.14702°. And the bank is heading-**independent** to 0.7%, not "a function of latitude and heading" — the vertical component of Ω gives `2ΩV sin(lat)` perpendicular to the track whatever its azimuth, and the measured `cos(psi)` coefficient is 1.5e-6 of the constant.
+
+**ASSUMPTIONS F7 closed.** It predicted this: *"latent for the shipped solvers — `trim` does not carry rudder as an unknown, so nothing in the package hits it."* Coriolis forces exactly that, and the Cessna's zero rudder column became a singular Jacobian returning six NaNs. `lstsq` takes the minimum-norm step; every aircraft converges, the Cessna's rudder comes out at exactly 0.0, and — checked before adopting it, since a solver that always returns something could hide an unsolvable request — stripping the 747 of pitch authority still leaves `qdot` at 9.3e-5, eight orders above converged.
+
+**F4 did not degrade, and that was the point of the one deliberate deviation from `FGPropagate`.** Position is stored as an offset from a run anchor rather than as absolute ECEF: ulp 2.220e-16 m against 9.313e-10 m absolute, and a 1e-9 m perturbation *decays* to 7.314e-10 m over 20 s.
+
+**Tests: 724 passed / 1 skipped before, 746 passed / 1 skipped after.** Thirty test files migrated. Two guards were rebuilt rather than re-recorded: the RK4 bit-identity hash is replaced by a bit-for-bit comparison against a longhand classical RK4 (a hash says "same as last time"; this says "same as the method it claims to be"), and the Galilean invariance test — whose premise a curved Earth genuinely breaks — had its tolerances placed by **injecting the bug it guards against**, which discriminates by 122× on the quaternion, not the "four to five orders" its docstring had estimated.
+
+**What is NOT done.** §4's evidence ledger is not re-measured — the tests that pin it are green and the numbers that moved are recorded in place, but the ledger tables themselves still quote flat-Earth figures. The 737 Earth-rotation floor is still an *allowance* rather than an assertion, and the note in `test_jsbsim_737_layers.py` explains why that is a separate piece of work: `coriolis_velocity_m_s` is a **latitude-sensitivity** measure — the difference between a lat-0 and a lat-47 run of the rudder kick — not a rotating-versus-non-rotating difference. Those two coincided while atisim did not rotate. They do not any more.
 
 ### Session 21 — the Wingrove paper arrives, and JSBSim gains a 747
 
