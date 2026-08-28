@@ -31,11 +31,11 @@ stability-derivative definitions (printed A-16 to A-18).
 | Quantity | FD2e | CR-2144 | code | conversion |
 |---|---|---|---|---|
 | Body axes | x forward, y right (starboard), z down | same; Appendix A §1 "AXIS SYSTEMS" | `state.py`: x-fwd, y-right, z-down | none |
-| Earth frame | inertial, z down | — | NED, z down, treated as inertial | none |
+| Earth frame | inertial, z down | — | **ECEF, rotating at 7.292115e-5 rad/s** (session 23; was NED treated as inertial). Local NED is a derived VIEW at the aircraft's own geodetic position | ECEF -> NED by `earth.ecef_to_ned_matrix`, on GEODETIC latitude |
 | Axis system of the data | n/a | **Tables IX-4, IX-5, IX-6, IX-8 each print "(BODY AXIS SYSTEM)" in their own headers** — verified by reading the pages | body throughout | **none needed; verified, not assumed** |
 | **Table IX-2 (approach non-dim)** | n/a | **states h, V_To, α₀, δ_s and NO axis system at all** | used verbatim as body-axis | **CONFLICT/GAP — see §7.1** |
 | Stability axes | body rotated about y by α | "The same symbols are used for body- and stability-axis dimensional derivatives. Care should be exercised so that a consistent set of quantities are used." (A-16) | `validation.to_stability_axes`, `aircraft.stability_to_body` | rotate by α₀ |
-| Altitude | up positive | `H(FT)` | `-pos_ned[2]` | sign flip |
+| Altitude | up positive | `H(FT)` | **`state.altitude(state, anchor)`, geodetic** (was `-pos_ned[2]`) | sign flip, and no longer a coordinate index — the two differ by 783.9 m at 100 km |
 
 ## 2. Incidence angles
 

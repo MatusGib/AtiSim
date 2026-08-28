@@ -71,13 +71,13 @@ enters at exactly one seam. This is load-bearing for almost every claim below.
 
 | # | Claim | Where | Kind |
 |---|---|---|---|
-| R1 | State is 13 elements: `pos_ned`(3), `vel_body`(3), `quat`(4), `omega`(3) | `state.State` | structural |
-| R2 | NED is inertial; flat, non-rotating Earth; no Earth-rate or transport terms | `dynamics.derivatives` (by omission) | **implicit** |
-| R3 | Body axes x-fwd, y-right, z-down; NED z down; altitude = `-pos_ned[2]` | `state.py` docstring + `state.altitude` | convention |
-| R4 | Quaternion is `[w,x,y,z]`, unit, rotates **body→NED** | `state.quat_to_dcm` | convention |
-| R5 | `v̇ = F/m + g_body − ω×v` — Coriolis uses **inertial** v and ω, never air-relative | `dynamics.derivatives:72` | equation of motion |
-| R6 | `ω̇ = I⁻¹(M − ω×Iω)` — full Euler equation, no linearisation | `dynamics.derivatives:73` | equation of motion |
-| R7 | `ṗos_ned = DCM·v_body` | `dynamics.derivatives:78` | kinematics |
+| R1 | State is 13 elements: **`pos_ecef`**(3), `vel_body`(3), `quat`(4), `omega`(3). *Session 23: still thirteen, but `pos_ecef` is an ECEF OFFSET from a run anchor, `vel_body` is ECEF-relative, and `omega` is the body rate relative to ECEF.* | `state.State` | structural |
+| R2 | **SUPERSEDED session 23.** Was "NED is inertial; flat, non-rotating Earth; no Earth-rate or transport terms", held **by omission**. The Earth is now a rotating WGS-84 ellipsoid with J2 gravity, in JSBSim's own formulation, verified term-by-term against the binary. Coriolis, centrifugal and the transport rate are all present and all **explicit**. | `dynamics.earth_acceleration_terms`, `earth.py` | **explicit, cited** |
+| R3 | Body axes x-fwd, y-right, z-down; NED z down. **Altitude is no longer `-pos_ned[2]`** — it is GEODETIC height via `state.altitude(state, anchor)`, and the two differ by 783.9 m at 100 km of ground track. | `state.py` docstring + `state.altitude` | convention |
+| R4 | Quaternion is `[w,x,y,z]`, unit, rotates **body→ECEF** (was body→NED). `quat_to_dcm` was DELETED rather than repointed, so all 40-odd call sites broke loudly instead of returning a plausible wrong-frame matrix. | `state.quat_to_matrix`, `state.dcm_body_to_ned` | convention |
+| R5 | `v̇ = F/m + g_b − (ω_be + 2Ω_b)×v − [Ω×(Ω×r)]_b` — still **inertial** v and ω, never air-relative, and `relative_velocity` was renamed to break every caller that held the wrong frame. | `dynamics.earth_acceleration_terms` | equation of motion |
+| R6 | `ω̇_be = I⁻¹(M − ω_bi×Iω_bi) + ω_be×Ω_b` — full Euler, no linearisation. The **plus** is measured, not derived-and-hoped: a wings-level probe cannot distinguish it from a minus. | `dynamics.earth_acceleration_terms` | equation of motion |
+| R7 | `ṙ_ecef = T_b2e·v_body`. No transport term is needed in the POSITION row: the anchor is fixed in ECEF and `v` is already ECEF-relative, so Ω enters `v̇` and not `ṙ`. | `dynamics.derivatives` | kinematics |
 | R8 | `q̇ = ½ q ⊗ [0,ω]` | `state.quat_derivative` | kinematics |
 | R9 | Gravity is a constant `G0 = 9.80665` in NED z, rotated into body | `dynamics.derivatives:70`, `atmosphere.G0` | **assumption** |
 | R10 | Inertia tensor is constant, symmetric, `Ixy = Iyz = 0`, `Ixz` enters **negated** | `aircraft.inertia_tensor` | assumption |
