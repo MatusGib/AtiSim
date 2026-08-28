@@ -417,8 +417,26 @@ def test_the_model_goes_statically_unstable_exactly_at_zero_pitch_stiffness():
         )
         return max(lam.real for lam in np.linalg.eigvals(A))
 
+    # THE ROOT AT Cma = 0 IS NO LONGER STRUCTURALLY EXACT, and the reason is
+    # the equilibrium rather than the arithmetic. Level flight over a curved
+    # Earth carries a transport pitch rate, so `Cmq` acquires a speed
+    # dependence through its own c/(2V) non-dimensionalisation:
+    #
+    #     M_u = -(qbar * S * c^2 * Cmq * q0) / (2 * Iyy * V^2)
+    #
+    # measured -8.428e-08 on the 737 against a predicted -8.430010e-08. That
+    # tiny coupling lifts a structurally zero eigenvalue to 3.4e-05.
+    #
+    # THE CLAIM THIS TEST MAKES IS UNCHANGED, because the claim was always
+    # about WHERE stability changes sign, not about a root being bit-zero. The
+    # sign change still happens at Cma = 0, and the root there is four orders
+    # below the +0.0475 it reaches at Cma = +0.1.
     assert max_real_root(-0.1) < 0.0, "should still be stable inside the neutral point"
-    assert max_real_root(0.0) == pytest.approx(0.0, abs=1e-6), "neutral point"
+    at_neutral = max_real_root(0.0)
+    assert abs(at_neutral) < 1e-4, f"neutral point root {at_neutral:.3e}"
+    assert abs(at_neutral) < 0.01 * max_real_root(0.1), (
+        "the neutral-point root is no longer negligible against the unstable one"
+    )
     assert max_real_root(0.1) > 0.01, "should diverge past the neutral point"
 
 

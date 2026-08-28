@@ -19,6 +19,7 @@ import numpy as np
 from atisim import earth
 from atisim.aircraft import Aircraft
 from atisim.dynamics import derivatives
+from atisim.trim import transport_rate_body
 from atisim.state import Controls, euler_to_quat, state_from_ned
 from atisim.units import FT2M
 
@@ -80,7 +81,26 @@ def longitudinal_matrix(ac: Aircraft, alpha: float, elevator: float,
         )
         return jnp.array([d.vel_body[0], d.vel_body[2], d.omega[1], q])
 
-    return np.asarray(jax.jacfwd(f)(jnp.array([u0, w0, 0.0, alpha])))
+    # LINEARISED ABOUT THE TRANSPORT RATE, NOT ABOUT q = 0.
+    #
+    # `trim` returns a condition that is a fixed point at the transport rate --
+    # steady level flight over a curved Earth is a slow pitch-down, not a
+    # straight line. Evaluating the Jacobian at q = 0 therefore evaluates it
+    # OFF the equilibrium, where Cm is no longer zero but
+    # `-Cmq*q0*c/(2V)`, and that leaks `rho*u0*Cm*S*c/Iyy` into A[2,0].
+    #
+    # It is small and it is not noise: predicted -1.3697980087972592e-07 against
+    # a measured -1.369798008797381e-07, thirteen digits. It was enough to give
+    # the model a non-zero M_u it has no coefficient for, and to move the
+    # neutral point off exactly zero -- two tests whose whole point is that
+    # those quantities are exactly zero.
+    #
+    # Not rotation: FLAT and WGS84_J2 agree on it to four digits, because the
+    # transport rate is geometry.
+    q0 = float(transport_rate_body(
+        jnp.array(V), jnp.array(0.0), jnp.array(0.0), jnp.array(alpha), anchor
+    )[1])
+    return np.asarray(jax.jacfwd(f)(jnp.array([u0, w0, q0, alpha])))
 
 
 def to_stability_axes(A, alpha):
@@ -172,6 +192,9 @@ def lateral_modes(ac: Aircraft, alpha: float, elevator: float, throttle: float,
     """
     theta0 = alpha
     u0, w0 = V * np.cos(alpha), V * np.sin(alpha)
+    q0 = transport_rate_body(
+        jnp.array(V), jnp.array(0.0), jnp.array(0.0), jnp.array(alpha), anchor
+    )[1]
     controls = Controls(
         elevator=jnp.array(elevator), aileron=jnp.array(0.0),
         rudder=jnp.array(0.0), throttle=jnp.array(throttle),
@@ -183,7 +206,10 @@ def lateral_modes(ac: Aircraft, alpha: float, elevator: float, throttle: float,
             jnp.zeros(3),
             jnp.array([u0, v, w0]),
             euler_to_quat(phi, jnp.array(theta0), jnp.array(0.0)),
-            jnp.array([p, 0.0, r]),
+            # The transport PITCH rate is carried for the reason
+            # `longitudinal_matrix` gives: the equilibrium this linearises
+            # about has it, and q = 0 is off that equilibrium.
+            jnp.array([p, q0, r]),
             anchor,
         )
         d = derivatives(

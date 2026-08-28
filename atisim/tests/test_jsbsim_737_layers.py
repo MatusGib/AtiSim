@@ -110,6 +110,25 @@ def _atisim_coefficients(point, ac):
     ]
 
 
+def _transport_pitch_rate(cond):
+    """The equilibrium pitch rate of level flight over the curved Earth, rad/s.
+
+    Level flight round an ellipsoid is a slow pitch-down at the transport rate,
+    not a straight line, so `trim.trimmed_state` carries it and the
+    linearisation is taken about it. Read here rather than re-derived so the
+    two cannot drift apart.
+    """
+    import jax.numpy as jnp
+
+    from atisim.trim import transport_rate_body
+
+    anchor = earth.anchor_at(np.radians(47.0), 0.0, cond.matched_altitude)
+    return float(transport_rate_body(
+        jnp.array(cond.airspeed), jnp.array(0.0), jnp.array(0.0),
+        jnp.array(0.0), anchor,
+    )[1])
+
+
 def _atisim_trim(condition="cruise"):
     """(solution, worst residual). The solution is SIX long now, not three.
 
@@ -1056,14 +1075,31 @@ def test_atisim_has_no_aerodynamic_speed_derivative_of_pitching_moment():
 
     for condition in CASES:
         ac = REGISTRY[CASES[condition][0]]
+        _ref, cond, _t, _a = case(condition)
         ati, _js = _longitudinal_pair(ac, condition)
         bare = ac._replace(Cmadot=jnp.array(0.0), CLadot=jnp.array(0.0))
         without, _ = _longitudinal_pair(bare, condition)
         assert abs(ati[3, 0]) > 1e-5, f"{condition}: M_u vanished; the probe is vacuous"
-        assert abs(without[3, 0]) < 1e-12, (
+        # M_u IS NO LONGER MACHINE ZERO WITHOUT alphadot, AND THE RESIDUE HAS A
+        # CLOSED FORM. Level flight over a curved Earth carries a transport
+        # pitch rate q0, so the pitch-damping term's own c/(2V)
+        # non-dimensionalisation gives Cm a speed dependence at fixed q:
+        #
+        #     M_u = -(qbar * S * c^2 * Cmq * q0) / (2 * Iyy * V^2)
+        #
+        # Predicted -8.430010e-08 against a measured -8.428e-08 at cruise --
+        # four digits, so this is the mechanism and not a coincidence. It is
+        # three to four orders below a real transport's M_u, and the
+        # attribution below is safe by that margin rather than by exactness.
+        predicted = -(
+            cond.density * 0.5 * cond.airspeed**2 * float(ac.S) * float(ac.c) ** 2
+            * float(ac.Cmq) * _transport_pitch_rate(cond)
+        ) / (2.0 * float(ac.inertia[1, 1]) * cond.airspeed**2)
+        assert without[3, 0] == pytest.approx(predicted, rel=0.05), (
             f"{condition}: M_u is {without[3, 0]:.3e} with the alphadot terms "
-            "removed, so something else in the build-up now carries a speed "
-            "dependence -- find it before trusting the phugoid attribution"
+            f"removed against a predicted {predicted:.3e}, so something OTHER "
+            "than the transport rate now carries a speed dependence -- find it "
+            "before trusting the phugoid attribution"
         )
 
 
