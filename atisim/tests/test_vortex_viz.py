@@ -99,10 +99,26 @@ def pushdown():
 # numbers no longer certify the logging refactor, because they were taken after
 # it. What they still do is hold the rollout arithmetic-exact from here on.
 #
-# **NOT RE-CAPTURED FOR THE ECEF STATE.** See the test below: the value left
-# here is the flat-Earth one, deliberately, so the migration reports the
-# movement rather than absorbing it.
-FIG8_VORTEX = (2.1601976247303707, -1.260600307461945)
+# RE-CAPTURED FOR THE ECEF STATE, session 23, and the movement is recorded
+# rather than absorbed. It was held at the flat-Earth value through the
+# migration itself so the change would be reported; two later repairs then
+# moved it again and it is pinned to the finished plant here.
+#
+#     flat-Earth plant (session 22)   2.1601976247303707 / -1.260600307461945
+#     ECEF under earth.FLAT           2.1599167061613826 / -1.2682378644145114
+#     ECEF under WGS84_J2 (shipped)   2.1606541112315085 / -1.2687103475242378
+#
+# The middle row is what makes the split in the test docstring below readable:
+# geometry alone moves the load coordinate by -7.638e-03 g and rotation with J2
+# by only -4.725e-04, so 94% of that coordinate's movement is the ellipsoid
+# rather than the spin. Nothing about the vortex model changed; what moved is
+# the state the encounter is flown FROM.
+#
+# What this pin is worth is narrower than it looks and was already narrowed once:
+# session 22 recorded that it stopped certifying the logging refactor when it was
+# re-captured after it. It holds the rollout arithmetic-exact from here on, and
+# that is all.
+FIG8_VORTEX = (2.1606541112315085, -1.2687103475242378)
 FIG8_VORTEX_BEFORE_LOGGING = FIG8_VORTEX  # old name, kept for one release
 
 
