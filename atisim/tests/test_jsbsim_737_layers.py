@@ -1251,46 +1251,81 @@ def test_atisim_has_no_aerodynamic_speed_derivative_of_pitching_moment():
     there is no coefficient here that could be adjusted to close it without
     inventing a Mach schedule the source would have to supply.
 
-    **THE MACHINE ZERO IS GONE AND THIS TEST IS EXPECTED TO FAIL. THE 1e-12 IS
-    LEFT ALONE.** The bare M_u is now -1.685792e-07 at cruise and -2.197690e-07
-    at approach, against a machine zero before. The attribution above still
-    stands -- 0.152% and 0.049% of the full M_u respectively, so what carries the
-    phugoid is still the alphadot coupling -- but the residue is real and it is
-    not aerodynamic, so the assertion's own words ("something else in the
-    build-up now carries a speed dependence") would be the wrong conclusion to
-    draw. It is not in the build-up. It is the reference state:
+    **THE MACHINE ZERO IS GONE FOR GOOD, AND WHAT REPLACES IT IS STRONGER.** The
+    assertion below is now a PREDICTION of the bare M_u rather than a claim that
+    it vanishes, because on a curved Earth it does not vanish and cannot be made
+    to. Two separate things were behind the old failure, one a defect and one
+    physics, and only the first was repaired.
 
-      1. `trim.trimmed_state` now carries `transport_rate_body`, because level
-         flight round a curved Earth is a continuous nose-down pitch. Measured
-         q0 = -3.707923e-05 rad/s at cruise, -2.099432e-05 at approach. The trim
-         solves Cm = 0 AT that pitch rate.
-      2. `validation.longitudinal_matrix` linearises at q = 0. So at ITS
-         reference state Cm = -Cmq*q0*c/(2V), not zero.
-      3. d(qdot)/d(vt) then picks up the dynamic-pressure derivative acting on
-         that residual moment: rho*V*S*c*Cm/Iyy. Predicted -1.686002e-07 at
-         cruise and -2.198052e-07 at approach, measured -1.686002e-07 and
-         -2.198052e-07 under `earth.FLAT` -- every digit -- and -1.685792e-07 /
-         -2.197690e-07 under WGS84_J2, where Coriolis moves the trim slightly.
+    THE DEFECT: `validation.longitudinal_matrix` took its Jacobian at `q = 0`
+    while the trim it is handed is an equilibrium only at the transport rate
+    `q0`. Measured, the residual at the point it linearised about was
+    |f(x0)| = 1.105e-03 -- a Jacobian about a state the aeroplane is
+    accelerating away from, which is not a plant matrix. Fixed there rather than
+    here; that function's docstring carries the evidence, and
+    `test_validation.py`'s neutral-point test, which found the same defect by a
+    completely different route, is structurally exact again.
 
-    **IT IS NOT THE EARTH'S ROTATION.** FLAT and WGS84_J2 agree to four digits,
-    and FLAT has Omega = 0; the transport rate is pure ellipsoid geometry and
-    survives it. `test_validation.py`'s neutral-point test finds the SAME defect
-    by a different route -- a structurally exact zero eigenvalue lifting to
-    +7.98e-5 -- and the two together say the trim and the linearisation now
-    disagree about the reference state. Reported as a source question rather
-    than repaired here.
+    THE PHYSICS: level flight round an ellipsoid is a continuous nose-down
+    pitch, so `q_hat = q0*c/(2V)` is not zero and its speed dependence IS an
+    aerodynamic speed derivative of pitching moment. In STABILITY axes the two
+    `Cma` contributions cancel identically -- which is exactly why this test
+    could once assert a machine zero -- and the only survivor is
+
+        M_u = -rho * S * c^2 * Cmq * q0 / (4 * Iyy)
+
+    Measured against that closed form over `earth.FLAT`, where the trim is
+    exactly wings-level:
+
+        cruise     -8.430010e-08 against -8.430010e-08     ratio 1.0000000000
+        approach   -1.099026e-07 against -1.099026e-07     ratio 1.0000000000
+
+    Ten digits, so the term is identified rather than merely bounded. Under the
+    `WGS84_J2` this file actually flies, the ratios are 0.99975 and 0.99967 --
+    the Earth's rotation moves the trim slightly and the closed form is written
+    for the geometry alone. THE rel=2e-3 IS SET AGAINST THAT 3.3e-4 GAP with 6x
+    of margin, and it is nowhere near slack: the reference-state defect above
+    made this quantity exactly TWICE its correct value, which this tolerance
+    rejects by 500x.
+
+    **THE ATTRIBUTION THIS TEST EXISTS FOR IS UNCHANGED AND IS NOW SHARPER.**
+    The bare M_u is 0.0759% of the full one at cruise and 0.0244% at approach,
+    so what carries the phugoid is still the alphadot coupling. And the surviving
+    term contains no Mach number at all -- only rho, the airframe's own constants
+    and the ellipsoid -- so it cannot be a compressibility effect, and there is
+    still no coefficient here that could be tuned to close the layer-3 frequency
+    gap without inventing a Mach schedule the source would have to supply.
     """
     import jax.numpy as jnp
 
+    from atisim import trim
+    from atisim.atmosphere import density
+
     for condition in CASES:
         ac = REGISTRY[CASES[condition][0]]
+        _ref, cond, _trim, _ac = case(condition)
         ati, _js = _longitudinal_pair(ac, condition)
         bare = ac._replace(Cmadot=jnp.array(0.0), CLadot=jnp.array(0.0))
         without, _ = _longitudinal_pair(bare, condition)
         assert abs(ati[3, 0]) > 1e-5, f"{condition}: M_u vanished; the probe is vacuous"
-        assert abs(without[3, 0]) < 1e-12, (
-            f"{condition}: M_u is {without[3, 0]:.3e} with the alphadot terms "
-            "removed, so something else in the build-up now carries a speed "
+
+        # The whole of the bare M_u, predicted from the airframe's own constants
+        # and the ellipsoid -- no fitted quantity anywhere in it.
+        anchor = anchor_for(cond)
+        solution, _ = _atisim_trim(condition)
+        theta0 = float(jnp.arctan(jnp.cos(solution[3]) * jnp.tan(solution[0])))
+        q0 = float(trim.transport_rate_body(
+            jnp.array(cond.airspeed), jnp.array(0.0), jnp.array(0.0),
+            jnp.array(theta0), anchor)[1])
+        predicted = -(
+            float(density(jnp.array(float(anchor.h))))
+            * float(ac.S) * float(ac.c) ** 2 * float(ac.Cmq) * q0
+            / (4.0 * float(ac.inertia[1, 1]))
+        )
+        assert without[3, 0] == pytest.approx(predicted, rel=2e-3), (
+            f"{condition}: bare M_u is {without[3, 0]:.6e} against a predicted "
+            f"{predicted:.6e}. The whole of it should be the transport-rate term; "
+            "a departure means something else in the build-up now carries a speed "
             "dependence -- find it before trusting the phugoid attribution"
         )
 

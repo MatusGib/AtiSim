@@ -59,12 +59,74 @@ def longitudinal_matrix(ac: Aircraft, alpha: float, elevator: float,
     quaternion it carries into the plant is body -> ECEF. Differentiating
     straight through `euler_to_quat` into `State.quat` would have perturbed the
     angle to the equatorial plane instead -- valid arithmetic, wrong angle.
+
+    **THE JACOBIAN IS TAKEN AT `q = q0`, THE TRANSPORT RATE, NOT AT `q = 0`.**
+    A plant matrix is df/dx AT AN EQUILIBRIUM; taken anywhere else it is a
+    statement about a state the system is moving away from. On a curved Earth
+    steady level flight is a continuous nose-down pitch, so the equilibrium
+    `trim` returns has `q = q0 = -V/(M+h)`, and this function used to linearise
+    at `q = 0`. Measured residual at the point each one linearises about, 747
+    approach at 47N over `earth.FLAT`:
+
+        linearisation point                   udot        wdot        |f(x0)|
+        q = 0,  thetadot = q            -1.108e-04   1.099e-03      1.105e-03
+        q = q0, thetadot = q             1.624e-14  -2.058e-13      1.336e-05
+        q = q0, thetadot = q - q0        1.624e-14  -2.058e-13      2.064e-13
+
+    Only the third is an equilibrium, and both halves are needed: `q = q0` makes
+    the three dynamic rows vanish, and the kinematic row has to become the
+    LOCAL-NED pitch rate `q - q0` because `State.omega` is a rate relative to
+    ECEF while `theta` is an angle in a frame that is itself turning at `q0`.
+
+    **WHAT IT WAS COSTING: the neutral point stopped being where det(A) = 0.**
+    At `q = 0` the reference state carries `Cm = -Cmq*q0*c/(2V) = -1.359e-05`
+    rather than zero -- the trim solved `Cm = 0` at `q0`, not at 0 -- and a
+    non-zero `Cm` at the reference puts `rho*u0*Cm*S*c/Iyy` into `A[2,0]`.
+    Measured -1.369798008797381e-07 against a predicted -1.369798008797259e-07.
+    That element is what made `det(A)` structurally zero at `Cma = 0`. Swept
+    through the neutral point:
+
+        Cma      det, q = 0        det, q = q0
+        -0.005   +5.59102e-05      +5.67310e-05
+         0.000   -8.14319e-07       1.57502e-22   <- exact again
+        +0.005   -5.75390e-05      -5.67312e-05
+
+    Symmetric either side of zero once the reference is right, and offset when
+    it is not. The largest real root at `Cma = 0` returns from +7.980423e-05 to
+    -5.567566e-17.
+
+    **This reduces to the old code exactly on a flat Earth**, where `q0 = 0`, so
+    nothing that was right before has moved: the four published approach modes
+    shift by at most 0.008% (phugoid wn 0.13339085 -> 0.13340210), which is three
+    orders inside the tolerance each is asserted to.
+
+    `lateral_modes` is deliberately NOT changed: its reference is an equilibrium
+    of the lateral subsystem either way -- measured `f(x0) = 0` exactly at both
+    `q = 0` and `q = q0`, because the lateral rows are odd in the lateral states
+    -- so it is not linearising about a non-equilibrium and the pitch rate enters
+    only as a parameter, worth 4e-6 relative on the Dutch roll.
     """
+    from atisim.trim import transport_rate_body
+
     u0, w0 = V * np.cos(alpha), V * np.sin(alpha)
     controls = Controls(
         elevator=jnp.array(elevator), aileron=jnp.array(0.0),
         rudder=jnp.array(0.0), throttle=jnp.array(throttle),
     )
+
+    def pitch_transport(speed, theta):
+        """The local frame's OWN pitch rate at this state, in body axes.
+
+        Wings-level and due north, matching the state `f` builds and `trim`'s
+        default heading. This is `trim.transport_rate_body`, not a second copy
+        of the formula, so the equilibrium this linearises about is the one the
+        trim solved for by construction rather than by agreement.
+        """
+        return transport_rate_body(
+            speed, jnp.array(0.0), jnp.array(0.0), theta, anchor
+        )[1]
+
+    q0 = pitch_transport(jnp.array(V), jnp.array(alpha))
 
     def f(x):
         u, w, q, theta = x
@@ -78,9 +140,10 @@ def longitudinal_matrix(ac: Aircraft, alpha: float, elevator: float,
         d = derivatives(
             state, controls, ac, jnp.zeros(3), jnp.zeros(3), anchor, earth_model
         )
-        return jnp.array([d.vel_body[0], d.vel_body[2], d.omega[1], q])
+        thetadot = q - pitch_transport(jnp.sqrt(u * u + w * w), theta)
+        return jnp.array([d.vel_body[0], d.vel_body[2], d.omega[1], thetadot])
 
-    return np.asarray(jax.jacfwd(f)(jnp.array([u0, w0, 0.0, alpha])))
+    return np.asarray(jax.jacfwd(f)(jnp.array([u0, w0, q0, alpha])))
 
 
 def to_stability_axes(A, alpha):
@@ -116,16 +179,31 @@ def to_imperial_matrix(A):
         A[1,3]  m/s^2   -> ft/s^2    (dw_dot/dtheta)
         A[2,0]  1/(m.s) -> 1/(ft.s)  (dq_dot/du)
         A[2,1]  1/(m.s) -> 1/(ft.s)  (dq_dot/dw)
+        A[3,0]  1/(m.s) -> 1/(ft.s)  (dtheta_dot/du)
+        A[3,1]  1/(m.s) -> 1/(ft.s)  (dtheta_dot/dw)
 
-    All six are converted, not only the four that a published comparison happens
-    to exercise: A[0,2] and A[1,3] compare against zeros in the tests and would
-    fail nothing, but the notebook prints a per-element difference column and an
-    incomplete conversion would mislead there.
+    All eight are converted, not only the four that a published comparison
+    happens to exercise: A[0,2] and A[1,3] compare against zeros in the tests
+    and would fail nothing, but the notebook prints a per-element difference
+    column and an incomplete conversion would mislead there.
+
+    **THE LAST TWO WERE MISSING AND IT WAS INVISIBLE UNTIL THE THETA ROW STOPPED
+    BEING [0, 0, 1, 0].** This function is a diagonal similarity transform,
+    `D A D^-1` with `D = diag(1/FT2M, 1/FT2M, 1, 1)`, so it must leave the
+    eigenvalues alone -- which is the whole basis for comparing a mode computed
+    here against a published one. With `A[3,0]` and `A[3,1]` left unconverted
+    that identity holds only while they are ZERO, which they were for as long as
+    `thetadot = q` exactly. On a curved Earth `thetadot = q - q0(u, w, theta)`,
+    those elements became 1.56e-07 and 1.26e-08, and the transform silently
+    stopped preserving the spectrum: measured, the 747 cruise phugoid moved
+    5.7e-04 relative between the SI and imperial forms of the same matrix.
+    Caught by `test_audit_regression.py`'s alphadot attribution, which compares
+    one against the other and asserts they agree to rel=1e-6.
     """
     out = np.array(A, dtype=float, copy=True)
     for i, j in ((0, 2), (0, 3), (1, 2), (1, 3)):
         out[i, j] /= FT2M
-    for i, j in ((2, 0), (2, 1)):
+    for i, j in ((2, 0), (2, 1), (3, 0), (3, 1)):
         out[i, j] *= FT2M
     return out
 

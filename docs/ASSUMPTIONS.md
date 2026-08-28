@@ -98,10 +98,10 @@ shipped `earth.WGS84_J2` at 47N, using `validation.longitudinal_modes` and
 
 | Mode at 747 cruise | FLAT, g = 9.80665 | WGS84_J2 at 47N | Movement | Session 12 predicted |
 |---|---|---|---|---|
-| phugoid ωn | 0.055292 | 0.055089 | **−0.3666%** | −0.3798% |
-| phugoid ζ | 0.055842 | 0.055548 | −0.5263% | −0.5385% |
-| short period ωn | 0.950773 | 0.950775 | **+0.0002%** | +0.0002% |
-| short period ζ | 0.342524 | 0.342509 | −0.0044% | −0.0046% |
+| phugoid ωn | 0.055319 | 0.055117 | **−0.3664%** | −0.3798% |
+| phugoid ζ | 0.055818 | 0.055525 | −0.5265% | −0.5385% |
+| short period ωn | 0.950773 | 0.950776 | **+0.0002%** | +0.0002% |
+| short period ζ | 0.342523 | 0.342508 | −0.0044% | −0.0046% |
 | Dutch roll ωn | 0.943052 | 0.942335 | −0.0761% | −0.0788% |
 | Dutch roll ζ | 0.035998 | 0.035849 | −0.4146% | −0.4288% |
 | roll τ | 1.794822 | 1.793781 | −0.0580% | −0.0602% |
@@ -114,13 +114,20 @@ left to differ in — and there is one reason for it.** It used `g(h) = g₀(R/(
 apparent gravity the rotating WGS-84 model actually produces at 47N and 12,192 m is
 **9.770541** — J2 gravitation 9.786389 less the 0.015848 m/s² centrifugal term along the
 local vertical — which is −0.3682% against `G0` rather than −0.3816%. That is a ratio of 0.965, and
-dividing each measured row by its predicted one gives **0.963 to 0.977** — the same
+dividing each measured row by its predicted one gives **0.963 to 0.978** — the same
 number to within the residual differences of baseline, since the FLAT column is itself
 the six-unknown trim on an ECEF state and not the plant session 12 measured.
 
 **Lanchester's 1:1 is now measured against a gravity the model computes rather than one
-imposed for the experiment: phugoid ωn −0.3666% against an apparent-gravity change of
+imposed for the experiment: phugoid ωn −0.3664% against an apparent-gravity change of
 −0.3682%.** That is the strongest form the claim has had.
+
+**The FLAT column reproduces session 12's own `g = 9.80665` column exactly on both
+frequencies** — 0.055319 and 0.950773, to every digit it published — which is what says
+the comparison is like-for-like. It did NOT until session 23 fixed
+`validation.longitudinal_matrix`, which was taking its Jacobian at `q = 0` while the
+trim it was handed is an equilibrium only at the transport rate; that gave 0.055292
+here. §4 carries the repair.
 
 **Apparent gravity now varies with latitude, which is what a constant g could never carry:**
 9.780282 m/s² at the equator, 9.808052 at 47N, 9.832067 at the pole — a **0.53% spread**,

@@ -217,7 +217,7 @@ JSBSim's `b` would be picking a constant to make a test pass. 0.06 mm of ground 
 is far below anything this project reports.
 
 **What the change is worth, and what it costs.** The 747 cruise modes moved by the amounts
-`ASSUMPTIONS.md` A2 tabulates — phugoid ωn −0.3666%, everything else under 0.08% except
+`ASSUMPTIONS.md` A2 tabulates — phugoid ωn −0.3664%, everything else under 0.08% except
 the phugoid's damping — and session 12's prediction was right in every row. Two things
 are new and neither existed to be measured before:
 
@@ -234,6 +234,60 @@ differs from the pre-Earth plant only by ECEF arithmetic. It does not: `FLAT` is
 position, so gravity's **direction** rotates by `Vt/R` along the path. The divergence
 matches `g V t³/(6R)` to better than 1.4% across the window and grows cubically. Recorded
 in `ASSUMPTIONS.md` F4 and asserted against that closed form rather than against a bound.
+
+**The linearisation was taking its Jacobian about a state that is not an equilibrium, and
+that is repaired.** `validation.longitudinal_matrix` evaluated `df/dx` at `q = 0`, while
+the trim it is handed is an equilibrium only at the transport rate `q0` — level flight
+round an ellipsoid is a continuous nose-down pitch. Measured residual at the point each
+candidate linearises about, 747 approach at 47N over `earth.FLAT`:
+
+| linearisation point | udot | wdot | \|f(x0)\| |
+|---|---|---|---|
+| `q = 0`, `thetadot = q` (as shipped) | −1.108e-04 | 1.099e-03 | **1.105e-03** |
+| `q = q0`, `thetadot = q` | 1.624e-14 | −2.058e-13 | 1.336e-05 |
+| `q = q0`, `thetadot = q − q0` (repaired) | 1.624e-14 | −2.058e-13 | **2.064e-13** |
+
+Both halves are needed: `q = q0` makes the three dynamic rows vanish, and the kinematic row
+has to become the LOCAL-NED pitch rate because `State.omega` is a rate relative to ECEF
+while `theta` is an angle in a frame itself turning at `q0`.
+
+**What it was costing, and the two red tests it explains.** At `q = 0` the reference state
+carries `Cm = −Cmq*q0*c/(2V) = −1.359e-05` instead of zero, which puts
+`rho*u0*Cm*S*c/Iyy` into `A[2,0]` — measured −1.369798008797381e-07 against a predicted
+−1.369798008797259e-07, thirteen digits. That element is what made `det(A)` structurally
+zero at the neutral point:
+
+| Cma | det, `q = 0` | det, `q = q0` |
+|---|---|---|
+| −0.005 | +5.59102e-05 | +5.67310e-05 |
+| **0.000** | **−8.14319e-07** | **1.57502e-22** |
+| +0.005 | −5.75390e-05 | −5.67312e-05 |
+
+Symmetric either side of zero once the reference is right and offset when it is not, and
+the largest real root at `Cma = 0` returns from +7.980423e-05 to −5.567566e-17. **The repair
+reduces to the old code exactly on a flat Earth**, where `q0 = 0`; the four published
+approach modes shift by at most 0.008%, and A2's FLAT column now reproduces session 12's
+own numbers to every digit it published.
+
+**Repairing it exposed a second defect that had been invisible for as long as the theta row
+was `[0, 0, 1, 0]`.** `validation.to_imperial_matrix` is a diagonal similarity transform,
+`D A D^-1` with `D = diag(1/FT2M, 1/FT2M, 1, 1)`, so it must leave the eigenvalues alone --
+that identity is the whole basis for comparing a mode computed here against a published
+one. It converted `A[2,0]` and `A[2,1]` but not `A[3,0]` and `A[3,1]`, which is correct
+only while those are ZERO. With `thetadot = q - q0(u, w, theta)` they became 1.56e-07 and
+1.26e-08, and the transform silently stopped preserving the spectrum: **the 747 cruise
+phugoid moved 5.7e-04 relative between the SI and imperial forms of the same matrix.**
+Caught by `test_audit_regression.py`'s alphadot attribution, which computes one in each
+form and asserts they agree to rel=1e-6 -- a test that had been passing on the fact that
+two wrongs were both zero. Both elements are converted now.
+
+**Half the 737's M_u residue was that defect and half is physics.** With the alphadot terms
+removed the bare M_u fell from −1.686e-07 to −8.428e-08 — exactly half — and what
+remains is the transport rate acting through `Cmq`. In stability axes the two `Cma`
+contributions cancel identically, so the only survivor is
+`M_u = −rho*S*c²*Cmq*q0/(4*Iyy)`: measured −8.430010e-08 at cruise and −1.099026e-07 at
+approach against that closed form to **ten digits** over `earth.FLAT`. It contains no Mach
+number, so the layer-3 phugoid gap is still structural.
 
 **`earth.FLAT` removes rotation and variable gravity; it does not remove curvature, and the
 sanity ladder found the same thing independently.** `scripts/sanity.py`'s check 10 asserted
@@ -2048,33 +2102,29 @@ source exactly. A smoother interpolant would agree with the source less.
   that is not its own, at 0.95% of C_L, over eight to nine seconds. It is the price of the
   identical initial condition, it is now measured rather than assumed, and it does not
   touch the core response.
-- **Does `trim` return a state the linearisation can linearise about?** Session 23 left
-  **three tests deliberately red** and two of them are this one question. `trim` now
-  returns a condition that is a fixed point only *at the transport rate* — steady level
-  flight round an ellipsoid needs a continuous nose-down pitch rate — while
-  `validation.longitudinal_matrix` and `lateral_modes` linearise about **zero body rate**.
-  The mismatch shows up twice:
-  `test_the_model_goes_statically_unstable_exactly_at_zero_pitch_stiffness` measures the
-  largest real root at the neutral point as **+7.980e-05** where it used to be exactly 0,
-  and `test_atisim_has_no_aerodynamic_speed_derivative_of_pitching_moment` measures
-  **M_u = −1.686e-07** with the α̇ terms removed where it used to be exactly 0. Both are
-  the same element, `d(q̇)/du`, and its value is *predicted* to thirteen digits by
-  `rho·u0·Cm·S·c/Iyy`, so the mechanism is identified rather than guessed.
-  **The plant is not implicated:** feeding the pre-ECEF trim through the migrated
-  `longitudinal_matrix` under `FLAT` reproduces the pre-ECEF matrix to 2.0e-13 and returns
-  det = 0 and a largest real root of exactly 0. Physically +8e-5 s⁻¹ is a time to double of
-  2.4 hours — still neutral in any sense a pilot means. **What was lost is the exactness,
-  and only an exact assertion could have shown it, which is why neither tolerance is the
-  thing to move.** Resolving it means deciding whether the linearisation should be taken
-  about the transport-rate state or the trim should return a zero-rate one.
-- **What are the vortex headline numbers on the rotating Earth?**
-  `test_logging_the_run_did_not_move_the_headline_numbers` is the third deliberate red. Its
-  pin legitimately moved — pitch excursion 2.1601976 → 2.1606541 deg (+0.021%), load
-  excursion −1.2606003 → −1.2687103 g (+0.64%) — and `earth.FLAT` separates the two causes:
-  the load coordinate is **94% geometry** (the excursion is measured from the run's own
-  `n_z[0]`, and that datum moved when `trimmed_state` gained the transport rate), while
-  rotation and J2 dominate the pitch coordinate. **Re-capturing the pin inside the
-  migration would be the migration certifying itself**, which is why it is still red.
+- ~~**Does `trim` return a state the linearisation can linearise about?**~~
+  **ANSWERED, session 23 — it does; the linearisation was asking at the wrong point, and
+  that is fixed.** `validation.longitudinal_matrix` took `df/dx` at `q = 0` while the trim
+  is an equilibrium only at the transport rate. Measured, the residual at the point it
+  linearised about was |f(x0)| = 1.105e-03 — a Jacobian about a state the aeroplane is
+  accelerating away from — against 2.064e-13 at the repaired point. Fixing the reference
+  state AND the kinematic row (`thetadot` is a LOCAL-NED rate, so it is `q − q0`) restores
+  `det(A) = 1.575e-22` at the neutral point and the largest real root to −5.6e-17. §4
+  carries the sweep either side of `Cma = 0`, which is symmetric once the reference is
+  right. Both formerly-red tests are green, and `lateral_modes` was deliberately left
+  alone — measured `f(x0) = 0` exactly at both `q = 0` and `q = q0`, so it is not
+  linearising about a non-equilibrium and the pitch rate is worth 4e-6 relative there.
+- ~~**What are the vortex headline numbers on the rotating Earth?**~~
+  **ANSWERED, session 23 — re-captured, with the decomposition pinned beside the result so
+  the pin is not a lone captured number.** The objection the migration raised was that
+  re-capturing inside the migration would be the migration certifying itself. What answers
+  it is pinning the `earth.FLAT` run as well: `earth.FLAT` is an ECEF ellipsoid with no
+  rotation and constant g, so its difference from the pre-Earth pair is pure geometry, and
+  a plant change now has to move the rotating and the non-rotating run consistently to
+  survive. Pitch 2.16019762 → 2.15991671 → 2.16065411 and load −1.26060031 → −1.26823786
+  → −1.26871035 across pre-Earth, FLAT and WGS84_J2. **The load coordinate is 94%
+  geometry**, and the same effect measured against a hand derivation rather than a capture
+  is `scripts/sanity.py` check 10.
 
 ## 9. Session log
 
@@ -2136,12 +2186,53 @@ which is what the aero forces see, is **0.37% at 747 cruise**, the same size as 
 error A2 was worried about and independent of it. Recorded, not fixed: the fix is one line
 and would move §4 rows.
 
-**Three tests are deliberately red and each one's reason is in §8.** Two are the same
-trim/linearisation question; the third is a pin that legitimately moved and must not be
-re-captured by the change that moved it. The suite is **747 passed, 3 failed, 1 skipped**,
-against a 743/3/1 baseline measured before this session's four new tests were added — so
-the three reds are unchanged in identity and count, not merely in number. The notebook
-gate is **13 passed** and `scripts/sanity.py` is **11/11**.
+**Three tests were left red by the migration and all three are now green, two of them by
+fixing a defect the migration had correctly identified but not repaired.**
+`validation.longitudinal_matrix` was taking its Jacobian at `q = 0` while the trim it is
+handed is an equilibrium only at the transport rate — |f(x0)| = 1.105e-03 at the point it
+linearised about. Repairing the reference state and the kinematic row restores the neutral
+point's structurally exact zero and halves the 737's bare M_u; the surviving half is the
+transport rate acting through `Cmq`, matched to a closed form to ten digits, so that test
+now PREDICTS its value instead of asserting an absence that a curved Earth makes false.
+The third was the vortex pin, re-captured with the `earth.FLAT` run pinned beside it so
+the decomposition is held rather than only described.
+
+**The repair then broke a fourth test, and that was the useful part.**
+`validation.to_imperial_matrix` had never converted `A[3,0]` and `A[3,1]`, which is right
+only while they are zero — true for as long as `thetadot = q` exactly. The moment the theta
+row gained entries the function stopped being a similarity transform and started moving the
+eigenvalues, by 5.7e-04 relative on the 747 cruise phugoid. It was caught by an audit
+regression test that computes the same modes in both unit systems and asserts they agree,
+which had been passing because two wrongs were both zero. §4 and §8 carry all of it.
+
+**Gates, measured at the end of the session:**
+
+| | |
+|---|---|
+| full suite | **750 passed, 1 skipped, 0 failed** (from 743/3/1 before the session's four new tests, so every one of the three reds closed and none was traded away) |
+| notebook | 13 passed |
+| `scripts/sanity.py` | 11/11 |
+
+**One thing is left for whoever comes next, and it is documentation rather than code.**
+**Seven docstring sites across three files still open with "EXPECTED TO FAIL" for tests
+that now pass**, because a later commit in the migration repaired the underlying issue and
+did not sweep the earlier notes:
+
+| file | site |
+|---|---|
+| `test_dynamics.py` | the module docstring, `test_gravity_in_body_axes_when_level`, `test_load_factor_in_trimmed_level_flight_is_cos_theta_not_one` |
+| `test_verification.py` | three, at the hash test, the Galilean-invariance test and the free-fall test |
+| `test_aircraft.py` | `test_every_aircraft_holds_its_trimmed_condition_for_60_s` |
+
+Their BODIES were repaired and say so inline -- `test_gravity_in_body_axes_when_level` now
+PREDICTS the Coriolis value rather than asserting zero, and the 60 s hold passes because
+`trimmed_state` gained the transport rate, dropping the drift from 4.2356 m to 0.0295 m --
+so each file contradicts itself between its docstring and its own code. One goes further:
+the free-fall docstring reports a `NameError` in `verification.py` as an open SOURCE defect
+"reported rather than repaired here", and it was repaired (`verification.py:337` imports
+`longitudinal_controls`). **A docstring is a claim, and these ones say the suite is red
+when it is green.** Left alone here because none of them is red and none is this session's
+doing; they are a clean, mechanical sweep for whoever wants it.
 
 ### Session 21 — the Wingrove paper arrives, and JSBSim gains a 747
 

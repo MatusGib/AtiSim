@@ -365,46 +365,50 @@ def test_the_model_goes_statically_unstable_exactly_at_zero_pitch_stiffness():
     largest real part is 0.00000 at Cm_alpha = 0 and +0.0475 at +0.1. Nothing was
     tuned to make that land on zero -- it falls out of the derivative chain.
 
-    **THE EXACT ZERO IS GONE AND THIS TEST IS EXPECTED TO FAIL. THE abs=1e-6 IS
-    LEFT ALONE.** It is the only test in this file sharp enough to see the
-    change, and what it sees is worth keeping visible.
+    **THE EXACT ZERO WENT AND HAS BEEN RESTORED. THE abs=1e-6 WAS NEVER
+    TOUCHED.** For one session this test was red at +7.980423e-05, and leaving
+    the tolerance alone is what kept the defect visible until it was found. It
+    was not the Earth's rotation: FLAT and WGS84_J2 agreed to four digits, and a
+    latitude sweep under FLAT gave 8.02e-5 at the equator against 7.94e-5 at
+    89N -- a 1% spread on a quantity that would vanish with Omega.
 
-        largest real root at Cma = 0     was  0.000000e+00 (det exactly 0.0)
-        earth.FLAT                       now +7.980423e-05
-        WGS84_J2                         now +7.976367e-05
-
-    **IT IS NOT THE EARTH'S ROTATION.** FLAT and WGS84_J2 agree to four digits,
-    and a latitude sweep under FLAT gives 8.02e-5 at the equator, 7.98e-5 at 47N
-    and 7.94e-5 at 89N -- a 1% spread on a quantity that would go to zero with
-    Omega. It is the ELLIPSOID, through the TRANSPORT RATE, and the chain is
+    **IT WAS THE LINEARISATION ASKING AT THE WRONG POINT**, and the chain is
     exact rather than attributed:
 
-      1. `trim.trimmed_state` now carries `transport_rate_body`, because steady
-         level flight round a curved Earth is a continuous nose-down pitch.
-         Here q0 = -1.3356e-05 rad/s. The trim solves Cm = 0 AT that pitch rate.
-      2. `validation.longitudinal_matrix` linearises at q = 0, not at q = q0.
-         So at ITS reference state Cm = -Cmq*q0*c/(2V) = -1.3591e-05, not zero.
-      3. A non-zero Cm at the reference state puts
-         d(qdot)/du = rho*u0*Cm*S*c/Iyy into A[2,0]. Predicted
-         -1.3697980087972592e-07, measured -1.369798008797381e-07 -- thirteen
-         digits, so the mechanism is identified and not merely plausible.
-      4. That element is exactly what made det(A) structurally zero. det moves
-         from 0.0 to -8.1432e-07 and the zero root lifts to +7.98e-5.
+      1. `trim.trimmed_state` carries `transport_rate_body`, because steady level
+         flight round a curved Earth is a continuous nose-down pitch. Here
+         q0 = -1.3356e-05 rad/s, and the trim solves Cm = 0 AT that pitch rate.
+      2. `validation.longitudinal_matrix` linearised at q = 0, so at ITS
+         reference state Cm = -Cmq*q0*c/(2V) = -1.359116e-05, not zero. The
+         residual at that point was |f(x0)| = 1.105e-03 -- a Jacobian about a
+         state the aeroplane is accelerating away from, which is not a plant
+         matrix at all.
+      3. A non-zero Cm there puts d(qdot)/du = rho*u0*Cm*S*c/Iyy into A[2,0]:
+         predicted -1.369798008797259e-07, measured -1.369798008797381e-07,
+         thirteen digits.
+      4. That element is exactly what made det(A) structurally zero, and it is
+         why the zero root lifted.
 
-    **THE LINEARISATION ITSELF DID NOT MOVE.** Feeding the PRE-ECEF trim
-    (alpha 5.571570 deg, elevator 0.00210771, throttle 0.295810) through the
-    migrated `longitudinal_matrix` under FLAT reproduces the pre-ECEF matrix to
-    2.0e-13 and returns det = 0.0 and a largest real root of exactly 0.0. So
-    `state_from_ned` and FLAT's local-vertical gravity are the same arithmetic
-    the flat plant did, and this is a TRIM/reference-state mismatch, not a plant
-    defect. Reported as a probable source question: `longitudinal_matrix` and
-    `lateral_modes` linearise about zero body rate while `trim` now returns a
-    condition that is only a fixed point at the transport rate.
+    **THE REPAIR IS IN `longitudinal_matrix` AND HAS TWO HALVES**, both needed:
+    evaluate at q = q0, and make the kinematic row the LOCAL-NED pitch rate
+    q - q0, since `State.omega` is relative to ECEF while theta is an angle in a
+    frame itself turning at q0. Residual at the repaired point: 2.064e-13.
+    Swept through the neutral point, det is symmetric either side of zero once
+    the reference is right and offset when it is not:
 
-    Physically the root is +8e-5 s^-1, a time to double of about 2.4 hours, so
-    the aeroplane is still neutrally stable in every sense a pilot could mean.
-    What has gone is the EXACTNESS, and only an exact assertion could have shown
-    that -- which is why the tolerance is not the thing to move.
+        Cma       det, q = 0        det, q = q0
+        -0.005    +5.59102e-05      +5.67310e-05
+         0.000    -8.14319e-07       1.57502e-22
+        +0.005    -5.75390e-05      -5.67312e-05
+
+    It reduces to the old code exactly on a flat Earth, where q0 = 0, so nothing
+    that was right before moved: the four published approach modes shift by at
+    most 0.008%, and ASSUMPTIONS.md A2's FLAT column now reproduces session 12's
+    own published figures to every digit.
+
+    `test_jsbsim_737_layers.py` found the same defect by a completely different
+    route -- half its bare M_u was this, and the surviving half is the transport
+    rate acting through Cmq, matched to a closed form to ten digits.
     """
     ac, _, _, _, _ = _approach_trim()
 

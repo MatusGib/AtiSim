@@ -36,14 +36,14 @@ _HANNIBAL = wind.PARKS_CASES["hannibal"]
 R0, V0, SPACING = _HANNIBAL["r0"], _HANNIBAL["v0"], _HANNIBAL["spacing"]
 
 
-def _encounter(lead_in=40.0):
+def _encounter(lead_in=40.0, earth_model=EARTH):
     array = wind.VortexArray(
         north=jnp.array([0.0, SPACING]), down=jnp.array([0.0, 0.0]),
         r0=jnp.array(R0), v0=jnp.array(V0),
     )
     lead = lead_in * R0
     return vortex_viz.fly(
-        AC, lambda p: wind.vortex_wind(p, array), V, H, ANCHOR, EARTH,
+        AC, lambda p: wind.vortex_wind(p, array), V, H, ANCHOR, earth_model,
         label="vortex", start_north=-lead,
         seconds=(SPACING + lead + 6.0 * R0) / V, dt=0.01,
         window=(-R0, R0), window_name="first core",
@@ -99,48 +99,62 @@ def pushdown():
 # numbers no longer certify the logging refactor, because they were taken after
 # it. What they still do is hold the rollout arithmetic-exact from here on.
 #
-# **NOT RE-CAPTURED FOR THE ECEF STATE.** See the test below: the value left
-# here is the flat-Earth one, deliberately, so the migration reports the
-# movement rather than absorbing it.
-FIG8_VORTEX = (2.1601976247303707, -1.260600307461945)
-FIG8_VORTEX_BEFORE_LOGGING = FIG8_VORTEX  # old name, kept for one release
+# **RE-CAPTURED SESSION 23 FOR THE ECEF STATE**, for the same reason session 22
+# re-captured it: the encounter itself changed, so a pin taken on the old plant
+# could only ever fail. The pre-Earth pair is kept beside it, and so is the
+# `earth.FLAT` pair, because two pins that must move together are a much harder
+# thing to satisfy by accident than one -- see the test.
+FIG8_VORTEX = (2.1606541112315085, -1.2687103475242378)
+FIG8_VORTEX_OVER_FLAT = (2.1599167061613826, -1.2682378644145114)
+FIG8_VORTEX_PRE_EARTH = (2.1601976247303707, -1.260600307461945)
 
 
-def test_logging_the_run_did_not_move_the_headline_numbers(encounter):
-    """Exact equality, not a tolerance.
+def test_the_fig8_vortex_point_is_bit_exact_and_its_move_decomposes(encounter):
+    """Exact equality, not a tolerance, on TWO pins that have to agree.
 
-    `fly` now uses `integrate.logged_rollout` so a run can be written to an
-    artifact with the wind it actually flew. That is the same `step` scanned with
-    a wider output, so the claim is arithmetic-neutrality, and any tolerance
-    admits a change that was not.
+    **WHAT THIS TEST IS FOR CHANGED IN SESSION 23, AND THE OLD PURPOSE IS NOW
+    SOMEONE ELSE'S.** It was written as the guard on `fly` switching from
+    `integrate.rollout` to `logged_rollout`, and its name said so. That claim is
+    asserted directly, bit-for-bit and on the state itself, by
+    `test_integrate.py::test_logged_rollout_gives_the_same_states_as_rollout` --
+    with a spatial wind field and no dependence on which Earth is underneath. The
+    preamble above already noted these numbers stopped certifying the logging
+    refactor when session 22 re-captured them. So the name was the last thing
+    still claiming it, and it has gone.
 
-    **THIS TEST IS EXPECTED TO FAIL, AND THE PIN ABOVE IS LEFT ALONE ON
-    PURPOSE.** The ECEF state IS a change to the rollout -- a stated physical one
-    -- so this pin legitimately moves, and re-capturing it inside the migration
-    would be the migration certifying itself. Migrated mechanically, left red,
-    and measured so the re-capture has numbers:
+    What the pin is FOR is holding PROJECT.md section 4's two Fig. 8 vortex
+    coordinates arithmetic-exact from here on.
 
-        quantity                 flat Earth (pinned)   WGS84_J2 (now)
-        pitch excursion  deg     2.1601976247303707    2.1606541112315085
-        load excursion   g      -1.260600307461945    -1.2687103475242378
+    **RE-CAPTURED FOR THE ECEF STATE, WHICH THE MIGRATION DELIBERATELY DID NOT
+    DO.** Its reason was that re-capturing inside the migration would be the
+    migration certifying itself, and that was right. What answers it is not a
+    later session doing the same capture, but pinning the DECOMPOSITION as well
+    as the result, so the number cannot move alone:
 
-    +0.021% and +0.64%: the same encounter over a different plant, which is the
-    right order for a 40 r0 traverse whose response is set by the vortex.
+        quantity                pre-Earth      earth.FLAT      WGS84_J2
+        pitch excursion  deg   2.16019762     2.15991671     2.16065411
+        load excursion   g    -1.26060031    -1.26823786    -1.26871035
 
-    The two coordinates move for different reasons, and `earth.FLAT` -- an ECEF
-    ellipsoid with no rotation and constant g -- separates them. It gives
-    2.1599167061613826 / -1.2682378644145114, so:
+        pitch   geometry -2.809e-04 deg    rotation and J2 +7.374e-04 deg
+        load    geometry -7.638e-03 g      rotation and J2 -4.725e-04 g
 
-        pitch  geometry -2.81e-4 deg, rotation and J2 +7.37e-4 deg
-        load   geometry -7.64e-3 g,   rotation and J2 -4.72e-4 g
+    `earth.FLAT` is what separates the two causes -- an ECEF ellipsoid with no
+    rotation and constant g, so the difference from the pre-Earth pair is pure
+    GEOMETRY. **The load coordinate is 94% geometry**, because `fig8_point`
+    measures its excursion from the run's own `n_z[0]` and level flight round an
+    ellipsoid needs the nose-down transport rate `trim.trimmed_state` now
+    carries: the datum moved, not only the peak. The same effect, measured
+    against a hand derivation rather than a capture, is `scripts/sanity.py`
+    check 10 -- trimmed `n_z` is `cos(alpha)*(1 - V^2/(g(M+h)))`, not
+    `cos(alpha)`. Rotation and J2 dominate the pitch coordinate instead, and
+    even there they are 3.4e-4 of it.
 
-    The load coordinate is 94% GEOMETRY. `fig8_point` measures the excursion
-    from the run's own `n_z[0]`, and level flight round an ellipsoid needs the
-    nose-down transport rate `trim.trimmed_state` now carries -- so the point the
-    excursion is measured from moved, not just the peak. Rotation and J2 dominate
-    the pitch coordinate instead, and even there they are 3.4e-4 of it.
+    Both pins are exact and both must hold. A change that moved the plant would
+    have to move the rotating and the non-rotating run consistently to survive,
+    which no accident does.
     """
-    assert vortex_viz.fig8_point(encounter) == FIG8_VORTEX_BEFORE_LOGGING
+    assert vortex_viz.fig8_point(encounter) == FIG8_VORTEX
+    assert vortex_viz.fig8_point(_encounter(earth_model=earth.FLAT)) ==         FIG8_VORTEX_OVER_FLAT
 
 
 def test_a_flown_encounter_carries_the_run_it_flew(encounter):
