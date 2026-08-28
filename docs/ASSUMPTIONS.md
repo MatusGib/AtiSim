@@ -989,6 +989,27 @@ difference of two trajectories at altitude.** It is why the order-of-accuracy wi
 at dt = 1/32. Any future convergence study must check it is above the floor before
 believing its own slope.
 
+**RE-MEASURED session 23, for the ECEF state, and the ceiling did NOT drop.** This was the
+risk the design named before writing any code: an absolute ECEF coordinate is ~6.4e6 m, so
+its ulp is 512× coarser than a 12 km altitude's, and the floor would have gone with it.
+Measured on the 747 at 47°N and 12,192 m:
+
+| | |
+|---|---|
+| ulp of an **absolute** ECEF coordinate | 9.313e-10 m |
+| ulp of the old `pos_ned` altitude | 1.819e-12 m |
+| **ulp of the stored `pos_ecef` OFFSET** | **2.220e-16 m** |
+
+**That is what storing position as an offset from the run anchor bought**, and it is the one
+deliberate deviation from JSBSim's `FGPropagate` (A1b). The absolute coordinate is formed
+only where gravity and geodesy need it, where 9.3e-10 m does not matter; the quantity that
+accumulates over a run never carries it.
+
+Empirically, perturbing the initial position by 1e-9 m and flying 20 s moves the trajectory
+by **7.314e-10 m** — an amplification of **0.7×**, so the perturbation decays rather than
+grows. The pre-existing 7e-11 m discretisation floor is therefore unchanged in kind, and the
+dt = 1/32 window still stands for the same reason it always did.
+
 ### F5. The strip integral at the shipped station count returns 82.6% of its own calibration
 
 **Where:** `airframe.N_SPAN = 9`, which is what `loads.strip_model` builds.
