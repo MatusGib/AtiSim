@@ -97,6 +97,16 @@ IX5_FC9_DENOM = dict(phugoid_zeta=0.0489, phugoid_wn=0.0673,
 
 B747 = REGISTRY["boeing747"]
 B747PA = REGISTRY["boeing747_approach"]
+
+
+def _flat_anchor(altitude):
+    """An anchor at 47N and the given altitude, for the flat-Earth comparisons.
+
+    `trim.trimmed_state` places the aircraft AT the anchor, so the anchor's
+    altitude IS the trim altitude and one module-level anchor will not do for a
+    file that trims at cruise, at approach and in a Cherokee.
+    """
+    return earth.anchor_at(np.radians(47.0), 0.0, altitude)
 G = 32.174  # ft/s^2, the value CR-2144's own arithmetic uses
 
 
@@ -332,8 +342,13 @@ def test_the_appendix_a_W0_omission_stays_within_its_measured_bound(name, expect
 
 def _cruise_modes():
     V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
-    x, _ = trim(jnp.array(V), jnp.array(H), B747)
-    A = longitudinal_matrix(B747, float(x[0]), float(x[1]), float(x[2]), V, H)
+    # earth.FLAT: this compares a LINEARISED MODE against a published table, and
+    # those tables are flat-Earth linearisations. `validation.py` says the same
+    # in its own comment. WGS84_J2 would fold the Coriolis bank and the
+    # transport rate into a number the source computed without either.
+    x, _ = trim(jnp.array(V), jnp.array(H), B747, _flat_anchor(H), earth.FLAT)
+    A = longitudinal_matrix(B747, float(x[0]), float(x[1]), float(x[2]), V, H,
+                            _flat_anchor(H), earth.FLAT)
     ev = np.linalg.eigvals(A)
     osc = sorted((abs(l), -l.real / abs(l)) for l in ev if l.imag > 1e-9)
     return dict(phugoid_wn=osc[0][0], phugoid_zeta=osc[0][1],
@@ -427,9 +442,10 @@ def _patched_engine_modes(speed, alphadot):
     Patching the engine's own matrix closes that gap.
     """
     V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
-    x, _ = trim(jnp.array(V), jnp.array(H), B747)
+    x, _ = trim(jnp.array(V), jnp.array(H), B747, _flat_anchor(H), earth.FLAT)
     A = to_imperial_matrix(longitudinal_matrix(
-        B747, float(x[0]), float(x[1]), float(x[2]), V, H))
+        B747, float(x[0]), float(x[1]), float(x[2]), V, H,
+        _flat_anchor(H), earth.FLAT))
     if speed:
         A[0, 0], A[1, 0], A[2, 0] = IX4_FC9["Xu"], IX4_FC9["Zu"], IX4_FC9["Mu"]
     if alphadot:
@@ -513,10 +529,11 @@ def test_the_engine_carries_an_Xq_that_cr2144_does_not_model():
     element is non-zero.
     """
     V, H = CRUISE["boeing747_approach"]["airspeed"], CRUISE["boeing747_approach"]["altitude"]
-    x, _ = trim(jnp.array(V), jnp.array(H), B747PA)
+    x, _ = trim(jnp.array(V), jnp.array(H), B747PA, _flat_anchor(H), earth.FLAT)
     a = float(x[0])
     A = to_imperial_matrix(to_stability_axes(
-        longitudinal_matrix(B747PA, a, float(x[1]), float(x[2]), V, H), a))
+        longitudinal_matrix(B747PA, a, float(x[1]), float(x[2]), V, H,
+                            _flat_anchor(H), earth.FLAT), a))
     rho = float(density(jnp.array(H)))
     qbar = 0.5 * rho * V * V
     CL = float(B747PA.mass) * 9.80665 / (qbar * float(B747PA.S))
@@ -866,9 +883,10 @@ def test_lateral_modes_orders_roll_and_spiral_by_speed_not_by_sign():
     from atisim.validation import lateral_modes
     ac = REGISTRY["cherokee"]
     V, H = CRUISE["cherokee"]["airspeed"], CRUISE["cherokee"]["altitude"]
-    x, _ = trim(jnp.array(V), jnp.array(H), ac)
+    x, _ = trim(jnp.array(V), jnp.array(H), ac, _flat_anchor(H), earth.FLAT)
     _, roll_tau, spiral_tau = lateral_modes(
-        ac, float(x[0]), float(x[1]), float(x[2]), V, H)
+        ac, float(x[0]), float(x[1]), float(x[2]), V, H,
+        _flat_anchor(H), earth.FLAT)
     # the spiral really is unstable for this aircraft -- that is what made the
     # signed sort go wrong, and it is still true after the repair
     assert spiral_tau < 0.0, "the Cherokee's spiral is unstable; tau is negative"
@@ -880,8 +898,9 @@ def test_lateral_modes_orders_roll_and_spiral_by_speed_not_by_sign():
     for name in ("boeing747", "boeing747_approach", "cessna172"):
         a = REGISTRY[name]
         v, h = CRUISE[name]["airspeed"], CRUISE[name]["altitude"]
-        xx, _ = trim(jnp.array(v), jnp.array(h), a)
-        _, rt, st = lateral_modes(a, float(xx[0]), float(xx[1]), float(xx[2]), v, h)
+        xx, _ = trim(jnp.array(v), jnp.array(h), a, _flat_anchor(h), earth.FLAT)
+        _, rt, st = lateral_modes(a, float(xx[0]), float(xx[1]), float(xx[2]), v, h,
+                                  _flat_anchor(h), earth.FLAT)
         assert 0.0 < rt < st, f"{name}: roll {rt} should be fast and positive"
 
 
@@ -1029,6 +1048,17 @@ def test_the_wind_hold_costs_the_headline_figure_more_than_E4_bounds_it():
     So the cost at the production step is ~0.8%, not ~1e-4 -- about 80x the
     register's figure, and it halves with dt as an O(h) error must.
 
+    RE-MEASURED session 23, on the rotating WGS-84 Earth:
+
+        dt = 0.02   hold 2.1270 deg   per-stage 2.1327 deg   +0.27%
+
+    `held` moved by 0.0009 deg and `per_stage` by 0.0301, so what changed is
+    the SCHEME error rather than the trajectory: the hold now costs about 27x
+    E4's figure where it cost about 80x. The conclusion is untouched -- the
+    assertion that carries it is `abs(rel) > 1e-3` and 0.0027 clears it by
+    2.7x. E4 is still wrong by more than two orders about which quantity to
+    measure, which is the finding.
+
     RE-MEASURED session 22, at Hannibal's new 500 ft core radius; the figures
     above were 2.2596/2.2230/-1.62% and 2.2400/2.2216/-0.82% at 600 ft. The
     MAGNITUDES barely moved and still halve with dt, which is the finding. The
@@ -1098,9 +1128,15 @@ def test_the_wind_hold_costs_the_headline_figure_more_than_E4_bounds_it():
     per_stage = math.degrees(theta[wp].max() - theta[wp].min())
 
     rel = (per_stage - held) / held
-    assert held == pytest.approx(2.1261, abs=0.005)
-    assert per_stage == pytest.approx(2.1628, abs=0.005)
-    assert abs(rel) == pytest.approx(0.0172, abs=0.004)
+    # RE-MEASURED ON THE ROTATING EARTH. `held` barely moved (2.1261 ->
+    # 2.1270) but `per_stage` did (2.1628 -> 2.1327), so the COST fell from
+    # 1.72% to 0.27%. The conclusion is unchanged and this docstring already
+    # names the assertion that carries it: `abs(rel) > 1e-3`. At 0.27% the hold
+    # still costs about 27x E4's ~1e-4 figure, where it used to cost about 80x.
+    assert held == pytest.approx(2.1270, abs=0.005)
+    assert per_stage == pytest.approx(2.1327, abs=0.005)
+    assert abs(rel) == pytest.approx(0.0027, abs=0.002)
+    assert abs(rel) > 1e-3, "the hold no longer costs more than E4 bounds it"
     assert abs(rel) > 1e-3, (
         "the wind hold now costs less than 0.1% at dt=0.02; ASSUMPTIONS.md E4's "
         "~1e-4 bound may have become correct and this test should be re-measured")
@@ -1897,7 +1933,18 @@ def test_every_registry_aircraft_still_passes_the_widened_gate():
         anchor = earth.anchor_at(np.radians(47.0), 0.0, altitude)
         x, r = trim(jnp.array(CRUISE[name]["airspeed"]),
                     jnp.array(altitude), ac, anchor, earth.WGS84_J2)
-        assert float(jnp.linalg.norm(r)) < 1e-9, f"{name} did not converge"
+        # THE YAW ROW IS SEPARATED, and only the Cessna needs it. Every other
+        # aircraft reaches 1e-15 on all six. The Cessna has no rudder at all --
+        # aircraft.py zeroes CYdr/Cldr/Cndr with its own "*** THE RUDDER IS
+        # ABSENT ***" note -- so it cannot zero the yaw moment the transport
+        # rate creates, and lstsq correctly leaves that one direction alone.
+        # Measured 2.409e-09 rad/s^2, which integrates to 8e-06 deg/s over a
+        # minute. See test_trim.py's rudderless test for the full argument.
+        residual = np.asarray(r)
+        assert np.abs(residual[:5]).max() < 1e-9, (
+            f"{name} did not converge on a row it can reach: {residual}"
+        )
+        assert abs(residual[5]) < 1e-8, f"{name} yaw residual {residual[5]:.3e}"
         assert is_physical(x, ac), (
             f"{name}: alpha {math.degrees(float(x[0])):.2f} deg, elevator "
             f"{math.degrees(float(x[1])):.2f} deg, throttle {float(x[2]):.3f}")
