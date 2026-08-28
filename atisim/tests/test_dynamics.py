@@ -186,7 +186,28 @@ def test_gravity_in_body_axes_when_level(test_aircraft):
     # Level, no thrust: x accel is drag only, z accel is g minus lift over mass.
     lift_over_m = G0 - float(d.vel_body[2])
     assert lift_over_m > 0
-    assert float(d.vel_body[1]) == pytest.approx(0.0)
+
+    # BODY-Y IS NOW CORIOLIS, AND ASSERTING WHAT IT IS BEATS ASSERTING ZERO.
+    # A wings-level aeroplane on a rotating Earth has no exact zero here, so the
+    # old `approx(0.0)` could only be widened -- and a tolerance loose enough to
+    # admit 5.3e-3 would also admit the gravity leak this test exists to catch.
+    # Predicting the value instead keeps the guard AND checks the Coriolis term
+    # quantitatively at plant level.
+    #
+    # The horizontal Coriolis acceleration is `2 Omega V sin(lat)`. The 2.3e-4
+    # relative remainder is the vertical channel `2 Omega_x w`, which this
+    # tolerance admits and a gravity leak would not.
+    predicted = 2.0 * earth.OMEGA_WGS84 * 50.0 * float(jnp.sin(ANCHOR.lat))
+    assert float(d.vel_body[1]) == pytest.approx(predicted, rel=1e-3)
+
+    # And the zero is still asserted where it still holds: switch the Earth off
+    # and body-y returns to an exact zero, which is what shows the 5.3e-3 above
+    # is rotation and not a leak.
+    flat = dynamics.derivatives(
+        s, ZERO_CONTROLS, test_aircraft, jnp.zeros(3), jnp.zeros(3),
+        ANCHOR, earth.FLAT,
+    )
+    assert float(flat.vel_body[1]) == pytest.approx(0.0)
 
 
 def test_gravity_resolves_into_body_y_when_banked(test_aircraft):
@@ -364,7 +385,7 @@ def test_load_factor_in_trimmed_level_flight_is_cos_theta_not_one():
 
     from atisim import trim
     from atisim.aircraft import CRUISE, REGISTRY
-    from atisim.state import quat_to_euler_ned
+    from atisim.state import absolute_ecef, quat_to_euler_ned
 
     ac = REGISTRY["boeing747"]
     v, h = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
@@ -381,9 +402,38 @@ def test_load_factor_in_trimmed_level_flight_is_cos_theta_not_one():
         state, trim.trimmed_controls(x), ac, jnp.zeros(3), jnp.zeros(3),
         anchor, EARTH,
     )
-    theta = float(quat_to_euler_ned(state, anchor)[1])
-    assert float(n_z) == pytest.approx(np.cos(theta), abs=1e-9)  # measured 0.996728
-    assert float(n_z) == pytest.approx(0.9967, abs=1e-4)
+    phi, theta, _ = (float(q) for q in quat_to_euler_ned(state, anchor))
+
+    # `cos(theta)` WAS THE FLAT-EARTH ANSWER. Three terms displace it, and
+    # asserting the closed form that contains all three is a far stronger claim
+    # than the one it replaces -- it pins the gravity model, the centrifugal
+    # term and the transport rate at once:
+    #
+    #     n_z = ((g_apparent - V^2/R) / G0) * cos(theta) * cos(phi)
+    #
+    #   g_apparent  J2 gravitation MINUS centrifugal, 9.770541 here against
+    #               G0's 9.806650 -- the aircraft weighs 0.37% less than the
+    #               constant says
+    #   V^2/R       the centripetal term of level flight over a curved Earth,
+    #               8.897e-04 of G0, which is what the transport rate buys
+    #   cos(phi)    the Coriolis bank, 0.1480 deg, so this factor is 0.9999967
+    #
+    # Measured 0.9922240966 against a predicted 0.9922185780, 5.6e-06 relative,
+    # and the same form holds for the 737 (6.5e-06) and the Cherokee (3.1e-07).
+    r_ecef = np.asarray(absolute_ecef(state, anchor))
+    spin = np.array([0.0, 0.0, earth.OMEGA_WGS84])
+    apparent = float(np.linalg.norm(
+        np.asarray(earth.gravitation(r_ecef, EARTH))
+        - np.cross(spin, np.cross(spin, r_ecef))
+    ))
+    centripetal = v * v / float(np.linalg.norm(r_ecef))
+    predicted = ((apparent - centripetal) / G0) * np.cos(theta) * np.cos(phi)
+    assert float(n_z) == pytest.approx(predicted, rel=1e-4)
+
+    # It is still NOT one, which was this test's original point, and it is now
+    # further from one than the flat model made it.
+    assert float(n_z) == pytest.approx(0.99222, abs=1e-4)
+    assert float(n_z) < np.cos(theta)
 
 
 def test_load_factor_matches_the_aerodynamic_and_thrust_force_directly(test_aircraft):

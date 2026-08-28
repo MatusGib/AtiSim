@@ -356,11 +356,18 @@ def test_accelerometers_report_specific_force_with_the_load_factor_sign(trimmed)
     assert float(n.n_y) == float(raw[1])
     assert float(n.n_z) == -float(raw[2])
     # TRIMMED LEVEL FLIGHT IS NO LONGER n_z = cos(theta). Was 0.9967 = cos(theta)
-    # on a flat, non-rotating Earth; measured 0.99310 at 47N under WGS84_J2,
+    # on a flat, non-rotating Earth; measured 0.99222 at 47N under WGS84_J2,
     # against cos(theta) = 0.99677 at the same trim. The 3.7e-3 g gap is the
     # centrifugal and Coriolis terms the accelerometer cannot distinguish from
     # aerodynamic force. FLAT still gives 0.99673, which is what pins the cause.
-    assert float(n.n_z) == pytest.approx(0.99310, abs=1e-4)
+    # 0.992224, not the flat model's 0.996728 and not the 0.993105 this read
+    # before `trimmed_state` gained the transport rate. The closed form and its
+    # three terms are set out in
+    # `test_dynamics.py::test_load_factor_in_trimmed_level_flight_is_cos_theta_not_one`:
+    #     n_z = ((g_apparent - V^2/R) / G0) * cos(theta) * cos(phi)
+    # The 8.9e-4 between the two rotating-Earth values is the V^2/R centripetal
+    # term, which is exactly what the transport rate supplies.
+    assert float(n.n_z) == pytest.approx(0.99222, abs=1e-4)
     assert abs(float(n.n_y)) < 1e-6
 
 
