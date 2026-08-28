@@ -66,15 +66,17 @@ without a core rewrite. Both have now been exercised and both held.
 | **`docs/ASSUMPTIONS.md`** | not code — the **assumption register**: what the model assumes, why, and a measured bound on each | this document records what has been *measured*; that one records what has been *assumed*. Read it before quoting any result to better than ~0.5%, before flying far from a trim point, and before adding a wind field whose scale approaches a wingspan |
 | **`provenance.py`** | the **ledger**: a constant's category and citation, as data — SOURCED / DERIVED / CALIBRATED / DECLARED | `test_provenance.py` enforces the entries' internal consistency; coverage is enforced separately and only over six modules' module-level constants — see §2's point 4, which corrects what this row used to claim. Answers "which numbers are bulletproof?" as a query rather than a memory |
 | **`airframe.py`** | where on the airframe the field is sampled: derived tail arm, sample stations, spanwise loading | the tail arm is DERIVED from `Cmq`/`CLq`, never sourced; the loading shape is DECLARED and carries a measured sensitivity |
-| `state.py` | `State`/`Controls`, quaternion utilities | NED inertial, body x-fwd/y-right/z-down; quat is `[w,x,y,z]`, body→NED |
+| **`earth.py`** | WGS-84 geodesy, J2 and inverse-square gravity, `EarthModel`, `Anchor` | every constant recovered from the running JSBSim binary rather than transcribed, and in the provenance ledger. `FLAT` is a CONFIGURATION of this one plant, not a second implementation |
+| **`earth_ref.py`** | reader for the frozen JSBSim Earth reference, six probes | must NOT import `jsbsim`, same standing rule as `jsbsim_ref.py` |
+| `state.py` | `State`/`Controls`, quaternion utilities, the local-NED view | **ECEF is the propagation frame**; `pos_ecef` is an OFFSET from a run anchor, quat is body→**ECEF**, `omega` is body-relative-to-ECEF. Local NED is DERIVED at the aircraft's own position. `altitude()` is geodetic, not `-pos_ned[2]` |
 | `atmosphere.py` | ISA to 20 km | two layers — the 747 cruise sits above the tropopause |
 | `aero.py` | coefficient build-up | **takes `vel_rel`/`omega_rel` only; never sees inertial velocity** |
-| `dynamics.py` | 6-DOF Newton-Euler, `load_factor`, `f_factor`, `average_f_factor`, `thrust_authority` | wind enters here and nowhere else |
+| `dynamics.py` | 6-DOF Newton-Euler on a rotating Earth, `earth_acceleration_terms`, `load_factor`, `f_factor`, `average_f_factor`, `thrust_authority` | wind enters here and nowhere else. Coriolis, centrifugal and J2 in JSBSim's own formulation, verified term-by-term against the binary |
 | `wind.py` | wind fields and composition | vortex array, updraft column, lee wave, microburst, `superpose`, `field_model`, `along_track_shear` |
 | `integrate.py` | RK4 `step`, `rollout`, batched rollout | wind sampled once per step, held across the four stages |
 | `aircraft.py` | three aircraft + `REGISTRY`/`CRUISE` | every derivative cites its source table; `FlightCondition` + `from_dimensional_*` do the conversions |
 | `sensors.py` | `AirData`, `sense(state, wind_ned)` | **the only supported way to ask what the aircraft is doing**; air-relative where a real sensor is |
-| `trim.py` | Newton solve for steady level flight | still-air by construction, and must stay so |
+| `trim.py` | Newton solve, **six unknowns against six residuals**, closed by `beta = 0`; `transport_rate_body` | still-air by construction, and must stay so. Coriolis needs a bank and level flight over a curved Earth needs a transport rate, so neither is optional. `lstsq` not `solve`, which is what closes ASSUMPTIONS F7 |
 | `autopilot.py` | cascaded PID | per-aircraft gains; bumpless engage |
 | `manual.py` | manual control, mode switching, pitch trim | trim moves the stick's centring point, never `controls` |
 | `panel.py` | live cockpit, instruments, `Stick`, `LiveSim`, `run_live` | basic T + test overlay; takes a `wind_model` and a `field_range` |
