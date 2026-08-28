@@ -237,8 +237,17 @@ def test_toggle_into_autopilot_is_bumpless_from_a_hand_flown_deflection():
     first, _ = man.update(
         ctl, sense(state, ANCHOR), man.NEUTRAL, targets, GAINS, MGAINS, AC, jnp.array(DT)
     )
-    for engaged, hand_flown in zip(first, flown):
-        assert float(engaged) == pytest.approx(float(hand_flown), abs=1e-12)
+    # THE RUDDER IS EXCLUDED for the structural reason
+    # `test_engagement_reproduces_the_current_controls_exactly` sets out: the
+    # autopilot's rudder is `-beta_p * beta`, proportional with no integrator,
+    # so it has no state in which to carry a trim offset. It commands 0.0 while
+    # the six-unknown trim asks for 3.2155e-08 rad -- 1.8e-06 deg, which the
+    # rotating Earth put there and which no gain can hold.
+    for name in ("elevator", "aileron", "throttle"):
+        assert float(getattr(first, name)) == pytest.approx(
+            float(getattr(flown, name)), abs=1e-12
+        ), name
+    assert float(first.rudder) == pytest.approx(float(flown.rudder), abs=1e-6)
 
 
 def test_toggle_out_of_autopilot_hands_back_the_live_deflections():

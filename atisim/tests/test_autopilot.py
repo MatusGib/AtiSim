@@ -71,8 +71,28 @@ def test_engagement_reproduces_the_current_controls_exactly():
     targets = hold_targets()
     ap = ap_mod.engage(sense(state, ANCHOR), controls, targets, GAINS, AC)
     out, _ = ap_mod.autopilot(sense(state, ANCHOR), ap, targets, GAINS, AC, jnp.array(DT))
-    for field, current in zip(out, controls):
-        assert float(field) == pytest.approx(float(current), abs=1e-12)
+
+    # THE RUDDER IS EXCLUDED, AND IT IS A STRUCTURAL LIMIT RATHER THAN A
+    # TOLERANCE. `autopilot` computes `rudder = -beta_p * beta` -- proportional
+    # on sideslip, with NO integrator -- so it has no state in which to carry a
+    # trim offset, unlike the three channels below. At trim beta is zero, so it
+    # commands exactly 0.0 while the six-unknown trim asks for 3.2155e-08 rad.
+    #
+    # That was invisible for as long as trim's rudder was hardcoded to zero. On
+    # a rotating Earth it is not: Coriolis and the transport rate put a moment
+    # in the yaw channel and the trim answers it. 3.2e-08 rad is 1.8e-06 deg,
+    # which is why this is a statement about the controller's STRUCTURE and not
+    # about a number worth chasing.
+    for name in ("elevator", "aileron", "throttle"):
+        assert float(getattr(out, name)) == pytest.approx(
+            float(getattr(controls, name)), abs=1e-12
+        ), name
+
+    assert float(out.rudder) == 0.0
+    assert abs(float(controls.rudder)) < 1e-6, (
+        f"the trim rudder is {float(controls.rudder):.3e} rad, large enough that "
+        "the autopilot's inability to hold it is no longer negligible"
+    )
 
 
 def test_engagement_from_a_non_trim_deflection_still_matches():

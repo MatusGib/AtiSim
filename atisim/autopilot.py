@@ -211,8 +211,23 @@ def engage(
 
     # theta_err is zero by that construction, so the integrator carries the
     # whole current elevator deflection.
+    #
+    # **THE SIGN ON THE q TERM WAS WRONG, AND IT WAS INVISIBLE FOR AS LONG AS
+    # TRIM CARRIED NO BODY RATE.** The running loop computes
+    #
+    #     elevator_raw = -(theta_p*theta_err + theta_i*state - q_d*q)
+    #
+    # so reproducing `controls.elevator` at theta_err = 0 needs
+    # `state = (-elevator + q_d*q)/theta_i`. It read `- gains.q_d * q`, which
+    # leaves an engage transient of exactly `2*q_d*q` -- zero whenever q is
+    # zero, which on a flat non-rotating Earth it always was at trim.
+    #
+    # The rotating Earth gave trim a transport rate and made it show:
+    # q = -3.6967e-05 rad/s at the 747's cruise, q_d = 3.0, and the measured
+    # engage error was -2.2180e-04 rad against a predicted 2*q_d*q =
+    # -2.2180e-04. The implied q_d from that error is 3.000000.
     theta_i = jnp.clip(
-        (-controls.elevator - gains.q_d * q) / gains.theta_i,
+        (-controls.elevator + gains.q_d * q) / gains.theta_i,
         -ac.elevator_limit / gains.theta_i,
         ac.elevator_limit / gains.theta_i,
     )
