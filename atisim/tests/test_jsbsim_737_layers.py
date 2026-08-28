@@ -895,6 +895,13 @@ def test_layer4_what_survives_the_hold_is_two_residuals_and_no_more(manoeuvre, c
         coincided while atisim did not rotate at all. They do not any more.
 
     The multiples are margin, and are called margin.
+
+    ATISIM'S OWN NUMBER NOW EXISTS, and it is measured in
+    `test_atisim_now_has_its_own_latitude_sensitivity_and_it_is_not_jsbsims_number`
+    rather than assumed here: 0.1511 m/s in u at cruise and 0.0931 at approach,
+    against JSBSim's 0.4092 and 0.3610. It does NOT match, the two figures come
+    from different experiments, and that test says which and why. The `floor`
+    below is unchanged and stays an upper bound.
     """
     ref, cond, _trim, ac = case(condition)
     f = {k: _replay(ac, ref, cond, manoeuvre, decimate=k) for k in (1, 2)}
@@ -924,6 +931,227 @@ def test_layer4_what_survives_the_hold_is_two_residuals_and_no_more(manoeuvre, c
         f"{manoeuvre}/{condition}: the w residual is {equivalent_alpha:.4f} deg "
         f"of equivalent alpha ({extrapolated[2]:.4f} m/s), past the 0.2 deg this "
         "comparison has measured at both conditions"
+    )
+
+
+# ---------------------------------------------------------------------------
+# The Earth-rotation floor, measured on atisim rather than allowed for
+# ---------------------------------------------------------------------------
+# CONSTANT g AND A ROTATING EARTH -- the configuration `fly()` actually flew,
+# and the one this module's header notes `earth.py` ships no name for. It needs
+# no new code: `EarthModel` carries gravity and rotation independently, so the
+# combination is a configuration rather than a model.
+#
+# It is used INSTEAD OF `EARTH` for the latitude experiment below, and only
+# there, because J2 makes gravity's MAGNITUDE depend on latitude and JSBSim's
+# constant-g run had no such dependence. Measured, the confound is not small:
+# the approach case reads u 0.2197 m/s under WGS84_J2 against 0.0931 under
+# constant g, so two thirds of the J2 figure is the gravity model rather than
+# the rotation the diagnostic is about.
+ROTATING_CONSTANT_G = earth.EarthModel("constant", earth.OMEGA_WGS84)
+
+
+def _velocities_replaying_jsbsims_surfaces(ac, ref, cond, manoeuvre, latitude_deg):
+    """vel_body over the run, from JSBSim's recorded state and surfaces.
+
+    Same initial condition and same achieved deflections at every latitude, so
+    the ONLY thing that differs between two calls is where the aeroplane is
+    flying. That makes this a controlled experiment on the Earth terms, and NOT
+    what `coriolis_contribution` did -- see `_velocities_from_atisims_own_trim`.
+    """
+    import jax
+    import jax.numpy as jnp
+
+    from atisim import integrate
+    from atisim.atmosphere import RHO0, density, speed_of_sound
+    from atisim.state import Controls, euler_to_quat, state_from_ned
+
+    samples = ref.trajectory[manoeuvre]
+    first = samples[0]
+    altitude = first.altitude + (cond.matched_altitude - cond.altitude)
+    rho = float(density(altitude))
+    mach = float(np.linalg.norm(first.vel_body)) / float(speed_of_sound(altitude))
+    throttle = first.thrust / (
+        float(ac.max_thrust)
+        * (rho / RHO0) ** float(ac.thrust_lapse)
+        * (1.0 + float(ac.mach_ram) * mach**2)
+    )
+    anchor = earth.anchor_at(
+        np.radians(latitude_deg), 0.0, cond.matched_altitude
+    )
+    sim = integrate.init_sim(
+        state_from_ned(
+            jnp.array([0.0, 0.0, -(altitude - float(anchor.h))]),
+            jnp.array(first.vel_body),
+            euler_to_quat(*(jnp.array(v) for v in first.euler)),
+            jnp.array(first.omega),
+            anchor,
+        ),
+        jax.random.PRNGKey(0),
+    )
+    out = [np.asarray(sim.state.vel_body)]
+    for previous, current in zip(samples, samples[1:]):
+        controls = Controls(
+            elevator=jnp.array(previous.controls[0]),
+            aileron=jnp.array(previous.controls[1]),
+            rudder=jnp.array(previous.controls[2]),
+            throttle=jnp.array(throttle),
+        )
+        sim = integrate.step(
+            sim, controls, jnp.array(current.t - previous.t), ac, anchor,
+            ROTATING_CONSTANT_G,
+        )
+        out.append(np.asarray(sim.state.vel_body))
+    return np.array(out)
+
+
+def _velocities_from_atisims_own_trim(ac, ref, cond, manoeuvre, latitude_deg):
+    """vel_body over the run, starting from atisim's OWN trim at this latitude.
+
+    This is the structural mirror of `gen_jsbsim_reference.py`'s
+    `coriolis_contribution`, which calls `trimmed(0, latitude_deg=...)` before
+    each run: JSBSim re-trims at each latitude and then flies the same surface
+    SCHEDULE, so its two runs start in their own equilibria. The schedule is
+    recoverable from the frozen reference as the increment from sample 0, since
+    `fly()` commands `de_trim + d_de` and records the achieved deflection.
+    """
+    import jax
+    import jax.numpy as jnp
+
+    from atisim import integrate, trim
+    from atisim.state import Controls
+
+    samples = ref.trajectory[manoeuvre]
+    anchor = earth.anchor_at(
+        np.radians(latitude_deg), 0.0, cond.matched_altitude
+    )
+    airspeed = jnp.array(cond.airspeed)
+    altitude = jnp.array(cond.matched_altitude)
+    solution, residual = trim.trim(
+        airspeed, altitude, ac, anchor, ROTATING_CONSTANT_G
+    )
+    assert float(np.abs(np.asarray(residual)).max()) < 1e-8, (
+        f"trim did not converge at {latitude_deg} deg: {residual}"
+    )
+    alpha, elevator, throttle, phi, aileron, rudder = (float(v) for v in solution)
+
+    sim = integrate.init_sim(
+        trim.trimmed_state(
+            jnp.array(alpha), jnp.array(phi), airspeed, altitude, anchor,
+            jnp.array(0.0),
+        ),
+        jax.random.PRNGKey(0),
+    )
+    base = samples[0].controls
+    out = [np.asarray(sim.state.vel_body)]
+    for previous, current in zip(samples, samples[1:]):
+        step = previous.controls - base
+        controls = Controls(
+            elevator=jnp.array(elevator + step[0]),
+            aileron=jnp.array(aileron + step[1]),
+            rudder=jnp.array(rudder + step[2]),
+            throttle=jnp.array(throttle),
+        )
+        sim = integrate.step(
+            sim, controls, jnp.array(current.t - previous.t), ac, anchor,
+            ROTATING_CONSTANT_G,
+        )
+        out.append(np.asarray(sim.state.vel_body))
+    return np.array(out)
+
+
+def _worst_between_latitudes(history):
+    a, b = history(0.0), history(JSBSIM_LATITUDE_DEG)
+    return np.max(np.abs(a - b), axis=0)
+
+
+@pytest.mark.parametrize("condition", list(CASES))
+def test_atisim_now_has_its_own_latitude_sensitivity_and_it_is_not_jsbsims_number(
+    condition,
+):
+    """The Earth-rotation floor, measured on atisim instead of allowed for.
+
+    *** THE PLAN ASKED FOR THIS TO ASSERT THAT JSBSIM'S FLOOR IS NOW MATCHED.
+    IT IS NOT MATCHED, AND THIS TEST IS THE MEASUREMENT THAT SAYS SO. ***
+
+    `coriolis_{u,v,w}_m_s` is the worst |d(vel_body)| between a latitude-0 and a
+    latitude-47 JSBSim run of the same case. The layer-4 docstring already
+    records that this is a measure of HOW MUCH THE ANSWER DEPENDS ON WHERE YOU
+    FLY, and that it stopped being a bound on what atisim was missing the moment
+    atisim started rotating. What it did not have was atisim's own number.
+
+    Here it is, on the rudder kick, worst per component, in m/s:
+
+        cruise                                u        v        w
+          JSBSim, re-trimmed per latitude     0.4092   0.0280   0.0674
+          atisim, same IC and surfaces        0.1511   0.0125   0.0080
+          atisim, re-trimmed per latitude     0.0261   0.0061   0.0358
+
+        approach                              u        v        w
+          JSBSim, re-trimmed per latitude     0.3610   0.0127   0.0543
+          atisim, same IC and surfaces        0.0931   0.0076   0.0080
+          atisim, re-trimmed per latitude     0.0103   0.0025   0.0259
+
+    Three things follow, and only the first two are assertions.
+
+    **AtiSim's latitude sensitivity is no longer zero, and it is the same order
+    as JSBSim's.** Before this migration the top row of each block would have
+    been identically 0.0000, because latitude was not an input. That is the
+    substantive change and it is what the first assertion pins: 0.15 and 0.09
+    against JSBSim's 0.41 and 0.36, between a tenth of the floor and the floor.
+
+    **AtiSim's six-unknown trim absorbs most of it.** Re-trimming at each
+    latitude drops u by 5.8x at cruise and 9.0x at approach. That is what a
+    rotating-Earth trim is FOR -- it solves the lateral rows the three-unknown
+    solver could not see -- and it is the second assertion.
+
+    **The remaining gap to JSBSim is not resolved here, and must not be closed
+    by choosing a number.** The two engines' figures come from different
+    experiments, and the difference cannot be attributed from inside this
+    repository: JSBSim's `do_simple_trim` mode 0 is a longitudinal trim, and
+    whether it leaves a latitude-dependent residual that atisim's six-unknown
+    trim does not is a question about the JSBSim binary. Answering it needs a
+    regenerated reference with the diagnostic re-run against atisim's trim
+    conditions -- Task 6's territory, with the binary in hand, not a migration's.
+
+    THE LAYER-4 BOUNDS AND THE `floor` THEY READ ARE STILL UNCHANGED. This test
+    adds a measurement beside them; it does not license moving them. What it
+    does establish is that they remain CONSERVATIVE -- every atisim number above
+    is below the corresponding JSBSim one -- which is the third assertion and
+    the only sense in which "reproduced rather than allowed for" is available
+    on today's evidence.
+    """
+    ref, cond, _trim, ac = case(condition)
+    floor = np.array([ref.diagnostics[f"coriolis_{a}_m_s"] for a in "uvw"])
+
+    replayed = _worst_between_latitudes(
+        lambda lat: _velocities_replaying_jsbsims_surfaces(
+            ac, ref, cond, "rudder_kick", lat)
+    )
+    retrimmed = _worst_between_latitudes(
+        lambda lat: _velocities_from_atisims_own_trim(
+            ac, ref, cond, "rudder_kick", lat)
+    )
+    print(f"\n{condition}: JSBSim {floor[0]:.4f} | atisim same-IC "
+          f"{replayed[0]:.4f} | atisim re-trimmed {retrimmed[0]:.4f} m/s (u)")
+
+    assert 0.1 * floor[0] < replayed[0] < floor[0], (
+        f"{condition}: atisim's latitude sensitivity in u is {replayed[0]:.4f} "
+        f"m/s against JSBSim's {floor[0]:.4f}. It was identically zero before "
+        "the Earth turned; outside a tenth of the floor it is either not "
+        "responding to latitude or responding more than the engine it is "
+        "being compared against"
+    )
+    assert replayed[0] > 3.0 * retrimmed[0], (
+        f"{condition}: re-trimming at each latitude changed u from "
+        f"{replayed[0]:.4f} to {retrimmed[0]:.4f} m/s, a factor of "
+        f"{replayed[0] / retrimmed[0]:.1f}. The six-unknown trim is supposed to "
+        "absorb the latitude dependence, and at this factor it is not"
+    )
+    assert np.all(retrimmed <= floor) and np.all(replayed <= floor), (
+        f"{condition}: atisim's latitude sensitivity {replayed} / {retrimmed} "
+        f"is no longer under JSBSim's {floor}, so layer 4's bounds have stopped "
+        "being conservative and need re-deriving against a fresh reference"
     )
 
 

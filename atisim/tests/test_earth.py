@@ -6,6 +6,8 @@ DEFINING values; the term-by-term agreement with JSBSim is asserted separately
 against the frozen reference.
 """
 
+from pathlib import Path
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -444,3 +446,174 @@ def test_the_frame_transfer_sign_is_plus_and_a_wings_level_probe_cannot_tell():
         term = np.cross(p.pqr, omega_earth_body)
         assert np.allclose(p.pqridot + term, p.pqrdot, atol=1e-14)
         assert not np.allclose(p.pqridot - term, p.pqrdot, atol=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# FLAT against the pre-change model
+# ---------------------------------------------------------------------------
+def _fly_flat_from_the_frozen_condition(frozen, lon):
+    """The frozen pre-Earth initial condition, re-flown on `earth.FLAT`.
+
+    THE AIRCRAFT IS PLACED AT THE ANCHOR, which is where `trim.trimmed_state`
+    puts it and what keeps `pos_ecef` a few-kilometre offset instead of a
+    6390 km absolute coordinate. `state.py`'s header explains why that matters
+    and F4 records what it is worth.
+
+    `lon` is a free parameter because under FLAT -- `rotation_rate` 0, and a
+    gravity magnitude that depends on neither longitude nor latitude -- the
+    problem is exactly invariant under a rotation about the Earth's axis. Two
+    longitudes therefore run identical physics through different ECEF numbers,
+    which is what isolates round-off below.
+    """
+    from atisim import state as st
+    from atisim.aircraft import REGISTRY
+    from atisim.integrate import init_sim, logged_rollout
+    from atisim.trim import longitudinal_controls
+
+    ac = REGISTRY["boeing747"]
+    dt, n_steps = float(frozen["dt"]), int(frozen["n_steps"])
+    alpha, elevator, throttle = (float(v) for v in frozen["trim"])
+    airspeed, alt = float(frozen["airspeed"]), float(frozen["altitude"])
+
+    anchor = earth.anchor_at(0.0, lon, alt)
+    start = st.state_from_ned(
+        jnp.zeros(3),
+        airspeed * jnp.array([np.cos(alpha), 0.0, np.sin(alpha)]),
+        st.euler_to_quat(jnp.array(0.0), jnp.array(alpha), jnp.array(0.0)),
+        jnp.zeros(3),
+        anchor,
+    )
+    # NOT `trimmed_controls`: that takes a six-element trim SOLUTION now, and
+    # the frozen run was flown by the three-unknown solver with aileron and
+    # rudder identically zero. `longitudinal_controls` is the name for a
+    # hand-built setting with no lateral half to drop.
+    _, log = logged_rollout(
+        init_sim(start, jax.random.PRNGKey(0)),
+        longitudinal_controls(jnp.array(elevator), jnp.array(throttle)),
+        dt, ac, n_steps, anchor=anchor, earth_model=earth.FLAT,
+    )
+    ours = np.asarray(jax.vmap(lambda s: st.pos_ned(s, anchor))(log.state))
+    return ours, dt * np.arange(1, n_steps + 1)
+
+
+def test_flat_is_a_curved_earth_and_its_cost_is_the_local_verticals_rotation():
+    """0.489 m over 20 s, and it is PHYSICS rather than the round-off predicted.
+
+    *** THIS TEST ASSERTS THE OPPOSITE OF WHAT THE PLAN AND THE DESIGN EXPECTED,
+    AND THE MEASUREMENT IS WHY. ***
+
+    Design section 8 and the `FLAT` docstring both say the FLAT configuration
+    differs from the pre-Earth plant only by ECEF round-off, and the plan
+    predicted ~3.6e-8 m over this 20 s run. MEASURED: 4.892e-01 m. The
+    prediction was out by seven orders, and the reason is not arithmetic.
+
+    `FLAT` IS A CURVED EARTH. `earth.gravitation`'s "constant" branch returns
+    `G0 * ecef_to_ned_matrix(lat, lon)[2]` at the AIRCRAFT'S OWN position, so
+    the direction of gravity rotates by `V t / R` as the aeroplane flies. The
+    pre-Earth plant had one global NED frame and one fixed gravity vector. That
+    difference is a term, not a rounding, and it is what this run measures:
+
+        gravity tilt      g V t / R           (a horizontal acceleration)
+        displacement      g V t^3 / (6 R)
+
+    Measured against that closed form, with R = A_WGS84 + 12192 m:
+
+        t (s)      divergence        g V t^3 / 6R      ratio
+        0.52       8.533e-06         8.484e-06         1.00572
+        1.02       6.435e-05         6.403e-05         1.00490
+        2.02       4.991e-04         4.973e-04         1.00358
+        6.02       1.317e-02         1.316e-02         1.00045
+        10.02      6.072e-02         6.070e-02         1.00037
+        20.00      4.892e-01         4.827e-01         1.01351
+
+    The closed form accounts for the whole of it to better than 1.4% across the
+    entire window, so nothing else of consequence is in there -- and the growth
+    is CUBIC (1009.9x from 2 s to 20 s, against 1000 for t^3), the signature of
+    an acceleration that grows linearly with time. Round-off would have been
+    flat, and a constant acceleration difference would have been 100x.
+
+    So the honest statement about FLAT is the one ASSUMPTIONS.md F4 now records:
+    it reproduces the pre-Earth PHYSICS -- gravity magnitude, and no rotation --
+    and it does not reproduce the pre-Earth GEOMETRY, because there is no flat
+    Earth left underneath it. The round-off floor the design meant to claim is
+    real, and is measured separately below at 1.15e-11 m.
+
+    Both assertions are PREDICTIONS rather than allowances: a missing or extra
+    Earth term would have to disguise itself as this exact cubic to survive
+    them. A rotation leaking into FLAT, in particular, would add a Coriolis
+    contribution that does not fit `g V t^3 / 6R`.
+    """
+    from atisim.atmosphere import G0
+
+    frozen = np.load(Path(__file__).parent / "data" / "pre_earth_trajectory.npz")
+    ours, t = _fly_flat_from_the_frozen_condition(frozen, 0.0)
+
+    # The frozen run's origin was sea level; this one's is the anchor at cruise
+    # altitude. Same trajectory and same axes, origin shifted by the anchor.
+    theirs = frozen["pos_ned"] + np.array([0.0, 0.0, float(frozen["altitude"])])
+    divergence = np.linalg.norm(ours - theirs, axis=1)
+
+    early = float(divergence[t <= 2.0][-1])
+    late = float(divergence[-1])
+    print(f"\nFLAT vs pre-Earth: {early:.3e} m at 2 s, {late:.3e} m at 20 s")
+
+    radius = float(earth.A_WGS84 + frozen["altitude"])
+    predicted = float(G0) * float(frozen["airspeed"]) * t**3 / (6.0 * radius)
+    settled = t >= 0.5          # below this both quantities are under 1e-5 m
+    ratio = divergence[settled] / predicted[settled]
+    assert np.all(np.abs(ratio - 1.0) < 0.02), (
+        f"the divergence is {ratio.min():.5f}-{ratio.max():.5f} of the local "
+        "vertical's closed form, so something other than the curvature of "
+        "gravity is now in it"
+    )
+    assert 900.0 < late / early < 1100.0, (
+        f"divergence grew {late / early:.1f}x from 2 s to 20 s; t^3 is 1000x. "
+        "A constant acceleration difference would be 100x and round-off ~1x, "
+        "so the growth law itself has changed"
+    )
+
+
+def test_the_round_off_floor_on_an_anchor_relative_ecef_trajectory():
+    """1.15e-11 m over 20 s: what F4 measures now that position is an offset.
+
+    THE FLOOR HAS TO BE ISOLATED, because the FLAT comparison above is dominated
+    by a physical term ten orders of magnitude larger. The isolation is an exact
+    symmetry: under FLAT the Earth does not rotate and gravity's magnitude
+    depends on neither latitude nor longitude, so the whole problem is invariant
+    under a rotation about the Earth's axis. Flying the same case from anchors
+    at longitude 0 and 137 deg therefore runs IDENTICAL PHYSICS through
+    DIFFERENT ECEF NUMBERS, and every metre of the difference is round-off.
+
+    Measured over the frozen 747 run:
+
+        divergence between the two longitudes    1.153e-11 m at 20 s
+        ground-track offset reached              4717.87 m
+        ulp of that offset                       9.095e-13 m
+        floor, in ulp of the offset              12.7
+
+    That is the number ASSUMPTIONS.md F4 now records, and it supersedes session
+    11's 7e-11 m rather than contradicting it: F4's figure was for a `pos_ned`
+    that CARRIED the 12,184 m altitude, and this state does not. Position is an
+    offset from the anchor, so what gets differenced is the ground track.
+
+    The ulp ratio quoted in `state.py`'s header is offset-dependent and both
+    readings are right: float64 ulp doubles at each power of two, so a 6390 km
+    absolute coordinate is 512x coarser than a 12 km offset and 1024x coarser
+    than the 4.7 km one this run reaches.
+    """
+    frozen = np.load(Path(__file__).parent / "data" / "pre_earth_trajectory.npz")
+    a, _ = _fly_flat_from_the_frozen_condition(frozen, 0.0)
+    b, _ = _fly_flat_from_the_frozen_condition(frozen, np.radians(137.0))
+
+    floor = float(np.linalg.norm(a - b, axis=1).max())
+    offset = float(np.linalg.norm(a[-1]))
+    print(f"\nround-off floor: {floor:.3e} m over a {offset:.1f} m offset "
+          f"({floor / np.spacing(offset):.1f} ulp)")
+
+    assert floor < 100.0 * np.spacing(offset), (
+        f"round-off reached {floor / np.spacing(offset):.1f} ulp of the "
+        f"{offset:.0f} m offset; it was 12.7 ulp when F4 was measured"
+    )
+    # The load-bearing half: the floor must stay far below anything the FLAT
+    # comparison above is trying to see. It is 4.2e10 times smaller today.
+    assert floor < 1.0e-9
