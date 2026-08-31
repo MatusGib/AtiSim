@@ -2213,26 +2213,27 @@ which had been passing because two wrongs were both zero. §4 and §8 carry all 
 | notebook | 13 passed |
 | `scripts/sanity.py` | 11/11 |
 
-**One thing is left for whoever comes next, and it is documentation rather than code.**
-**Seven docstring sites across three files still open with "EXPECTED TO FAIL" for tests
-that now pass**, because a later commit in the migration repaired the underlying issue and
-did not sweep the earlier notes:
+**Seven docstring sites were still claiming "EXPECTED TO FAIL" for tests that pass, and
+they are swept.** A later commit in the migration had repaired each test's BODY and left the
+header behind, so three files contradicted themselves between their docstrings and their own
+code. A docstring is a claim, and these ones said the suite was red when it was green:
 
-| file | site |
-|---|---|
-| `test_dynamics.py` | the module docstring, `test_gravity_in_body_axes_when_level`, `test_load_factor_in_trimmed_level_flight_is_cos_theta_not_one` |
-| `test_verification.py` | three, at the hash test, the Galilean-invariance test and the free-fall test |
-| `test_aircraft.py` | `test_every_aircraft_holds_its_trimmed_condition_for_60_s` |
+| file | sites | what the body actually does now |
+|---|---|---|
+| `test_dynamics.py` | module docstring, `test_gravity_in_body_axes_when_level`, `test_load_factor_in_trimmed_level_flight_is_cos_theta_not_one` | predicts `2 Omega V sin(lat)` instead of asserting zero; asserts the three-term closed form instead of `cos(theta)` |
+| `test_verification.py` | the hash test, the Galilean-invariance test, the free-fall test | compares against an independent longhand RK4 instead of a frozen hash; tolerances re-placed by INJECTING the defect and measuring the gap; the differenced claim is an exact `==` where a 1e-9 used to be |
+| `test_aircraft.py` | `test_every_aircraft_holds_its_trimmed_condition_for_60_s` | unchanged assertion — the MODEL was fixed instead |
 
-Their BODIES were repaired and say so inline -- `test_gravity_in_body_axes_when_level` now
-PREDICTS the Coriolis value rather than asserting zero, and the 60 s hold passes because
-`trimmed_state` gained the transport rate, dropping the drift from 4.2356 m to 0.0295 m --
-so each file contradicts itself between its docstring and its own code. One goes further:
-the free-fall docstring reports a `NameError` in `verification.py` as an open SOURCE defect
-"reported rather than repaired here", and it was repaired (`verification.py:337` imports
-`longitudinal_controls`). **A docstring is a claim, and these ones say the suite is red
-when it is green.** Left alone here because none of them is red and none is this session's
-doing; they are a clean, mechanical sweep for whoever wants it.
+**Two of the sweeps turned up stale numbers, not just stale headers, and both are
+re-measured.** The load-factor entry claimed "the whole discrepancy is `g_apparent / G0`",
+which the `earth.FLAT` column refutes: there `g_apparent` IS `G0` and the bank is zero, yet
+`n_z` still departs from `cos(theta)` by −8.864e-04, the centripetal term alone. And the
+60 s hold table was pre-fix throughout — re-measured, the worst entry is **0.0312 m against
+the 4.4956 m it recorded, a 144x improvement**, with the decomposition inverted: FLAT now
+reads 0.0001 m, so the transport rate cancels the curvature to within a tenth of a
+millimetre and what remains is rotation and J2. One docstring also reported a `NameError` in
+`verification.py` as an open source defect; it had been repaired, and the remedy it said had
+"no route through the current signature" now has one — `amplitude` is a parameter.
 
 ### Session 21 — the Wingrove paper arrives, and JSBSim gains a 747
 

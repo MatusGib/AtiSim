@@ -62,8 +62,9 @@ def test_extracting_rk4_step_did_not_move_a_single_bit():
     tolerance would not do: the claim is that the extraction was arithmetic
     neutral, and any tolerance admits an extraction that was not.
 
-    **THE PREMISE IS GONE AND THIS TEST IS EXPECTED TO FAIL. THE HASH IS LEFT
-    EXACTLY AS IT WAS.** `PRE_REFACTOR_VEL_HASH` was captured from a plant that
+    **THE PREMISE IS GONE, THE HASH IS LEFT EXACTLY AS IT WAS, AND THIS TEST NO
+    LONGER ASSERTS AGAINST IT.** It was red for one session while that was
+    worked out. `PRE_REFACTOR_VEL_HASH` was captured from a plant that
     no longer exists: a flat, non-rotating Earth with a fixed `down`, a
     wings-level trim and `omega = 0`. The rotating Earth changes the plant by
     construction -- the trim is banked, `trimmed_state` carries a transport
@@ -377,8 +378,14 @@ def test_a_uniform_horizontal_wind_only_translates_the_trajectory():
     of altitude, so the two aircraft would not see the same dynamic pressure and
     the invariance would not hold to any tolerance worth asserting.
 
-    **THE PREMISE IS NOW FALSE AND THIS TEST IS EXPECTED TO FAIL. ALL THREE
-    TOLERANCES ARE LEFT EXACTLY AS THEY WERE.** Galilean invariance is a
+    **THE PREMISE IS NOW FALSE, AND THE THREE TOLERANCES WERE RE-PLACED BY
+    INJECTION RATHER THAN WIDENED TO FIT.** The test was red for one session at
+    the old <1e-11 / <1e-6. What replaced them is not a loosening dressed up:
+    the defect this test exists to catch was INJECTED, its signature measured,
+    and each tolerance placed inside the measured gap between the physics and
+    the bug -- 122x under FLAT, with the table below. A bound chosen that way
+    still discriminates; one widened until the test went green would not, which
+    is the whole difference. Galilean invariance is a
     property of FLAT space, and this Earth is an ellipsoid. Two aircraft
     separated by W*t stand at different geodetic positions, so the local vertical
     -- and therefore gravity in body axes -- differs between them; that changes
@@ -525,14 +532,15 @@ def test_a_time_varying_uniform_wind_adds_no_body_force():
     right instrument. It lives there rather than here so the notebook runs THIS
     code rather than a second copy of it that could drift.
 
-    **THIS TEST IS EXPECTED TO FAIL TWICE OVER, AND THE 1e-9 IS LEFT ALONE.**
+    **THIS TEST FAILED TWICE OVER FOR ONE SESSION. BOTH CAUSES ARE FIXED AND THE
+    1e-9 WAS NOT WIDENED -- IT WAS REPLACED BY AN EXACT EQUALITY.**
 
-    First, it does not reach its assertions at all: `verification.py:331` calls
-    `longitudinal_controls` while line 318 imports only `trimmed_controls`, so
-    the experiment raises NameError. That is a SOURCE defect, reported rather
-    than repaired here.
+    First, it did not reach its assertions at all: `verification.py` called
+    `longitudinal_controls` while importing only `trimmed_controls`, so the
+    experiment raised NameError. That was a SOURCE defect and it is repaired --
+    the import is at `verification.py:337`.
 
-    Second, past that, the number has moved and the source says why in its own
+    Second, past that, the number had moved and the source says why in its own
     docstring: `earth.FLAT` puts gravity along the LOCAL geodetic vertical, which
     rotates as the body travels, while the closed form uses the anchor's. The
     departure is GEOMETRIC and grows as t^3 -- measured 3.3222e-03 m over the 6 s
@@ -543,10 +551,15 @@ def test_a_time_varying_uniform_wind_adds_no_body_force():
     0.00332221804103483 m -- the same float, not the same to a tolerance. So the
     WIND-DEPENDENT part of the error is exactly zero, which is the whole claim: a
     spurious -m*dW/dt term would put up to 30 m/s of velocity error in there.
-    What has gone is only the ability to assert it against round-off through this
-    one number. The source docstring's own remedy -- "difference two wind
-    settings" -- has no route through the current signature, since the gust is
-    hardcoded and takes no argument; that gap is reported alongside the NameError.
+    What went was only the ability to assert it against round-off through that
+    one absolute number. The source docstring's own remedy -- "difference two
+    wind settings" -- had no route through the old signature, because the gust
+    amplitude was a module constant. IT HAS ONE NOW: `amplitude` is a parameter
+    of `free_fall_through_a_swinging_wind`, so the test below runs the
+    experiment twice and differences it. That is why the assertion is `==`
+    rather than a tolerance -- the two runs return the SAME FLOAT, so the
+    wind-dependent part of the error is exactly zero rather than merely small,
+    which is a stronger statement than the 1e-9 it replaced.
     """
     n, dt = 300, 0.02
     ac = verification.without_aerodynamics(REGISTRY["boeing747"])

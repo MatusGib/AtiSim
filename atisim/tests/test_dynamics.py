@@ -8,13 +8,16 @@ which says why in its own docstring -- because that test measures the AERO
 build-up, and a rotating, J2 Earth moves the number it is watching without
 being any part of the claim.
 
-TWO TESTS BELOW ARE EXPECTED TO FAIL, both marked as such in their own
-docstrings with the old and new numbers: `test_gravity_in_body_axes_when_level`
-asserts a lateral acceleration of exactly zero, which Coriolis has ended, and
-`test_load_factor_in_trimmed_level_flight_is_cos_theta_not_one` asserts
-`n_z = cos(theta)`, which apparent gravity no longer being G0 has ended. Both
-are migrated mechanically with their tolerances untouched, because a tolerance
-widened to absorb a stated physical change stops measuring anything.
+TWO TESTS BELOW LOST AN EXACT ZERO TO THE ROTATING EARTH AND BOTH NOW PREDICT
+WHAT REPLACED IT. `test_gravity_in_body_axes_when_level` asserted a lateral
+acceleration of exactly zero, which Coriolis ended; it now asserts
+`2 Omega V sin(lat)`. `test_load_factor_in_trimmed_level_flight_is_cos_theta_not_one`
+asserted `n_z = cos(theta)`, which apparent gravity no longer being G0 ended;
+it now asserts the closed form carrying all three displacing terms. Each was
+red for one session first, and NO TOLERANCE WAS WIDENED in either -- a
+tolerance widened to absorb a stated physical change stops measuring anything,
+whereas predicting the new value is a stronger claim than the one it replaces.
+Both keep their old numbers in their own docstrings.
 """
 
 import jax.numpy as jnp
@@ -153,10 +156,13 @@ def test_omega_gust_subtracts_from_body_rates(test_aircraft):
 
 
 def test_gravity_in_body_axes_when_level(test_aircraft):
-    """**THIS TEST IS EXPECTED TO FAIL AND THE TOLERANCE IS LEFT ALONE.**
+    """**THE EXACT ZERO WENT TO CORIOLIS, AND THIS NOW PREDICTS WHAT REPLACED IT.**
 
     `pytest.approx(0.0)` is `abs=1e-12`, i.e. an EXACT zero, and a wings-level
-    aeroplane on a rotating Earth does not have one. Measured here:
+    aeroplane on a rotating Earth does not have one. This test was red for one
+    session on that; the tolerance was never widened, because a band loose
+    enough to admit 5.3e-3 would also admit the gravity leak the test exists to
+    catch. What it asserts instead is the value itself. Measured here:
 
         quantity                  earth.FLAT    earth.WGS84_J2
         vdot_y (m/s^2)            0.0           5.33312e-03
@@ -170,14 +176,16 @@ def test_gravity_in_body_axes_when_level(test_aircraft):
     what is wrong -- the same discovery `trim.py` records, where it is why the
     solver grew a bank angle and three more unknowns.
 
-    Migrated mechanically and left red rather than absorbed, because a
-    tolerance wide enough to admit 5.3e-3 would also admit a genuine gravity
-    leak into body y, which is the failure this test exists to catch. The
-    re-measurement has to decide what the claim becomes: either "vdot_y is
-    2 Omega V sin(lat)" over `WGS84_J2`, or the wings-level gravity-resolution
-    claim moved onto `earth.FLAT`. Note `test_earth.py` already pins the
-    Coriolis row against JSBSim's own probes, so this test is not the file
-    carrying that coverage.
+    **BOTH OF THE OPEN OPTIONS WERE TAKEN, WHICH IS WHY THIS IS NOW STRONGER
+    THAN THE ZERO IT REPLACED.** The claim over `WGS84_J2` became "vdot_y is
+    2 Omega V sin(lat)", asserted at rel=1e-3 -- a band that admits the 2.3e-4
+    vertical-channel remainder and rejects a gravity leak -- and the
+    wings-level gravity-resolution claim is kept underneath it by re-running
+    over `earth.FLAT`, where body-y returns to an exact zero. So the test now
+    checks the Coriolis term quantitatively AND still catches a leak, where
+    before it could only do the second. `test_earth.py` pins the Coriolis row
+    against JSBSim's own probes independently, so this file is not the sole
+    carrier of that coverage.
     """
     s = level_state()
     d = dynamics.derivatives(
@@ -350,36 +358,54 @@ def test_load_factor_in_trimmed_level_flight_is_cos_theta_not_one():
     quantity, so this is the right convention for that comparison rather than a
     flight-path-normal one.
 
-    **THIS TEST IS EXPECTED TO FAIL AND BOTH TOLERANCES ARE LEFT ALONE.** The
-    reading is a genuine accelerometer quantity in trimmed cruise, so it belongs
-    over the shipped `WGS84_J2` and not over `earth.FLAT`, and over that Earth
-    `n_z = cos(theta)` is no longer true. Measured on the 747 at its CR-2144
+    **THE NAME IS NOW HALF RIGHT, AND WHAT THIS ASSERTS IS THE CLOSED FORM THAT
+    REPLACED `cos(theta)`.** The reading is a genuine accelerometer quantity in
+    trimmed cruise, so it belongs over the shipped `WGS84_J2`, and over that
+    Earth `n_z = cos(theta)` is not true. This test was red for one session on
+    that, and neither tolerance was widened. Measured on the 747 at its CR-2144
     cruise, 47N, heading 000:
 
         quantity              earth.FLAT     earth.WGS84_J2
-        n_z                   0.996727965    0.993100670
-        cos(theta)            0.996727965    0.996769074
-        n_z - cos(theta)     -1.11e-13      -3.668e-03
-        theta (deg)           4.636231       4.606999
-        phi (deg)             0.000000      -0.148039
+        n_z                   0.995851521    0.992224097
+        cos(theta)            0.996737918    0.996778965
+        n_z - cos(theta)     -8.864e-04     -4.555e-03
+        theta (deg)           4.629171       4.599938
+        phi (deg)             0.000000      -0.148170
 
-    The relation did not break, it acquired two factors that were both exactly
+    The relation did not break. It acquired THREE factors that were all exactly
     1 on a flat Earth:
 
-        n_z = (g_apparent / G0) * cos(theta) * cos(phi)
+        n_z = ((g_apparent - V^2/R) / G0) * cos(theta) * cos(phi)
 
-    `phi` is the Coriolis-balancing bank `trim.py` documents, worth 3.3e-6 and
-    negligible; the whole discrepancy is `g_apparent / G0`. Apparent gravity at
-    47N and 12,192 m is 9.77061 m/s^2 -- gravitation 9.786389 less 0.015779 of
-    centrifugal -- against the CONSTANT G0 = 9.806650 that `specific_force`
-    divides by. That ratio is 0.996323, and 0.996769 * 0.996323 * 0.9999967 =
-    0.993101, which is the measured n_z to every digit printed.
+      g_apparent  J2 gravitation MINUS centrifugal: 9.770541 against G0's
+                  9.806650, a ratio of 0.996317903 -- the aeroplane weighs
+                  0.37% less than the constant says
+      V^2/R       the centripetal term of level flight over a CURVED Earth,
+                  8.897e-04 of G0, which is what the transport rate buys
+      cos(phi)    the Coriolis-balancing bank `trim.py` documents, 0.148 deg,
+                  so this factor is 0.9999967 and is the negligible one
+
+    **AN EARLIER READING OF THIS ENTRY SAID "the whole discrepancy is
+    g_apparent / G0", AND THAT IS FALSE.** The `earth.FLAT` column above settles
+    it: there `g_apparent` IS `G0` exactly and the bank is zero, yet `n_z` still
+    departs from `cos(theta)` by -8.864e-04 -- which is the centripetal term on
+    its own. `FLAT` removes the Earth's rotation and its variable gravity and
+    leaves its CURVATURE, so level flight is still a curved path. The same
+    finding, reached from a hand derivation rather than from this test, is
+    `scripts/sanity.py` check 10.
+
+    Predicted against measured: 0.992218578 vs 0.992224097 over `WGS84_J2`,
+    5.6e-06 relative, and 0.995851121 vs 0.995851521 over `FLAT`, 4.0e-07. The
+    rel=1e-4 the assertion uses sits an order above the worst of those and three
+    orders below the 4.6e-03 departure it is explaining.
 
     Dividing by the constant rather than by local gravity is deliberate and
     documented in `specific_force`: it is what makes a load factor comparable
     between latitudes. The consequence is that "1 g" and "n_z = cos(theta)" are
-    now latitude- and altitude-dependent statements, and the re-measurement has
-    to say which of the two the Wingrove & Bach comparison wants.
+    latitude- and altitude-dependent statements. **Which of the two the Wingrove
+    & Bach comparison wants is still open** -- their Fig. 8 is DFDR normal
+    acceleration, so the body-normal convention is right, but whether their
+    baseline is 1 g or the local trimmed value is not settled here.
     """
     import jax.numpy as jnp
 

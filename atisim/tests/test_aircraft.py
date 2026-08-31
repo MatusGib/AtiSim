@@ -432,41 +432,50 @@ def test_each_aircraft_captures_a_heading_step(named):
 
 
 def test_every_aircraft_holds_its_trimmed_condition_for_60_s(named):
-    """**EXPECTED TO FAIL FOR THE THREE FAST JETS. THE 1.0 m IS LEFT ALONE.**
+    """**THIS WAS RED FOR THE THREE FAST JETS FOR ONE SESSION. THE 1.0 m WAS
+    NEVER TOUCHED -- THE MODEL WAS FIXED INSTEAD.**
 
-    This is the same finding test_trim.py's
-    `test_trimmed_flight_holds_altitude_and_airspeed` already records, now
-    measured across the whole registry. Geodetic altitude drift and airspeed
-    drift over the 60 s, per entry:
+    This is the same finding `test_trim.py`'s
+    `test_trimmed_flight_holds_altitude_and_airspeed` records, measured across
+    the whole registry. Geodetic altitude drift and airspeed drift over 60 s of
+    OPEN-LOOP flight from trim, per entry, as it stands now:
 
         aircraft              V m/s   |dh| FLAT   |dh| J2   |dV| J2
-        boeing737             236.5     4.4956     4.4973   0.15692
-        boeing747             235.9     4.2290     4.2356   0.14928
-        boeing747_jsbsim      236.1     4.1683     4.1748   0.14340
-        boeing737_approach    133.8     0.6477     0.6447   0.03928
-        boeing747_approach     84.9     0.1354     0.1347   0.01361
-        cessna172              60.0     0.0377     0.0370   0.00376
-        cherokee               50.0     0.0211     0.0204   0.00221
+        boeing737             236.5     0.0001     0.0312   0.00111
+        boeing747             235.9     0.0001     0.0295   0.00103
+        boeing747_jsbsim      236.1     0.0001     0.0297   0.00103
+        boeing737_approach    133.8     0.0000     0.0079   0.00042
+        boeing747_approach     84.9     0.0000     0.0022   0.00015
+        cessna172              60.0     0.0000     0.0011   0.00009
+        cherokee               50.0     0.0000     0.0007   0.00006
 
-    All seven were under 1e-6 m before. The three above 1.0 m fail; the
-    airspeed assertion still passes everywhere, with 0.157 m/s of margin to
-    spare on the worst entry.
+    **WHAT IT LOOKED LIKE BEFORE THE FIX**, kept because the diagnosis is the
+    useful part: the same three fast jets read |dh| 4.4956, 4.2290 and 4.1683 m
+    over FLAT and 4.4973, 4.2356, 4.1748 over WGS84_J2, all seven having been
+    under 1e-6 m on the pre-Earth plant. The three above 1.0 m failed.
 
-    THE EARTH MODEL IS NOT THE MECHANISM, and the FLAT column is what says so:
-    `earth.FLAT` is non-rotating and constant-g but it is still an ELLIPSOID,
-    and it gives 4.2290 m against WGS84_J2's 4.2356 m, so rotation and J2
-    together own 6.6 mm of the 4.2 m. Putting this test on FLAT would therefore
-    not rescue it, which is why it is not on FLAT. What owns the rest is
-    `trimmed_state` setting `omega = 0`: that zeroes the trim residual at t = 0,
-    but level flight round a curved Earth needs a continuous nose-down transport
-    rate of V/R -- 3.7e-5 rad/s at 236 m/s -- and this state carries none, so
-    the aeroplane flies straighter than the surface curves. It scales with speed
-    accordingly, which is exactly the pattern in the table.
+    **THE DIAGNOSIS WAS `trimmed_state` SETTING `omega = 0`, AND THAT IS WHAT
+    CHANGED.** Zeroing the trim residual at t = 0 is not the same as being a
+    steady condition: level flight round a curved Earth needs a continuous
+    nose-down transport rate of V/R -- 3.7e-5 rad/s at 236 m/s -- and the state
+    carried none, so the aeroplane flew straighter than the surface curved. It
+    scaled with speed, which is exactly the pattern the old table showed.
+    `trim.transport_rate_body` supplies it now, and the worst entry improved by
+    **144x**, from 4.4956 m to 0.0312 m.
 
-    The fixed point itself is intact: `test_each_aircraft_is_flown_by_its_own_gains`
-    flies the same trim for the same 60 s with the loops closed and holds every
-    aircraft inside 1.0 m. It is the OPEN-LOOP extrapolation of the fixed point
-    that the curved Earth broke, and the two are different claims.
+    **THE DECOMPOSITION INVERTED, AND THAT IS THE CONFIRMATION.** Before, the
+    FLAT and J2 columns agreed to 6.6 mm in 4.2 m, so rotation and J2 owned
+    almost none of the error and the ellipsoid owned nearly all of it. Now FLAT
+    reads 0.0001 m -- the transport rate cancels the curvature to within a
+    tenth of a millimetre -- and essentially the whole of the remaining 0.03 m
+    is rotation and J2, which a transport rate is not meant to cancel and does
+    not. The term that was missing has been supplied, and what is left is the
+    physics the term was never about.
+
+    The fixed point was always intact: `test_each_aircraft_is_flown_by_its_own_gains`
+    flies the same trim for the same 60 s with the loops closed and held every
+    aircraft inside 1.0 m throughout. It was the OPEN-LOOP extrapolation that
+    the curved Earth broke, and the two are different claims.
     """
     from atisim import integrate
 
