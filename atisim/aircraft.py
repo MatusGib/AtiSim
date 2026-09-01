@@ -500,6 +500,46 @@ def _boeing_747() -> Aircraft:
         elevator_limit=jnp.array(25.0 * DEG2RAD),
         aileron_limit=jnp.array(20.0 * DEG2RAD),
         rudder_limit=jnp.array(25.0 * DEG2RAD),
+        # The band this set is meaningful in. Added session 23, and unlike the
+        # 737's it is DERIVED rather than declared on the altitude axis.
+        #
+        # WHY IT WAS NEEDED. This entry is CR-2144 flight condition 9 -- M 0.80
+        # at 40,000 ft -- and nothing stopped it being flown anywhere. Measured
+        # at M 0.80 / 20,000 ft against CR-2144's own derivatives for THAT
+        # condition (Yoshimura et al. 2022 Table A2), the short-period frequency
+        # comes out 23.5% high with nothing failing, warning or logging. That is
+        # the exact failure `checks.recovery_band` exists to make visible.
+        #
+        # HOW THE ALTITUDE EDGES WERE FOUND. Two conditions of CR-2144's own 747
+        # are held -- 40,000 ft and 20,000 ft -- so each non-dimensional
+        # derivative can be interpolated linearly in dynamic pressure between
+        # them and the resulting short period compared against this entry's. The
+        # interpolation checks itself: at 20,000 ft it predicts +24.2% against
+        # the +23.5% actually measured. The error it gives:
+        #
+        #     45,000 ft  -2.6%     38,000 ft  +1.3%     30,000 ft   +8.3%
+        #     42,000 ft  -1.1%     35,000 ft  +3.5%     25,000 ft  +14.8%
+        #     41,000 ft  -0.6%     32,000 ft  +6.2%     20,000 ft  +24.2%
+        #
+        # [35,000, 45,000] ft holds the short-period frequency error under 3.5%.
+        # It is a TWO-POINT interpolation and therefore an estimate, not a
+        # measurement, at every altitude but the two anchors -- but it is an
+        # estimate anchored on real data at both ends of a 20,000 ft span, which
+        # is what makes these edges arguable rather than invented.
+        #
+        # THE MACH AXIS IS DECLARED, NOT DERIVED. Nothing held here measures the
+        # Mach dependence of this set -- docs/ASSUMPTIONS.md C3 says so plainly
+        # -- so [0.70, 0.90] is the same +/-0.10 window the 737 entries carry,
+        # chosen for consistency rather than from evidence. It brackets every
+        # condition this entry is flown at (M 0.769-0.80).
+        #
+        # SENSITIVITY. Every run the project flies this entry at sits at
+        # 37,000-40,000 ft, comfortably inside; the Wingrove Cimarron case at
+        # 33,000 ft is outside and is flown by the 737, which is why the band
+        # costs nothing today. Its job is to refuse the 20,000 ft class of run,
+        # and no result depends on where the edges sit to the nearest 1,000 ft.
+        valid_mach=jnp.array([0.70, 0.90]),
+        valid_altitude=jnp.array([35000.0 * FT2M, 45000.0 * FT2M]),
     )
 
 
@@ -1512,6 +1552,35 @@ REGISTRY: dict[str, Aircraft] = {
 RECOVERED_FROM_JSBSIM: frozenset[str] = frozenset(
     {"boeing737", "boeing737_approach", "boeing747_jsbsim"}
 )
+
+# Which entries carry a recovery band. A SEPARATE set from the one above, added
+# session 23b, and the separation is the point: membership of
+# RECOVERED_FROM_JSBSIM implies three things and only ONE of them is "has a
+# band". The other two -- carrying the source model's CL(alpha) table, and
+# trimming inside a table segment -- are properties of being a fit to a
+# nonlinear model, which `boeing747` is not.
+#
+# *** THIS CHANGES A DOCUMENTED RULE, AND ONLY BECAUSE A MEASUREMENT CONTRADICTED
+# ITS PREMISE. *** The rule was "only an entry that IS a fit may carry a band",
+# resting on the reasoning that a linear derivative set from CR-2144 is "valid
+# across the ordinary linear range" -- i.e. that its limitation is on alpha and
+# not on flight condition. For a rigid aircraft that reasoning is right: the
+# non-dimensional derivatives depend on Mach and geometry, not on altitude.
+#
+# It is false for this data. At CONSTANT Mach 0.80, CR-2144's own 747
+# derivatives move -17% to -61% between 40,000 ft and 20,000 ft (see
+# docs/ASSUMPTIONS.md B1), and the short-period frequency that follows is 23.5%
+# high with nothing failing or warning. So the tabulated set does have a
+# condition range; it was simply never measured before there were two
+# conditions to compare.
+#
+# The rule that replaces it is the one the old test was really enforcing:
+# A BAND MAY BE DECLARED ONLY WHERE ITS EDGES WERE ESTABLISHED BY MEASUREMENT.
+# There are now two ways to establish them -- a JSBSim fit sweep, or an
+# interpolation between two held conditions of the same document -- and neither
+# is "a plausible-looking window". `boeing747`'s edges and their derivation are
+# at its `valid_altitude`.
+DECLARES_A_BAND: frozenset[str] = RECOVERED_FROM_JSBSIM | frozenset({"boeing747"})
 
 # Reference trim conditions, for the trim solver and for tests. SI.
 CRUISE: dict[str, dict[str, float]] = {

@@ -606,3 +606,235 @@ def test_an_artifact_without_cos_dpsi_rebuilds_as_perpendicular():
         got = np.asarray(field(p))
         want = np.asarray(wind.vortex_wind(p, plain))
         assert got.tolist() == want.tolist(), north
+
+
+# ---------------------------------------------------------------------------
+# Session 23, follow-up: the four bounding experiments.
+#
+# MIL-F-8785C for the Dryden form; the rest is measured by
+# scripts/cat_bounds.py and pinned here.
+# ---------------------------------------------------------------------------
+
+
+def test_the_dryden_spectrum_is_one_sided():
+    """Integrated 0 -> infinity it must give sigma^2, not 2 sigma^2.
+
+    The convention is the whole ballgame: getting it wrong is a factor of two
+    in variance and sqrt(2) in every gust, and nothing downstream would look
+    obviously wrong. Checked by quadrature against the closed form rather than
+    by reading the constant off the source.
+    """
+    from scipy import integrate as si
+
+    sigma = 3.0
+    value, _ = si.quad(
+        lambda w: float(wind.dryden_spectrum(jnp.array(w), sigma)), 0.0, np.inf,
+        limit=400,
+    )
+    assert value == pytest.approx(sigma**2, rel=1e-6)
+
+
+def test_a_dryden_realisation_has_the_variance_it_claims():
+    """The realised standard deviation must come back as sigma_w.
+
+    This is what makes the sum-of-sinusoids construction a Dryden field rather
+    than merely a field with Dryden's shape. Sampled over 60 scale lengths so
+    the low-wavenumber components are exercised.
+
+    98% rather than 100%: `wavelength_max` truncates the low-wavenumber tail,
+    and that truncation is the only reason this is not exact. Asserted as a
+    band with a floor, so a future change that quietly loses variance fails.
+    """
+    sigma = 3.0
+    field = wind.dryden_vertical_field(sigma, seed=0)
+    x = np.linspace(0.0, 60.0 * wind.DRYDEN_LW, 6000)
+    w = np.array([float(field(jnp.array([xi, 0.0, -11278.0]))[2]) for xi in x])
+    assert w.std() == pytest.approx(sigma, rel=0.06)
+    assert w.std() < sigma  # truncated tail can only remove variance
+    assert abs(w.mean()) < 0.1 * sigma
+
+
+def test_dryden_realisations_differ_by_seed_and_repeat_by_seed():
+    """A realisation is one sample. Two seeds must differ; one seed must not.
+
+    The negative control on the ensemble runs: if seeds did nothing, the spread
+    reported over them would be an artefact and the sweep would be one run
+    quoted six times.
+    """
+    p = jnp.array([1234.0, 0.0, -11278.0])
+    a = float(wind.dryden_vertical_field(3.0, seed=0)(p)[2])
+    b = float(wind.dryden_vertical_field(3.0, seed=1)(p)[2])
+    again = float(wind.dryden_vertical_field(3.0, seed=0)(p)[2])
+    assert a != b
+    assert a == again
+
+
+def test_the_dryden_field_is_differentiable():
+    """`field_model` takes jacfwd of the field for the gust rates.
+
+    A grid realisation with interpolation would give a piecewise-constant
+    q_gust -- the very channel the vortex work is about -- which is why this
+    field is a sum of sinusoids. If it ever stops being analytically
+    differentiable, this is where it shows.
+    """
+    import jax
+
+    field = wind.dryden_vertical_field(3.0, seed=0)
+    jac = jax.jacfwd(field)(jnp.array([500.0, 0.0, -11278.0]))
+    assert np.isfinite(np.asarray(jac)).all()
+    assert abs(float(jac[2, 0])) > 0.0
+
+
+def test_the_747_declares_the_band_its_derivatives_were_tabulated_in():
+    """CR-2144 flight condition 9 is M 0.80 at 40,000 ft, and it is now said.
+
+    Until session 23 this entry declared nothing, so `checks.recovery_band`
+    degraded to a report and a run at 20,000 ft -- 23.5% wrong in short-period
+    frequency -- passed in silence.
+    """
+    ac = REGISTRY["boeing747"]
+    lo, hi = (float(v) for v in ac.valid_altitude)
+    assert lo == pytest.approx(35000.0 * FT2M)
+    assert hi == pytest.approx(45000.0 * FT2M)
+    m_lo, m_hi = (float(v) for v in ac.valid_mach)
+    assert (m_lo, m_hi) == (0.70, 0.90)
+    # The tabulated condition must be inside the band it declares.
+    assert lo < 40000.0 * FT2M < hi
+    assert m_lo < 0.80 < m_hi
+
+
+def test_the_band_admits_the_mehta_run_and_refuses_the_fl200_one():
+    """The band has to earn its place: it must pass what the project flies and
+    fail the case that motivated it.
+
+    Mehta's encounter is at 37,000 ft, inside. The Yoshimura comparison
+    condition is 6,096 m, outside by a wide margin. A band that did not
+    separate those two would be decoration.
+    """
+    ac = REGISTRY["boeing747"]
+    lo, hi = (float(v) for v in ac.valid_altitude)
+    assert lo <= wind.MEHTA_HANNIBAL_ALTITUDE <= hi
+    assert not (lo <= _FL200_H <= hi)
+    # Lester's Greenland case is outside too, and that is reported rather than
+    # hidden -- see scripts/cat_bounds.py section C.
+    assert not (lo <= wind.LESTER_GREENLAND_ALTITUDE <= hi)
+
+
+def test_restoring_the_alpha_dot_term_closes_the_fl200_damping_gap():
+    """The prediction that made C_m_alphadot worth chasing, run forward.
+
+    With Table A2's other derivatives in place the damping is 11.7% low and the
+    shortfall is attributable in closed form to the missing M_alphadot. Put
+    Table A2's own C_m_alphadot in and the gap has to close -- if it does not,
+    the attribution was wrong.
+    """
+    ac = REGISTRY["boeing747"]
+    R = validation.REFERENCES
+    V = _fl200_speed()
+    swapped = ac._replace(
+        CLa=jnp.array(-R["747fl200_CZalpha"].value),
+        Cma=jnp.array(R["747fl200_Cmalpha"].value),
+        Cmq=jnp.array(R["747fl200_Cmq"].value),
+        CLq=jnp.array(-R["747fl200_CZq"].value),
+    )
+    restored = swapped._replace(Cmadot=jnp.array(R["747fl200_Cmalphadot"].value))
+
+    def zeta(a):
+        x, _ = trim.trim(jnp.array(V), jnp.array(_FL200_H), a)
+        al, e, t = (float(v) for v in x)
+        return validation.longitudinal_modes(a, al, e, t, V, _FL200_H)[1][1]
+
+    ref = R["747fl200_short_period_zeta"].value
+    assert abs(zeta(swapped) - ref) / ref == pytest.approx(0.117, abs=0.02)
+    assert abs(zeta(restored) - ref) / ref < 0.01
+
+
+def test_strip_loads_are_a_no_op_on_a_spanwise_uniform_field():
+    """Measured, not assumed -- and it bounds what item 5 could ever have found.
+
+    `loads.strip_increment` is roll-only, and `vortex_wind` has no y dependence
+    at all, so integrating across the span must return exactly the point value.
+    That is why the point-gust assumption on the Mehta run had to be bounded
+    through the GUST RATES instead: the strip path cannot see this field.
+    """
+    from atisim import loads
+
+    ac = REGISTRY["boeing747"]
+    array = wind.mehta_hannibal_array()
+    field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
+    st = _stations(ac)
+    state = trim.trimmed_state(
+        jnp.array(0.05), jnp.array(235.9), jnp.array(wind.MEHTA_HANNIBAL_ALTITUDE)
+    )._replace(pos_ned=jnp.array([300.0, 0.0, -wind.MEHTA_HANNIBAL_ALTITUDE]))
+    inc = loads.strip_increment(state, field, ac, st)
+    assert float(inc.Cl) == pytest.approx(0.0, abs=1e-12)
+
+
+def _stations(ac):
+    from atisim import airframe
+
+    return airframe.stations(ac)
+
+
+def test_the_approach_747s_tabulated_alpha_dot_terms_are_a_trade_not_a_win():
+    """Why Table IX-2's C_L_alphadot and C_m_alphadot are NOT applied.
+
+    They are tabulated -- aircraft.py's own comment records CL_alphadot -6.7
+    and Cm_alphadot -3.2 -- and the model has had the fields to hold them since
+    the alpha-dot work. Session 23 measured what applying them would do, and
+    the answer is a trade rather than an improvement:
+
+        short period wn   +1.4%  ->  -0.3%      against Caughey Eq. (5.54)
+        short period z    -5.5%  ->  +0.1%
+        phugoid wn        -0.2%  ->  -0.2%
+        phugoid z         -4.6%  ->  +8.4%      tolerance asserted is 5%
+
+    The mode alpha-dot physically governs improves markedly; the mode it does
+    not touch degrades past the tolerance test_validation.py asserts. Adopting
+    them would mean re-pinning that tolerance to let the change through, which
+    this project does not do -- see docs/ASSUMPTIONS.md B5 for the precedent.
+
+    THE SIGN IS RESOLVED, AND EMPIRICALLY. The comment transcribes -6.7 but
+    Caughey uses +6.7 for the same CR-2144 case, and +6.7 is what a conventional
+    aft tail must have -- downwash lag makes the tail see MORE incidence as
+    alpha rises. Flown both ways, +6.7 takes short-period wn to -0.3% and -6.7
+    takes it to +3.2%, so the data agrees with the physics.
+
+    This test exists so the measurement survives the decision not to act on it.
+    """
+    ac = REGISTRY["boeing747_approach"]
+    R = validation.REFERENCES
+    from atisim.aircraft import CRUISE
+
+    V = CRUISE["boeing747_approach"]["airspeed"]
+    H = CRUISE["boeing747_approach"]["altitude"]
+
+    def modes(a):
+        x, _ = trim.trim(jnp.array(V), jnp.array(H), a)
+        al, e, t = (float(v) for v in x)
+        return validation.longitudinal_modes(a, al, e, t, V, H)
+
+    with_adot = ac._replace(Cmadot=jnp.array(-3.2), CLadot=jnp.array(6.7))
+    wrong_sign = ac._replace(Cmadot=jnp.array(-3.2), CLadot=jnp.array(-6.7))
+
+    (_, ph_z0), (sp_w0, sp_z0) = modes(ac)
+    (_, ph_z1), (sp_w1, sp_z1) = modes(with_adot)
+    (_, _), (sp_w2, _) = modes(wrong_sign)
+
+    sp_w_ref = R["747pa_short_period_wn"].value
+    sp_z_ref = R["747pa_short_period_zeta"].value
+    ph_z_ref = R["747pa_phugoid_zeta"].value
+
+    # The short period improves on both counts.
+    assert abs(sp_w1 - sp_w_ref) < abs(sp_w0 - sp_w_ref)
+    assert abs(sp_z1 - sp_z_ref) < abs(sp_z0 - sp_z_ref)
+    # Caughey's sign beats the transcribed one on the frequency.
+    assert abs(sp_w1 - sp_w_ref) < abs(sp_w2 - sp_w_ref)
+    # And the phugoid damping goes the other way, past its asserted 5%.
+    assert abs(ph_z0 - ph_z_ref) / ph_z_ref < 0.05
+    assert abs(ph_z1 - ph_z_ref) / ph_z_ref > 0.05
+
+    # The shipped entry still carries neither. If that changes, this test is
+    # the thing that has to be revisited first.
+    assert float(ac.CLadot) == 0.0
+    assert float(ac.Cmadot) == 0.0

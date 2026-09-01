@@ -406,10 +406,20 @@ def test_the_recovery_band_condemns_a_run_outside_it():
 
 def test_an_aircraft_with_no_declared_band_is_reported_not_passed():
     """A green tick for an unchecked thing is the failure this module exists to
-    avoid -- the same reasoning as the tripwire kind."""
-    ac = REGISTRY["boeing747"]
+    avoid -- the same reasoning as the tripwire kind.
+
+    The example was `boeing747` until session 23b gave that entry a band; it is
+    now the approach 747, which still declares none. Same family, same check,
+    same claim -- only the specimen moved, and it had to, because the whole
+    point of this test is to exercise an aircraft with NO band.
+    """
+    name = "boeing747_approach"
+    ac = REGISTRY[name]
+    assert float(ac.valid_altitude[1]) == float(ac.valid_altitude[0]), (
+        f"{name} now declares a band; this test needs one that does not"
+    )
     c = checks.recovery_band(
-        _level_run(CRUISE["boeing747"]["altitude"], CRUISE["boeing747"]["airspeed"]), ac
+        _level_run(CRUISE[name]["altitude"], CRUISE[name]["airspeed"]), ac
     )
     assert c.kind == "report"
     assert c.passed is None
