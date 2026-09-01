@@ -73,6 +73,17 @@ class Entry(NamedTuple):
 _CR2144_IX3 = "NASA CR-2144 Table IX-3 header, printed p.229, verified against the document"
 _CR2144_IX4 = "NASA CR-2144 Table IX-4, printed p.230, flight condition 9"
 _CR2144_IX8 = "NASA CR-2144 Table IX-8, printed p.234, flight condition 9, primed"
+_MEHTA = (
+    "R. S. Mehta, 'Modeling Clear-Air Turbulence with Vortices Using "
+    "Parameter-Identification Techniques', J. Guidance, Control & Dynamics "
+    "10(1), Jan-Feb 1987, 27-31 (AIAA 84-2083), converged five-vortex "
+    "solution on p. 30"
+)
+_LESTER = (
+    "P. F. Lester, O. Sen, R. E. Bach Jr., 'The Use of DFDR Information in the "
+    "Analysis of a Turbulence Incident over Greenland', Mon. Wea. Rev. 117, "
+    "May 1989, 1103-1107"
+)
 
 LEDGER: dict[str, Entry] = {
     # -- 747 reference geometry, straight off the table --------------------
@@ -266,5 +277,111 @@ LEDGER: dict[str, Entry] = {
         "1.2802 fail and are excluded from the strip path. Sensitivity: no "
         "result depends on the band's edges, only on which aircraft pass, and "
         "the two groups are separated by a factor of three.",
+    ),
+
+    # -----------------------------------------------------------------------
+    # Session 23, the CAT source pass. Eleven module-level constants entered
+    # `wind.py` and the coverage check failed the build for every one of them,
+    # which is exactly what this module's docstring promises. Every entry below
+    # is SOURCED: this session added no declared numbers to `wind.py`, and that
+    # is the point of the Mehta case in particular.
+    # -----------------------------------------------------------------------
+    "wind.MEHTA_HANNIBAL_X_FT": Entry(
+        "SOURCED",
+        "(-12384, -6669, -343, 3761, 12272) ft, the along-flightpath positions "
+        f"of the five converged vortices. {_MEHTA}",
+    ),
+    "wind.MEHTA_HANNIBAL_Z_FT": Entry(
+        "SOURCED",
+        "(-3516, -1836, -94, -254, 1738) ft, aircraft height ABOVE each core. "
+        "The sign convention is fixed on Mehta p. 29, which derives z < 0 from "
+        f"a negative horizontal perturbation. {_MEHTA}",
+    ),
+    "wind.MEHTA_HANNIBAL_R0": Entry(
+        "SOURCED",
+        "500.5 ft converged core radius. Independently corroborated by NASA "
+        "TM-102186 p. 3-4, 'a diameter of 1,000 ft'. Note Mehta's PRE-FIT "
+        "manual estimate was 600 ft, which is the most likely origin of the "
+        f"600 ft once attributed to Parks 1985. {_MEHTA}",
+    ),
+    "wind.MEHTA_HANNIBAL_V0": Entry(
+        "SOURCED",
+        "86.8 ft/s converged tangential velocity. TM-102186 rounds the same "
+        "quantity to 87 ft/s. Against Parks' 85 the spread is 2.1%, and the "
+        f"field is exactly linear in V0 so that is the spread on any wind. {_MEHTA}",
+    ),
+    "wind.MEHTA_HANNIBAL_PSI_DEG": Entry(
+        "SOURCED",
+        "31 deg between the wind vector and the flightpath, Mehta p. 29. This "
+        "is the only oblique traverse the project holds, and it is what "
+        f"licenses `VortexArray.cos_dpsi` existing at all. {_MEHTA}",
+    ),
+    "wind.MEHTA_HANNIBAL_ALTITUDE": Entry(
+        "SOURCED",
+        "37,000 ft. Mehta p. 29: the flight path was 'nearly straight and level "
+        f"at an altitude of 37,000 ft'. {_MEHTA}",
+    ),
+    "wind.MEHTA_HANNIBAL_CORE_PAIR": Entry(
+        "DERIVED",
+        "(2, 3), the indices of the two vortices whose cores the aircraft "
+        "penetrated. Derived by |z| < r0 over MEHTA_HANNIBAL_Z_FT, which "
+        "selects exactly -94 and -254 ft against a 500.5 ft radius. Matches "
+        "TM-102186 Fig. 7's 'two significant vortices'.",
+        inputs=("wind.MEHTA_HANNIBAL_Z_FT", "wind.MEHTA_HANNIBAL_R0"),
+    ),
+    "wind.TM102186_HANNIBAL_NZ": Entry(
+        "SOURCED",
+        "(-1.0, +1.7) g, the normal acceleration the DC-10 recorded in this "
+        "encounter. NASA TM-102186 p. 3-4: 'the wide fluctuations in the normal "
+        "acceleration from +1.7 to -1.0 g'. A BAND TO REPORT AGAINST, never a "
+        "target: PROJECT.md section 5 rules absolute load agreement out on "
+        "aircraft type.",
+    ),
+    "wind.TM102186_HANNIBAL_GUST_PERIOD": Entry(
+        "SOURCED",
+        "5 s. NASA TM-102186 p. 3-4: 'sharp up-and-down gusts about 5 sec "
+        "apart'. Nothing in the model consumes it; it is carried so a run's "
+        "gust spacing can be checked against the record.",
+    ),
+    "wind.LESTER_LEE_WAVE_WAVELENGTH": Entry(
+        "SOURCED",
+        f"22,000 m. {_LESTER} p. 1106, 'wavelength about 22 km', derived from "
+        "DFDR data at 10 km and read there as a mountain lee wave. Held BESIDE "
+        "the declared LEE_WAVE_WAVELENGTH rather than replacing it -- different "
+        "mountain range, different altitude -- so its job is to bound that "
+        "declaration, which it does at 12%.",
+    ),
+    "wind.LESTER_GREENLAND_NZ": Entry(
+        "SOURCED",
+        f"(-1.0, +2.7) g. {_LESTER} p. 1105: 'Vertical accelerations reached "
+        "+2.7g, -1.0g'. A B-747, which is the type this project models. Same "
+        "standing as TM102186_HANNIBAL_NZ: a band to report against.",
+    ),
+    "wind.LESTER_GREENLAND_ALTITUDE_GAIN": Entry(
+        "SOURCED",
+        f"300 m. {_LESTER} p. 1105: 'a sudden altitude gain of 1000 feet "
+        "(300 m)'.",
+    ),
+    "wind.LESTER_GREENLAND_ALTITUDE": Entry(
+        "SOURCED",
+        f"33,000 ft MSL. {_LESTER} p. 1105, Pan American Flight 125 over "
+        "southern Greenland at 62 N 48 W, 1654 UTC 22 January 1985.",
+    ),
+    "wind.DFDR_WIND_RMS_ERROR": Entry(
+        "DERIVED",
+        "{horizontal 2.449, vertical 2.236} m/s, the RSS of the contributions "
+        f"{_LESTER} Table 1 p. 1105 tabulates separately: horizontal dV_xy 1.0, "
+        "dV 1.0, V d(psi+beta) 2.0; vertical dh_dot 1.0, V d(Theta-alpha) 2.0. "
+        "The relation is sqrt of the sum of squares, which the paper's own "
+        "Eqs. (8) and (9) state. THIS IS THE BOUND ON EVERY IDENTIFIED VORTEX "
+        "PARAMETER and replaces the reasoned +/-25% docs/ASSUMPTIONS.md E2 "
+        "carried: against Mehta's V0 it is 8.45%.",
+        inputs=("wind.DFDR_WIND_RMS_ERROR_SPEED",),
+    ),
+    "wind.DFDR_WIND_RMS_ERROR_SPEED": Entry(
+        "SOURCED",
+        f"250 m/s. {_LESTER} Table 1 is headed 'Level flight, V = 250 m/s', so "
+        "the errors above are that speed's and the implied flow-angle error "
+        "0.458 deg only follows at it.",
     ),
 }

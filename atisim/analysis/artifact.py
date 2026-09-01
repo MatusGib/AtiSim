@@ -284,6 +284,12 @@ def rebuild_field(meta: dict):
         array = wind.VortexArray(
             north=jnp.array(p["north"]), down=jnp.array(p["down"]),
             r0=jnp.array(p["r0"]), v0=jnp.array(p["v0"]),
+            # Defaulted, so every artifact written before session 23 still
+            # rebuilds byte-identically. It is read rather than assumed because
+            # an oblique array that came back perpendicular would be wrong by
+            # 1/cos(dpsi) in traverse time -- 17% for the Mehta case -- and the
+            # panel would draw that silently, as a plausible flat-looking run.
+            cos_dpsi=jnp.array(p.get("cos_dpsi", 1.0)),
         )
         return lambda pos_ned: wind.vortex_wind(pos_ned, array)
     if kind == "UpdraftColumn":

@@ -158,6 +158,11 @@ rigid-rotation self-consistency test that found them. **Read it before changing 
 | **Oseguera & Bowles 1988**, NASA TM-100632 | **the microburst** — Eqs. (5)–(6), an axisymmetric stagnation flow satisfying continuity, with four stated constants (r/R = 1.1212, z_m/z* = 0.22, z*/ε = 12.5, u_max = 0.2357λR) | the example's `R` is legible only in a scanned figure, so the downdraft radius is declared inside the 1–4 km band Wilson et al. use to define a microburst |
 | MIL-F-8785C | (not yet used) Dryden spectra | σ above 2000 ft is a **chart read**, not a formula — must be digitised |
 | **Caughey, *Introduction to Aircraft Stability and Control*, Cornell MAE 5070 notes, Ch. 5** | an **independent implementation** of CR-2144's 747 power-approach case: dimensional derivatives Eq. (5.51), plant matrix Eq. (5.52), characteristic polynomial (5.53), roots (5.54) | **not an independent dataset** — its Eq. (5.48)–(5.50) cite CR-2144, the same document §IX comes from. Same inputs, different code. Also states V = 279.1 ft/s (M 0.25 at sea level) where Table IX-2's header says 165 KTAS = 278.49 ft/s, a 0.2% difference |
+| **Mehta 1987**, *J. Guidance, Control & Dynamics* 10(1) 27–31 (AIAA 84-2083) | **the only wind field in the project that declares nothing**: the converged five-vortex Hannibal solution — five core positions, `r₀` = 500.5 ft, `V₀` = 86.8 ft/s, ψ = 31°, altitude, bias and trend terms. Also the identification method behind Parks, and the cost at each array size | the fit is to DFDR-derived winds, so it inherits their reconstruction error (bounded by Lester below). States the encounter as **July** 1981 where two NASA documents say April |
+| **Wingrove, Bach & Schultz 1989**, NASA TM-102186 | the Hannibal encounter's **measured** normal acceleration (+1.7 to −1.0 g, gusts ~5 s apart); the vortex-array model in words (1,000 ft diameter, 87 ft/s, 3,400 ft spacing); **Fig. 8's three-aircraft simulation** at V = 150 / 700 / 800 ft/s and the mechanism it states | Fig. 8's exact wind field is not recoverable from the paper, so only orderings and excursion ratios can be compared. **Quotes Schultz 1990's Table 1 *initial estimates* as if they were his converged DFW results** — see §5 |
+| **Lester, Sen & Bach 1989**, *Mon. Wea. Rev.* 117 1103–1107 | **Table 1: the RMS error of a DFDR-plus-radar wind reconstruction** (2.449 m/s horizontal, 2.236 m/s vertical at V = 250 m/s); a **B-747** mountain-wave encounter at 33,000 ft, +2.7/−1.0 g, 1,000 ft altitude gain; a **measured 22 km lee-wave wavelength** ~1 km above the tropopause | one case, over Greenland rather than the Sierra Nevada that `LEE_WAVE_AMPLITUDE` comes from; no ATC radar fixes, so the track was initialised from the pilot's log and a six-minute mean was removed from the derived vertical velocity |
+| **Misaka, Obayashi & Endo 2008**, *J. Aircraft* 45(4) 1217–1229 | **the RMS normal load severity index** — `σ_n` over a moving 5 s average, moderate 0.2–0.3 g, severe ≥ 0.3 g (attributed there to Hamilton & Proctor). Defined at cruise altitude, which the F-factor thresholds are not | its own Figs. 26–27 show `σ_n` tracks the *trend* of measured acceleration and misses the peaks, by construction of the 5 s window |
+| **Yoshimura et al. 2022**, *J. Appl. Meteor. Climatol.* 61 503–519 | Tables A2/A3/A5: a **third CR-2144 747 flight condition** — M 0.8 at 6,096 m — with a complete non-dimensional longitudinal set including `C_mα̇`, the flight condition, and the short-period pair (`ω_n` 1.29, `ζ` 0.57) | **not an independent dataset** — Table A2 is attributed to Heffley & Jewell, i.e. CR-2144 again. Same standing as Caughey. Its own conclusion misreads Table A5's `s⁻¹` as `Hz` — see §5 |
 
 ### The vortex model, as cited
 
@@ -180,13 +185,161 @@ Arrays are linear superposition. Identified cases, both DC-10s near the tropopau
 Parks checks that ratio against Scorer's theoretical 2.7 — which is what turned the array
 spacing from a free parameter into a cited one.
 
-> **Note a source conflict:** Wingrove & Bach 1994 Fig. 4 gives Hannibal's core diameter
-> as 1000 ft; Parks 1985 gives r₀ = 600 ft, i.e. **1200 ft**, and its abstract states the
-> range "900 to 1200 ft". Parks is the primary identification source and is used here.
+> **~~Note a source conflict:~~ RESOLVED, session 23.** Wingrove & Bach 1994 Fig. 4 gives
+> Hannibal's core diameter as 1000 ft; Parks 1985 as transcribed gives r₀ = 600 ft, i.e.
+> **1200 ft**. Two further documents now settle it in favour of **500 ft**:
+>
+> - **Mehta 1987** fits this exact encounter and converges to r₀ = 500.5 ft, V₀ = 86.8 ft/s.
+> - **TM-102186** states it in prose: "Each vortex has a diameter of 1,000 ft and a
+>   circumferential velocity of 87 ft/sec."
+> **A first reading of this said 600 ft was a pre-fit guess mistaken for a result — Mehta's
+> manual startup estimate is exactly 600 ft. That reading is wrong, and Parks' own Scorer
+> check is what kills it:**
+>
+> ```
+> 3500 ft spacing / 1200 ft diameter = 2.917   and Parks quotes 2.92
+> 3500 ft spacing / 1000 ft diameter = 3.500   which he does not
+> ```
+>
+> Parks' radius, spacing and published ratio are **self-consistent to three figures at
+> 600 ft**. A transcription error would have broken that. So 600 ft is his genuine
+> identified value and the transcription is faithful.
+>
+> **What the two new sources establish is narrower and more useful: these are two fits of
+> one encounter, and 500 ft is the later one.** Parks was presented as AIAA 84-0270
+> (January 1984); Mehta as AIAA 84-2083 (August 1984), citing Parks, refitting the same
+> data with five vortices and a documented cost history (482 → 214). TM-102186 then reports
+> Mehta's converged numbers. 600 ft is not an error to correct — it is an earlier answer to
+> supersede, and **Parks' Scorer ratio belongs to it**, which is why that check no longer
+> reproduces at the radius this project flies.
+>
+> **Nothing rescues the Scorer check at either radius.** Mehta's five cores sit at
+> perpendicular spacings of 5179, 5695, 3522 and 7562 ft, so his own array's
+> spacing-to-diameter ratios run **3.5 to 7.6**. A uniform billow train is a Parks-shaped
+> idealisation of a field that is not uniform.
+>
+> **What remains a hybrid, deliberately.** `PARKS_CASES["hannibal"]` pairs Fig. 4's
+> *radius* (500 ft) with Parks' *strength* (85 ft/s); Mehta and TM-102186 both pair 500 ft
+> with 87. No single source states the pair in use. It is left alone because §4 baselines
+> sit downstream of it; the coherent single-source pair is `wind.MEHTA_HANNIBAL_*`, flown
+> beside it, and the field is exactly linear in `V₀` so the whole spread is **2.1%**
+> (86.8 against 85; TM-102186's rounded 87 makes it 2.35%).
+>
+> **The array spacing is confirmed, and its convention identified.** Mehta's two
+> core-penetrating vortices are 4,104 ft apart *along the flight path*. The vortex lines
+> run perpendicular to the wind, 31° off that path, so the separation measured
+> perpendicular to the lines is 4104·cos31° = 3,518 ft, or 3,522 ft with the 160 ft
+> vertical offset in quadrature — **0.6% from Parks' 3,500 ft**, from an entirely separate
+> fit. So 3,500 ft is real and it is a **perpendicular** spacing. Read as an along-track
+> spacing it would place the cores 15% too close, and nothing else in the project would
+> catch that.
 
 ## 4. Evidence ledger
 
 Every figure below is measured, with the tolerance the test asserts.
+
+### The CAT source pass (session 23)
+
+Everything here comes from `scripts/cat_validation.py`, whose printed report and four
+figures are the artefact. Run it as:
+
+```
+PYTHONPATH=<worktree root> .venv/Scripts/python.exe scripts/cat_validation.py --outdir runs/cat
+```
+
+**`PYTHONPATH` is not optional** — `python scripts/…` resolves `atisim` to the **main
+checkout**, which §10 documents and which this script caught on its first run by printing
+`atisim.__file__` before doing anything else.
+
+#### Mehta 1987's five-vortex field, flown by the 747 at Mehta's own 37,000 ft
+
+| Quantity | Model | Source | Note |
+|---|---|---|---|
+| vertical gust peak | −86.8 / +59.1 ft/s | `V₀` = 86.8 ft/s | the negative peak lands on `−V₀` exactly, which is the Rankine core signature |
+| load factor `n_z` | **−0.398 to +1.441 g** | **−1.0 to +1.7 g** (DC-10, TM-102186 Fig. 6) | inside the measured band, at **68%** of its peak-to-peak |
+| air-relative α | −5.98 to +7.86° | — | inside the 10° linear band |
+| air- vs inertial α | diverge by up to **6.85°** | — | the reason `vortex_viz` exists separately from `viz`. Computed by the script, not read off the figure |
+| start out of trim | **−0.0001 g** | — | `fly_in_moving_air`; the still-air start was **+0.198 g** out and inflated peak load by 12% |
+| `σ_n` | **0.6394 g** | severe ≥ 0.3 g (Misaka) | severe, on a field identified from an encounter that injured people |
+
+**Absolute agreement is not claimed and is not available** — DC-10 against 747, roughly
+0.8× the wing loading, §5 rules it structurally out. What is claimed is that the model
+lands **inside** the measured band and reaches about two thirds of it.
+
+#### TM-102186 Fig. 8 — the ordering, and the mechanism
+
+Six aircraft through the same field, at their own cruise conditions. `trav/T_sp` is core
+traverse time over the aircraft's own short period, which is the paper's stated mechanism.
+
+| aircraft | V ft/s | `trav/T_sp` | pitch p-p | `n_z` min | incidence gain | \|α\| peak |
+|---|---|---|---|---|---|---|
+| cherokee | 164 | 4.024 | 46.98° | +0.403 | 0.21 | 5.44° |
+| cessna172 | 197 | 4.046 | 74.92° | +0.413 | 0.18 | 5.51° |
+| boeing737_approach | 439 | 0.599 | 17.17° | −0.136 | 0.54 | 7.06° |
+| boeing747_approach | 278 | 0.512 | 40.08° | +0.070 | 0.56 | 9.78° |
+| boeing737 | 776 | 0.363 | 7.35° | −0.374 | 1.00 | 5.17° |
+| boeing747 | 774 | 0.196 | 6.70° | −0.398 | 1.49 | 7.86° |
+
+TM-102186 Fig. 8, **digitised** (±3°, ±0.15 g — extrema only, off a 1989 photocopy;
+nothing asserts against these):
+
+| | V ft/s | pitch p-p | `n_z` min | `n_z` max |
+|---|---|---|---|---|
+| RPV | 150 | 66.0° | +0.35 | 2.05 |
+| EXECUTIVE | 700 | 16.0° | −0.35 | 1.95 |
+| AIRLINER | 800 | 5.0° | −0.55 | 1.55 |
+
+**Three results, in increasing order of how much they are worth.**
+
+1. **The pitch ordering reproduces.** Slow aircraft pitch hugely, fast ones barely.
+   Cherokee 46.98° against the RPV's 66.0°; 747 6.70° against the AIRLINER's 5.0°, inside
+   the ±3° read error. The middle slot is empty — the registry has nothing at 700 ft/s and
+   the nearest entry is a different flight regime, so it was left empty rather than filled.
+2. **The `n_z` minimum ordering REVERSES, in both.** Reference: RPV +0.35, EXECUTIVE
+   −0.35, AIRLINER −0.55. Model: cherokee +0.403, 737 −0.374, 747 −0.398. The aircraft
+   that pitches least eats the most load. This is the non-obvious half of the paper's
+   claim and the model gets it, with the cherokee/RPV pair agreeing inside the read error.
+3. **The mechanism itself is monotonic, six for six.** *Incidence gain* is the α that
+   actually reached the wing divided by the α a rigidly-held attitude would have seen
+   (`atan(max|w_up|/V)`). Against `trav/T_sp` it falls **1.49 → 1.00 → 0.56 → 0.54 → 0.21
+   → 0.18** with no inversions. Above 1 the aircraft's own motion *adds* incidence; below
+   it, the aircraft pitches away and sheds the gust. Peak-to-peak pitch does **not**
+   collapse as cleanly, because it also scales with how large the gust is in incidence
+   terms, and that varies fourfold across the fleet through airspeed alone.
+
+**Every run stays inside the 10° linear band — and the mechanism is why.** A Cherokee at
+50 m/s meets a gust worth 25.6° of incidence at a frozen attitude and sees 5.44°, because
+it has time to pitch into the flow. Without that relief the low-speed runs would be
+outside the model's validity and the test could not be run at all.
+
+**Confound, stated:** each aircraft flies the field at its own cruise altitude, so density
+varies with the aircraft. The vortex field itself does not — `vortex_wind` is a velocity
+field with no density in it — and the 747 flies Mehta's own 37,000 ft, so the headline
+case carries no such confound.
+
+#### The 747 at a third CR-2144 flight condition, M 0.8 / 6,096 m
+
+Condition reproduced before any derivative is used: `U₀` 252.8 m/s against Table A3's 253,
+`ρ` 0.6527 against 0.653, and **`C_L` 0.2657 against 0.266** — the last from mass, wing
+area and the ISA atmosphere alone, using no derivative from either document.
+
+| | `ω_n` | vs ref | `ζ` | vs ref |
+|---|---|---|---|---|
+| AtiSim, FC9 (40,000 ft) derivatives | 1.5926 | **+23.5%** | 0.4723 | −17.1% |
+| AtiSim, Table A2 (6,096 m) derivatives | 1.2823 | **−0.6%** | 0.5031 | −11.7% |
+| reference, Table A5 | 1.2900 | — | 0.5700 | — |
+
+**The frequency error is entirely the derivative set.** Swap the coefficients for the ones
+CR-2144 tabulates at *that* condition, change nothing else, and 23.5% becomes 0.6%.
+
+**The residual damping error is entirely the missing `C_mα̇`.** Deleting `M_α̇ = −0.176`
+from the reference's own damping formula predicts −12.2%; the model measures −11.7%.
+Agreement to half a point of damping says nothing else contributes.
+
+Verification that the reference is usable at all, before any of the above: Table A2's
+dimensional column is recovered from its non-dimensional column using **AtiSim's own**
+mass, inertia, wing area and MAC, worst error **0.47%** across five derivatives. Same
+aeroplane, and both transcriptions sound.
 
 ### AtiSim against JSBSim through a Kelvin–Helmholtz vortex (session 21)
 
@@ -1563,8 +1716,27 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   integrates a rigid body. This is a genuine model/data mismatch and it is larger in
   consequence than the document's 1972 date, which threatens nothing that is only ever
   compared against the document's own arithmetic (§3, and the design spec's
-  "Source qualification"). Not quantified: doing so needs a rigid derivative set the
-  project does not hold.
+  "Source qualification"). ~~Not quantified: doing so needs a rigid derivative set the
+  project does not hold.~~
+
+  **Session 23: bounded, and it did not need a rigid set.** Stop asking for one. For a
+  rigid aircraft the non-dimensional derivatives are functions of Mach and geometry;
+  altitude does not enter. So at *constant Mach* they must be identical at two altitudes,
+  and any movement bounds everything altitude-dependent — including the aeroelastic term.
+  Yoshimura's Table A2 supplies CR-2144's own 747 at M 0.8 / 6,096 m against
+  `aircraft.boeing747`'s M 0.8 / 40,000 ft, a **2.48× change in dynamic pressure**
+  (at constant Mach `q̄ = ½γM²p`, so it follows static pressure, not density — the
+  density ratio is 2.16):
+  `C_Zα` −16.6%, `C_mα` −60.9%, `C_mq` −16.7%, `C_Zq` −18.7%, **every one less stiff at
+  the higher q̄**, which is the direction aeroelastic relief predicts and the opposite of
+  a transcription error.
+
+  **A ceiling, not a measurement of flexibility.** Reynolds number moves by the same
+  factor, and CG is not excluded — Table A3 says 25% MAC and CR-2144's CG for FC9 is not
+  in the material held here. A CG shift would land almost entirely on `C_mα`, the largest
+  mover, so that row is the least trustworthy and should not be quoted alone. Weight *is*
+  excluded: 2.888e5 kg against Table A3's 2.89e5, `I_yy` 4.488e7 against 4.49e7.
+  `docs/ASSUMPTIONS.md` B1 and C3 carry the tables and the consequence.
 
 - **`trim.trim` converges to physically absurd roots for degenerate coefficients.**
   `CL = CL0 + CLa·α` is linear, so a huge α compensates a small CLa and Newton reaches a
@@ -1597,8 +1769,23 @@ of them stale. If one moves, the derivative chain or the integrator changed.
 - **Vortex parameter uncertainty inherited from the source.** Parks derives α from
   accelerometers *"together with a knowledge of the aircraft's aerodynamic
   characteristics"* — so there are two layers of modelling between the raw DFDR data and
-  the identified r₀/V₀. A 1° α error maps to 4.12 m/s of wind, 27% of a 50 ft/s peak.
-  Treat the identified parameters as order-of-magnitude with roughly ±25% bands.
+  the identified r₀/V₀. ~~A 1° α error maps to 4.12 m/s of wind, 27% of a 50 ft/s peak.
+  Treat the identified parameters as order-of-magnitude with roughly ±25% bands.~~
+
+  **Session 23: the FIRST layer is now measured and the band is about a third of that.**
+  Lester, Sen & Bach 1989 Table 1 propagates the uncertainties of exactly this
+  reconstruction and populates them — RSS **2.449 m/s horizontal, 2.236 m/s vertical** at
+  V = 250 m/s. Against Mehta's converged `V₀` = 26.46 m/s that is **8.45%**, not 25%. The
+  same table shows the 1° assumption was itself twice too large: `V·δ(Θ−α) = 2.0` m/s at
+  250 m/s is **0.458°**.
+
+  **The SECOND layer is still attributed, and that is the one the wording above is really
+  about.** Bach 1991 (NASA RP-1252) ch. 7 states the α reconstruction is only used where
+  the recorder carried no vane, and that the L-1011 carried two at 2 Hz — it does not say
+  what the Hannibal DC-10 carried. The definitive treatment is **Bach & Parks 1987,
+  *J. Aircraft* 24(11) 789–792, which this project does not hold.** So: reconstruction
+  error measured, identification error attributed, orderings-only rule unchanged.
+  `docs/ASSUMPTIONS.md` E2 carries the table.
 
 - **The lee wave carries no horizontal perturbation, so half the F-factor is missing.**
   `wind.LeeWave` is purely vertical and constant in altitude. That is divergence-free, so
@@ -1622,6 +1809,24 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   independent of wavelength — but it sets the encounter duration and the pitching gust
   rate, so anything depending on those must say which value was used.
 
+  **Session 23: still declared, but the declaration now has a measurement standing next to
+  it.** Lester et al. 1989 derive a lee wave of **wavelength about 22 km** from DFDR data
+  at 10 km (33,000 ft), which the same paper places about a kilometre above the tropopause
+  — i.e. in the regime Doyle declined to quantify. That is **12% from the declared 25 km**
+  and inside Doyle's band. Stored as `wind.LESTER_LEE_WAVE_WAVELENGTH`.
+
+  **Not substituted, and the reason matters.** Swapping it would trade a declared number
+  inside a measured band for a measured number from a different mountain range (Greenland,
+  not the Sierra Nevada that `LEE_WAVE_AMPLITUDE` comes from) at a different altitude
+  (10 km, not the modelled 12.192). That is not obviously an improvement. What changes is
+  that the declaration is now bounded rather than unbounded.
+
+  **The same paper also corroborates the omission below it.** It reports the flight-level
+  horizontal windspeed dropping sharply at exactly the point of largest vertical motion,
+  read there as a critical level from overturning waves — direct evidence that the
+  horizontal perturbation `wind.LeeWave` omits is real, which turns "the reported F is a
+  lower bound" from an argument into an observation.
+
 - ~~**The 747 cannot be flown into a microburst.**~~ **CLOSED, session 10.** It was true
   while the only derivative set was flight condition 9, Mach 0.8 at 40,000 ft. CR-2144
   Table IX-2 turned out to hold a complete **non-dimensional power-approach set** —
@@ -1636,6 +1841,21 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   both cases the **physical verdict is `F > (T−D)/W`**, which is that paper's own
   criterion and needs nobody's certification basis. Note this is a *different* reason from
   the lee wave's, where the thresholds failed on altitude rather than aircraft class.
+
+  **Session 23: the ALTITUDE failure now has an instrument that does not have it.**
+  Misaka et al. 2008 §IV.B apply RMS normal load `σ_n` — a moving 5 s average — with
+  moderate 0.2–0.3 g and severe ≥ 0.3 g, attributed there to Hamilton & Proctor. It is
+  defined for cruise-altitude turbulence, which is where every CAT case this project holds
+  actually happened. `checks.rms_normal_load` implements it as a **report**, never a gate:
+  the bands say how rough the air was, not whether the run was good, and a gate would fail
+  the simulator for correctly flying through severe turbulence.
+
+  **What it cannot do, from the source's own results.** Misaka Figs. 26–27 find `σ_n`
+  tracks the *trend* of measured vertical acceleration and misses the peaks, by
+  construction of the 5 s window. So it grades an encounter and is the wrong instrument
+  for a core penetration — the 1.5 s a 747 spends inside a Parks core is under a third of
+  one window. `rms_normal_load` returns `nan` with a stated reason rather than a number
+  for any run shorter than its own window.
 - **The approach 747 flies below its minimum-drag speed**, by 12.2 m/s, because 1.4 Vs at
   max landing weight is on the back side of the drag curve — which is where an airliner on
   final is. The autopilot's loop pairing is therefore inverted for that entry. It holds
@@ -1644,6 +1864,38 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   microburst run therefore ends when the aircraft descends within one wingspan of the
   surface, because below that the integration is arithmetic rather than physics — left to
   itself the model bounces and climbs away, which reads as a survival and is not one.
+
+- **Two errors in the sources themselves, found session 23. Neither is this project's, and
+  both change what may be quoted from those documents.**
+
+  **(a) TM-102186 publishes Schultz's pre-fit guesses as his DFW answer.** It reports the
+  microburst rings as "outer ring 15,000 ft diameter with vortex core diameter of 3000 ft;
+  inner ring 2500 ft diameter with core diameter 900 ft". Those are Schultz 1990's
+  **Table 1 *initial estimates***, to the digit. His converged Table 2 reads: outer ring
+  radius 7,574 ft (diameter 15,148 ft) with core **4,856.8 ft**; inner ring radius
+  1,594.3 ft (diameter 3,188.6 ft) with core **985.0 ft**. The outer core is **62% larger**
+  than the figure TM-102186 prints. **If microburst geometry is ever taken from
+  TM-102186, take it from Schultz Table 2 instead.**
+
+  **(b) Yoshimura 2022's conclusion contradicts its own Table A5.** The conclusion calls
+  the B747 short-period frequency "1.29 Hz" and derives a 200 m resonant wavelength from
+  258 ÷ 1.29, then argues 10–20 m grid spacing is needed. Table A5 labels the quantity
+  `s⁻¹`, and its own Table A2 derivatives reproduce 1.29 **rad/s** = 0.205 Hz (checked:
+  `ω_n² = Z_α M_q/U₀ − M_α` gives 1.286). At 258 m/s the resonant wavelength is
+  2π·258/1.29 ≈ **1,257 m**, not 200 m — so the grid-resolution conclusion does not follow
+  from that calculation. **Table A2/A3/A5's numbers are used here; that conclusion is
+  not.**
+
+  These are the same failure mode as the 600 ft Hannibal radius (§3): a downstream paper
+  quoting a startup estimate, or a mislabelled unit, as a result. It is why §3's rule that
+  every number carries the table it came from is worth its cost.
+
+- **The Hannibal encounter is dated two ways.** Mehta 1987 says July 1981; TM-102186
+  says April 1981 in three figure captions and Bach 1991's Table 7.1 lists case 1 as
+  `4/81`. Everything else matches across the accounts — 37,000 ft, DC-10, ψ = 31°, a
+  ~150 kt horizontal wind bias, the same ±25 kft plot range — so they are the same
+  encounter. **Two NASA documents say April; cite April 1981.** Nothing physical depends
+  on it.
 
 **Structurally impossible — cannot be fixed from any source currently held:**
 
@@ -1925,14 +2177,39 @@ source exactly. A smoother interpolant would agree with the source less.
 
 ## 8. Open questions
 
-- **Hannibal's core radius: 500 ft or 600 ft?** `PARKS_CASES` carries 600 ft, citing Parks
-  et al. 1985. Wingrove & Bach 1994 Fig. 4 gives the same vortex a **1000 ft diameter**,
-  so 500 ft. The units are not in doubt — Fig. 4's Morton entry halves to 450 ft, which is
-  `PARKS_CASES['morton']['r0']` to the digit — so one of the two papers is misquoted and
-  Parks 1985 has never been obtained to say which. **It is not immaterial:** flown in
-  JSBSim the two radii give −1.2581 g and −1.1325 g of peak load, an 11.1% spread. Both are
-  kept, in separate dicts with separate citations, and both are flown. Resolving it needs
-  J. Aircraft **22**(2), 124–129 (DOI 10.2514/3.45095).
+- ~~**Hannibal's core radius: 500 ft or 600 ft?**~~ **ANSWERED, session 23 — 500 ft.**
+  (This entry also described `PARKS_CASES` as carrying 600 ft, which had been stale since
+  session 22 moved it to 500.) Two documents settle it independently of Wingrove & Bach
+  1994 Fig. 4: **Mehta 1987** fits this exact encounter and converges to r₀ = 500.5 ft,
+  V₀ = 86.8 ft/s, and **TM-102186** states "a diameter of 1,000 ft and a circumferential
+  velocity of 87 ft/sec". Three sources now agree.
+
+  **It is a supersession, not a correction — and an earlier session-23 reading that
+  called 600 ft a "pre-fit guess" was wrong.** Parks' Scorer check settles it: 3500/1200 =
+  2.917 against his quoted 2.92, self-consistent to three figures. 3500/1000 = 3.500,
+  which he does not quote. A transcription error would have broken that consistency, so
+  **600 ft is Parks' genuine identified value.** Mehta then refits the same data with five
+  vortices (cost 482 → 214) and converges to 500.5 ft; TM-102186 reports Mehta's answer.
+  Parks January 1984, Mehta August 1984 citing Parks.
+
+  **So the Scorer ratio belongs to the superseded radius**, which is exactly why
+  `test_the_spacing_to_core_diameter_ratio_and_what_session_22_cost_it` must keep recording
+  the loss rather than being retuned. And nothing rescues that check at either radius:
+  Mehta's own five cores give spacing-to-diameter ratios of 3.5 to 7.6, so a *uniform*
+  billow train is a Parks-shaped idealisation of a field that is not uniform.
+
+  **Still worth obtaining.** Parks et al. 1985 has never been read here, so the 600 ft and
+  the 2.92 both remain second-hand — self-consistent second-hand, which is much stronger
+  than before, but not a reading of the document. J. Aircraft **22**(2), 124–129
+  (DOI 10.2514/3.45095).
+
+- **New, session 23: what does `PARKS_CASES["hannibal"]` being a hybrid cost?** It pairs
+  Fig. 4's radius (500 ft) with Parks' strength (85 ft/s); Mehta and TM-102186 both pair
+  500 ft with 87. The field is exactly linear in V₀, so every wind-derived quantity moves
+  by 2.1% — measured, not argued. It is left alone because §4 baselines sit downstream.
+  **The question is whether a frozen baseline should be re-pinned to a coherent
+  single-source pair**, which is a decision about what §4 is for and not one to take
+  incidentally.
 - ~~**Why does atisim accumulate more nose-down attitude than JSBSim through the run-in?**~~
   **ANSWERED, session 22 — it is the shared-start compromise, not the physics.**
   `scripts/vortex_diagnose.py` settles it two ways. Flown from JSBSim's state in
@@ -1947,6 +2224,68 @@ source exactly. A smoother interpolant would agree with the source less.
   touch the core response.
 
 ## 9. Session log
+
+### Session 23 — eleven papers arrive, and four "not quantified" entries stop being that
+
+**What came in.** Twelve PDFs in `Reference_papers`, eleven distinct works. Seven are new
+to the project: Mehta 1987, NASA TM-102186, Lester/Sen/Bach 1989, Misaka 2008, Yoshimura
+2022 and 2023, Schultz 1990, plus Bach 1991's SMACK manual and Palacios & Cesnik ch. 4.
+Loving 1965 is context with no reusable dataset; Stengel was already load-bearing; one
+file is a duplicate.
+
+**The theme: four §5 entries that said "not quantified" or "declared, not sourced" were
+wrong to say so, and closing them needed no new measurement — only a source that had
+not been read.**
+
+| Entry | Was | Now |
+|---|---|---|
+| Hannibal core radius | conflict, unarbitrable | **500 ft** — Mehta's later five-vortex refit, reported again by TM-102186. 600 ft is Parks' own earlier fit, self-consistent with his Scorer ratio, and is superseded rather than corrected |
+| vortex parameter band | ±25%, reasoned | **8.45%**, from Lester Table 1's propagated RMS errors |
+| flexible-airframe mismatch | "cannot be produced from sources the project holds" | bounded at constant Mach: −17% to −61% across 2.48× q̄ |
+| lee-wave wavelength | declared, unbounded | 12% from a measured 22 km at the right altitude regime |
+
+**What was built.** `VortexArray.cos_dpsi` (the oblique traverse the module had refused,
+now transcribed from a source that constrains it); `wind.mehta_hannibal_array`, the only
+wind field in the project that declares nothing; `vortex_viz.fly_in_moving_air`;
+`checks.rms_normal_load`; twelve `REFERENCES` rows for a third CR-2144 flight condition;
+`scripts/cat_validation.py` and 23 tests in `test_cat_validation.py`.
+
+**Three results worth remembering.**
+
+1. **The 747 lands inside the DC-10's measured load band** on Mehta's own identified
+   field, at 68% of its peak-to-peak. Absolute agreement was never available; being
+   *inside* is what was reachable and it was reached.
+2. **The paper's non-obvious claim reproduces.** TM-102186 Fig. 8's `n_z` minimum
+   ordering runs *opposite* to its pitch ordering — the aircraft that pitches least eats
+   the most load — and the model gets that reversal, with the cherokee/RPV pair agreeing
+   inside the digitisation error. The mechanism behind it collapses monotonically across
+   all six aircraft, six for six.
+3. **A 23.5% short-period error was traced to its cause in one experiment.** Swapping the
+   derivative set for the one CR-2144 tabulates at that condition took it to 0.6%, and the
+   remaining damping shortfall was *predicted* to −12.2% from the missing `C_mα̇` against a
+   measured −11.7%. Neither number is a fit.
+
+**Two mistakes in the sources, and three of the project's own guards firing.** TM-102186
+quotes Schultz's initial estimates as his results; Yoshimura 2022 misreads its own `s⁻¹`
+as `Hz`. And every safety net this project has built caught something real:
+
+| Guard | What it caught |
+|---|---|
+| §10's tree check | `scripts/cat_validation.py` printed `atisim.__file__` on its first run and found itself importing the **main checkout**. The failure mode that produces no error message, producing one |
+| `test_the_provenance_ledger_does_not_cover_the_source_modules` | eleven new `wind.py` constants added without ledger entries. **Failed the build**, exactly as §2 promises. Fixed by adding the entries, never by widening the baseline |
+| `test_checks_round_trip_with_their_kind` | the new severity check returning `NaN` on a short run, which is not valid strict JSON. Fixed by omitting the check rather than fabricating a value |
+
+**Two of my own numbers were wrong and were caught by recomputing them.** The dynamic
+pressure ratio between the two 747 conditions was written as 2.16× — that is the *density*
+ratio; at constant Mach `q̄ = ½γM²p`, so it is **2.48×**. And the Mehta/Parks strength
+spread was written as 2.4% when 86.8/85 is **2.1%** (2.4% is TM-102186's rounded 87).
+Both were in six files before being corrected. The air-vs-inertial α divergence was
+likewise read off a plot at 7.0° and is **6.85°** computed; the script now prints it.
+
+**What did not change.** No frozen §4 baseline moved. `PARKS_CASES` is untouched and still
+a hybrid, deliberately; the coherent single-source pair lives beside it and the 2.1%
+spread is measured rather than argued. The orderings-only rule on vortex conclusions
+stands — everything above is an ordering, a band, or an attribution.
 
 ### Session 21 — the Wingrove paper arrives, and JSBSim gains a 747
 
@@ -2828,7 +3167,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 
 | Command | What it does |
 |---|---|
-| `.venv/Scripts/python.exe -m pytest -q` | 626 passed, 1 skipped, ~8 min (measured session 18; the 322 this row used to claim was stale by several sessions). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. |
+| `.venv/Scripts/python.exe -m pytest -q` | **749 passed, 1 skipped, 9m00s** (measured session 23; the 626 this row claimed was stale by five sessions, and the 322 before that by several more — this row has now been wrong twice, so re-measure it rather than trusting it). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. |
 | `.venv/Scripts/python.exe scripts/sanity.py` | **The ladder, for a reader who does not yet trust the model.** Twelve cases from degenerate inputs upward — zero the wind, zero a coefficient so a motion becomes impossible, then signs, then hand-computable numbers, then structural properties. Every expected value is derived by hand in the source and printed beside the model's answer, so it is read rather than trusted. Ends with the item 08 convention probe, which is a measurement rather than a pass/fail. |
 | `.venv/Scripts/python.exe -m pytest --nbval-lax notebooks/ -q` | **The second gate.** Executes `notebooks/solver-validation.ipynb` so it cannot rot. Needs the `dev` extra (`jupyter`, `nbval`). Deliberately *not* in `testpaths` and `--nbval-lax` is deliberately *not* in `addopts`: that would make every `pytest` run fail with "unrecognized arguments" wherever nbval is absent. **Run it from a worktree with an ABSOLUTE `PYTHONPATH`** — nbval starts the kernel with its cwd in `notebooks/`, so a relative `PYTHONPATH=.` resolves to the wrong directory and `atisim` silently loads from the main checkout. |
 | `.venv/Scripts/python.exe scripts/checkpoint.py` | 747 only, no flags. Trim residuals, 60 s fixed-control hold, longitudinal modes against CR-2144 Table IX-5. |
@@ -2846,6 +3185,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 | `C:/Users/mateusz/AppData/Local/Programs/Python/Python310/python.exe` `scripts/gen_jsbsim_vortex_reference.py` | **Freezes JSBSim's answer to the three vortex cases.** Same interpreter, same reason. Writes `atisim/tests/data/jsbsim_vortex_reference.xml`. |
 | `.venv/Scripts/python.exe scripts/vortex_compare.py --png runs/vc.png` | **The cross-code vortex comparison.** Flies atisim through the identical field the frozen reference was generated from and reports where the two engines part, against Wingrove & Bach's own g-loads. Imports no jsbsim. |
 | `.venv/Scripts/python.exe scripts/vortex_diagnose.py` | **Why the comparison's two large errors are large.** Three experiments: the same start state flown in still air, atisim flown from its own trim, and a one-lever-at-a-time sweep against the DFDR. Imports no jsbsim. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_validation.py --outdir runs/cat` | **The CAT source pass (session 23).** Flies Mehta 1987's five-vortex Hannibal field, reproduces TM-102186 Fig. 8's three-aircraft ordering and tests its stated mechanism across the whole registry, compares the 747's short period at a third CR-2144 flight condition, and grades every run on Misaka's `σ_n`. Prints every number and writes four figures. **`PYTHONPATH` is mandatory** — `python scripts/…` resolves `atisim` to the main checkout, which this script detects and prints on its first line. |
 | `docs/summary/jsbsim-atisim-vortex-report.html` | **The written comparison** — the numbers above with the reasoning, the figure, and what the result does and does not establish. Not generated; edit it when the numbers move. |
 
 ### The documents, and which question each answers

@@ -189,6 +189,35 @@ _C = "Caughey, Cornell MAE 5070 notes, Ch. 5, {}"
 _IX2 = "NASA CR-2144, Heffley & Jewell 1972, Table IX-2 (747 power approach)"
 _IX5 = "NASA CR-2144 Table IX-5 via PROJECT.md section 4, '747 modes vs CR-2144'"
 
+# R. Yoshimura, K. Suzuki, J. Ito, R. Kikuchi, A. Yakeno, S. Obayashi,
+# "Large-Eddy and Flight Simulations of a Clear-Air Turbulence Event over Tokyo
+# on 16 December 2014", J. Appl. Meteor. Climatol. 61(5), May 2022, 503-519.
+# Appendix, Tables A2/A3/A5.
+#
+# EXACTLY THE SAME STANDING AS CAUGHEY, AND FOR THE SAME REASON. Its Table A2 is
+# headed "Reference coefficients of Boeing 747-100 aircraft" and the text
+# attributes it to Heffley & Jewell (1972) -- CR-2144 again. So this is a third
+# INDEPENDENT IMPLEMENTATION over the same primary data, not a third dataset.
+#
+# WHAT IS NEW, AND IT IS WORTH HAVING. It is a THIRD FLIGHT CONDITION. This
+# project holds CR-2144's M 0.8 / 40,000 ft cruise and its sea-level power
+# approach; Table A3 is M 0.8 at 6,096 m (20,000 ft), between them, where the
+# density is 2.16x the cruise value. A model that matched at both ends and not
+# in the middle would be fitting, and nothing the project held before could see
+# that.
+#
+# VERIFIED, NOT TRANSCRIBED. Table A5's published pair is recomputed here from
+# Table A2's own derivatives before either is trusted:
+#   wn^2 = Z_alpha*M_q/U0 - M_alpha = (-157)(-0.667)/253 + 1.24 = 1.6539
+#          -> wn = 1.2860  against the table's 1.29
+#   zeta = -(Z_alpha/U0 + M_q + M_alphadot)/(2 wn)
+#        = (0.62055 + 0.667 + 0.176)/2.5719 = 0.5695  against the table's 0.57
+# Both close, so the transcription below is internally consistent and the
+# derivatives and the modes cannot have come from different tables.
+# `test_validation.py::test_the_yoshimura_747_table_closes_on_itself` is that
+# arithmetic, run rather than believed.
+_Y22 = "Yoshimura et al. 2022, JAMC 61, Table {} (CR-2144 747-100 at M0.8/6096 m)"
+
 REFERENCES = {
     # Eq. (5.54): the roots of the power-approach longitudinal system.
     "747pa_short_period_wn": Reference(0.88178, _C.format("Eq. (5.54)")),
@@ -214,6 +243,27 @@ REFERENCES = {
     "747cruise_phugoid_wn_model": Reference(0.0553, _IX5),
     "747cruise_short_period_zeta_ref": Reference(0.387, _IX5),
     "747cruise_short_period_zeta_model": Reference(0.3425, _IX5),
+    # The M 0.8 / 6,096 m condition. Table A5's published modes, and the Table A2
+    # derivatives they must be reproducible from -- both stored, so the closure
+    # check has something to close.
+    "747fl200_short_period_wn": Reference(1.29, _Y22.format("A5")),
+    "747fl200_short_period_zeta": Reference(0.57, _Y22.format("A5")),
+    "747fl200_Zalpha": Reference(-157.0, _Y22.format("A2")),  # m/s^2
+    "747fl200_Malpha": Reference(-1.24, _Y22.format("A2")),  # 1/s^2
+    "747fl200_Malphadot": Reference(-0.176, _Y22.format("A2")),  # 1/s
+    "747fl200_Mq": Reference(-0.667, _Y22.format("A2")),  # 1/s
+    "747fl200_Zq": Reference(-3.05, _Y22.format("A2")),  # m/s
+    "747fl200_CZalpha": Reference(-4.24, _Y22.format("A2")),
+    "747fl200_Cmalpha": Reference(-0.629, _Y22.format("A2")),
+    "747fl200_Cmq": Reference(-20.5, _Y22.format("A2")),
+    "747fl200_CZq": Reference(-5.01, _Y22.format("A2")),
+    # The term this model does not have at all. Stored so the damping shortfall
+    # can be PREDICTED from the source rather than merely observed.
+    "747fl200_Cmalphadot": Reference(-5.40, _Y22.format("A2")),
+    # Table A3, the flight condition those derivatives are quoted at.
+    "747fl200_altitude": Reference(6096.0, _Y22.format("A3")),  # m
+    "747fl200_U0": Reference(253.0, _Y22.format("A3")),  # m/s
+    "747fl200_CL": Reference(0.266, _Y22.format("A3")),
 }
 
 # Caughey Eq. (5.52), the [u, w, q, theta] plant matrix in ft/s and radians.

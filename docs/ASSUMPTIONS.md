@@ -169,15 +169,59 @@ degrees of freedom.
 derivatives carry aeroelastic corrections for a structure this model does not have. The
 data and the model disagree about what kind of aircraft this is.
 
-**Bound: NONE, and it cannot be produced from sources the project holds.** Quantifying it
+~~**Bound: NONE, and it cannot be produced from sources the project holds.** Quantifying it
 needs a rigid-airframe derivative set for the same aircraft and condition, which CR-2144
-does not tabulate.
+does not tabulate.~~
 
-**Verdict: the most significant open assumption in the project.** It is not a reason to
-distrust the mode comparisons — those are closed-loop against the source's own arithmetic
-from the source's own derivatives, so they test the solver regardless (see `PROJECT.md`
-§3, "Source qualification"). It *is* a reason not to claim the model represents a real
-747's structural response.
+**Bound, measured session 23 — and it did not need a rigid derivative set after all.**
+The trick is to stop asking for one. For a **rigid** aircraft the non-dimensional
+derivatives are functions of Mach number and geometry; altitude does not enter. So at
+*constant Mach* they must be identical at two altitudes, and any movement is a bound on
+everything altitude-dependent — of which aeroelastic relief is the term that scales with
+dynamic pressure.
+
+CR-2144 supplies two conditions at M 0.80. `aircraft.boeing747` carries flight condition 9
+at 40,000 ft. Yoshimura et al. 2022's Table A2, attributed to Heffley & Jewell, carries
+6,096 m (20,000 ft), where the dynamic pressure is **2.48× higher**. (At constant
+Mach `q̄ = ½γM²p`, so it scales with static *pressure*, not density — the density ratio
+is 2.16 and using that would understate the change.)
+
+| | AtiSim (FC9, 40,000 ft) | CR-2144 via Table A2 (20,000 ft) | change |
+|---|---|---|---|
+| `C_Zα` | −4.944 | −4.24 | **−16.6%** |
+| `C_mα` | −1.012 | −0.629 | **−60.9%** |
+| `C_mq` | −23.92 | −20.5 | **−16.7%** |
+| `C_Zq` | −5.945 | −5.01 | **−18.7%** |
+
+**Every coefficient is less stiff at the higher dynamic pressure, which is the direction
+aeroelastic relief predicts and the opposite of what a transcription error would produce.**
+A wing and tail that bend under load shed incidence, and they bend more at 2.48× the
+q̄.
+
+**Read it as a ceiling, not a measurement of flexibility.** Three things move together
+between those two rows and this experiment cannot separate them:
+
+- **aeroelastic relief** — the term B1 is about, and the one whose sign matches;
+- **Reynolds number**, which changes by roughly the same factor;
+- **CG**, which is *not* excluded. Table A3 states 25% MAC; CR-2144's CG for flight
+  condition 9 is not in the material held here. A CG shift lands almost entirely on
+  `C_mα`, which is by far the largest mover — so the 60.9% figure is the least
+  trustworthy row in the table and should not be quoted alone.
+
+Weight is excluded: 2.888×10⁵ kg against Table A3's 2.89×10⁵, and `I_yy` 4.488×10⁷
+against 4.49×10⁷. Same aeroplane, same loading.
+
+Pinned by
+`test_cat_validation.py::test_cr2144s_own_747_derivatives_move_with_altitude_at_constant_mach`,
+which asserts the **signs** (every coefficient stiffer at altitude) as the load-bearing
+claim and the magnitudes only loosely.
+
+**Verdict: still the most significant open assumption in the project, but no longer an
+unbounded one.** It is not a reason to distrust the mode comparisons — those are
+closed-loop against the source's own arithmetic from the source's own derivatives, so they
+test the solver regardless (see `PROJECT.md` §3, "Source qualification"). It *is* a reason
+not to claim the model represents a real 747's structural response, and it now carries a
+number saying how far from one it might be.
 
 ### B2. Constant mass and inertia; no fuel burn
 
@@ -278,7 +322,28 @@ A[1,2] to 0.003%; the model's A[2,2] **is** his raw Eq. (5.51) Mq. So the entire
 the omission is a known multiplicative factor `1/(1 − Zẇ)` on the Z row plus one term in
 the M row. `PROJECT.md` §4 carries the table.
 
-**Verdict: sound and bounded.** This is the best-characterised assumption in the project.
+**Bound, session 23 — a second condition, and the omission now PREDICTS its own cost.**
+The session-11 bound is at the sea-level power-approach condition. Yoshimura's Table A2
+gives `C_mα̇ = −5.40` (`M_α̇ = −0.176 s⁻¹`) for the 747 at M 0.8 / 6,096 m, which lets the
+same omission be tested at cruise Mach as well — and this time in the forward direction,
+by prediction rather than by reconstruction.
+
+Delete `M_α̇` from the reference's own damping formula and nothing else:
+
+```
+ζ = −(Z_α/U₀ + M_q + M_α̇) / (2ω_n)   →   −(Z_α/U₀ + M_q) / (2ω_n)
+    0.5695  (matches Table A5's 0.57)        0.5006
+```
+
+That predicts a **−12.2%** damping shortfall. Measured, by running the model with Table
+A2's other derivatives in place so that the α̇ term is the only thing missing: **−11.7%.**
+
+**The prediction and the measurement agree to 0.5 of a percentage point, which is what
+says nothing else is contributing.** Pinned by
+`test_cat_validation.py::test_the_residual_damping_gap_is_the_missing_alpha_dot_term`.
+
+**Verdict: sound and bounded, now at two conditions and in both directions.** This is the
+best-characterised assumption in the project.
 
 ### C3. Stability derivatives are constant across the whole flight envelope
 
@@ -302,12 +367,34 @@ CR-2144's own §IX plots show CLα, CDα, Cmα, Cmq, CLδe and Cmδe all varying
 through the transonic region, so ΔM = 0.03 near M 0.80 is not a small excursion — it is
 where those curves bend.
 
-**Bound: none.** Producing one means digitising the derivative-vs-Mach plots, which §7
-already declines for the same reason it declines further flight conditions: they are chart
-reads off a poor scan, and a chart read is weaker evidence than the tabulated set already
-in use. **The honest statement is that every result away from the trim point inherits an
-unquantified derivative error, and that this is why §5 caps analysis windows at the linear
-range.**
+~~**Bound: none.**~~ **Bound on the ALTITUDE axis, measured session 23. The Mach axis is
+still unbounded.** Producing a Mach bound still means digitising the derivative-vs-Mach
+plots, which §7 declines for the reason it declines further flight conditions: they are
+chart reads off a poor scan, and a chart read is weaker evidence than the tabulated set
+already in use.
+
+The **altitude** axis no longer needs a chart read, because a second tabulated condition
+turned up. B1 above has the coefficient table; what matters here is the consequence, which
+was measured end to end:
+
+| 747 short period at M 0.8 / 6,096 m | `ω_n` | vs reference | `ζ` | vs reference |
+|---|---|---|---|---|
+| AtiSim, FC9 (40,000 ft) derivatives | 1.5926 | **+23.5%** | 0.4723 | −17.1% |
+| AtiSim, Table A2 (20,000 ft) derivatives | 1.2823 | **−0.6%** | 0.5031 | −11.7% |
+| reference, CR-2144 via Yoshimura Table A5 | 1.2900 | — | 0.5700 | — |
+
+**Applying a derivative set 2.48× outside the dynamic pressure it was tabulated at costs
+23.5% of short-period frequency, and swapping in the right set recovers it to 0.6%.**
+Nothing else changed between those two rows — same solver, same trim, same linearisation.
+So the error is the data, not the code, which is the whole point of measuring it this way.
+
+The residual damping shortfall is a *different* assumption and is attributed to it: see
+C2, which now carries the arithmetic.
+
+**The honest statement is unchanged in shape and sharper in content:** every result away
+from the tabulated condition inherits a derivative error; on the altitude axis that error
+is now 23.5% of `ω_n` per 2.48× of q̄; on the Mach axis it remains unquantified; and this
+is why §5 caps analysis windows at the linear range.
 
 ### C4. Parabolic drag polar plus a Korn wave-drag rise
 
@@ -544,10 +631,48 @@ tidy-up, and second-order variation across the span is not represented at all. E
 else in the project is 40 spans or more and is comfortably a point.
 
 **Verdict: sound for the updraft, lee wave and microburst; the weakest link in the vortex
-result.** It compounds with §5's existing ±25% band on the identified vortex parameters
-and with §2's note that the rotational gust from a Wingrove-scale vortex already exceeds
-the 747's full aileron authority by ~1.5×. Vortex conclusions should stay orderings, which
-is what §5 already requires for a different reason.
+result.** It compounds with the band on the identified vortex parameters (now measured —
+see the session-23 entry immediately below) and with §2's note that the rotational gust
+from a Wingrove-scale vortex already exceeds the 747's full aileron authority by ~1.5×.
+Vortex conclusions should stay orderings, which is what §5 already requires for a
+different reason.
+
+**The parameter band is no longer ±25%, and it is no longer a guess — session 23.**
+That figure came from reasoning, not measurement: a 1° error in the α that Parks infers
+from accelerometers maps to 4.12 m/s of wind, which is 27% of a 50 ft/s peak. Two things
+about it were wrong.
+
+Lester, Sen & Bach 1989 (*Mon. Wea. Rev.* 117, 1103–1107) Table 1 propagates the
+uncertainties of exactly this reconstruction — DFDR plus radar track, level flight at
+V = 250 m/s — and populates them:
+
+| Component | Contributions | RSS |
+|---|---|---|
+| horizontal `δw_xy` | `δV_xy` 1.0, `δV` 1.0, `V·δ(ψ+β)` 2.0 m/s | **2.449 m/s** |
+| vertical `δw_h` | `δḣ` 1.0, `V·δ(Θ−α)` 2.0 m/s | **2.236 m/s** |
+
+1. **The assumed flow-angle error was twice too large.** `V·δ(Θ−α) = 2.0` m/s at
+   V = 250 m/s is `δ(Θ−α) = 0.0080` rad = **0.458°**, not 1°.
+2. **The band it implies is about a third of ±25%.** Against Mehta's converged
+   `V₀ = 86.8 ft/s = 26.46 m/s`, a 2.236 m/s vertical error is **8.45%**.
+
+The paper adds that these are "40%–50% greater than those estimated for NCAR aircraft",
+which is the right direction for a commercial DFDR against purpose-built research
+instrumentation and is a sanity check on the table rather than a separate claim.
+
+Stored as `wind.DFDR_WIND_RMS_ERROR`, asserted in
+`test_cat_validation.py::test_the_measured_error_is_a_smaller_fraction_of_hannibal_than_25_percent`
+— as an **inequality**, because the claim being made is that the sourced bound is tighter
+than the guess, and that is what has to keep holding.
+
+**What does NOT change.** This bounds the *wind reconstruction*, which is one of the two
+layers §5 names. The second — that Parks derives α "together with a knowledge of the
+aircraft's aerodynamic characteristics", i.e. through an assumed aero model — is bounded
+only where the recorder carried α vanes. Bach 1991 (NASA RP-1252) ch. 7 states the L-1011
+did, at 2 Hz; it does not say whether the Hannibal DC-10 did. The definitive treatment is
+Bach & Parks 1987, *J. Aircraft* 24(11), 789–792, **which this project does not hold.**
+So: the reconstruction error is now measured, the identification error is still attributed,
+and the orderings-only rule stands.
 
 **Bound, measured session 13 — the consequence, not just the scale ratio.** The point model
 takes the gust gradient as the tangent at the CG. `wind.sampled_rates` fits the slope across
