@@ -276,6 +276,109 @@ def load_factor_series(traj, ac: Aircraft) -> np.ndarray:
     )
 
 
+# ---------------------------------------------------------------------------
+# RMS normal load -- the severity index that is defined AT CRUISE ALTITUDE.
+#
+# Source: T. Misaka, S. Obayashi, E. Endo, "Measurement-Integrated Simulation of
+# Clear Air Turbulence Using a Four-Dimensional Variational Method", J. Aircraft
+# 45(4), Jul-Aug 2008, 1217-1229, section IV.B: "The root-mean-square normal
+# load sigma_n is based on a moving 5-s average of aircraft normal loads. In
+# this hazard index, 0.2 g <= sigma_n < 0.3 g corresponds to moderate turbulence
+# and sigma_n >= 0.3 g means severe turbulence." Misaka attributes the index and
+# its bands to Hamilton & Proctor.
+#
+# WHY THIS EXISTS WHEN `f_factor` ALREADY DOES. They are not competitors; they
+# fail in different places. Proctor et al. state that the F-factor's 0.1/0.13
+# thresholds AND its 1 km averaging scale were established for jet transports at
+# LOW ALTITUDE -- PROJECT.md section 5 records the project honouring that by
+# giving the 747 a verdict and the Cherokee a scale. Nothing in that paper
+# licenses the thresholds at 37,000 ft, which is where every CAT case this
+# project holds actually happened. sigma_n is defined for exactly that regime.
+#
+# WHAT IT CANNOT DO, FROM THE SOURCE'S OWN RESULTS. Misaka Figs. 26-27 compare
+# this index against the measured vertical acceleration and find it "represents
+# the tendency of the vertical acceleration, although its peaks could not be
+# captured, because the root-mean-square normal load was evaluated at 5-s
+# intervals". So it is a severity BAND for an encounter, and it is the wrong
+# instrument for a peak load. Do not use it to report a core penetration; the
+# 1.5 s a 747 spends inside a Parks core is under a third of its window.
+# ---------------------------------------------------------------------------
+
+RMS_NORMAL_LOAD_WINDOW = 5.0  # s, Misaka section IV.B
+RMS_NORMAL_LOAD_BANDS = {"moderate": 0.2, "severe": 0.3}  # g
+
+
+def rms_normal_load(traj, ac: Aircraft, dt: float | None = None) -> Check:
+    """Peak of the moving-window RMS of (n_z - 1), in g, with its severity band.
+
+    `dt` defaults to the trajectory's own sample spacing. It is an argument
+    because a `Trajectory` carries `t` and a caller that has resampled knows
+    better than this function does.
+
+    DEVIATION FROM STANDARD GRAVITY, not raw n_z: Misaka plots "the deviation
+    from the standard gravity condition in the unit of gravity; that is, 1 g
+    corresponds to the standard gravity condition". Taking the RMS of n_z itself
+    would report ~1.0 g -- i.e. "severe" -- for an aircraft sitting in still
+    air, which is the kind of index that is worse than none.
+
+    `kind` is REPORT and not a gate. The bands classify how rough the air was,
+    which is a property of the encounter and not a defect in the run; a gate
+    here would fail the simulator for correctly flying through severe
+    turbulence.
+    """
+    n_z = load_factor_series(traj, ac)
+    if dt is None:
+        t = np.asarray(traj.t)
+        dt = float(np.median(np.diff(t))) if t.size > 1 else 0.0
+    width = int(round(RMS_NORMAL_LOAD_WINDOW / dt)) if dt > 0 else 0
+    if width < 2 or width > n_z.size:
+        # Too short to carry one window. Reported rather than raised: a 1.5 s
+        # core-penetration run is a legitimate thing to fly, and this index
+        # simply has nothing to say about it.
+        return Check(
+            name="rms normal load",
+            value=float("nan"),
+            tolerance=None,
+            kind="report",
+            passed=None,
+            detail=(
+                f"run is {n_z.size * dt:.2f} s, shorter than the "
+                f"{RMS_NORMAL_LOAD_WINDOW:.0f} s window Misaka 2008 section IV.B "
+                "defines the index over -- not computed"
+            ),
+            worst_index=None,
+        )
+    d = n_z - 1.0
+    # Moving mean of d^2 by cumulative sum: exact, and O(n) rather than O(n*w).
+    c = np.concatenate(([0.0], np.cumsum(d * d)))
+    ms = (c[width:] - c[:-width]) / width
+    sigma = np.sqrt(ms)
+    peak = int(sigma.argmax())
+    value = float(sigma[peak])
+    band = "smooth"
+    if value >= RMS_NORMAL_LOAD_BANDS["severe"]:
+        band = "SEVERE"
+    elif value >= RMS_NORMAL_LOAD_BANDS["moderate"]:
+        band = "moderate"
+    return Check(
+        name="rms normal load",
+        value=value,
+        tolerance=None,
+        kind="report",
+        passed=None,
+        detail=(
+            f"sigma_n peaks at {value:.4f} g over a {RMS_NORMAL_LOAD_WINDOW:.0f} s "
+            f"window -> {band} (Misaka 2008: moderate "
+            f"{RMS_NORMAL_LOAD_BANDS['moderate']}-{RMS_NORMAL_LOAD_BANDS['severe']} g, "
+            f"severe >= {RMS_NORMAL_LOAD_BANDS['severe']} g). Peaks do not survive the "
+            "window -- see the source's Figs. 26-27"
+        ),
+        # The window's centre, so a time cursor lands on the rough air rather
+        # than on the sample where the window happened to start.
+        worst_index=peak + width // 2,
+    )
+
+
 def trimmed_start(traj, ac: Aircraft, controls: Controls, field) -> Check:
     """How far out of equilibrium the run begins, in g -- and what that is worth.
 
@@ -660,6 +763,27 @@ def run_checks(traj, ac: Aircraft, controls: Controls, field, window,
             worst_index=peak + 1,
         ),
     ]
+    # Added session 23. A `report`, so it cannot condemn a run -- it says how
+    # rough the air was, not whether the integration was right. It is here
+    # rather than only in the CAT scripts because every vortex run the project
+    # flies is a cruise-altitude encounter, which is the regime the F-factor
+    # thresholds elsewhere in this file explicitly do not cover.
+    #
+    # OMITTED, NOT FAKED, when the run is shorter than the index's own 5 s
+    # window. The alternatives were both worse. A NaN `value` is not valid
+    # strict JSON and breaks the artifact round-trip that
+    # `test_artifact.py::test_checks_round_trip_with_their_kind` guards -- which
+    # is how this branch was found. Substituting 0.0 would put a number in the
+    # ledger that no measurement produced, which is the failure the whole
+    # `kind` distinction exists to prevent. Conditional inclusion is the pattern
+    # `symmetric` below already uses for the same reason: a check that does not
+    # apply is absent, not green.
+    #
+    # Callers that want the REASON call `rms_normal_load` directly; it returns
+    # a Check whose detail says why, and `scripts/cat_validation.py` does that.
+    sigma_n = rms_normal_load(traj, ac)
+    if not np.isnan(sigma_n.value):
+        reports.append(sigma_n)
     tripwires = [quaternion_norm(traj), field_divergence(field, traj.pos_ned)]
     if symmetric:
         tripwires.append(lateral_symmetry(traj))

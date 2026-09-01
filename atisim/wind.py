@@ -26,6 +26,7 @@ today.
 of altitude, and the filter time constants are functions of true airspeed.
 """
 
+import math
 from typing import NamedTuple
 
 import jax
@@ -84,10 +85,25 @@ def zero_wind(
 # LINEAR SUPERPOSITION, which the source states explicitly and which is what
 # makes summing this with other components (wave, updraft, Dryden) legitimate.
 #
-# This module fixes dpsi = 0 -- vortex axes perpendicular to the track, which is
-# the case the source's own data constrains (it reports vertical-wind traces and
-# no lateral results at all). An oblique traverse would carry cos(dpsi) through
-# and is deliberately not offered rather than shipped unvalidated.
+# This module DEFAULTS to dpsi = 0 -- vortex axes perpendicular to the track --
+# and `VortexArray.cos_dpsi` carries the oblique case. It used to refuse the
+# oblique case outright, on the grounds that no source held here constrained it.
+#
+# *** THAT CHANGED IN SESSION 23, AND ONLY BECAUSE A SOURCE ARRIVED. ***
+# Mehta 1987 (see MEHTA_HANNIBAL_1987) prints the same Eqs. (1)-(4) AND an
+# identified case flown at psi = 31 deg, so cos(dpsi) is now transcribed from a
+# document rather than invented. The default is 1.0 and `1.0 * x` is exact in
+# IEEE-754, so every baseline frozen before this change is byte-for-byte intact
+# -- asserted in test_wind.py rather than assumed.
+#
+# WHY IT COULD NOT BE FAKED BY MOVING THE CORES. An oblique traverse compresses
+# the along-track coordinate by cos(dpsi), so placing cores at x*cos(dpsi) with
+# dpsi = 0 reproduces the wind FIELD exactly -- and then gets the TIME base
+# wrong by 1/cos(dpsi), because the aircraft covers that compressed geometry at
+# the same airspeed. At psi = 31 deg that is a 17% error in traverse time, and
+# traverse time divided by the short period is precisely the quantity
+# TM-102186 Fig. 8 says governs the response. So the shortcut breaks the one
+# thing the Mehta case exists to test.
 # ---------------------------------------------------------------------------
 
 
@@ -111,6 +127,11 @@ class VortexArray(NamedTuple):
     down: Array  # (N,) m, NED down of each core
     r0: Array  # m, solid-body core radius
     v0: Array  # m/s, tangential velocity at the core edge
+    # cos(dpsi), dpsi being the angle between the wind vector and the
+    # flightpath. 1.0 is the perpendicular traverse every case flown before
+    # session 23 used, and is exact, so it is the default. Trailing and
+    # defaulted so the ~50 existing keyword constructions are untouched.
+    cos_dpsi: Array = 1.0
 
 
 # The two cases Parks et al. 1985 identifies, J. Aircraft 22(2) pp. 127-128.
@@ -138,6 +159,58 @@ class VortexArray(NamedTuple):
 # gave r0 = 600 ft, and if that document is ever retrieved this is the line to
 # revisit. `WINGROVE_FIG4_CASES` below still holds Fig. 4's numbers separately,
 # so the two sources remain distinguishable even though they now agree.
+#
+# *** SESSION 23: THE DISAGREEMENT IS REAL, BOTH TRANSCRIPTIONS ARE FAITHFUL,
+# AND THEY ARE TWO DIFFERENT FITS OF ONE ENCOUNTER. ***
+#
+# Session 23 first concluded that 600 ft was a pre-fit guess mistaken for a
+# result -- Mehta's manual startup estimate is exactly 600 ft, which made a
+# tidy story. THAT WAS WRONG, and the arithmetic that kills it is Parks' own
+# Scorer check:
+#
+#     3500 ft spacing / 1200 ft diameter = 2.917,  and Parks quotes 2.92.
+#     3500 ft spacing / 1000 ft diameter = 3.500,  which he does not.
+#
+# Parks' radius, his spacing and his published ratio are SELF-CONSISTENT to
+# three figures at 600 ft. A transcription error would have broken that. So
+# 600 ft is Parks' genuine identified value and the transcription is faithful.
+#
+# What the two new sources establish is therefore narrower and more useful:
+#
+#   - Mehta 1987 refits THE SAME ENCOUNTER with five vortices by modified
+#     Newton-Raphson, cost falling 482 -> 214, and converges to r0 = 500.5 ft,
+#     V0 = 86.8 ft/s. His startup estimate was 600 ft, read off the data by
+#     inspection; the fit moved it.
+#   - NASA TM-102186 p. 3-4 reports Mehta's converged answer in words: "a
+#     diameter of 1,000 ft and a circumferential velocity of 87 ft/sec".
+#
+# Parks was presented as AIAA 84-0270 (January 1984) and Mehta as AIAA 84-2083
+# (August 1984), and Mehta cites Parks. So the ordering is: Parks fits it,
+# Mehta refits it with more vortices and a documented cost history, TM-102186
+# reports Mehta's numbers.
+#
+# *** THE PRACTICAL CONSEQUENCE. *** 500 ft is the later and better-converged
+# value and is what this project flies. 600 ft is not an error to be corrected
+# but an earlier answer to be superseded, and Parks' Scorer ratio belongs to
+# it -- which is why that check no longer reproduces here and why
+# test_wind.py::test_the_spacing_to_core_diameter_ratio_and_what_session_22_cost_it
+# must keep recording the loss rather than being retuned.
+#
+# Nothing about this rescues the Scorer check at either radius, and Mehta makes
+# that plain: his five cores sit at perpendicular spacings of 5179, 5695, 3522
+# and 7562 ft, so his own array's spacing-to-diameter ratios run 3.5 to 7.6.
+# A uniform KH billow train is a Parks-shaped idealisation of a field that is
+# not uniform.
+#
+# *** WHAT IS STILL A HYBRID, AND DELIBERATELY LEFT SO. *** This entry now
+# pairs Fig. 4's RADIUS (500 ft) with Parks' STRENGTH (85 ft/s). Mehta and
+# TM-102186 pair 500 ft with 87 ft/s, so no single source states the pair
+# below. It is left alone because it is upstream of frozen PROJECT.md section 4
+# baselines and moving it silently would invalidate them. The coherent
+# single-source pair lives in MEHTA_HANNIBAL_1987 and is flown beside this one;
+# what the 2.1% strength difference costs is MEASURED, in
+# test_wind.py::test_the_mehta_and_parks_hannibal_strengths_bracket_the_load,
+# rather than argued about here.
 #
 # `spacing` is still Parks': Fig. 4 gives core size and strength and says
 # nothing about array spacing, so that number has not moved and cannot.
@@ -173,12 +246,13 @@ HANNIBAL_R0_SUPERSEDED = 600.0 * FT2M  # Parks 1985 as transcribed; see above.
 # thing distinguishing a diameter column from a radius column; without it every
 # core here would risk being a factor of two out with nothing to catch it.
 #
-# *** HANNIBAL DISAGREES, AND THAT IS NOT RESOLVED HERE. *** Fig. 4's 1000 ft
-# diameter is a 500 ft radius. PARKS_CASES says 600 ft, citing Parks et al.
-# 1985, which has never been obtained (AUDIT.md row 19) -- so there is no way to
-# tell which is the transcription error. Both are kept, both are flown, and the
-# spread is reported. Neither is deleted in favour of the other. The core
-# STRENGTH agrees at 85 ft/s in both sources; only the radius is in dispute.
+# ~~*** HANNIBAL DISAGREES, AND THAT IS NOT RESOLVED HERE. ***~~ RESOLVED IN
+# SESSION 23. Fig. 4's 1000 ft diameter is a 500 ft radius, and Mehta 1987's
+# converged fit (500.5 ft) plus TM-102186's prose ("a diameter of 1,000 ft")
+# now agree with it independently. See the PARKS_CASES comment above for why
+# 600 ft is Parks' own earlier fit, superseded rather than mistaken.
+# The core STRENGTH is where the sources now split: Fig. 4 and Parks both say
+# 85 ft/s, Mehta says 86.8 and TM-102186 says 87.
 #
 # CIMARRON APPEARS ONLY HERE. Parks identifies two cases; this paper adds a
 # third, and it is the one with published time histories (Fig. 3 and Fig. 6a)
@@ -208,6 +282,87 @@ WINGROVE_CASE_ALTITUDE: dict[str, float] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Mehta 1987's converged Hannibal solution, as a COMPLETE field.
+#
+# Source: R. S. Mehta, "Modeling Clear-Air Turbulence with Vortices Using
+# Parameter-Identification Techniques", J. Guidance, Control & Dynamics 10(1),
+# Jan-Feb 1987, pp. 27-31. Presented as AIAA 84-2083. The five-vortex result is
+# on p. 30, immediately after Fig. 9; psi and the altitude are on p. 29.
+#
+# THIS IS THE ONLY FIELD IN THIS MODULE THAT DECLARES NOTHING. Every other
+# vortex case here takes a core size and a strength from a paper and then needs
+# an array spacing, a core count and a traverse geometry supplied from
+# somewhere else. Mehta prints all of it: five cores, their individual
+# positions, one shared radius, one shared strength, the traverse angle and the
+# altitude. Nothing below is a modelling choice.
+#
+# WHAT IS DROPPED, AND WHY IT IS FREE. Mehta's Eq. (4) also carries bias and
+# trend terms (b_xy = 149.8 kt, b_z = 0, C_xy = C_z = 0) modelling the
+# non-vortex wind. b_z and both trends are zero. b_xy is a UNIFORM horizontal
+# wind, and this simulator's aero is air-relative by construction
+# (dynamics.py forms vel_rel before aero.py sees anything), so a uniform wind
+# moves the ground track and changes no force, no moment and no angle. Dropping
+# it is exact for everything this module measures, and is NOT exact for a
+# ground-referenced quantity such as the F-factor -- do not reuse this field
+# for one without restoring b_xy.
+#
+# SIGN OF z. Mehta p. 28 defines x and z as "the horizontal separation along
+# the flight path and the vertical separation of the airplane from the vortex",
+# and fixes the sign on p. 29: a NEGATIVE horizontal perturbation gives z < 0.
+# In Parks' Eq. (3) w_xy goes as +d with d the aircraft ABOVE the core, so
+# z has the same sign as d and z is the aircraft's height above the core.
+# `vortex_wind` computes `above = down - pos_ned[2]`, which is that same
+# quantity, so a core sits at altitude MEHTA_HANNIBAL_ALTITUDE - z.
+# ---------------------------------------------------------------------------
+
+# ft, along the flight path. Vortices 3 and 4 are the pair the aircraft flew
+# the cores of -- they are the two spikes TM-102186 Fig. 7 calls "significant".
+MEHTA_HANNIBAL_X_FT = (-12384.0, -6669.0, -343.0, 3761.0, 12272.0)
+# ft, aircraft above core (see SIGN OF z above).
+MEHTA_HANNIBAL_Z_FT = (-3516.0, -1836.0, -94.0, -254.0, 1738.0)
+MEHTA_HANNIBAL_R0 = 500.5 * FT2M  # m, converged core radius
+MEHTA_HANNIBAL_V0 = 86.8 * FT2M  # m/s, converged tangential velocity
+MEHTA_HANNIBAL_PSI_DEG = 31.0  # deg, wind vector to flightpath, p. 29
+MEHTA_HANNIBAL_ALTITUDE = 37000.0 * FT2M  # m, "straight and level at 37,000 ft"
+
+
+def mehta_hannibal_array(altitude: float = MEHTA_HANNIBAL_ALTITUDE) -> VortexArray:
+    """Mehta 1987 p. 30's five-vortex Hannibal solution, as a `VortexArray`.
+
+    `altitude` is the aircraft's nominal altitude, which is what Mehta's z is
+    measured from. It is an argument rather than a constant because the cores
+    have to be placed at the altitude the aircraft is actually trimmed at, and
+    a run at any other altitude would be a different encounter -- callers that
+    change it are declaring that, not tuning it.
+    """
+    return VortexArray(
+        north=jnp.array([x * FT2M for x in MEHTA_HANNIBAL_X_FT]),
+        down=jnp.array([-(altitude - z * FT2M) for z in MEHTA_HANNIBAL_Z_FT]),
+        r0=jnp.array(MEHTA_HANNIBAL_R0),
+        v0=jnp.array(MEHTA_HANNIBAL_V0),
+        cos_dpsi=jnp.array(math.cos(math.radians(MEHTA_HANNIBAL_PSI_DEG))),
+    )
+
+
+# The two vortices whose cores the aircraft actually penetrated, as indices into
+# the arrays above. Named rather than written as `2, 3` at each use site because
+# the spacing reconciliation in test_wind.py and the analysis window in
+# scripts/mehta_hannibal.py must agree on which pair they mean.
+MEHTA_HANNIBAL_CORE_PAIR = (2, 3)
+
+# What the measured DC-10 did in this encounter, from NASA TM-102186 p. 3-4:
+# "the wide fluctuations in the normal acceleration from +1.7 to -1.0 g".
+#
+# A BAND TO BE REPORTED AGAINST, NOT A TARGET TO BE HIT. The aircraft is a
+# DC-10 at 37,000 ft; this project's 747 has roughly 0.8x the wing loading, and
+# PROJECT.md section 5 rules absolute load agreement structurally out of reach.
+# Quoted here so a run can be drawn against it without the number being
+# retyped into a plotting script.
+TM102186_HANNIBAL_NZ = (-1.0, 1.7)  # g, measured min and max
+TM102186_HANNIBAL_GUST_PERIOD = 5.0  # s, "sharp up-and-down gusts about 5 sec apart"
+
+
 def vortex_wind(pos_ned: Array, array: VortexArray) -> Array:
     """Wind velocity (NED, m/s) induced by the array at a point.
 
@@ -215,9 +370,16 @@ def vortex_wind(pos_ned: Array, array: VortexArray) -> Array:
     """
 
     def one(north: Array, down: Array) -> Array:
+        # `along` is Parks' l, the raw along-track separation. Every use of it
+        # below is through `l_eff = l * cos(dpsi)`, which is what the source's
+        # r = (l^2 cos^2 dpsi + d^2)^(1/2) and its w_z numerator both carry.
+        # w_xy has NO cos(dpsi) factor of its own -- it depends on l only
+        # through r -- so the two components are not scaled alike and the
+        # substitution has to be made per term, not once on `along`.
         along = pos_ned[0] - north  # l, aircraft beyond the core
+        along_eff = along * array.cos_dpsi  # l cos(dpsi)
         above = down - pos_ned[2]  # d, aircraft above the core
-        r2 = along**2 + above**2
+        r2 = along_eff**2 + above**2
 
         # Both branches are evaluated, so the outside form's divisor is clamped
         # away from zero. It only ever contributes where r2 >= r0^2 > 0, but an
@@ -233,8 +395,8 @@ def vortex_wind(pos_ned: Array, array: VortexArray) -> Array:
         )
         w_up = jnp.where(
             inside,
-            -array.v0 * along / array.r0,
-            -array.v0 * array.r0 * along / r2_safe,
+            -array.v0 * along_eff / array.r0,
+            -array.v0 * array.r0 * along_eff / r2_safe,
         )
         # The source's w_z is positive UP; NED z is positive DOWN.
         return jnp.array([w_horizontal, 0.0, -w_up])
@@ -412,6 +574,62 @@ LEE_WAVE_AMPLITUDE: dict[str, float] = {"north": 3.0, "south": 6.0}
 # wavelength -- but it sets the encounter duration and the pitching gust rate,
 # so any result that depends on those must say which value was used.
 LEE_WAVE_WAVELENGTH = 25_000.0
+
+# m. SOURCED, and it is the number the declared one above should be checked
+# against rather than replaced by.
+#
+# Source: P. F. Lester, O. Sen, R. E. Bach Jr., "The Use of DFDR Information in
+# the Analysis of a Turbulence Incident over Greenland", Mon. Wea. Rev. 117
+# (May 1989), 1103-1107. p. 1106: the mesoscale wavelike variation dominating
+# the derived vertical motion has a "wavelength about 22 km", and the paper
+# reads the pattern as the aircraft traversing "the trough of a mountain lee
+# wave over the western slopes of the Greenland icecap".
+#
+# WHY IT IS THE RIGHT COMPARISON AND NOT A REPLACEMENT. It is measured from
+# DFDR data at 10 km (33,000 ft), which the same paper places about a kilometre
+# above the tropopause -- so it is a wavelength in the regime Doyle et al.
+# declined to quantify, which is exactly the gap LEE_WAVE_WAVELENGTH was
+# declared to fill. But it is ONE case over Greenland, not the Sierra Nevada
+# campaign LEE_WAVE_AMPLITUDE comes from, and this project's 747 cruises at
+# 12.192 km rather than 10. Substituting it would trade a declared number
+# inside a measured band for a measured number from a different mountain range
+# at a different altitude, which is not obviously an improvement.
+#
+# WHAT IT DOES SETTLE. 22 km sits inside Doyle's 20-35 km band, so the declared
+# 25 km is no longer merely the midpoint of a band known to be wrong for the
+# altitude -- an independent measurement near that altitude lands 12% from it.
+# PROJECT.md section 5's "the wavelength is declared, not sourced" stands, but
+# the bound on the declaration is now measured rather than absent.
+LESTER_LEE_WAVE_WAVELENGTH = 22_000.0
+
+# The Greenland incident itself, for reporting a lee-wave run against. Same
+# paper, p. 1105: a B-747 at 33,000 ft (10 km) MSL over southern Greenland at
+# 62 N 48 W, 1654 UTC 22 January 1985, which "culminated in a sudden altitude
+# gain of 1000 feet (300 m)" with "vertical accelerations reached +2.7g, -1.0g".
+#
+# A BAND TO REPORT AGAINST, NOT A TARGET. Same standing as
+# TM102186_HANNIBAL_NZ, with one difference in this case's favour: the aircraft
+# type is a 747, which is the type this project models. The altitude is not --
+# 10 km against the modelled 12.192 km.
+LESTER_GREENLAND_NZ = (-1.0, 2.7)  # g, measured min and max
+LESTER_GREENLAND_ALTITUDE_GAIN = 300.0  # m, "a sudden altitude gain of 1000 feet"
+LESTER_GREENLAND_ALTITUDE = 33000.0 * FT2M  # m
+
+# m/s, RMS error of a DFDR-plus-radar wind reconstruction in level flight at
+# V = 250 m/s. Lester et al. Table 1, p. 1105, which gives the contributions
+# rather than the totals:
+#
+#   horizontal   dV_xy 1.0,  dV 1.0,  V d(psi + beta) 2.0   -> RSS 2.449
+#   vertical     dh_dot 1.0,          V d(Theta - alpha) 2.0 -> RSS 2.236
+#
+# THIS IS THE BOUND ON EVERY IDENTIFIED VORTEX PARAMETER IN THIS MODULE, and it
+# replaces the order-of-magnitude "+/-25%" that docs/ASSUMPTIONS.md carried.
+# Note what the vertical term implies about the paper's own assumed flow-angle
+# error: V d(Theta - alpha) = 2.0 at V = 250 gives d(Theta - alpha) = 0.0080 rad
+# = 0.46 deg, about half the 1 deg that estimate assumed. The paper adds that
+# these are "40%-50% greater than those estimated for NCAR aircraft".
+DFDR_WIND_RMS_ERROR = {"horizontal": 2.449, "vertical": 2.236}
+DFDR_WIND_RMS_ERROR_SPEED = 250.0  # m/s, the level-flight speed Table 1 assumes
 
 
 class LeeWave(NamedTuple):

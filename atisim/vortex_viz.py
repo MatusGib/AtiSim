@@ -29,7 +29,7 @@ from atisim import dynamics, integrate, loads, trim, viz, wind
 from atisim.aero import air_data
 from atisim.aircraft import Aircraft
 from atisim.atmosphere import density
-from atisim.state import Controls, State, quat_to_euler
+from atisim.state import Controls, State, quat_to_dcm, quat_to_euler
 from atisim.units import RAD2DEG
 
 # Wingrove & Bach 1994 Fig. 8, "maximum negative changes" per category. These
@@ -122,6 +122,74 @@ def fly(
 
     state = trim.trimmed_state(alpha_trim, jnp.array(airspeed), jnp.array(altitude))
     state = state._replace(pos_ned=jnp.array([start_north, 0.0, -altitude]))
+
+    return fly_from_state(
+        ac, field, state, controls,
+        label=label, seconds=seconds, dt=dt, window=window,
+        window_name=window_name, load_model=load_model,
+    )
+
+
+def fly_in_moving_air(
+    ac: Aircraft,
+    field,
+    airspeed: float,
+    altitude: float,
+    *,
+    label: str,
+    start_north: float,
+    seconds: float,
+    dt: float = 0.01,
+    window: tuple[float, float],
+    window_name: str,
+    load_model=None,
+) -> Encounter:
+    """`fly`, but starting in equilibrium WITH the wind already at the start point.
+
+    WHY THIS EXISTS, AND WHY `fly` COULD NOT JUST BE FIXED. `fly` trims in still
+    air and then drops the aircraft into the field, which is right for a field
+    the aircraft genuinely enters from calm air. A Rankine core's far field
+    decays as 1/r, so a two-core array at a 40 r0 lead-in starts close enough to
+    equilibrium for `checks.trimmed_start` to pass.
+
+    Mehta's five-core array does not have that property. Measured: at a 12 r0
+    lead the superposed far field is 5.28 m/s and the run begins 0.198 g out of
+    trim -- worse than the 0.20 g that PROJECT.md section 9 session 3 records as
+    having understated first-core d(theta) by 15%. Pushing the lead out does
+    almost nothing, because 1/r is not a decay: 40 r0 gives 2.60 m/s, 150 r0
+    gives 0.90, and reaching 0.25 m/s needs 600 r0 -- 95 km, over 400 s of
+    flight, which lets the phugoid develop and replaces one contaminant with a
+    worse one.
+
+    The physical reading is that there is no "outside" to this encounter. The
+    DC-10 was in equilibrium in a moving airmass, not in calm air, so the run
+    should start that way.
+
+    HOW. `relative_velocity` is `vel_body - dcm.T @ wind_ned`, so adding
+    `dcm.T @ wind_ned` to the still-air trimmed body velocity makes the
+    air-relative velocity EXACTLY the still-air trim value -- identical alpha,
+    identical dynamic pressure, identical forces and moments. It is a Galilean
+    shift, which is the one thing this simulator's air-relative aero guarantees
+    is free.
+
+    WHAT IT DOES NOT FIX, STATED RATHER THAN HIDDEN. Only the translational
+    gust is matched. The field also has a gradient at the start point, so
+    `omega_gust` is non-zero there while the body rate is zero, and the run
+    begins with a small `omega_rel`. Matching that too would give the aircraft a
+    real body rate and an attitude that drifts from the first step, which trades
+    a bounded error for an unbounded one. The residual is what
+    `checks.trimmed_start` measures, and it is reported, not assumed small.
+    """
+    x, _ = trim.trim(jnp.array(airspeed), jnp.array(altitude), ac)
+    alpha_trim = jnp.array(float(x[0]))
+    controls = trim.trimmed_controls(x[1], x[2])
+
+    state = trim.trimmed_state(alpha_trim, jnp.array(airspeed), jnp.array(altitude))
+    state = state._replace(pos_ned=jnp.array([start_north, 0.0, -altitude]))
+
+    wind_ned = field(state.pos_ned)
+    dcm = quat_to_dcm(state.quat)  # body -> NED
+    state = state._replace(vel_body=state.vel_body + dcm.T @ wind_ned)
 
     return fly_from_state(
         ac, field, state, controls,
