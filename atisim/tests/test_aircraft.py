@@ -415,22 +415,29 @@ def test_a_recovery_band_is_declared_only_where_one_was_measured():
     a fit" -- and boeing747_jsbsim, recovered by the same machinery from the
     same kind of model, then failed a test it satisfies.
     """
-    from atisim.aircraft import RECOVERED_FROM_JSBSIM
+    from atisim.aircraft import DECLARES_A_BAND, RECOVERED_FROM_JSBSIM
 
-    assert RECOVERED_FROM_JSBSIM <= set(EVERY)
+    assert RECOVERED_FROM_JSBSIM <= DECLARES_A_BAND <= set(EVERY)
     for name in EVERY:
         ac = REGISTRY[name]
         banded = float(ac.valid_altitude[1]) > float(ac.valid_altitude[0])
-        assert banded == (name in RECOVERED_FROM_JSBSIM), name
-    # BOTH halves are declared for both entries. The approach entry's Mach band
-    # was absent while the generator's thrust fit sampled M 0.60-0.95 regardless
-    # of the condition, which left nothing honest to state for an entry flown at
-    # M 0.40; the fit now brackets the condition and the band is what was fitted.
-    for name in sorted(RECOVERED_FROM_JSBSIM):
+        assert banded == (name in DECLARES_A_BAND), name
+    # BOTH halves are declared for every banded entry. The 737 approach entry's
+    # Mach band was absent while the generator's thrust fit sampled M 0.60-0.95
+    # regardless of the condition, which left nothing honest to state for an
+    # entry flown at M 0.40; the fit now brackets the condition and the band is
+    # what was fitted.
+    #
+    # An entry must fly INSIDE ITS OWN BAND at its own reference condition. That
+    # is the assertion that stops a band being a decoration: a window that does
+    # not contain the point it was declared for is not a bound, it is a mistake.
+    for name in sorted(DECLARES_A_BAND):
         lo, hi = (float(v) for v in REGISTRY[name].valid_mach)
         assert hi > lo > 0.0, name
         mach = CRUISE[name]["airspeed"] / _sound_speed_at(CRUISE[name]["altitude"])
         assert lo < mach < hi, f"{name} flies at M {mach:.3f}, outside its own band"
+        a_lo, a_hi = (float(v) for v in REGISTRY[name].valid_altitude)
+        assert a_lo < CRUISE[name]["altitude"] < a_hi, name
 
 
 def _sound_speed_at(altitude):

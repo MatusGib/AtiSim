@@ -883,6 +883,107 @@ def microburst_wind(pos_ned: Array, burst: Microburst) -> Array:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Dryden vertical gust, as a FROZEN SPATIAL FIELD.
+#
+# Source: MIL-F-8785C, the vertical-component spatial power spectral density
+#
+#     Phi_w(Omega) = sigma_w^2 (L_w/pi) (1 + 3 (L_w Omega)^2) / (1 + (L_w Omega)^2)^2
+#
+# integrated 0 -> infinity, which is what makes it a ONE-SIDED spectrum:
+# substituting u = L_w Omega gives (sigma_w^2/pi) * integral of
+# (1+3u^2)/(1+u^2)^2, and that integral is pi over the half line and 2pi over
+# the whole line. Getting that convention wrong is a factor of 2 in variance and
+# sqrt(2) in every gust, so `test_cat_validation.py` measures the realised
+# variance rather than trusting this comment.
+#
+# *** WHY A FIELD AND NOT A SHAPING FILTER. *** The textbook implementation is a
+# state-space filter driven by white noise, which needs filter states in
+# `WindState`, a PRNG threaded through `step`, and a discretisation whose
+# variance depends on dt. None of that is wanted here, because
+# docs/ASSUMPTIONS.md E3 already commits this project to a FROZEN field -- wind
+# depends on position, not time. Under that assumption the physically correct
+# object IS a spatial realisation, and building one:
+#
+#   - composes with `superpose` like every other field, so a Dryden layer on top
+#     of the Parks vortex is one call and not a new code path;
+#   - is smooth and analytically differentiable, so `field_model`'s jacfwd still
+#     produces a real gust-rate gradient. A grid realisation with interpolation
+#     would give a piecewise-constant q_gust, which is exactly the channel the
+#     vortex work cares about;
+#   - has no dt dependence at all, so it cannot quietly change when a run is
+#     refined -- see the E4 wind-hold entry for why that matters here.
+#
+# It is a SUM OF SINUSOIDS with Dryden-distributed amplitudes and uniform random
+# phase. Each realisation is one sample, not an ensemble: a peak-load question
+# needs several seeds, and the scripts that ask one run several.
+#
+# WHAT IS SOURCED AND WHAT IS NOT. L_w = 1750 ft is the spec's own constant
+# above 2000 ft and is transcribed. sigma_w is NOT: MIL-F-8785C gives it as a
+# chart against altitude and exceedance probability, PROJECT.md section 3
+# records that chart as un-digitised, and nothing here invents a value. Callers
+# pass sigma_w and say where it came from -- which for the CAT work means
+# SWEEPING it and reporting what value would be needed, rather than asserting
+# one.
+# ---------------------------------------------------------------------------
+
+DRYDEN_LW = 1750.0 * FT2M  # m, MIL-F-8785C scale length above 2000 ft
+DRYDEN_ALTITUDE_FLOOR = 2000.0 * FT2M  # m, below which L_w is NOT this constant
+
+
+def dryden_spectrum(omega: Array, sigma_w: float, L_w: float = DRYDEN_LW) -> Array:
+    """MIL-F-8785C vertical spatial PSD at spatial frequency `omega` (rad/m)."""
+    u2 = (L_w * omega) ** 2
+    return sigma_w**2 * (L_w / jnp.pi) * (1.0 + 3.0 * u2) / (1.0 + u2) ** 2
+
+
+def dryden_vertical_field(
+    sigma_w: float,
+    seed: int,
+    *,
+    L_w: float = DRYDEN_LW,
+    n_components: int = 400,
+    wavelength_min: float = 20.0,
+    wavelength_max: float = 40_000.0,
+):
+    """A frozen along-track Dryden vertical gust, as a position-only field.
+
+    `wavelength_min` bounds the smallest structure represented. 20 m is a third
+    of a 747 span, which is already below the scale at which this project's
+    point-sampled gust means anything (`docs/ASSUMPTIONS.md` E2) -- going finer
+    would add variance the aircraft model cannot legitimately respond to.
+
+    `wavelength_max` bounds the largest. 40 km is 75 scale lengths, far enough
+    out that the omitted low-wavenumber tail is a fraction of a per cent of the
+    variance -- which `test_cat_validation.py` measures rather than assumes.
+
+    Components are LOG-SPACED, so the resolution follows the spectrum's own
+    shape instead of wasting most of the sum on the flat high-wavenumber tail.
+    Each carries amplitude sqrt(2 Phi dOmega) and a uniform random phase, which
+    makes the realised variance sum(Phi dOmega) -- a Riemann sum of the integral
+    that defines sigma_w^2.
+    """
+    key = jax.random.PRNGKey(seed)
+    omega = jnp.geomspace(
+        2.0 * jnp.pi / wavelength_max, 2.0 * jnp.pi / wavelength_min, n_components
+    )
+    # Trapezoidal widths on a log grid: each component owns half the gap to
+    # each neighbour, and the two ends own their single half-gap.
+    edges = jnp.concatenate([
+        omega[:1], jnp.sqrt(omega[1:] * omega[:-1]), omega[-1:]
+    ])
+    d_omega = edges[1:] - edges[:-1]
+    amplitude = jnp.sqrt(2.0 * dryden_spectrum(omega, sigma_w, L_w) * d_omega)
+    phase = jax.random.uniform(key, (n_components,), maxval=2.0 * jnp.pi)
+
+    def field(pos_ned: Array) -> Array:
+        w_up = jnp.sum(amplitude * jnp.cos(omega * pos_ned[0] + phase))
+        # NED z is DOWN; an updraft is negative. Same convention as LeeWave.
+        return jnp.array([0.0, 0.0, -w_up])
+
+    return field
+
+
 def superpose(*fields):
     """Sum wind fields. Parks et al. 1985 builds its vortex arrays this way.
 

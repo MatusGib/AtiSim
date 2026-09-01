@@ -396,6 +396,20 @@ from the tabulated condition inherits a derivative error; on the altitude axis t
 is now 23.5% of `ω_n` per 2.48× of q̄; on the Mach axis it remains unquantified; and this
 is why §5 caps analysis windows at the linear range.
 
+**Session 23b: the altitude axis is now GUARDED as well as bounded.** `boeing747` declares
+`valid_altitude = [35,000, 45,000] ft` and `valid_mach = [0.70, 0.90]`, so
+`checks.recovery_band` reports a run outside them instead of letting it look ordinary. The
+altitude edges are **derived**: each non-dimensional derivative is interpolated linearly in
+q̄ between CR-2144's two held conditions and the resulting short period compared against
+this entry's, which puts the frequency error at 3.5% at 35,000 ft, 6.2% at 32,000 and
+24.2% at 20,000. The interpolation self-checks — its 24.2% against the 23.5% actually
+measured. **The Mach band is declared, not derived**, because nothing held measures that
+axis; it is the same ±0.10 window the 737 entries carry.
+
+It fired on its first real use: Lester's Greenland case at 33,000 ft is 0.29 band widths
+outside, on the altitude axis alone, and `scripts/cat_bounds.py` prints that beside the
+result rather than after it.
+
 ### C4. Parabolic drag polar plus a Korn wave-drag rise
 
 Documented in `PROJECT.md` §5 with measured residuals: within 0.004 near the fit, up to
@@ -673,6 +687,20 @@ did, at 2 Hz; it does not say whether the Hannibal DC-10 did. The definitive tre
 Bach & Parks 1987, *J. Aircraft* 24(11), 789–792, **which this project does not hold.**
 So: the reconstruction error is now measured, the identification error is still attributed,
 and the orderings-only rule stands.
+
+**Bound, measured session 23b — what it costs on the run that matters.** The scale ratio
+above says the correction is doing real work; this says how much the answer moves if it is
+done better. On the Mehta five-vortex run, swapping the tangent gust rates for rates fitted
+across the airframe (`wind.sampled_field_model`) moves the load **increment** by **−1.67%
+on the up excursion and +4.40% on the down**. Strip-integrated loads move it by **exactly
+0.00%** — `loads.strip_increment` is roll-only and `vortex_wind` has no `y` dependence, so
+integrating across the span provably returns the point value, which is why the longitudinal
+rates are the only channel that can probe this at all.
+
+**Verdict on the marginal case: the point assumption is worth ≤4.4% there, and the run
+under-reaches the record by 32%.** So this is not where the gap is. It remains the weakest
+link in the vortex result and it is no longer a candidate explanation for the headline
+discrepancy.
 
 **Bound, measured session 13 — the consequence, not just the scale ratio.** The point model
 takes the gust gradient as the tangent at the CG. `wind.sampled_rates` fits the slope across

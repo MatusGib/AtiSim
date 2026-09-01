@@ -384,4 +384,24 @@ LEDGER: dict[str, Entry] = {
         "the errors above are that speed's and the implied flow-angle error "
         "0.458 deg only follows at it.",
     ),
+    "wind.DRYDEN_LW": Entry(
+        "SOURCED",
+        "1750 ft = 533.4 m, the MIL-F-8785C vertical scale length above 2000 ft. "
+        "It is the half of that model this project CAN transcribe: the spec "
+        "states L_w as a constant in that regime, while sigma_w is a chart "
+        "against altitude and exceedance probability that PROJECT.md section 3 "
+        "records as un-digitised. Nothing here supplies a sigma_w -- "
+        "`dryden_vertical_field` takes it as an argument and "
+        "scripts/cat_bounds.py sweeps it, so the reported 4-5 m/s is what a "
+        "result IMPLIES and never an intensity this project asserts.",
+    ),
+    "wind.DRYDEN_ALTITUDE_FLOOR": Entry(
+        "SOURCED",
+        "2000 ft = 609.6 m. Below it MIL-F-8785C's low-altitude model applies "
+        "and L_w is a function of height rather than the constant above, so "
+        "DRYDEN_LW is wrong there. Carried as a named floor rather than a "
+        "comment because every CAT case this project holds is far above it and "
+        "a future low-altitude use would otherwise inherit the wrong length "
+        "silently -- the same failure mode as the recovery band.",
+    ),
 }

@@ -156,7 +156,7 @@ rigid-rotation self-consistency test that found them. **Read it before changing 
 | **Doyle, Jiang, Smith & Grubišić 2011**, *Mon. Wea. Rev.* 139, 3–23, DOI 10.1175/2010MWR3466.1 | **the lee-wave amplitudes** — T-REX Gulfstream V over the Sierra Nevada, IOP 4 primary wave, 6 and 12 m/s crest-to-trough | gives a **tropospheric** wavelength band (20–35 km) and says stratospheric ones are shorter **without a number** — see §5 |
 | **Proctor, Hinton & Bowles 2000**, 9th Conf. Aviation Range & Aerospace Meteorology, paper 7.7, 482–487 | **the F-factor** — Eq. (3) `F = U̇ₓ/g − w/Vₐ`, Eq. (4) for the shear term, Eq. (7) for the **1 km average**, the `F > (T−D)/W` thrust criterion, the 0.1/0.13 thresholds, and F = 0.2–0.36 in real accidents | its thresholds are **low-altitude** (§4.1 bounds the threat below 500 m) **and jet-transport only** — it states the scale and threshold "are yet to be determined" for piston aircraft |
 | **Oseguera & Bowles 1988**, NASA TM-100632 | **the microburst** — Eqs. (5)–(6), an axisymmetric stagnation flow satisfying continuity, with four stated constants (r/R = 1.1212, z_m/z* = 0.22, z*/ε = 12.5, u_max = 0.2357λR) | the example's `R` is legible only in a scanned figure, so the downdraft radius is declared inside the 1–4 km band Wilson et al. use to define a microburst |
-| MIL-F-8785C | (not yet used) Dryden spectra | σ above 2000 ft is a **chart read**, not a formula — must be digitised |
+| MIL-F-8785C | **the Dryden vertical spatial PSD and `L_w` = 1750 ft above 2000 ft**, implemented session 23 as `wind.dryden_vertical_field` — a frozen spatial realisation rather than a shaping filter, because `ASSUMPTIONS.md` E3 already commits this project to a frozen field | σ_w is **still** a chart read, not a formula, and is **not** implemented — every use sweeps it and reports what value the result implies. §4's σ_w ≈ 4–5 m/s is an implication, not a validated intensity |
 | **Caughey, *Introduction to Aircraft Stability and Control*, Cornell MAE 5070 notes, Ch. 5** | an **independent implementation** of CR-2144's 747 power-approach case: dimensional derivatives Eq. (5.51), plant matrix Eq. (5.52), characteristic polynomial (5.53), roots (5.54) | **not an independent dataset** — its Eq. (5.48)–(5.50) cite CR-2144, the same document §IX comes from. Same inputs, different code. Also states V = 279.1 ft/s (M 0.25 at sea level) where Table IX-2's header says 165 KTAS = 278.49 ft/s, a 0.2% difference |
 | **Mehta 1987**, *J. Guidance, Control & Dynamics* 10(1) 27–31 (AIAA 84-2083) | **the only wind field in the project that declares nothing**: the converged five-vortex Hannibal solution — five core positions, `r₀` = 500.5 ft, `V₀` = 86.8 ft/s, ψ = 31°, altitude, bias and trend terms. Also the identification method behind Parks, and the cost at each array size | the fit is to DFDR-derived winds, so it inherits their reconstruction error (bounded by Lester below). States the encounter as **July** 1981 where two NASA documents say April |
 | **Wingrove, Bach & Schultz 1989**, NASA TM-102186 | the Hannibal encounter's **measured** normal acceleration (+1.7 to −1.0 g, gusts ~5 s apart); the vortex-array model in words (1,000 ft diameter, 87 ft/s, 3,400 ft spacing); **Fig. 8's three-aircraft simulation** at V = 150 / 700 / 800 ft/s and the mechanism it states | Fig. 8's exact wind field is not recoverable from the paper, so only orderings and excursion ratios can be compared. **Quotes Schultz 1990's Table 1 *initial estimates* as if they were his converged DFW results** — see §5 |
@@ -317,6 +317,91 @@ varies with the aircraft. The vortex field itself does not — `vortex_wind` is 
 field with no density in it — and the 747 flies Mehta's own 37,000 ft, so the headline
 case carries no such confound.
 
+#### Where the 32% load shortfall is NOT (session 23 follow-up)
+
+`scripts/cat_bounds.py` §A. The Mehta run reaches 68% of the DC-10's recorded
+peak-to-peak. Three candidate causes inside the model, each turned one at a time:
+
+| Variant | `n_z` min | `n_z` max | Δ(up increment) | Δ(down increment) |
+|---|---|---|---|---|
+| baseline — tangent gust rates, point loads | −0.3976 | 1.4410 | — | — |
+| gust rates fitted across the airframe | −0.3361 | 1.4336 | **−1.67%** | **+4.40%** |
+| strip-integrated loads | −0.3976 | 1.4410 | **0.00%** | **0.00%** |
+
+Step size, peak load: dt 0.02 → 0.01 moves it **−0.085%**, → 0.005 **−0.032%**,
+→ 0.0025 **−0.021%**. Converged.
+
+**Together these bound the model's own approximations at about 4.4% of a 32%
+gap.** The shortfall is not numerics and not the point-sampled gust.
+
+**The strip result is exactly zero, and that is informative rather than a
+null.** `loads.strip_increment` is roll-only and `vortex_wind` has no `y`
+dependence at all, so integrating across the span *must* return the point value.
+The point-gust assumption on this field can only be probed through the
+longitudinal gust RATES, which is what the sampled-rate row does — and it is the
+**down** excursion that moves, not the peak.
+
+#### What the random component Mehta excludes is worth (session 23 follow-up)
+
+`scripts/cat_bounds.py` §B. Mehta states his fit represents "the sudden,
+violent, and periodic disturbances … and not the small, random fluctuations that
+are part of the overall turbulence", so the field flown is a *smoothed* version
+of the air the DC-10 met. A Dryden layer (`wind.dryden_vertical_field`, MIL-F-8785C
+form, `L_w` = 1750 ft sourced, **σ_w not sourced and therefore swept**) was
+superposed, six seeds per point:
+
+| σ_w m/s | `n_z` min, mean [min, max] | `n_z` max, mean [min, max] | reaches the band? |
+|---|---|---|---|
+| 0 | −0.398 | 1.441 | no |
+| 2 | −0.421 [−0.500, −0.343] | 1.527 [1.440, 1.561] | no |
+| 4 | −0.423 [−0.613, −0.234] | 1.642 [1.456, 1.737] | **yes** |
+| 6 | −0.415 [−0.730, −0.148] | 1.797 [1.643, 1.952] | **yes** |
+
+**σ_w ≈ 4–5 m/s closes the upper extreme. Nothing in this sweep closes the lower
+one** — at σ_w = 6 the mean minimum is −0.415 against a recorded −1.0, and even
+the most extreme of six seeds reaches only −0.730. The spread widens; the mean
+barely moves, because the down-peak is set by the vortex core and the Dryden
+layer only adds variance around it.
+
+**Do not read σ_w ≈ 4 m/s as a validated intensity.** It is the value the gap
+implies, and MIL-F-8785C gives σ_w as a chart against altitude and exceedance
+probability that §3 records as un-digitised. Comparing the two is the next step,
+not a step already taken.
+
+#### Lester's Greenland 747 — one wave cannot produce both observations
+
+`scripts/cat_bounds.py` §C. The first load comparison in the project flown by
+the aircraft type the record is *of*: a B-747, at Lester's 33,000 ft, through a
+22 km lee wave.
+
+| `w0` m/s | `n_z` min | `n_z` max | peak \|Δn\| | climb m | band widths out |
+|---|---|---|---|---|---|
+| 3 | 0.955 | 1.052 | 0.052 | 223 | 0.25 |
+| **6** (Doyle's largest) | 0.911 | 1.106 | **0.106** | **451** | 0.29 |
+| 12 | 0.826 | 1.222 | 0.222 | 915 | 0.39 |
+| 30 | 0.602 | 1.610 | 0.610 | 2367 | 0.69 |
+
+Lester records **two** things about the same event, and the model inverts each:
+
+- the **300 m altitude gain** needs `w0` ≈ **4.0 m/s** — squarely inside Doyle's
+  measured 3–6 m/s;
+- the **+2.7/−1.0 g** needs `w0` ≈ **113 m/s**, which is 18.8× Doyle's largest
+  and not a physical lee-wave amplitude.
+
+**The two imply amplitudes 28× apart, so one smooth wave cannot produce both.**
+The slow, large-scale response is reproduced at a plausible amplitude; the fast
+one is not reproduced at any. That is a statement about the WIND MODEL, not the
+flight dynamics — and it is exactly what the source says happened, since Lester
+reads the flight-level windspeed collapse at the point of largest vertical
+motion as a critical level from *overturning* waves. The loads came from the
+wave breaking down, which `wind.LeeWave` does not contain.
+
+**Caveat, reported by the run itself.** The band declared on `boeing747` this
+session puts 33,000 ft outside it: at `w0` = 6 m/s the run is 0.29 band widths
+out, on the altitude axis only (Mach 0.764–0.835 is inside). `aircraft.py`'s
+interpolation puts the short-period frequency error there at about 5%. The guard
+fired on its first real use.
+
 #### The 747 at a third CR-2144 flight condition, M 0.8 / 6,096 m
 
 Condition reproduced before any derivative is used: `U₀` 252.8 m/s against Table A3's 253,
@@ -335,6 +420,50 @@ CR-2144 tabulates at *that* condition, change nothing else, and 23.5% becomes 0.
 **The residual damping error is entirely the missing `C_mα̇`.** Deleting `M_α̇ = −0.176`
 from the reference's own damping formula predicts −12.2%; the model measures −11.7%.
 Agreement to half a point of damping says nothing else contributes.
+
+**And putting it back closes it, which is the prediction run forward.** The model has
+carried `CLadot`/`Cmadot` fields since the α̇ work — `dynamics.derivatives` resolves both
+the gust's half and the aircraft's own implicit half — but `boeing747` leaves them at
+zero. Restoring Table A2's own `C_mα̇` = −5.40 alongside its other derivatives:
+
+| 747 short period, M 0.8 / 6,096 m | `ω_n` | vs ref | `ζ` | vs ref |
+|---|---|---|---|---|
+| Table A2 derivatives, no α̇ | 1.2823 | −0.59% | 0.5031 | **−11.73%** |
+| **+ `C_mα̇` = −5.40 (Table A2)** | 1.2823 | −0.59% | **0.5708** | **+0.14%** |
+| reference, Table A5 | 1.2900 | — | 0.5700 | — |
+
+**Given CR-2144's own derivatives for the condition, including α̇, this model reproduces
+CR-2144's own short period to 0.6% in frequency and 0.14% in damping.** `ω_n` does not
+move, which is the check that the term went into the right place — `M_α̇` enters the
+damping and not the frequency.
+
+**`boeing747` is NOT given α̇ terms, because no source supplies them at flight condition 9.**
+Table A2 is 20,000 ft and this entry is 40,000; applying it across 2.48× of dynamic
+pressure is the exact error this section just measured. CR-2144 Table IX-4 tabulates
+`Zwd` and `Mwd` for FC9 and `aircraft.py`'s comment says so, but the values were never
+transcribed and the document is not held.
+
+**`boeing747_approach` is not given them either, and that one is a judgement call.**
+Table IX-2 *does* tabulate `CL_α̇` and `Cm_α̇` for that condition, and `aircraft.py`
+records them. Measured against Caughey Eq. (5.54):
+
+| | `ω_n` sp | `ζ` sp | `ω_n` ph | `ζ` ph |
+|---|---|---|---|---|
+| as shipped | +1.4% | −5.5% | −0.2% | −4.6% |
+| with `C_mα̇` −3.2 and `C_Lα̇` +6.7 | **−0.3%** | **+0.1%** | −0.2% | **+8.4%** |
+
+The short period — the mode α̇ physically governs — improves markedly. The phugoid
+damping, which it should not touch, degrades **past the 5% tolerance
+`test_validation.py` asserts**. Adopting the terms would mean re-pinning that tolerance
+to let the change through, and `docs/ASSUMPTIONS.md` B5 is the precedent for not doing
+that. The measurement is kept in
+`test_cat_validation.py::test_the_approach_747s_tabulated_alpha_dot_terms_are_a_trade_not_a_win`
+so it survives the decision not to act on it.
+
+**The sign is resolved, and empirically.** `aircraft.py` transcribes `CL_α̇` as −6.7;
+Caughey uses +6.7 for the same CR-2144 case, and +6.7 is what a conventional aft tail
+must have. Flown both ways, +6.7 takes short-period `ω_n` to −0.3% and −6.7 takes it to
++3.2% — the data agrees with the physics, so the transcribed sign is the wrong one.
 
 Verification that the reference is usable at all, before any of the above: Table A2's
 dimensional column is recovered from its non-dimensional column using **AtiSim's own**
@@ -1674,6 +1803,15 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   the 747's full aileron authority by ~1.5×. **Vortex conclusions stay orderings** — which
   this section already required for a different reason.
 
+  **Session 23 measured what it costs on the headline run, and it is small.** Swapping the
+  tangent gust rates for rates fitted across the airframe moves the load increment by
+  **−1.67% up and +4.40% down**; strip-integrated loads move it by **exactly zero**,
+  because `loads.strip_increment` is roll-only and `vortex_wind` has no `y` dependence for
+  it to see. Step-size refinement from dt 0.02 to 0.0025 moves the peak by 0.14% total.
+  **So the model's own approximations bound at about 4.4% of the 32% by which the run
+  under-reaches the DC-10's recorded load** — the shortfall is elsewhere. §4 has the table.
+  Note which channel moves: the **down** excursion, not the peak.
+
 - **Gravity is constant at 9.80665 m/s², which is +0.383% high at the 747's cruise
   altitude.** True `g(h) = g₀(R/(R+h))²` is 9.76922 at 12,192 m. **Session 12 measured what
   that costs and decided not to model it**; §4 carries the table and `ASSUMPTIONS.md` §A2
@@ -1826,6 +1964,15 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   read there as a critical level from overturning waves — direct evidence that the
   horizontal perturbation `wind.LeeWave` omits is real, which turns "the reported F is a
   lower bound" from an argument into an observation.
+
+  **Session 23 follow-up: flown, and the omission turns out to be much larger than the
+  horizontal perturbation.** The 747 through a 22 km wave at Lester's own altitude
+  reproduces his recorded **300 m altitude gain** at `w0` ≈ 4.0 m/s — inside Doyle's
+  measured 3–6 m/s — and needs `w0` ≈ **113 m/s** to reach his recorded **+2.7/−1.0 g**.
+  The two observations imply amplitudes **28× apart**, so a single smooth wave cannot
+  produce both. §4 has the sweep. What `wind.LeeWave` is missing is not primarily the
+  quadrature horizontal term — it is everything the wave breaks down INTO, which is what
+  Lester's critical level is about and what carries the accelerations.
 
 - ~~**The 747 cannot be flown into a microburst.**~~ **CLOSED, session 10.** It was true
   while the only derivative set was flight condition 9, Mach 0.8 at 40,000 ft. CR-2144
@@ -2286,6 +2433,63 @@ likewise read off a plot at 7.0° and is **6.85°** computed; the script now pri
 a hybrid, deliberately; the coherent single-source pair lives beside it and the 2.1%
 spread is measured rather than argued. The orderings-only rule on vortex conclusions
 stands — everything above is an ordering, a band, or an attribution.
+
+### Session 23b — five follow-ups, and the shortfall is cornered rather than closed
+
+The session-23 pass ended with the Mehta run reaching 68% of the DC-10's recorded load
+and five named next steps. All five were run.
+
+| | Asked | Answered |
+|---|---|---|
+| 1 | restore the α̇ terms | `ζ` at M 0.8 / 6,096 m goes **−11.7% → +0.14%**. Given CR-2144's own derivatives for a condition, this model now reproduces CR-2144's own short period to 0.6% and 0.14% |
+| 2 | declare the 747's valid band | `[0.70, 0.90]` M, `[35,000, 45,000]` ft. The altitude edges are **derived**, not declared — a two-point interpolation in q̄ that self-checks to +24.2% against a measured +23.5% |
+
+**Item 2 changed a documented rule, which is worth flagging loudly.** The rule was *only an
+entry that IS a fit may carry a band*, and it rested on the reasoning that a linear
+derivative set from CR-2144 is "valid across the ordinary linear range" — that its
+limitation is on α and not on flight condition. For a rigid aircraft that is right:
+non-dimensional derivatives depend on Mach and geometry, not altitude.
+
+**The measurement says it is false for this data.** At constant M 0.80 CR-2144's own 747
+derivatives move −17% to −61% between 40,000 and 20,000 ft, and the short period that
+follows is 23.5% high in silence. The tabulated set does have a condition range; there
+were simply never two conditions to compare before.
+
+The replacement rule is what the old test was really enforcing: **a band may be declared
+only where its edges were established by measurement**, and there are now two ways to
+establish them — a JSBSim fit sweep, or an interpolation between two held conditions of
+the same document. `aircraft.DECLARES_A_BAND` is a separate set from
+`RECOVERED_FROM_JSBSIM` precisely because membership of the latter implies two further
+things (the source CL(α) table, trimming inside a table segment) that `boeing747` does not
+have and must not be given.
+
+Three guards fired on this change and all three were right: the band test above, the
+`recovery_band` report/gate test (whose specimen was `boeing747` and is now the approach
+entry, which still declares none), and the provenance ledger over the two new Dryden
+constants.
+| 3 | fly Lester's Greenland 747 | the recorded climb and the recorded g-load imply lee-wave amplitudes **28× apart** |
+| 4 | Dryden on top of Mehta | σ_w ≈ 4–5 m/s closes the **upper** extreme; nothing closes the lower one |
+| 5 | bound the point gust and the step | **≤4.4%** of a 32% gap. Strip loads move it by exactly zero |
+
+**The shortfall is now cornered.** It is not numerics (0.14% over an 8× dt range), not the
+point-sampled gust (≤4.4%), and not the strip path (0.00%). Adding the random component
+Mehta's fit explicitly excludes closes the positive extreme at a plausible intensity and
+leaves the negative one untouched. What remains unexplained is a **downward** excursion,
+on an aircraft that is not the one in the record.
+
+**Item 3 is the result worth keeping.** It is the first load comparison in the project
+flown by the aircraft type the record is actually of, and it produces a physical
+conclusion rather than a percentage: the smooth wave reproduces the slow response at an
+amplitude Doyle measured and misses the fast one by a factor of 28, so the accelerations
+came from the wave breaking down — which is what Lester's own critical-level reading says.
+`wind.LeeWave` is missing the breakdown, not a coefficient.
+
+**Two things were deliberately NOT done.** `boeing747` gets no α̇ terms, because no source
+supplies them at flight condition 9 and Table A2's are 2.48× of q̄ away. `boeing747_approach`
+gets none either, although Table IX-2 tabulates them: they take the short period from
++1.4%/−5.5% to −0.3%/+0.1% and the phugoid damping from −4.6% to **+8.4%**, past the 5%
+`test_validation.py` asserts. Adopting them means re-pinning a tolerance to admit a change,
+and B5 is the precedent for refusing that. The measurement is kept as a test.
 
 ### Session 21 — the Wingrove paper arrives, and JSBSim gains a 747
 
@@ -3167,7 +3371,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 
 | Command | What it does |
 |---|---|
-| `.venv/Scripts/python.exe -m pytest -q` | **749 passed, 1 skipped, 9m00s** (measured session 23; the 626 this row claimed was stale by five sessions, and the 322 before that by several more — this row has now been wrong twice, so re-measure it rather than trusting it). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. |
+| `.venv/Scripts/python.exe -m pytest -q` | **758 passed, 1 skipped, 17m06s** (measured session 23b; the 626 this row claimed was stale by five sessions, and the 322 before that by several more — this row has now been wrong twice, so re-measure it rather than trusting it). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. |
 | `.venv/Scripts/python.exe scripts/sanity.py` | **The ladder, for a reader who does not yet trust the model.** Twelve cases from degenerate inputs upward — zero the wind, zero a coefficient so a motion becomes impossible, then signs, then hand-computable numbers, then structural properties. Every expected value is derived by hand in the source and printed beside the model's answer, so it is read rather than trusted. Ends with the item 08 convention probe, which is a measurement rather than a pass/fail. |
 | `.venv/Scripts/python.exe -m pytest --nbval-lax notebooks/ -q` | **The second gate.** Executes `notebooks/solver-validation.ipynb` so it cannot rot. Needs the `dev` extra (`jupyter`, `nbval`). Deliberately *not* in `testpaths` and `--nbval-lax` is deliberately *not* in `addopts`: that would make every `pytest` run fail with "unrecognized arguments" wherever nbval is absent. **Run it from a worktree with an ABSOLUTE `PYTHONPATH`** — nbval starts the kernel with its cwd in `notebooks/`, so a relative `PYTHONPATH=.` resolves to the wrong directory and `atisim` silently loads from the main checkout. |
 | `.venv/Scripts/python.exe scripts/checkpoint.py` | 747 only, no flags. Trim residuals, 60 s fixed-control hold, longitudinal modes against CR-2144 Table IX-5. |
@@ -3185,6 +3389,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 | `C:/Users/mateusz/AppData/Local/Programs/Python/Python310/python.exe` `scripts/gen_jsbsim_vortex_reference.py` | **Freezes JSBSim's answer to the three vortex cases.** Same interpreter, same reason. Writes `atisim/tests/data/jsbsim_vortex_reference.xml`. |
 | `.venv/Scripts/python.exe scripts/vortex_compare.py --png runs/vc.png` | **The cross-code vortex comparison.** Flies atisim through the identical field the frozen reference was generated from and reports where the two engines part, against Wingrove & Bach's own g-loads. Imports no jsbsim. |
 | `.venv/Scripts/python.exe scripts/vortex_diagnose.py` | **Why the comparison's two large errors are large.** Three experiments: the same start state flown in still air, atisim flown from its own trim, and a one-lever-at-a-time sweep against the DFDR. Imports no jsbsim. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_bounds.py --outdir runs/cat` | **The bounding experiments (session 23 follow-up).** What the point-sampled gust, the strip path and the step size cost on the Mehta run; what Dryden intensity would close the residual load gap; and Lester's Greenland 747 against a lee wave, inverted on both the g-load and the altitude gain. Same `PYTHONPATH` rule. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_validation.py --outdir runs/cat` | **The CAT source pass (session 23).** Flies Mehta 1987's five-vortex Hannibal field, reproduces TM-102186 Fig. 8's three-aircraft ordering and tests its stated mechanism across the whole registry, compares the 747's short period at a third CR-2144 flight condition, and grades every run on Misaka's `σ_n`. Prints every number and writes four figures. **`PYTHONPATH` is mandatory** — `python scripts/…` resolves `atisim` to the main checkout, which this script detects and prints on its first line. |
 | `docs/summary/jsbsim-atisim-vortex-report.html` | **The written comparison** — the numbers above with the reasoning, the figure, and what the result does and does not establish. Not generated; edit it when the numbers move. |
 
