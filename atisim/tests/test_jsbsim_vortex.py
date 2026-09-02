@@ -19,7 +19,14 @@ EXPECTED_KEYS = {
     ("cimarron", "wingrove"),
     ("hannibal", "wingrove"), ("hannibal", "parks"),
     ("morton", "wingrove"), ("morton", "parks"),
+    # Session 23d. A different KIND of encounter from the four above: Mehta's
+    # converged FIVE-vortex array with an oblique traverse, which is the field
+    # the headline atisim result flies. Several tests below characterise a
+    # SINGLE core and are scoped to `cores is None` rather than relaxed.
+    ("mehta", "mehta"),
 }
+
+SINGLE_CORE_KEYS = EXPECTED_KEYS - {("mehta", "mehta")}
 
 
 @pytest.fixture(scope="module")
@@ -90,11 +97,16 @@ def test_injected_field_matches_atisims_field_at_every_sample(reference):
     """
     worst_overall, worst_key = 0.0, None
     for key, enc in reference.encounters.items():
+        if enc.cores is None:
+            north = jnp.array([enc.values["core_north"]])
+            down = jnp.array([-enc.values["altitude"]])
+        else:
+            north, down = jnp.array(enc.cores[0]), jnp.array(enc.cores[1])
         array = wind.VortexArray(
-            north=jnp.array([enc.values["core_north"]]),
-            down=jnp.array([-enc.values["altitude"]]),
+            north=north, down=down,
             r0=jnp.array(enc.values["r0"]),
             v0=jnp.array(enc.values["v0"]),
+            cos_dpsi=jnp.array(enc.values.get("cos_dpsi", 1.0)),
         )
         for s in enc.samples:
             mine = np.asarray(
@@ -131,7 +143,8 @@ def test_far_field_preconditioning_is_bounded_and_is_not_trim_decay(reference):
     one engine's run. scripts/vortex_compare.py asks it.
     """
     worst = {}
-    for key, enc in reference.encounters.items():
+    for key in sorted(SINGLE_CORE_KEYS):
+        enc = reference.encounters[key]
         change = enc.entry_speed_drift()
         worst[key] = change
         assert change < 0.01, (
@@ -139,6 +152,15 @@ def test_far_field_preconditioning_is_bounded_and_is_not_trim_decay(reference):
             f"the 1% these encounters were characterised at. Either the lead-in "
             f"of {reference.lead_in_radii:.0f} core radii changed or the field did."
         )
+
+    # The array encounter is NOT held to that bound, and the bound is not
+    # widened to admit it. 1% characterises a 15-radius run-in to a single
+    # core; the Mehta window opens at the edge of a five-core array, so the
+    # aircraft has flown through four more far fields before it. Its own value
+    # is recorded here so a change in it is still visible, and it is the reason
+    # scripts/vortex_compare.py reports the Mehta case from the window edge.
+    mehta = reference.encounters[("mehta", "mehta")].entry_speed_drift()
+    assert 0.02 < mehta < 0.03, f"array preconditioning moved to {mehta:.2%}"
     # Hannibal's two runs are now the same radius, so they must precondition
     # identically. Before session 22 this asserted an ORDERING -- the 600 ft
     # core preconditioning more than the 500 ft one, which it did -- and that
@@ -161,10 +183,17 @@ def test_the_encounter_is_a_single_core_as_fig_4_draws_it(reference):
     Asserted through the wind trace: a single Rankine core gives exactly one
     sign change in the vertical gust across the traverse.
     """
-    for key, enc in reference.encounters.items():
+    for key in sorted(SINGLE_CORE_KEYS):
+        enc = reference.encounters[key]
         w = np.array([s.wind[2] for s in enc.window()])
         crossings = int(np.sum(np.diff(np.sign(w)) != 0))
         assert crossings == 1, f"{key}: {crossings} sign changes, expected 1"
+
+    # And the negative control the four cases above could never provide: the
+    # array encounter must show MORE than one, or `cores` is not being flown.
+    arr = reference.encounters[("mehta", "mehta")]
+    w = np.array([s.wind[2] for s in arr.window()])
+    assert int(np.sum(np.diff(np.sign(w)) != 0)) > 1
 
 
 def test_both_sources_now_agree_on_every_case_so_every_pair_is_identical(reference):
