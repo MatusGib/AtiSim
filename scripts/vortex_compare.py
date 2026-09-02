@@ -104,11 +104,23 @@ def atisim_run(encounter, *, arm):
     # the RELATIVE geometry is identical even though the two altitudes differ by
     # the density match. Placing it at JSBSim's nominal altitude instead would
     # leave atisim passing 21 m below the core it was supposed to fly through.
+    if encounter.cores is None:
+        north, down = jnp.array([v["core_north"]]), jnp.array([-altitude])
+    else:
+        # An ARRAY encounter. The reference stores each core's absolute down in
+        # JSBSim's frame; the cores must be re-hung from atisim's DENSITY-
+        # MATCHED altitude so the relative geometry is preserved, exactly as
+        # the single-core branch does by using -altitude rather than the
+        # nominal. The stored downs are -(nominal - z), so z is recovered and
+        # re-applied.
+        z = v["altitude"] + encounter.cores[1]
+        north = jnp.array(encounter.cores[0])
+        down = jnp.array(-(altitude - z))
     array = wind.VortexArray(
-        north=jnp.array([v["core_north"]]),
-        down=jnp.array([-altitude]),
+        north=north, down=down,
         r0=jnp.array(v["r0"]),
         v0=jnp.array(v["v0"]),
+        cos_dpsi=jnp.array(v.get("cos_dpsi", 1.0)),
     )
     field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
 
@@ -129,8 +141,8 @@ def atisim_run(encounter, *, arm):
         label=f"{encounter.case}/{encounter.radius_source} {arm}",
         seconds=v["duration"],
         dt=0.01,
-        window=(v["core_north"] - v["r0"], v["core_north"] + v["r0"]),
-        window_name="core",
+        window=encounter.window_bounds(),
+        window_name="core" if encounter.cores is None else "array",
         wind_model=partial_field_model(field, **ARMS[arm]),
     ), state, controls, ac
 

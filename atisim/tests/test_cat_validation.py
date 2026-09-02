@@ -1126,3 +1126,238 @@ def test_no_gust_strength_reaches_the_recorded_peak_inside_the_linear_range():
 
     assert hi_lo < recorded and peak_alpha(enc_lo) < 10.0
     assert hi_hi >= recorded and peak_alpha(enc_hi) > 10.0
+
+
+# ---------------------------------------------------------------------------
+# Session 23d. The headline field flown by a second engine, and the Fig. 8
+# categories given error bars.
+#
+# The cross-code arm exists because "both engines under-predict by the same
+# amount, so the shortfall is in the inputs" was measured on the PARKS single
+# cores and then applied to the MEHTA array. These tests are what happens when
+# that inference is checked on the field it was applied to.
+# ---------------------------------------------------------------------------
+
+
+def _mehta_cross_code():
+    """(JSBSim encounter, atisim run) on Mehta's field, one state, one field.
+
+    Rebuilds what `scripts/vortex_compare.py` does, because the test suite may
+    not import from `scripts/`. Translation-only on the atisim side: JSBSim has
+    no writable gust-rate input, so the gradient terms have no counterpart and
+    including them would not be a comparison.
+    """
+    from atisim import jsbsim_vortex_ref, vortex_viz
+    from atisim.state import State, euler_to_quat
+    from atisim.aircraft import REGISTRY as REG
+    from atisim.dynamics import Controls
+
+    enc = jsbsim_vortex_ref.load().encounters[("mehta", "mehta")]
+    v = enc.values
+    altitude = v["matched_altitude"]
+    z = v["altitude"] + enc.cores[1]
+    array = wind.VortexArray(
+        north=jnp.array(enc.cores[0]), down=jnp.array(-(altitude - z)),
+        r0=jnp.array(v["r0"]), v0=jnp.array(v["v0"]),
+        cos_dpsi=jnp.array(v["cos_dpsi"]),
+    )
+    field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
+    state = State(
+        pos_ned=jnp.array([0.0, 0.0, -altitude]),
+        vel_body=jnp.array(enc.initial.vel_body),
+        quat=euler_to_quat(*(jnp.array(x) for x in enc.initial.euler)),
+        omega=jnp.array(enc.initial.omega),
+    )
+    controls = Controls(
+        elevator=jnp.array(enc.initial.controls[0]),
+        aileron=jnp.array(enc.initial.controls[1]),
+        rudder=jnp.array(enc.initial.controls[2]),
+        throttle=jnp.array(enc.initial.throttle),
+    )
+    # Translation-only, which is the strictly like-for-like arm: JSBSim samples
+    # wind at one point and its gust-rate inputs are read-only, so it carries no
+    # gradient at all. Same shape as scripts/vortex_compare.partial_field_model
+    # with both terms off.
+    def translational(wind_state, st, key, dt):
+        del dt
+        return field(st.pos_ned), jnp.zeros(3), wind_state, key, jnp.array(0.0)
+
+    run = vortex_viz.fly_from_state(
+        REG[enc.aircraft], field, state, controls, label="mehta-xcode",
+        seconds=v["duration"], dt=0.02,
+        window=enc.window_bounds(), window_name="array",
+        wind_model=translational,
+    )
+    return enc, run
+
+
+def test_the_two_field_implementations_agree_on_the_oblique_array():
+    """The gate the array comparison rests on, and it is a NEW gate.
+
+    `test_jsbsim_vortex.py` already reconciles the numpy and JAX fields for the
+    single cores. The array adds two things neither had: superposition of five
+    cores, and an oblique traverse at 31 deg. A bug in either would sit on both
+    sides of the load comparison below and be invisible to it.
+    """
+    from atisim import jsbsim_vortex_ref
+
+    enc = jsbsim_vortex_ref.load().encounters[("mehta", "mehta")]
+    v = enc.values
+    assert enc.cores is not None and len(enc.cores[0]) == 5
+    assert v["cos_dpsi"] == pytest.approx(
+        math.cos(math.radians(wind.MEHTA_HANNIBAL_PSI_DEG)))
+
+    array = wind.VortexArray(
+        north=jnp.array(enc.cores[0]), down=jnp.array(enc.cores[1]),
+        r0=jnp.array(v["r0"]), v0=jnp.array(v["v0"]),
+        cos_dpsi=jnp.array(v["cos_dpsi"]),
+    )
+    worst = 0.0
+    for s in enc.samples:
+        mine = np.asarray(
+            wind.vortex_wind(jnp.array([s.north, 0.0, -s.altitude]), array))
+        worst = max(worst, float(np.abs(mine - s.wind).max()))
+    assert worst < 1e-9, f"the two array implementations disagree by {worst:.3e}"
+
+
+def test_neither_engine_reaches_the_record_on_the_field_it_was_fitted_to():
+    """*** The result step 5 existed to get. ***
+
+    The load shortfall could always have been a solver defect. It is not: an
+    independent flight-dynamics engine, given the SAME five-vortex field, the
+    SAME aircraft (boeing747_jsbsim, recovered from JSBSim's own B747) and the
+    SAME starting state, also falls well short of the DC-10's recorded
+    peak-to-peak. JSBSim reaches about three quarters of it; atisim about two
+    thirds. Neither reaches.
+
+    That is what closes the solver as an explanation on the headline field
+    rather than on the adjacent Parks cases it was previously inferred from.
+    """
+    from atisim import jsbsim_vortex_ref
+
+    enc = jsbsim_vortex_ref.load().encounters[("mehta", "mehta")]
+    lo, hi = enc.window_bounds()
+    js = np.array([s.Nz for s in enc.samples if lo <= s.north <= hi])
+    recorded = wind.TM102186_HANNIBAL_NZ[1] - wind.TM102186_HANNIBAL_NZ[0]
+
+    assert 0.70 < np.ptp(js) / recorded < 0.80
+    assert np.ptp(js) < recorded, "JSBSim must fall short too, or step 5 is moot"
+
+
+def test_the_two_engines_part_on_the_array_where_they_did_not_on_one_core():
+    """And this is the part that QUALIFIES a previous session's conclusion.
+
+    Session 22 measured both engines under-predicting the DFDR "by the same
+    amount" and read that as the shortfall being in the inputs. It was measured
+    on single Parks cores, where the window is 1.3 s -- a fifth of a short
+    period -- and the two engines put their load extremes at the same point to
+    within a couple of metres.
+
+    On the five-core array the window is 34 s, five short periods, and they do
+    not: the engines select DIFFERENT cores as the worst one. The peak agrees
+    (atisim is 2% higher); the trough does not, and the trough is the channel
+    that has been short against the DFDR all along.
+
+    So "the same amount" was a property of the short single-core window, not a
+    general result, and the array comparison must be quoted on its own terms.
+    """
+    from atisim import jsbsim_vortex_ref
+
+    ref = jsbsim_vortex_ref.load()
+    arr = ref.encounters[("mehta", "mehta")]
+    one = ref.encounters[("hannibal", "wingrove")]
+
+    lo, hi = arr.window_bounds()
+
+    def extremes(enc):
+        lo, hi = enc.window_bounds()
+        w = [s for s in enc.samples if lo <= s.north <= hi]
+        nz = np.array([s.Nz for s in w])
+        north = np.array([s.north for s in w])
+        return north[nz.argmax()], north[nz.argmin()], np.ptp(nz)
+
+    _, _, span_one = extremes(one)
+    n_max, n_min, span_arr = extremes(arr)
+
+    # JSBSim puts both of its own extremes on one core; atisim puts both of its
+    # own on a DIFFERENT one. That is the cross-engine claim, and it needs
+    # atisim actually flown -- the frozen reference alone cannot make it.
+    cores = arr.cores[0]
+    _, run = _mehta_cross_code()
+    w = run.window
+    a_north, a_nz = np.asarray(run.north[w]), np.asarray(run.n_z[w])
+    js_core = int(np.abs(cores - n_max).argmin())
+    at_core = int(np.abs(cores - a_north[a_nz.argmax()]).argmin())
+    assert js_core == int(np.abs(cores - n_min).argmin())
+    assert at_core != js_core, (
+        f"both engines chose core {js_core}; the divergence this test records "
+        f"is gone and the docstring above no longer describes the tree"
+    )
+
+    # The peak agrees far better than the span does: the disagreement is in the
+    # TROUGH, which is the channel short against the DFDR in the first place.
+    assert abs(a_nz.max() - np.array([s.Nz for s in arr.samples
+                                      if lo <= s.north <= hi]).max()) < 0.06
+    assert a_nz.min() > np.array([s.Nz for s in arr.samples
+                                  if lo <= s.north <= hi]).min() + 0.15
+
+    # The window that produced the earlier "same amount" reading is a fraction
+    # of a short period; this one is several. That is the difference, stated in
+    # the quantity that causes it rather than in the conclusion it changes.
+    V = arr.values["airspeed"]
+    assert (one.window_bounds()[1] - one.window_bounds()[0]) / V < 2.0
+    assert (arr.window_bounds()[1] - arr.window_bounds()[0]) / V > 30.0
+    assert span_arr > span_one
+
+
+def test_the_fig8_ordering_survives_a_sourced_random_layer():
+    """PROJECT.md section 7, step 6 -- its own stated verify criterion.
+
+    Step 6 has waited on step 4 (Dryden) since session 3. The criterion written
+    there is that the vortex < updraft < manoeuvre ordering holds across the
+    ensemble, and it does, at the top of the sigma_w range session 23c derived
+    from Mehta's residual.
+
+    WHAT THE SCRIPT REPORTS THAT THIS DOES NOT: the pitch clouds nearly touch at
+    that intensity -- a 0.06 deg gap, down from 0.886 at the low end -- so the
+    discriminator survives on its LOAD axis rather than its pitch axis. Two
+    seeds cannot establish that, so it is measured in scripts/cat_ensemble.py
+    and only the ordering is gated here.
+    """
+    from atisim import vortex_viz
+    from atisim.aircraft import CRUISE
+    from atisim.wind import PARKS_CASES, UPDRAFT_SECONDS, UPDRAFT_W0
+
+    ac = REGISTRY["boeing747"]
+    V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
+    sigma = wind.mehta_residual_ceiling()
+    case = PARKS_CASES["hannibal"]
+    r0, spacing = case["r0"], case["spacing"]
+    radius = 0.5 * UPDRAFT_SECONDS * V
+
+    for seed in (0, 1):
+        extra = wind.dryden_vertical_field(sigma, seed)
+
+        array = wind.VortexArray(
+            north=jnp.array([0.0, spacing]), down=jnp.array([-H, -H]),
+            r0=jnp.array(r0), v0=jnp.array(case["v0"]),
+        )
+        vortex = vortex_viz.fly(
+            ac, wind.superpose(lambda p: wind.vortex_wind(p, array), extra),
+            V, H, label="v", start_north=-40.0 * r0,
+            seconds=(spacing + 40.0 * r0 + 6.0 * r0) / V, dt=0.05,
+            window=(-r0, r0), window_name="first core")
+
+        column = wind.UpdraftColumn(
+            north=jnp.array(0.0), east=jnp.array(0.0),
+            w0=jnp.array(UPDRAFT_W0), radius=jnp.array(radius),
+            sharpness=jnp.array(6.0))
+        updraft = vortex_viz.fly(
+            ac, wind.superpose(lambda p: wind.updraft_wind(p, column), extra),
+            V, H, label="u", start_north=-2.0 * radius,
+            seconds=4.0 * radius / V, dt=0.05,
+            window=(-radius, radius), window_name="column")
+
+        pitch_v = vortex_viz.fig8_point(vortex)[0]
+        pitch_u = vortex_viz.fig8_point(updraft)[0]
+        assert pitch_v < pitch_u, f"seed {seed}: {pitch_v:.3f} !< {pitch_u:.3f}"

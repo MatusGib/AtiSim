@@ -45,6 +45,7 @@ from it. Same reasoning as jsbsim_ref.SweepPoint, which drives atisim with the
 velocity vector rather than with (V, alpha, beta).
 """
 
+import math
 import sys
 from pathlib import Path
 
@@ -60,6 +61,8 @@ import gen_jsbsim_reference as ref  # noqa: E402
 from atisim.atmosphere import density  # noqa: E402
 from atisim.units import FT2M, LBF2N, SLUG_FT3_TO_KG_M3  # noqa: E402
 from atisim.wind import (  # noqa: E402
+    MEHTA_HANNIBAL_ALTITUDE, MEHTA_HANNIBAL_PSI_DEG, MEHTA_HANNIBAL_R0,
+    MEHTA_HANNIBAL_V0, MEHTA_HANNIBAL_X_FT, MEHTA_HANNIBAL_Z_FT,
     PARKS_CASES, WINGROVE_CASE_ALTITUDE, WINGROVE_FIG4_CASES,
 )
 
@@ -96,6 +99,17 @@ CASES = [
     ("hannibal", "B747", "boeing747_jsbsim", 0.80),
     ("morton", "B747", "boeing747_jsbsim", 0.80),
 ]
+
+# THE MEHTA CASE, added session 23d, and it is a different KIND of encounter.
+#
+# The three above are single Rankine cores with parameters from a two-vortex
+# fit. This one is Mehta 1987's converged FIVE-vortex solution -- the field the
+# headline atisim result actually flies -- with an oblique traverse at 31 deg.
+# It is flown by boeing747_jsbsim rather than boeing747 ON PURPOSE: that entry
+# was recovered from JSBSim's own B747, so the two engines are given the same
+# aircraft as well as the same field, and any difference left is the SOLVER.
+# 37,000 ft is inside that entry's declared band of [35,000, 41,000] ft.
+MEHTA_CASE = ("mehta", "B747", "boeing747_jsbsim", 0.80)
 
 # Both radii for every case, so the Hannibal conflict is flown rather than
 # argued. "wingrove" is Fig. 4's (500 ft); "parks" is wind.py's incumbent
@@ -135,6 +149,40 @@ def rankine(north, down, core_north, core_down, r0, v0):
     return np.array([w_horizontal, 0.0, -w_up])  # NED, z DOWN
 
 
+def mehta_cores(altitude):
+    """(north, down) of Mehta's five cores, in the run's own frame.
+
+    North is shifted so the FIRST core sits LEAD_IN_RADII radii from the start,
+    matching where the single-core cases put theirs. Down places core i at
+    `altitude - z_i`, since Mehta's z is the aircraft's height ABOVE the core.
+    """
+    x = np.array(MEHTA_HANNIBAL_X_FT) * FT2M
+    z = np.array(MEHTA_HANNIBAL_Z_FT) * FT2M
+    north = x - x.min() + LEAD_IN_RADII * MEHTA_HANNIBAL_R0
+    return north, -(altitude - z)
+
+
+def rankine_array(north, down, core_north, core_down, r0, v0, cos_dpsi):
+    """Superposition of `rankine` over an array, with an oblique traverse.
+
+    Parks r = (l^2 cos^2 dpsi + d^2)^(1/2): dpsi enters through the ALONG-track
+    coordinate alone, which is exactly what `wind.VortexArray.cos_dpsi` does on
+    the JAX side. Written here in numpy for the same reason `rankine` is -- a
+    bug shared by both sides of a cross-code comparison is invisible to it.
+    """
+    total = np.zeros(3)
+    for cn, cd in zip(core_north, core_down):
+        along = (north - cn) * cos_dpsi
+        above = cd - down
+        r2 = along**2 + above**2
+        if r2 < r0**2:
+            w_horizontal, w_up = v0 * above / r0, -v0 * along / r0
+        else:
+            w_horizontal, w_up = v0 * r0 * above / r2, -v0 * r0 * along / r2
+        total += np.array([w_horizontal, 0.0, -w_up])
+    return total
+
+
 def configure(model):
     """Point gen_jsbsim_reference at one airframe.
 
@@ -169,9 +217,15 @@ def matched_altitude(rho, nominal_m):
     return h, residual
 
 
-def run_case(case, model, mach, source, pad_radii=6.0):
-    altitude = WINGROVE_CASE_ALTITUDE[case]
-    r0, v0 = radius_and_strength(case, source)
+def run_case(case, model, mach, source, pad_radii=6.0, mehta=False):
+    if mehta:
+        altitude = MEHTA_HANNIBAL_ALTITUDE
+        r0, v0 = MEHTA_HANNIBAL_R0, MEHTA_HANNIBAL_V0
+        cos_dpsi = math.cos(math.radians(MEHTA_HANNIBAL_PSI_DEG))
+    else:
+        altitude = WINGROVE_CASE_ALTITUDE[case]
+        r0, v0 = radius_and_strength(case, source)
+        cos_dpsi = 1.0
 
     configure(model)
     ref.ALT_FT, ref.MACH = altitude / FT2M, mach
@@ -206,12 +260,20 @@ def run_case(case, model, mach, source, pad_radii=6.0):
     h_match, residual = matched_altitude(rho, altitude)
     V0 = fdm["velocities/vt-fps"] * FT2M
 
-    core_north = LEAD_IN_RADII * r0
-    core_down = -altitude
-    duration = (core_north + pad_radii * r0) / V0
+    if mehta:
+        core_north, core_down = mehta_cores(altitude)
+        duration = (core_north.max() + pad_radii * r0) / V0
+    else:
+        core_north = LEAD_IN_RADII * r0
+        core_down = -altitude
+        duration = (core_north + pad_radii * r0) / V0
 
     values = {
-        "r0": r0, "v0": v0, "core_north": core_north, "altitude": altitude,
+        "r0": r0, "v0": v0, "altitude": altitude, "cos_dpsi": cos_dpsi,
+        # Scalar for a single core; the array case carries its geometry in the
+        # <cores> element instead and reports the first core here so every
+        # encounter still has a well-defined entry point.
+        "core_north": float(np.min(core_north)) if mehta else core_north,
         "matched_altitude": h_match, "density_match_residual": residual,
         "density": rho, "airspeed": V0, "duration": duration,
         "mass": fdm["inertia/weight-lbs"] * LBF2N / 9.80665,
@@ -227,7 +289,9 @@ def run_case(case, model, mach, source, pad_radii=6.0):
     while fdm["simulation/sim-time-sec"] <= duration:
         north = fdm["position/distance-from-start-lat-mt"]
         down = -fdm["position/h-sl-meters"]
-        w = rankine(north, down, core_north, core_down, r0, v0)
+        w = (rankine_array(north, down, core_north, core_down, r0, v0, cos_dpsi)
+             if mehta else
+             rankine(north, down, core_north, core_down, r0, v0))
         fdm["atmosphere/wind-north-fps"] = w[0] * MS2FPS
         fdm["atmosphere/wind-east-fps"] = w[1] * MS2FPS
         fdm["atmosphere/wind-down-fps"] = w[2] * MS2FPS
@@ -248,7 +312,8 @@ def run_case(case, model, mach, source, pad_radii=6.0):
             next_sample += SAMPLE_EVERY
         fdm.run()
 
-    return values, initial, samples
+    cores = ((core_north, core_down) if mehta else None)
+    return values, initial, samples, cores
 
 
 def main():
@@ -262,38 +327,47 @@ def main():
     L.append("    <gradient_injected>false</gradient_injected>")
     L.append("  </provenance>")
 
-    for case, model, entry, mach in CASES:
-        for source in RADIUS_SOURCES:
-            if radius_and_strength(case, source) is None:
-                print(f"{case:9} {source:9} SKIPPED -- not in that source")
-                continue
-            values, initial, samples = run_case(case, model, mach, source)
-            nz = [s["Nz"] for s in samples]
-            wz = [s["wind"][2] for s in samples]
-            print(f"{case:9} {model:5} r0={source:8} "
-                  f"{values['r0'] / FT2M:6.1f} ft  {len(samples):5d} samples  "
-                  f"Nz [{min(nz):+.4f}, {max(nz):+.4f}]  "
-                  f"peak |w_down| {max(abs(v) for v in wz):6.2f} m/s")
-            L.append(f'  <encounter case="{case}" model="{model}" '
-                     f'aircraft="{entry}" radius_source="{source}" '
-                     f'mach="{f(mach)}">')
-            for k in sorted(values):
-                L.append(f'    <value name="{k}">{f(values[k])}</value>')
-            L.append("    <initial "
-                     f'vel_body="{vec(initial["vel_body"])}" '
-                     f'omega="{vec(initial["omega"])}" '
-                     f'euler="{vec(initial["euler"])}" '
-                     f'controls="{vec(initial["controls"])}" '
-                     f'throttle="{f(initial["throttle"])}"/>')
-            for s in samples:
-                L.append(
-                    f'    <sample t="{f(s["t"])}" north="{f(s["north"])}" '
-                    f'altitude="{f(s["altitude"])}" wind="{vec(s["wind"])}" '
-                    f'alpha="{f(s["alpha"])}" theta="{f(s["theta"])}" '
-                    f'q="{f(s["q"])}" Nz="{f(s["Nz"])}" '
-                    f'vtrue="{f(s["vtrue"])}" elevator="{f(s["elevator"])}"/>'
-                )
-            L.append("  </encounter>")
+    runs = [(c, m, e, ma, src, False)
+            for (c, m, e, ma) in CASES for src in RADIUS_SOURCES]
+    runs.append(MEHTA_CASE + ("mehta", True))
+
+    for case, model, entry, mach, source, mehta in runs:
+        if not mehta and radius_and_strength(case, source) is None:
+            print(f"{case:9} {source:9} SKIPPED -- not in that source")
+            continue
+        values, initial, samples, cores = run_case(
+            case, model, mach, source, mehta=mehta)
+        nz = [s["Nz"] for s in samples]
+        wz = [s["wind"][2] for s in samples]
+        drift = samples[-1]["vtrue"] - samples[0]["vtrue"]
+        print(f"{case:9} {model:5} r0={source:8} "
+              f"{values['r0'] / FT2M:6.1f} ft  {len(samples):5d} samples  "
+              f"Nz [{min(nz):+.4f}, {max(nz):+.4f}]  "
+              f"peak |w_down| {max(abs(v) for v in wz):6.2f} m/s  "
+              f"dV {drift:+6.2f} m/s")
+        L.append(f'  <encounter case="{case}" model="{model}" '
+                 f'aircraft="{entry}" radius_source="{source}" '
+                 f'mach="{f(mach)}">')
+        for k in sorted(values):
+            L.append(f'    <value name="{k}">{f(values[k])}</value>')
+        if cores is not None:
+            L.append(f'    <cores north="{vec(cores[0])}" '
+                     f'down="{vec(cores[1])}"/>')
+        L.append("    <initial "
+                 f'vel_body="{vec(initial["vel_body"])}" '
+                 f'omega="{vec(initial["omega"])}" '
+                 f'euler="{vec(initial["euler"])}" '
+                 f'controls="{vec(initial["controls"])}" '
+                 f'throttle="{f(initial["throttle"])}"/>')
+        for s in samples:
+            L.append(
+                f'    <sample t="{f(s["t"])}" north="{f(s["north"])}" '
+                f'altitude="{f(s["altitude"])}" wind="{vec(s["wind"])}" '
+                f'alpha="{f(s["alpha"])}" theta="{f(s["theta"])}" '
+                f'q="{f(s["q"])}" Nz="{f(s["Nz"])}" '
+                f'vtrue="{f(s["vtrue"])}" elevator="{f(s["elevator"])}"/>'
+            )
+        L.append("  </encounter>")
 
     L.append("</jsbsim_vortex_reference>")
     OUT.write_text("\n".join(L) + "\n", encoding="utf-8", newline="\n")

@@ -62,6 +62,10 @@ class Encounter(NamedTuple):
     values: dict          # r0, v0, core_north, matched_altitude, mass, ...
     initial: Initial
     samples: list
+    # (north, down) of every core, for an ARRAY encounter; None for the
+    # single-core ones. Trailing and defaulted so every existing construction
+    # and every frozen single-core encounter is untouched.
+    cores: tuple = None
 
     @property
     def key(self):
@@ -74,9 +78,24 @@ class Encounter(NamedTuple):
         different Fig. 8 coordinates depending on the window, so every consumer
         takes this one and none invents its own.
         """
-        lo = self.values["core_north"] - self.values["r0"]
-        hi = self.values["core_north"] + self.values["r0"]
+        lo, hi = self.window_bounds()
         return [s for s in self.samples if lo <= s.north <= hi]
+
+    def window_bounds(self):
+        """(lo, hi) in north, metres.
+
+        One core radius either side of a single core -- which is the encounter,
+        since the far field is run-in. An ARRAY has no single centre, so it
+        takes two radii either side of the outermost cores, matching what
+        `scripts/cat_uncertainty.py` gives the same field on the atisim side.
+        Both consumers must agree or they are not comparing the same stretch.
+        """
+        r0 = self.values["r0"]
+        if self.cores is None:
+            return (self.values["core_north"] - r0,
+                    self.values["core_north"] + r0)
+        return (float(self.cores[0].min()) - 2.0 * r0,
+                float(self.cores[0].max()) + 2.0 * r0)
 
     def load_increments(self):
         """(max, min) of Nz - 1, over the core window, in g.
@@ -121,7 +140,7 @@ class Encounter(NamedTuple):
         drift artifact rather than a solver result, so this is a gate.
         """
         entry = self.values["airspeed"]
-        edge = self.values["core_north"] - self.values["r0"]
+        edge = self.window_bounds()[0]
         reached = [s for s in self.samples if s.north >= edge]
         if not reached:
             raise ValueError(f"{self.key}: no sample reached the core")
@@ -146,6 +165,10 @@ def load(path: Path = REFERENCE) -> Reference:
     encounters = {}
     for e in root.findall("encounter"):
         init = e.find("initial")
+        cores_el = e.find("cores")
+        cores = (None if cores_el is None
+                 else (_floats(cores_el.get("north")),
+                       _floats(cores_el.get("down"))))
         encounter = Encounter(
             case=e.get("case"),
             model=e.get("model"),
@@ -172,6 +195,7 @@ def load(path: Path = REFERENCE) -> Reference:
                 )
                 for s in e.findall("sample")
             ],
+            cores=cores,
         )
         encounters[encounter.key] = encounter
     return Reference(

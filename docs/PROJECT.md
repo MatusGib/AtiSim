@@ -70,6 +70,7 @@ without a core rewrite. Both have now been exercised and both held.
 | `atmosphere.py` | ISA to 20 km | two layers — the 747 cruise sits above the tropopause |
 | `aero.py` | coefficient build-up | **takes `vel_rel`/`omega_rel` only; never sees inertial velocity** |
 | `dynamics.py` | 6-DOF Newton-Euler, `load_factor`, `f_factor`, `average_f_factor`, `thrust_authority` | wind enters here and nowhere else |
+| `predictions.py` | sealed predictions | the register of claims made BEFORE their answer is available. Not imported by any model code and deliberately not a source of numbers: nothing here may be quoted as evidence FOR the model. `test_predictions.py` enforces the rules |
 | `wind.py` | wind fields and composition | vortex array, updraft column, lee wave, microburst, `superpose`, `field_model`, `along_track_shear` |
 | `integrate.py` | RK4 `step`, `rollout`, batched rollout | wind sampled once per step, held across the four stages |
 | `aircraft.py` | three aircraft + `REGISTRY`/`CRUISE` | every derivative cites its source table; `FlightCondition` + `from_dimensional_*` do the conversions |
@@ -634,6 +635,122 @@ dimensional column is recovered from its non-dimensional column using **AtiSim's
 mass, inertia, wing area and MAC, worst error **0.47%** across five derivatives. Same
 aeroplane, and both transcriptions sound.
 
+#### The headline field flown by a second engine (session 23d)
+
+`scripts/vortex_compare.py`, now carrying a fifth encounter. Session 21 compared
+the two engines on **single Parks cores**; this is the first time both have flown
+**Mehta's converged five-vortex array** — the field the headline result actually
+uses — with the same aircraft (`boeing747_jsbsim`, recovered from JSBSim's own
+B747), the same starting state and the same density.
+
+**The gate first.** The generator writes the array field in numpy with an oblique
+traverse; `wind.vortex_wind` writes it in JAX. They agree to **8.8e-10 m/s** at
+every sample, so neither the five-way superposition nor the 31° obliquity is
+carrying a shared bug.
+
+| | `n_z` span | `θ` span | % of the recorded 2.70 g |
+|---|---|---|---|
+| **JSBSim** | **2.0152** | **10.1066°** | **74.6%** |
+| AtiSim, translational (like-for-like) | 1.8124 | 10.1854° | 67.1% |
+| AtiSim, + `ω_gust` | 2.0517 | 9.3905° | 76.0% |
+| AtiSim, + both gradient terms | 2.0011 | 9.4123° | 74.1% |
+| like-for-like error | **−10.1%** | **+0.8%** | |
+
+**The result step 5 existed to get: neither engine reaches the record.** An
+independent flight-dynamics code, given the same field and the same aeroplane,
+also falls well short of the DC-10's recorded peak-to-peak. The solver is
+excluded as the explanation **on the headline field**, rather than inferred from
+adjacent cases.
+
+##### But the two engines part on the array where they did not on one core
+
+This qualifies session 22, which measured both engines under-predicting "by the
+same amount" and read that as the shortfall being in the inputs.
+
+| | window | in short periods | JSBSim `n_z` extremes | AtiSim `n_z` extremes |
+|---|---|---|---|---|
+| Hannibal, one core | 305 m, 1.3 s | 0.20 | max @ 2135 m, min @ 2434 m | max @ 2135 m, min @ 2436 m |
+| Mehta, five cores | 8,125 m, 34.4 s | 5.2 | max @ 7794 m, min @ 7383 m | max @ 6511 m, min @ 6116 m |
+
+On the single core the engines put their extremes **within two metres of each
+other**. On the array they **select different cores** — JSBSim's pair sits on core
+3 (7,209 m), AtiSim's on core 2 (5,958 m). And the disagreement is one-sided:
+AtiSim's **peak is 2.2% higher** (1.7148 vs 1.6773) while its **trough is 3.5×
+shallower** (−0.0976 vs −0.3379). The whole −10.1% span error is the trough,
+which is the channel that has been short against the DFDR from the beginning.
+
+**A hypothesis that was tested and failed.** The obvious cause is airspeed: the
+array run is 45 s at fixed throttle and JSBSim's true airspeed swings −5.5% across
+the window against −0.009% on the single core, and `n_z ∝ q̄ ∝ V²`. But shrinking
+the window to ±2 core radii around the penetrated pair leaves the drift at −0.19%
+and the disagreement at **−7.6%**, and AtiSim's span is **identical (1.8124) at
+every window width from ±2 to ±32 radii**. The drift is not the cause; it is
+recorded here so the next reader does not spend the same hour on it.
+
+**What is left, stated as the open question it is.** The array is the first
+cross-code comparison that runs for *several* short periods rather than a fifth
+of one, and the engines' trajectories diverge enough over five cores to land on
+different worst cores. Whether that is a damping difference, a thrust/drag
+difference over 45 s, or an accumulation of both is not established here.
+§8 carries it.
+
+#### Fig. 8 with error bars — §7 step 6, at last (session 23d)
+
+`scripts/cat_ensemble.py`, figure `07-ensemble.png`. Step 6 has waited on step 4
+(Dryden) since session 3; step 4 landed in 23b. Its stated criterion is that the
+**vortex < updraft < manoeuvre ordering holds across the ensemble.**
+
+σ_w is the **sourced** range from 23c — `wind.mehta_unmodelled_wind` to
+`wind.mehta_residual_ceiling` — rather than a picked number. 16 seeds each.
+
+| σ_w | vortex pitch | updraft pitch | ordering | pitch gap | load gap |
+|---|---|---|---|---|---|
+| 2.108 m/s | 2.113° [1.619, 2.432] | 4.591° [3.318, 5.699] | **16/16** | +0.886° | +0.756 g |
+| 4.459 m/s | 2.114° [0.988, 2.809] | 5.253° [2.869, 7.286] | **16/16** | **+0.060°** | +0.343 g |
+
+**The criterion is met, and the interesting number is the margin.** Raising σ_w
+by 2.1× collapses the **pitch** gap between the vortex and updraft clouds by 15×,
+to 0.060° — they are all but touching. The **load** gap survives at 0.343 g. Fig. 8
+is a two-dimensional discriminator, so the categories still separate; but at the
+top of the sourced turbulence range they separate on **load alone**, and a pitch-only
+reading of the chart would stop working.
+
+**Two things this does not establish.** The manoeuvre limb is flown at zero wind —
+that is the category's definition, not an oversight — so the three-way ordering is
+helped by construction and the vortex-versus-updraft separation is the part tested
+on equal terms. And a 16-seed gap is an estimate of the extremes of a distribution
+whose tails grow with sample size, so "the clouds do not overlap" should be read as
+*marginal*, not as established.
+
+#### Sealed predictions — the register (session 23d)
+
+`atisim/predictions.py`. Every number in this section is **retrodictive**: the
+paper was open beside the model. That is the weaker kind of evidence and no amount
+of it becomes the stronger kind. The register is where this project starts saying
+what will happen **before** it can check.
+
+Two entries, sealed against tree `0c72200`:
+
+| | claim | settled by |
+|---|---|---|
+| `dc10_does_not_close_the_hannibal_gap` | a DC-10 on Mehta's field lands in **[1.563, 2.114] g** and does **not** reach 2.70 | any published DC-10 cruise derivative set |
+| `mil_f_8785c_sigma_w_exceeds_the_mehta_ceiling` | the severe curve at 37,000 ft gives **σ_w > 4.46 m/s** | MIL-F-8785C Fig. 7, digitised |
+
+**The first one bets against this document.** §5 now names aircraft type as the
+surviving explanation for the 32% and a DC-10 set as the highest-value acquisition.
+The prediction says that acquisition will *not* close the gap, resting on §4's
+measured null that quadrupling mass moved the load 0.6% because wing loading
+cancels in `Δn = ΔC_L/C_L,trim`. One of the two is wrong. That is the point.
+
+**What the seal is.** The seal is the git history: each entry records the commit
+its author could see and a hand-written digest of its own claim, and
+`test_predictions.py` recomputes it. An accidental edit fails the build; a
+deliberate one updates the digest too and shows up as a diff on a line whose only
+job is to be stable. It makes tampering **visible, not impossible**, and the module
+says so rather than overselling it. A first draft computed the digest at import
+from the same fields it hashes, which can never fail — that mistake is recorded in
+the module and has its own negative-control test.
+
 ### AtiSim against JSBSim through a Kelvin–Helmholtz vortex (session 21)
 
 Same field, same starting state, same density, fixed controls. atisim run
@@ -686,6 +803,15 @@ percent. They are different kinds of error and `scripts/vortex_diagnose.py` sepa
 
 **The 15–54% pitch error is the datum, not the physics.** See §8. Measured, not argued:
 still-air drift accounts for 101–103% of it, and starting in-trim removes it entirely.
+
+> **Session 23d qualifies the paragraph below, and the qualification matters.** "Shared by
+> both engines" was measured on the **single Parks cores**, whose window is 1.3 s — a fifth
+> of a short period — and then carried over to the Mehta array, which is 34 s and five short
+> periods. Flown, the array does not behave like the core: the two engines pick **different
+> cores** as the worst one, JSBSim reaches 74.6% of the record and AtiSim 67.1%. The
+> conclusion survives in the form that matters — *neither* engine reaches, so the shortfall
+> is still not a solver defect — but "by the same amount" was a property of the short
+> window, not a general result. §4 has the array comparison.
 
 **The 30–43% DFDR shortfall is shared by both engines**, so by construction it cannot be a
 solver difference — it is in the inputs they both received. Cimarron, against the recorded
@@ -2245,8 +2371,19 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   a reason not to over-claim; it is now what is left after everything else was excluded on
   the Hannibal run — numerics (0.14%), the point gust (≤4.4%), the strip path (0.00%), the
   identified parameters (≤72.7% at the favourable corner) and gust amplitude at *any*
-  strength inside the linear range. The aircraft is the residual, and closing it needs a
-  DC-10 derivative set, which is the highest-value acquisition on the list.
+  strength inside the linear range. **Session 23d added the last one: an independent
+  engine.** JSBSim on the same five-vortex field, with the same aircraft and the same
+  starting state, reaches 74.6% of the record against AtiSim's 67.1% — *neither* reaches,
+  so the solver is excluded on the headline field rather than by inference from the Parks
+  cores. The aircraft is the residual, and closing it needs a DC-10 derivative set, which
+  is the highest-value acquisition on the list.
+
+  **A sealed prediction now bets against this entry.** `predictions.py`'s
+  `dc10_does_not_close_the_hannibal_gap` says that acquisition will *not* close the gap,
+  on the strength of §4's measured null that quadrupling mass moved the load 0.6% because
+  wing loading cancels in `Δn = ΔC_L/C_L,trim`. If it is right, what survives is not
+  aircraft type but the missing buffet nonlinearity, and this entry is right for the wrong
+  reason. Do not settle it by editing this paragraph — settle it by flying a DC-10.
 
   **The wing-loading figure in this entry is unverified and may be inverted.** AtiSim's
   747 is W/S ≈ 115.8 lb/ft²; no sourced DC-10 wing loading is held here, so "roughly 0.8×"
@@ -2334,8 +2471,13 @@ form needs at least one test that flies through a non-zero wind field —
 5. [DONE] Manoeuvring case: elevator pushdown to        -> verify: DONE, 30.37 deg against
    Δn = −1.9 g at zero wind, elevator bisected                     the updraft's 4.37 and the
                                                                    vortex's 2.24; ordering holds
-6. Fig. 8 with ensemble error bars                        -> verify: vortex/updraft/manoeuvre
-   (vmap over keys; deterministic parts see the same field)        ordering holds across the ensemble
+6. [DONE] Fig. 8 with ensemble error bars                  -> verify: DONE, 16/16 members at
+   (session 23d; sigma_w is the SOURCED range from                  both ends of the sourced
+    Mehta's residual, not a picked number)                          sigma_w range. The margin is
+                                                                    the finding: the PITCH gap
+                                                                    collapses 0.886 -> 0.060 deg
+                                                                    and only the LOAD axis still
+                                                                    separates the categories
 9. [DONE] Microburst + averaged F-factor                   -> verify: DONE, 1 km average F
    (not in the original plan; the lee wave                          +0.193 against the Cherokee's
     left half of the F-factor untested)                             +0.078 of thrust, and the
@@ -2366,9 +2508,12 @@ result. What it did **not** cover, deliberately:
   them from the dimensional set. Reading more is the same error-prone eye-work as adding a
   new aircraft.
 
-Step 5 is done, so **step 6 now waits only on step 4** (Dryden), which is where the
+~~Step 5 is done, so **step 6 now waits only on step 4** (Dryden), which is where the
 ensemble spread would come from — the three deterministic points have no spread by
-construction, since every member of a batch meets the same field.
+construction, since every member of a batch meets the same field.~~ **Step 4 landed in
+session 23b and step 6 in 23d.** The spread came from `wind.dryden_vertical_field` at the
+σ_w range session 23c derived from Mehta's own fit residual, so the ensemble's intensity is
+sourced rather than chosen. §4 has the result.
 
 ### Extensibility: what the next wind model will cost
 
@@ -2549,6 +2694,22 @@ source exactly. A smoother interpolant would agree with the source less.
   than before, but not a reading of the document. J. Aircraft **22**(2), 124–129
   (DOI 10.2514/3.45095).
 
+- **New, session 23d: why do the two engines choose different cores on the array?**
+  On a single Parks core AtiSim and JSBSim put their load extremes within two metres of
+  each other. On Mehta's five-core array they land on different cores — AtiSim's peak is
+  2.2% *higher* than JSBSim's, its trough 3.5× shallower, and the whole −10.1% span error
+  is the trough. The obvious cause was tested and **failed**: shrinking the window until
+  the airspeed drift is −0.19% leaves the disagreement at −7.6%, and AtiSim's span does not
+  move at any window width.
+
+  What is different about the array is its **length** — 34 s and five short periods, against
+  1.3 s and a fifth of one. Damping, thrust/drag bookkeeping over 45 s, and accumulated
+  trajectory divergence are all candidates and none is established. The cheapest
+  discriminator is probably a **still-air run of the same duration from the same state**:
+  whatever the two engines do to each other over 45 s with no wind at all is the part that
+  is not the encounter. `scripts/vortex_diagnose.py` did exactly this for session 22's pitch
+  offset and settled it in one run.
+
 - **New, session 23c: what are the units of Mehta's cost `J`, and what was `N`?** The
   decomposition in §4 rests on `e` being a difference of winds in **ft/s** for both
   components. That is the natural reading — `e` comes from his Eq. (4), which is
@@ -2591,6 +2752,69 @@ source exactly. A smoother interpolant would agree with the source less.
   touch the core response.
 
 ## 9. Session log
+
+### Session 23d — a second engine on the headline field, error bars on Fig. 8, and the first sealed bets
+
+Three follow-ups, and one of them qualifies a conclusion this document has been
+carrying since session 22.
+
+**What was built.** A five-vortex oblique case in `scripts/gen_jsbsim_vortex_reference.py`
+and its `<cores>` schema in `atisim/jsbsim_vortex_ref.py`; `scripts/cat_ensemble.py` with
+figure `07-ensemble.png`; `atisim/predictions.py` and `test_predictions.py`; four new
+tests in `test_cat_validation.py`; four tests in `test_jsbsim_vortex.py` rescoped.
+
+**1. Neither engine reaches the record on the field the headline result flies.** JSBSim
+given Mehta's five-vortex array, the same aircraft and the same starting state reaches
+**74.6%** of the DC-10's recorded peak-to-peak; AtiSim reaches **67.1%**. That closes the
+solver as an explanation *on the headline field* rather than by inference from the
+adjacent Parks cases. The two field implementations — numpy in the generator, JAX in
+`wind.vortex_wind` — agree to **8.8e-10 m/s**, including the five-way superposition and
+the 31° obliquity, so nothing here rests on a bug shared by both sides.
+
+**2. And the same run qualifies session 22.** "Both engines under-predict by the same
+amount" was measured on single cores, whose window is 1.3 s — a fifth of a short period.
+On the array, 34 s and five short periods, the engines **select different cores** as the
+worst: AtiSim's peak is 2.2% *higher* than JSBSim's while its trough is 3.5× shallower,
+and the entire −10.1% span disagreement is the trough. The conclusion survives in the form
+that matters — neither engine reaches — but "by the same amount" was a property of the
+short window.
+
+**A hypothesis tested and failed, recorded so nobody repeats it.** The array run is 45 s at
+fixed throttle and JSBSim's airspeed swings −5.5% across the window, against −0.009% on the
+single core; `n_z ∝ V²`, so drift looked like the whole story. Shrinking the window until
+the drift is −0.19% leaves the disagreement at −7.6%, and AtiSim's span is identical at
+every window width from ±2 to ±32 core radii. It is not the drift. §8 carries what is left.
+
+**3. §7 step 6 is finally done, and its margin is the interesting part.** The ordering
+holds **16/16** at both ends of the σ_w range derived in 23c from Mehta's residual — the
+intensity is sourced, not picked. But raising σ_w by 2.1× collapses the vortex/updraft
+**pitch** gap by 15×, to **0.060°**. The **load** gap survives at 0.343 g. Fig. 8 is a
+two-dimensional discriminator so the categories still separate, but at the top of the
+sourced range they separate on load alone. Stated with its limits: the manoeuvre limb is
+noiseless by category definition, which helps the three-way ordering; and a 16-seed gap
+estimates the tails of a distribution whose extremes grow with sample size, so
+"non-overlapping" means *marginal*.
+
+**4. The first sealed predictions.** Every number in §4 is retrodictive — the paper was
+open beside the model. `atisim/predictions.py` is where that stops being the only kind of
+evidence here. Two entries, sealed against tree `0c72200`, both blocked on sources §5
+already names as unobtainable. The first **bets against this document**: §5 now names
+aircraft type as the surviving explanation for the 32% and a DC-10 derivative set as the
+highest-value acquisition, and the prediction says that acquisition will *not* close the
+gap, on the strength of §4's measured null that quadrupling mass moved the load 0.6%.
+One of the two is wrong.
+
+**A drafting mistake worth keeping.** The first version computed each prediction's digest
+at import from the fields it hashes, which makes the seal vacuous — change a claim and the
+digest follows it, and the check can never fail. The digests are literals now, and
+`test_a_computed_digest_would_have_made_this_check_vacuous` is the negative control.
+
+**Four existing tests were rescoped, not relaxed.** `test_jsbsim_vortex.py` characterised
+single cores in four places — one sign change in the gust, a 1% run-in speed bound, a fixed
+key set, a single-core field reconciliation. The array violates three of them legitimately.
+Each was scoped to `cores is None` and given the array's own assertion beside it; the 1%
+bound was **not** widened to admit a 2.34% array value, because 1% characterises a
+15-radius run-in to one core and says nothing about five.
 
 ### Session 23c — error bars on both sides, and the shortfall stops being a wind problem
 
@@ -3678,6 +3902,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 | `.venv/Scripts/python.exe scripts/vortex_compare.py --png runs/vc.png` | **The cross-code vortex comparison.** Flies atisim through the identical field the frozen reference was generated from and reports where the two engines part, against Wingrove & Bach's own g-loads. Imports no jsbsim. |
 | `.venv/Scripts/python.exe scripts/vortex_diagnose.py` | **Why the comparison's two large errors are large.** Three experiments: the same start state flown in still air, atisim flown from its own trim, and a one-lever-at-a-time sweep against the DFDR. Imports no jsbsim. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_bounds.py --outdir runs/cat` | **The bounding experiments (session 23 follow-up).** What the point-sampled gust, the strip path and the step size cost on the Mehta run; what Dryden intensity would close the residual load gap; and Lester's Greenland 747 against a lee wave, inverted on both the g-load and the altitude gain. Same `PYTHONPATH` rule. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_ensemble.py --outdir runs/cat` | **Fig. 8 with error bars (session 23d, section 7 step 6).** Superposes a Dryden layer at the SOURCED sigma_w range from Mehta's residual and reports whether the vortex/updraft/manoeuvre ordering survives, and by how much margin on each of Fig. 8's two axes. Writes `07-ensemble.png`. Same `PYTHONPATH` rule. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_uncertainty.py --outdir runs/cat` | **The Hannibal comparison with error bars (session 23c).** Measures the gust SPACING against TM-102186's "about 5 sec apart" -- the one channel the identification did not set -- converts Mehta's own Eq. (A3) cost into an RMS wind residual and decomposes it against Lester's reconstruction error, then flies the propagated `V0` and `r0` band and a gust-strength sweep to show the peak load is saturated. Writes `06-uncertainty.png`. Same `PYTHONPATH` rule. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_validation.py --outdir runs/cat` | **The CAT source pass (session 23).** Flies Mehta 1987's five-vortex Hannibal field, reproduces TM-102186 Fig. 8's three-aircraft ordering and tests its stated mechanism across the whole registry, compares the 747's short period at a third CR-2144 flight condition, and grades every run on Misaka's `σ_n`. Prints every number and writes four figures. **`PYTHONPATH` is mandatory** — `python scripts/…` resolves `atisim` to the main checkout, which this script detects and prints on its first line. |
 | `docs/summary/jsbsim-atisim-vortex-report.html` | **The written comparison** — the numbers above with the reasoning, the figure, and what the result does and does not establish. Not generated; edit it when the numbers move. |
