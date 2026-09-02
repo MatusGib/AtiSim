@@ -69,6 +69,21 @@ class Encounter(NamedTuple):
     # gust ACTUALLY APPLIED, which `integrate.rollout` discards -- re-deriving
     # them by re-evaluating the model is exact only for a deterministic field.
     log: object = None  # viz.Trajectory | None
+    # --- lateral channels, added session 24 (phase 1) -----------------------
+    # AFTER `log` on purpose: every existing positional construction ends
+    # there, so adding them changes nothing that already works.
+    #
+    # WHY THEY WERE MISSING, which is the thing worth recording. Every wind
+    # field in this project is a function of along-track distance alone, so
+    # every run was longitudinal by construction and there was nothing lateral
+    # to record. That made the omission invisible rather than deliberate: the
+    # analysis pipeline could not have reported a rolling response even if the
+    # dynamics had produced one. See docs/PROJECT.md section 5.
+    phi: np.ndarray = None  # (n,) rad, bank angle
+    beta: np.ndarray = None  # (n,) rad, AIR-RELATIVE sideslip
+    p: np.ndarray = None  # (n,) rad/s, body roll rate
+    r: np.ndarray = None  # (n,) rad/s, body yaw rate
+    p_gust: np.ndarray = None  # (n,) rad/s, ROLLING gust rate across the span
 
 
 def fly(
@@ -296,14 +311,18 @@ def _measure(
         )
         increment = None if load_model is None else load_model(s)
         vel_rel = dynamics.relative_velocity(vel_body, quat, wind_ned)
-        _, alpha_air, _ = air_data(vel_rel)
+        _, alpha_air, beta_air = air_data(vel_rel)
         _, alpha_inertial, _ = air_data(vel_body)
-        _, theta, _ = quat_to_euler(quat)
+        phi, theta, _ = quat_to_euler(quat)
         return jnp.array([
             -wind_ned[2], omega_gust[1], alpha_air, alpha_inertial, theta,
             omega[1],
             dynamics.load_factor(s, controls, ac, wind_ned, omega_gust, increment),
             controls.elevator,
+            # Lateral, session 24. omega_gust[0] is the ROLLING gust rate, which
+            # is identically zero for every field that does not vary across the
+            # span -- which was all of them until `wind.line_vortex_wind`.
+            phi, beta_air, omega[0], omega[2], omega_gust[0],
         ])
 
     rows = np.asarray(jax.vmap(analyse)(
@@ -322,6 +341,8 @@ def _measure(
         window=window,
         window_name=window_name,
         log=log,
+        phi=rows[:, 8], beta=rows[:, 9], p=rows[:, 10], r=rows[:, 11],
+        p_gust=rows[:, 12],
     )
 
 

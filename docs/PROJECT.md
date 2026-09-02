@@ -56,6 +56,54 @@ out of scope, which is no longer true** — that was always the intended destina
 the two "non-negotiable interfaces" it names exist precisely so turbulence could be added
 without a core rewrite. Both have now been exercised and both held.
 
+### The validation claim — what this model may and may not be used for
+
+**Added session 24 (phase 0).** Everything the project has measured lives in §4, which is
+long and grows by session. This is the one paragraph a reader needs before using any of
+it, and it is deliberately narrower than what the evidence might be stretched to support.
+
+> **AtiSim is validated as a comparative and mechanistic tool for the LONGITUDINAL gust
+> response of a rigid transport aircraft at cruise.** Within the envelope below it
+> reproduces published response orderings, the mechanisms behind them, and the linear
+> modes of its own source data. **It is not a validated absolute-load predictor**, and
+> until session 24 it could not represent lateral turbulence at all.
+
+**The envelope the claim is made inside.** Outside any one of these the claim does not
+transfer, and §4 will not have measured it:
+
+| | Validated range | Set by |
+|---|---|---|
+| Aircraft | 747-class transport; `boeing747`, `boeing747_jsbsim` | the only entries with a measured recovery band |
+| Mach | **0.70 – 0.90** | `aircraft.valid_mach`, edges measured not assumed |
+| Altitude | **35,000 – 45,000 ft** (`boeing747`); **35,000 – 41,000 ft** (`boeing747_jsbsim`) | `aircraft.valid_altitude`. The two differ and the narrower one governs any statement made about both — do not quote the union |
+| Incidence | **\|α\| < 10°** green, 12° amber | `panel.ALPHA_LINEAR_DEG`; the aero has no stall |
+| Gust length scale | **> 3 wingspans** | ASSUMPTIONS E2; the Parks core at 2.3–3.1 spans is the marginal case and is called out as such |
+| Axis | **longitudinal only** | see §5 — no field varied across the span before session 24 |
+
+**What "comparative and mechanistic" buys, and it is more than it sounds.** The
+questions this model answers with evidence behind it are the ones most engineering
+questions actually are: *which encounter is worse, how does the response scale with
+airspeed, what happens to the load if the aircraft is slower, does the ordering hold.*
+§4 records six-for-six monotone agreement on TM-102186's stated mechanism and both
+halves of its three-aircraft ordering — including the counter-intuitive half.
+
+**What it does not buy.** Any statement of the form *"the load will be X g"*. The
+headline load comparison reaches 67% of a recorded peak-to-peak, and §5 records that
+the remaining explanation is the aircraft rather than the wind. Absolute agreement was
+ruled structurally out of reach in session 7 and nothing since has changed that.
+
+**Three claims a reader could reasonably infer and should not.**
+
+1. **Structural fidelity.** The derivatives are a flexible airframe's; the solver
+   integrates a rigid body (ASSUMPTIONS B1). Never assert it.
+2. **Behaviour away from trim.** Derivatives are frozen across the envelope
+   (ASSUMPTIONS C3, unbounded). Quote the excursion with every result.
+3. **Lateral behaviour, from the lateral MODES.** Dutch roll agrees to 0.4% *as an
+   eigenvalue*. That is a statement about the linearisation, not about what the aircraft
+   does when a gust rolls it — which nothing measured until session 24, and which is
+   still not validated against any source.
+
+
 ## 2. Architecture
 
 | Module | Responsibility | Notes |
@@ -750,6 +798,92 @@ job is to be stable. It makes tampering **visible, not impossible**, and the mod
 says so rather than overselling it. A first draft computed the digest at import
 from the same fields it hashes, which can never fail — that mistake is recorded in
 the module and has its own negative-control test.
+
+#### The lateral dimension, and what it was worth (session 24)
+
+`scripts/lateral.py`, figure `08-lateral.png`. Phase 1 of the plan, and the first
+result in this project that is not longitudinal.
+
+##### The two vortex forms, reconciled
+
+`wind.line_vortex_wind` is a second implementation of a field the project already
+had, so it earns its place only by reproducing the first where the first is
+defined — on the flight path:
+
+| Geometry | vertical | horizontal magnitude | full vector |
+|---|---|---|---|
+| perpendicular, Δψ = 0 | 7.1e-15 | 5.3e-15 | **7.1e-15** |
+| oblique, Δψ = 31° | 1.2e-14 | 7.1e-15 | **7.08** |
+
+**The oblique row is the finding.** The vertical component and the horizontal
+*magnitude* agree to machine precision; only the horizontal *direction* differs.
+At north = 600 m:
+
+```
+vortex_wind      NED = [ -2.1213  +0.0000  -0.4843]
+line_vortex_wind NED = [ -1.8183  +1.0926  -0.4843]
+north ratio 0.8572 = cos 31°;  east/(−north) 0.5150 = sin 31°
+```
+
+Parks' model is two-dimensional in the plane **perpendicular to the vortex
+lines**. `vortex_wind` returns his horizontal magnitude along the **flight
+path**, exact only at Δψ = 0. At 31° the true perturbation is that magnitude
+rotated by Δψ, and **the 0.515 of it that lies across the path — the only
+sideslip input this field has ever had — was being discarded.** §5 carries it.
+
+##### Flown: what the missing dimension was worth
+
+747 through Mehta's own five-vortex field at his own 37,000 ft, fixed controls,
+dt 0.01.
+
+| Run | \|φ\| | \|β\| | \|p\| | \|p_gust\| | `n_z` max |
+|---|---|---|---|---|---|
+| point (`vortex_wind`) | **0.000°** | **0.000°** | **0.0000** | **0.0000** | 1.6019 |
+| line (`line_vortex_wind`) | 12.508° | 3.106° | 0.1635 | 0.0879 | 1.6375 |
+| line + **strip loads** | **15.376°** | 3.533° | 0.2008 | 0.0880 | 1.6344 |
+
+**Two firsts.**
+
+1. **A wind field rolls the aircraft** — 12.5° of bank, 15.4° with strip loads.
+   The point model gives **exactly 0.000**, not something small: the equations
+   have no `y` in them.
+2. **`loads.strip_increment` moves a reported number**, +22.9% on peak bank.
+   Built in session 14, it had changed every result by *exactly* 0.000000
+   because no field varied across the span.
+
+**And the longitudinal answer barely moves** — the up-increment goes 0.6019 →
+0.6375 g (+5.9%). So nothing this project has concluded was resting on the
+missing dimension, which is the reassuring half of the result.
+
+##### The two new Dryden components
+
+`wind.dryden_field` adds `u` and `v` to the existing `w`. MIL-F-8785C is not in
+the folder — the vertical form was already second-hand and these carry the same
+standing — so the check that matters is **internal consistency**: for an
+isotropic field the one-dimensional spectra satisfy
+`Φ_transverse = ½(Φ_long − Ω dΦ_long/dΩ)`, and the implemented pair satisfies it
+to **1.3e-16**, differentiated with `jax.grad` rather than a finite difference.
+Both integrate to σ² over the half line; the three components realise σ to within
+1.5% and cross-correlate below 0.05.
+
+**These give sideslip, not a rolling gust.** All three components are functions
+of along-track distance, so every strip still sees the same vertical gust —
+asserted, so the docstring cannot quietly become false.
+
+##### A bug this work made and caught
+
+`cos_dpsi` predates `sin_dpsi` by a session, so `mehta_hannibal_array` carried a
+cosine with the sine still at its 0.0 default — **a vortex axis of length
+cos Δψ rather than 1**, which scaled the whole induced velocity and looked
+exactly like physics. Found by `scripts/lateral.py` reporting a 7 m/s
+disagreement in the one geometry where the two forms must be identical. Fixed
+twice over: the constructor now sets both halves, and `vortex_axis` normalises,
+so a mismatched pair becomes a wrong *angle* — which a test can see — instead of
+a wrong *magnitude*, which does not look wrong at all.
+
+**Nothing here is validated against a source.** No document held by this project
+records a lateral CAT response. Every number above is a capability
+demonstration; §5 says so and the validation claim in §1 excludes it explicitly.
 
 ### AtiSim against JSBSim through a Kelvin–Helmholtz vortex (session 21)
 
@@ -2112,6 +2246,36 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   so **there is no gust strength at which this model both reaches the record and may be
   believed.** That excludes amplitude rather than merely bounding it. §4 has both tables.
 
+- **No wind field varied across the span, so the model was longitudinal by construction.**
+  **Found session 24 while writing the validation claim above; it was in no document.**
+  Every field was a function of along-track distance alone, and each for a different
+  reason: `vortex_wind` has no `y` in its equations, the updraft and microburst are
+  axisymmetric and penetrated on-axis, `LeeWave` is a function of north, and
+  `dryden_vertical_field` is one component. Three things followed and they compounded —
+  `wind.strip_roll_moment` integrated to **exactly zero** on every field, so the strip
+  load path built in session 14 had never moved a reported number; the lateral modes were
+  validated as eigenvalues and never once excited; and `vortex_viz.Encounter` carried no
+  roll, sideslip or rate channel, so the pipeline could not have *reported* a rolling
+  response if one had occurred.
+
+  **Session 24 (phase 1) closed the capability and found a real simplification doing it.**
+  Parks' model is two-dimensional in the plane **perpendicular to the vortex lines**;
+  `vortex_wind` returns his horizontal magnitude along the **flight path**, which is exact
+  only when the lines are square to it. At Mehta's ψ = 31° the true perturbation is that
+  magnitude rotated by ψ, so **cos ψ = 0.857 of it lies along the path and sin ψ = 0.515
+  across it** — and the across-path half, the only sideslip input this field has ever had,
+  was being discarded. `wind.line_vortex_wind` writes the same equations as lines in space:
+  it reproduces `vortex_wind` along the flight path to **1.2e-14 m/s** in both geometries
+  and differs off it. §4 has the run.
+
+  **What is now capability and what is still a gap.** The model can represent a rolling
+  gust and a lateral one (`wind.dryden_field` adds the `u` and `v` components), and the
+  channels exist to see them. **None of it is validated against anything** — no source
+  held here supplies a recorded lateral CAT response. §3 already notes Wingrove & Bach
+  1994 supplies *"no lateral data"*, which had been recorded as a limitation of the paper
+  rather than as a hole in the model. Treat every lateral number as a capability
+  demonstration, never as evidence.
+
 - **Gravity is constant at 9.80665 m/s², which is +0.383% high at the 747's cruise
   altitude.** True `g(h) = g₀(R/(R+h))²` is 9.76922 at 12,192 m. **Session 12 measured what
   that costs and decided not to model it**; §4 carries the table and `ASSUMPTIONS.md` §A2
@@ -2752,6 +2916,61 @@ source exactly. A smoother interpolant would agree with the source less.
   touch the core response.
 
 ## 9. Session log
+
+### Session 24 — the model gets a lateral dimension, and the record gets a claim
+
+Two phases of the plan written at the end of session 23d.
+
+**Phase 0 — bank what is already true.** §1 now carries a formal **validation claim**
+with its envelope attached: aircraft class, Mach and altitude band, |α| limit, gust length
+scale in spans, and *longitudinal only*. The project had a great deal of evidence and no
+single statement of what it added up to, which meant the honest narrow claim was going
+unmade while a broader one was available to be inferred by accident.
+
+**And writing it found the gap.** Every wind field in the project was a function of
+along-track distance alone — each for a different reason, which is why nobody had noticed
+the pattern. `strip_roll_moment` integrated to exactly zero on all of them, the lateral
+modes were validated as eigenvalues and never excited, and `Encounter` had no channel that
+could have recorded a roll. **The model was longitudinal by construction and no document
+said so.** Now §5 does.
+
+**Phase 1 — give it the dimension.** Three pieces:
+
+- `wind.dryden_field` adds the `u` and `v` components. The spec is not in the folder, so
+  the check that matters is that the two spectral forms belong to one isotropic field —
+  `Φ_t = ½(Φ_u − Ω dΦ_u/dΩ)`, satisfied to **1.3e-16**.
+- `vortex_viz.Encounter` gains `phi`, `beta`, `p`, `r` and `p_gust`, trailing and
+  defaulted so nothing existing moves.
+- `wind.line_vortex_wind` writes Parks' vortex as lines in space rather than as a formula
+  on the flight path.
+
+**The result, and it is not small.** Through Mehta's own field the 747 reaches **12.5° of
+bank, 15.4° with strip loads** — against **exactly 0.000°** from the point model. And
+`loads.strip_increment`, built in session 14, **moves a reported number for the first
+time**: +22.9% on peak bank, where it had previously changed every result by exactly
+0.000000. The longitudinal answer moves +5.9%, so nothing already concluded was resting
+on the missing dimension.
+
+**A real simplification, found on the way.** Parks' model is 2-D in the plane
+perpendicular to the vortex *lines*; `vortex_wind` returns his horizontal magnitude along
+the *flight path*. At Mehta's 31° the true perturbation is that magnitude rotated by ψ, so
+**sin 31° = 0.515 of it lies across the path** — the only sideslip input the field has
+ever had, discarded since session 3.
+
+**A bug this work made, and caught.** `cos_dpsi` predates `sin_dpsi`, so
+`mehta_hannibal_array` carried a cosine with the sine at its 0.0 default: a vortex axis of
+length cos ψ rather than 1, scaling the whole induced velocity and looking exactly like
+physics. Caught because the script compares the two forms in a geometry where they must be
+identical and got 7 m/s. Fixed in the constructor *and* by normalising the axis, so a
+mismatched pair is a wrong angle rather than a wrong magnitude.
+
+**What this does NOT establish, and the documents say so three times.** No source held
+here records a lateral CAT response. Every lateral number is a capability demonstration.
+§1's claim excludes lateral behaviour explicitly, §5 repeats it, and `test_lateral.py`
+carries a negative control on every non-zero assertion — because §6's lesson is that a
+suite exercising only the easy case cannot see the bug, and a longitudinal-only suite
+hides lateral bugs exactly the way a still-air one hid air-relative bugs for three
+sessions.
 
 ### Session 23d — a second engine on the headline field, error bars on Fig. 8, and the first sealed bets
 
@@ -3902,6 +4121,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 | `.venv/Scripts/python.exe scripts/vortex_compare.py --png runs/vc.png` | **The cross-code vortex comparison.** Flies atisim through the identical field the frozen reference was generated from and reports where the two engines part, against Wingrove & Bach's own g-loads. Imports no jsbsim. |
 | `.venv/Scripts/python.exe scripts/vortex_diagnose.py` | **Why the comparison's two large errors are large.** Three experiments: the same start state flown in still air, atisim flown from its own trim, and a one-lever-at-a-time sweep against the DFDR. Imports no jsbsim. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_bounds.py --outdir runs/cat` | **The bounding experiments (session 23 follow-up).** What the point-sampled gust, the strip path and the step size cost on the Mehta run; what Dryden intensity would close the residual load gap; and Lester's Greenland 747 against a lee wave, inverted on both the g-load and the altitude gain. Same `PYTHONPATH` rule. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/lateral.py --outdir runs/cat` | **The lateral dimension (session 24, phase 1).** Reconciles `wind.line_vortex_wind` against `wind.vortex_wind` along the flight path, shows where the oblique difference is, then flies Mehta's field three ways -- point, line, and line with strip-integrated loads -- and reports the bank, sideslip and rolling gust rate the project could not previously see. Writes `08-lateral.png`. Same `PYTHONPATH` rule. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_ensemble.py --outdir runs/cat` | **Fig. 8 with error bars (session 23d, section 7 step 6).** Superposes a Dryden layer at the SOURCED sigma_w range from Mehta's residual and reports whether the vortex/updraft/manoeuvre ordering survives, and by how much margin on each of Fig. 8's two axes. Writes `07-ensemble.png`. Same `PYTHONPATH` rule. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_uncertainty.py --outdir runs/cat` | **The Hannibal comparison with error bars (session 23c).** Measures the gust SPACING against TM-102186's "about 5 sec apart" -- the one channel the identification did not set -- converts Mehta's own Eq. (A3) cost into an RMS wind residual and decomposes it against Lester's reconstruction error, then flies the propagated `V0` and `r0` band and a gust-strength sweep to show the peak load is saturated. Writes `06-uncertainty.png`. Same `PYTHONPATH` rule. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_validation.py --outdir runs/cat` | **The CAT source pass (session 23).** Flies Mehta 1987's five-vortex Hannibal field, reproduces TM-102186 Fig. 8's three-aircraft ordering and tests its stated mechanism across the whole registry, compares the 747's short period at a third CR-2144 flight condition, and grades every run on Misaka's `σ_n`. Prints every number and writes four figures. **`PYTHONPATH` is mandatory** — `python scripts/…` resolves `atisim` to the main checkout, which this script detects and prints on its first line. |

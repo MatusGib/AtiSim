@@ -1088,6 +1088,45 @@ RK4 across it has an error depending on where the step grid lands.
 
 ---
 
+### E10. No wind field varies across the span — CLOSED as a capability, session 24
+
+**Where:** it was not a line of code anywhere, which is why it went unrecorded for
+twenty-three sessions. It was a property every field happened to share.
+
+| Field | Why it had no spanwise variation |
+|---|---|
+| `vortex_wind` | no `y` in the equations at all |
+| `updraft_wind` | axisymmetric, penetrated on-axis |
+| `lee_wave_wind` | a function of north alone |
+| `microburst_wind` | axisymmetric, penetrated on-axis |
+| `dryden_vertical_field` | one component, along-track |
+
+**What it cost, and it is the shape of the cost that matters.** `wind.strip_roll_moment`
+samples the field at each spanwise station — it always did — and every station returned
+the same value, so it integrated to **exactly zero**. The strip load path built in
+session 14 was correct code with nothing to do, and its measured effect of
+`0.000000 m` was read for nine sessions as evidence that the point model was adequate.
+It was evidence that the *fields* had no spanwise structure, which is a different
+statement and a much weaker one.
+
+**Closed as a capability, session 24.** `wind.line_vortex_wind` writes Parks' vortex as
+lines in three dimensions, reducing to `vortex_wind` on the flight path to 1.2e-14 m/s
+and differing off it; `wind.dryden_field` adds the lateral and longitudinal components.
+Flown, the strip path moves peak bank by **+22.9%** — the first reported number it has
+ever changed.
+
+**NOT closed as validation, and the distinction is the whole entry.** No source held by
+this project records a lateral CAT response. The model can now represent a rolling gust;
+nothing says it represents one *correctly*. PROJECT.md §1's validation claim excludes
+lateral behaviour explicitly and §5 repeats it.
+
+**Verdict: the assumption was never declared, which was the real defect.** A modelling
+choice recorded and bounded is this register's normal business; one that is invisible
+because every instance happens to share it is the kind this register exists to catch and
+did not. The lesson generalises past this entry — §6's two air-relative bugs survived
+because every test was still air, and this survived because every field was
+one-dimensional. **Ask what every case has in common, not just what each one assumes.**
+
 ## F. Numerics
 
 ### F1. Fixed-step RK4 at 50 Hz

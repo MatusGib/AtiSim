@@ -290,6 +290,15 @@ def rebuild_field(meta: dict):
             # 1/cos(dpsi) in traverse time -- 17% for the Mehta case -- and the
             # panel would draw that silently, as a plausible flat-looking run.
             cos_dpsi=jnp.array(p.get("cos_dpsi", 1.0)),
+            # READ AS A PAIR, session 24. `sin_dpsi` is the other half of the
+            # same angle and only `wind.line_vortex_wind` consumes it, but
+            # rebuilding a cosine without its sine reproduces exactly the
+            # inconsistent array that made the line form silently wrong when it
+            # was first written -- an axis of length cos(dpsi) rather than 1.
+            # `wind.vortex_axis` normalises, so the worst case is now a field
+            # rebuilt as perpendicular rather than one scaled by 0.857; both
+            # defaults together still give the pre-session-23 geometry exactly.
+            sin_dpsi=jnp.array(p.get("sin_dpsi", 0.0)),
         )
         return lambda pos_ned: wind.vortex_wind(pos_ned, array)
     if kind == "UpdraftColumn":
