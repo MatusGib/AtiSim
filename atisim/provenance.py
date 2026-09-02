@@ -432,6 +432,27 @@ LEDGER: dict[str, Entry] = {
         "scripts/cat_bounds.py sweeps it, so the reported 4-5 m/s is what a "
         "result IMPLIES and never an intensity this project asserts.",
     ),
+    "wind.DRYDEN_LU": Entry(
+        "SOURCED",
+        "Equal to DRYDEN_LW. MIL-F-8785C makes the turbulence ISOTROPIC above "
+        "2000 ft: L_u = L_v = L_w = 1750 ft and sigma_u = sigma_v = sigma_w. "
+        "Ledgered despite being an alias because the EQUALITY is the sourced "
+        "claim, not the number -- below the floor the three diverge and none of "
+        "these constants applies. The claim is also checked without the "
+        "document: `test_lateral.py` verifies that the longitudinal and "
+        "transverse spectra satisfy the isotropic relation "
+        "Phi_t = (Phi_u - Omega dPhi_u/dOmega)/2 to machine precision, which a "
+        "mismatched pair of forms would fail.",
+        inputs=("wind.DRYDEN_LW",),
+    ),
+    "wind.DRYDEN_LV": Entry(
+        "SOURCED",
+        "Equal to DRYDEN_LW, for the same isotropy statement as DRYDEN_LU. The "
+        "lateral and vertical components share BOTH the scale length and the "
+        "spectral form -- `dryden_spectrum` serves them both -- which is why "
+        "there is no separate transverse spectrum function.",
+        inputs=("wind.DRYDEN_LW",),
+    ),
     "wind.DRYDEN_ALTITUDE_FLOOR": Entry(
         "SOURCED",
         "2000 ft = 609.6 m. Below it MIL-F-8785C's low-altitude model applies "

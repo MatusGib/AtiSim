@@ -132,6 +132,14 @@ class VortexArray(NamedTuple):
     # session 23 used, and is exact, so it is the default. Trailing and
     # defaulted so the ~50 existing keyword constructions are untouched.
     cos_dpsi: Array = 1.0
+    # The OTHER half of the same angle, needed only by `line_vortex_wind` to
+    # build the vortex line's direction in three dimensions. `vortex_wind` never
+    # reads it: on the flight path the sine drops out of Parks' expression
+    # entirely, which is why the field could be written without it for so long.
+    # 0.0 is due east -- perpendicular to a northerly path, and the geometry
+    # every case before session 24 flew. Trailing and defaulted for the same
+    # reason `cos_dpsi` is: no existing construction changes.
+    sin_dpsi: Array = 0.0
 
 
 # The two cases Parks et al. 1985 identifies, J. Aircraft 22(2) pp. 127-128.
@@ -342,6 +350,15 @@ def mehta_hannibal_array(altitude: float = MEHTA_HANNIBAL_ALTITUDE) -> VortexArr
         r0=jnp.array(MEHTA_HANNIBAL_R0),
         v0=jnp.array(MEHTA_HANNIBAL_V0),
         cos_dpsi=jnp.array(math.cos(math.radians(MEHTA_HANNIBAL_PSI_DEG))),
+        # BOTH halves of the angle, so the array is self-consistent. `vortex_wind`
+        # never reads the sine -- it drops out of Parks' expression on the flight
+        # path -- so setting it moves no existing baseline by a bit. But
+        # `line_vortex_wind` builds the vortex line's DIRECTION from the pair,
+        # and a cosine without its sine is not a unit vector. Leaving it
+        # defaulted made the line form silently wrong, which is how this was
+        # found: `scripts/lateral.py` reported a 7 m/s disagreement where the
+        # two forms are supposed to be identical.
+        sin_dpsi=jnp.array(math.sin(math.radians(MEHTA_HANNIBAL_PSI_DEG))),
     )
 
 
@@ -1006,6 +1023,15 @@ def microburst_wind(pos_ned: Array, burst: Microburst) -> Array:
 DRYDEN_LW = 1750.0 * FT2M  # m, MIL-F-8785C scale length above 2000 ft
 DRYDEN_ALTITUDE_FLOOR = 2000.0 * FT2M  # m, below which L_w is NOT this constant
 
+# ISOTROPY ABOVE THE FLOOR. MIL-F-8785C makes the turbulence isotropic above
+# 2000 ft: L_u = L_v = L_w and sigma_u = sigma_v = sigma_w. Below it the three
+# diverge and none of these constants applies -- the same restriction L_w
+# already carried. Named separately rather than everyone reusing DRYDEN_LW so
+# that a future low-altitude case has three places to change and not one place
+# to get wrong.
+DRYDEN_LU = DRYDEN_LW
+DRYDEN_LV = DRYDEN_LW
+
 
 def dryden_spectrum(omega: Array, sigma_w: float, L_w: float = DRYDEN_LW) -> Array:
     """MIL-F-8785C vertical spatial PSD at spatial frequency `omega` (rad/m)."""
@@ -1058,6 +1084,196 @@ def dryden_vertical_field(
         return jnp.array([0.0, 0.0, -w_up])
 
     return field
+
+
+# ---------------------------------------------------------------------------
+# THE OTHER TWO DRYDEN COMPONENTS, added session 24 (phase 1).
+#
+# `dryden_spectrum` above is the TRANSVERSE form, and it serves BOTH the
+# vertical and the lateral component -- in isotropic turbulence v and w have
+# the same one-dimensional spectrum. The longitudinal component does not:
+#
+#     Phi_u(Omega) = sigma_u^2 (2 L_u/pi) / (1 + (L_u Omega)^2)
+#
+# WHY THIS IS MORE THAN A TRANSCRIPTION. MIL-F-8785C is not in the folder --
+# PROJECT.md section 3 records only its sigma chart as un-digitised, but the
+# spectral forms are second-hand here too, and the vertical one already was.
+# What can be checked without the document is that the two forms belong to the
+# SAME isotropic field, through the standard relation
+#
+#     Phi_transverse = 0.5 * (Phi_long - Omega dPhi_long/dOmega)
+#
+# and they do, exactly: substituting the longitudinal form gives
+# sigma^2 (L/pi) (1 + 3 L^2 Omega^2)/(1 + L^2 Omega^2)^2, which is
+# `dryden_spectrum` term for term. `test_lateral.py` verifies it numerically
+# rather than trusting this comment. That check is worth more than the
+# transcription: a wrong pair of forms would almost certainly fail it.
+# ---------------------------------------------------------------------------
+
+
+def dryden_longitudinal_spectrum(
+    omega: Array, sigma_u: float, L_u: float = DRYDEN_LU
+) -> Array:
+    """MIL-F-8785C longitudinal spatial PSD at spatial frequency `omega`.
+
+    One-sided, matching `dryden_spectrum`: the integral over the half line is
+    sigma_u^2, not 2 sigma_u^2. Same factor-of-two trap, same reason it is
+    measured in a test rather than asserted here.
+    """
+    return sigma_u**2 * (2.0 * L_u / jnp.pi) / (1.0 + (L_u * omega) ** 2)
+
+
+def _dryden_component(spectrum, sigma, key, L, n_components,
+                      wavelength_min, wavelength_max):
+    """One frozen along-track component. The body of `dryden_vertical_field`.
+
+    Factored out when the other two components arrived, so all three are one
+    piece of arithmetic rather than three that could drift. Returns a scalar
+    function of along-track distance.
+    """
+    omega = jnp.geomspace(
+        2.0 * jnp.pi / wavelength_max, 2.0 * jnp.pi / wavelength_min, n_components
+    )
+    edges = jnp.concatenate([
+        omega[:1], jnp.sqrt(omega[1:] * omega[:-1]), omega[-1:]
+    ])
+    d_omega = edges[1:] - edges[:-1]
+    amplitude = jnp.sqrt(2.0 * spectrum(omega, sigma, L) * d_omega)
+    phase = jax.random.uniform(key, (n_components,), maxval=2.0 * jnp.pi)
+    return lambda x: jnp.sum(amplitude * jnp.cos(omega * x + phase))
+
+
+def dryden_field(
+    sigma: float,
+    seed: int,
+    *,
+    L: float = DRYDEN_LW,
+    n_components: int = 400,
+    wavelength_min: float = 20.0,
+    wavelength_max: float = 40_000.0,
+):
+    """All three Dryden components as one frozen position-only field.
+
+    Isotropic: one `sigma` and one `L` serve all three, which is what
+    MIL-F-8785C specifies above 2000 ft. The three components get INDEPENDENT
+    phase sets from one seed, so they are uncorrelated -- which isotropic
+    turbulence requires and which a shared phase set would silently violate.
+
+    *** AXES, AND THIS IS AN APPROXIMATION WORTH STATING. *** Dryden's u, v, w
+    are the aircraft's own axes; this returns NED. The two coincide for wings
+    level on a northerly heading, which is every run in this project. A turning
+    or crabbing run would need the field rotated into the body frame, and
+    nothing here does that -- so do not fly this on a manoeuvring case without
+    fixing it first.
+
+    *** THIS FIELD STILL HAS NO SPANWISE VARIATION. *** All three components are
+    functions of along-track distance alone, so every strip of the wing sees the
+    same gust and `strip_roll_moment` still integrates to zero on it. The
+    lateral excitation it provides is SIDESLIP from the v component, not a
+    rolling gust. `line_vortex_wind` is the field that varies across the span.
+    """
+    ku, kv, kw = jax.random.split(jax.random.PRNGKey(seed), 3)
+    u = _dryden_component(dryden_longitudinal_spectrum, sigma, ku, L,
+                          n_components, wavelength_min, wavelength_max)
+    v = _dryden_component(dryden_spectrum, sigma, kv, L,
+                          n_components, wavelength_min, wavelength_max)
+    w = _dryden_component(dryden_spectrum, sigma, kw, L,
+                          n_components, wavelength_min, wavelength_max)
+
+    def field(pos_ned: Array) -> Array:
+        x = pos_ned[0]
+        # NED z is DOWN; an updraft is negative. Same convention as everywhere.
+        return jnp.array([u(x), v(x), -w(x)])
+
+    return field
+
+
+# ---------------------------------------------------------------------------
+# THE VORTEX AS A LINE IN SPACE, added session 24 (phase 1).
+#
+# `vortex_wind` above evaluates Parks' r = (l^2 cos^2 dpsi + d^2)^(1/2), which
+# is the perpendicular distance to a vortex LINE -- but only for a point on the
+# flight path. It has no `y` dependence at all, so every strip of the wing sees
+# the same gust and the strip roll integral returns exactly zero on it. That is
+# the gap PROJECT.md section 5 records: the strip path has never moved a number.
+#
+# WHAT THIS ADDS IS GEOMETRY, NOT PHYSICS. The same line vortex, written in
+# three dimensions:
+#
+#     delta = pos - core
+#     r_vec = delta - (delta . t) t          t = the vortex line's direction
+#     v     = V(|r_vec|) * (delta x t) / |r_vec|
+#
+# with Parks' own V(r) -- solid body inside r0, potential outside. On the flight
+# path (y = 0) this reduces to his formula EXACTLY: with t = (sin dpsi, cos
+# dpsi, 0) and delta = (l, 0, -d), the perpendicular distance squared works out
+# to l^2 cos^2 dpsi + d^2, which is Parks Eq. (2) term for term.
+#
+# WRITTEN BESIDE `vortex_wind` RATHER THAN REPLACING IT. Two reasons, and the
+# second is the real one. First, every section-4 vortex baseline was frozen
+# against `vortex_wind` and re-deriving them through different floating-point
+# arithmetic would move digits for no physical reason. Second, and better: two
+# independent implementations of one field that must agree is the pattern this
+# project already uses against JSBSim, and it catches what one implementation
+# cannot. `test_lateral.py` reconciles them along the whole flight path.
+#
+# So: `vortex_wind` stays the point model and keeps its baselines;
+# `line_vortex_wind` is what a run flies when it wants a spanwise gradient.
+# ---------------------------------------------------------------------------
+
+
+def vortex_axis(array: VortexArray) -> Array:
+    """Unit vector along the vortex lines, NED.
+
+    Built from the array's own `cos_dpsi` and `sin_dpsi`. The default
+    (1.0, 0.0) gives due east -- perpendicular to a northerly flight path,
+    which is the geometry `vortex_wind` assumes and Parks draws.
+    """
+    axis = jnp.array([array.sin_dpsi, array.cos_dpsi, 0.0])
+    # NORMALISED, and the reason is a bug this caught. `cos_dpsi` predates
+    # `sin_dpsi` by a session, so an array can carry a cosine with the sine
+    # still at its 0.0 default -- a vector of length cos(dpsi), not 1. The
+    # induced velocity then comes out scaled by that length and the field is
+    # quietly wrong rather than loudly broken. Normalising makes the failure a
+    # wrong ANGLE, which `test_lateral.py` can see, instead of a wrong
+    # MAGNITUDE, which looks like physics. Constructors that set both -- which
+    # is all of them now -- are unaffected: the norm is already 1.
+    return axis / jnp.linalg.norm(axis)
+
+
+def line_vortex_wind(pos_ned: Array, array: VortexArray) -> Array:
+    """Wind from the array, as lines in three dimensions. Varies across the span.
+
+    Reduces to `vortex_wind` on the flight path; differs off it, which is the
+    entire point. See the block comment above for the geometry and for why both
+    forms exist.
+    """
+    t = vortex_axis(array)
+
+    def one(core_north: Array, core_down: Array) -> Array:
+        delta = pos_ned - jnp.array([core_north, 0.0, core_down])
+        perpendicular = delta - jnp.dot(delta, t) * t
+        r2 = jnp.dot(perpendicular, perpendicular)
+        r = jnp.sqrt(jnp.maximum(r2, 1e-12))
+        # Direction: the tangential unit vector, |delta x t| = r by construction
+        # since the component of delta along t contributes nothing to the cross
+        # product. Sign matches `vortex_wind` -- checked, not assumed, by
+        # test_the_two_vortex_forms_agree_along_the_whole_flight_path.
+        direction = jnp.cross(delta, t) / r
+        # Parks' V(r): solid body inside the core, potential outside. `<` rather
+        # than `<=` matches `vortex_wind`'s tie-break at exactly r = r0
+        # (docs/ASSUMPTIONS.md E9).
+        speed = jnp.where(r2 < array.r0**2,
+                          array.v0 * r / array.r0,
+                          array.v0 * array.r0 / r)
+        return speed * direction
+
+    return jnp.sum(jax.vmap(one)(array.north, array.down), axis=0)
+
+
+def line_vortex_model(array: VortexArray):
+    """`wind_model` for an array flown as lines. Sibling of `vortex_model`."""
+    return field_model(lambda pos_ned: line_vortex_wind(pos_ned, array))
 
 
 def superpose(*fields):
