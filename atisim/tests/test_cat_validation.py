@@ -838,3 +838,291 @@ def test_the_approach_747s_tabulated_alpha_dot_terms_are_a_trade_not_a_win():
     # the thing that has to be revisited first.
     assert float(ac.CLadot) == 0.0
     assert float(ac.Cmadot) == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Session 23c. What the Hannibal comparison is worth once the inputs carry
+# error, and the one channel the identification did not set.
+#
+# The standing problem with every load comparison in this project is that the
+# vortex parameters were identified FROM the recorded accelerations, through
+# somebody else's aircraft model. Predicting accelerations from them therefore
+# partly re-derives the fit. These tests attack that from both ends: a channel
+# outside the loop (gust TIMING), and a bound on what the loop's inputs are
+# actually known to (Mehta's own residual, Lester's reconstruction error).
+# ---------------------------------------------------------------------------
+
+_MEHTA_LEAD_R0 = 12.0
+
+
+def _mehta_run(*, v0_scale=1.0, r0_scale=1.0, dt=0.02):
+    """The headline Mehta run with the identified parameters perturbed.
+
+    dt 0.02 rather than the script's 0.01: PROJECT.md section 4 measures the
+    peak load as converged to 0.14% over an eightfold step range, so the
+    coarsest measured step is the right one to pay for in a test suite.
+    """
+    from atisim import vortex_viz
+    from atisim.aircraft import CRUISE
+
+    ac = REGISTRY["boeing747"]
+    V = CRUISE["boeing747"]["airspeed"]
+    H = wind.MEHTA_HANNIBAL_ALTITUDE
+    array = wind.mehta_hannibal_array(H)
+    array = array._replace(v0=array.v0 * v0_scale, r0=array.r0 * r0_scale)
+    r0 = float(wind.MEHTA_HANNIBAL_R0)
+    x0, x1 = float(array.north.min()), float(array.north.max())
+    start = x0 - _MEHTA_LEAD_R0 * r0
+    enc = vortex_viz.fly_in_moving_air(
+        ac, lambda p: wind.vortex_wind(p, array), V, H, label="mehta",
+        start_north=start, seconds=(x1 + _MEHTA_LEAD_R0 * r0 - start) / V,
+        dt=dt, window=(x0 - 2.0 * r0, x1 + 2.0 * r0), window_name="array",
+    )
+    w = enc.window
+    return enc, (float(enc.n_z[w].min()), float(enc.n_z[w].max()))
+
+
+def _gust_times(t, w_up, floor):
+    """Times of the sharp gust extrema -- turning points reaching `floor` m/s.
+
+    `floor` is ABSOLUTE rather than a fraction, because the sweeps below scale
+    the field: a fixed fraction of the unscaled V0 would select a different set
+    of extrema at each scale and the comparison would be of thresholds rather
+    than of gusts. At three times V0 it picks up the outer two vortices, which
+    are not the "sharp" gusts the record is about.
+    """
+    d = np.sign(np.diff(w_up))
+    turn = np.where(d[:-1] * d[1:] < 0)[0] + 1
+    keep = [k for k in turn if abs(w_up[k]) >= floor]
+    return np.asarray([t[k] for k in keep])
+
+
+def _sampled_gust_times(*, v0_scale=1.0, r0_scale=1.0, n=40001):
+    """The same extrema, read off the FIELD along the nominal straight path.
+
+    No integration: this isolates the field's own geometry from the aircraft's
+    response to it, which is what the invariance claim below is about.
+    """
+    import jax
+
+    from atisim.aircraft import CRUISE
+
+    V = CRUISE["boeing747"]["airspeed"]
+    H = wind.MEHTA_HANNIBAL_ALTITUDE
+    array = wind.mehta_hannibal_array(H)
+    array = array._replace(v0=array.v0 * v0_scale, r0=array.r0 * r0_scale)
+    r0 = float(wind.MEHTA_HANNIBAL_R0)
+    x = np.linspace(float(array.north.min()) - 2.0 * r0,
+                    float(array.north.max()) + 2.0 * r0, n)
+    pos = jnp.stack([jnp.asarray(x), jnp.zeros(n), jnp.full(n, -H)], axis=1)
+    w_ned = jax.vmap(lambda p: wind.vortex_wind(p, array))(pos)
+    floor = 0.40 * wind.MEHTA_HANNIBAL_V0 * v0_scale
+    return _gust_times(x / V, -np.asarray(w_ned[:, 2]), floor)
+
+
+def test_the_gust_spacing_is_untouched_by_the_strength_that_was_fitted():
+    """Why timing is evidence where amplitude is partly circular.
+
+    V0 was identified by minimising a residual against winds derived from the
+    recorded accelerations. Predicting those accelerations back therefore tests
+    the composition of two aircraft models rather than this one alone.
+
+    The gust SPACING is outside that loop, and this test says so exactly rather
+    than by assertion: the field is linear in V0, so scaling it moves every
+    wind value and no turning point at all. r0 does move them -- a Rankine
+    extremum sits on the core boundary -- but only within a core, so the
+    spacing between two cores barely notices.
+    """
+    base = _sampled_gust_times()
+    assert len(base) == 4, "expected two up-and-down pairs, one per core"
+
+    # V0: exactly invariant, to the resolution of the sampling grid.
+    for scale in (0.5, 1.5, 3.0):
+        assert _sampled_gust_times(v0_scale=scale) == pytest.approx(base)
+
+    # r0: the extrema move, and the SPACING still does not, to under 2%.
+    span = base[2] - base[0]
+    for scale in (0.85, 1.15):
+        moved = _sampled_gust_times(r0_scale=scale)
+        assert not np.allclose(moved, base), "r0 must move the peaks themselves"
+        assert abs((moved[2] - moved[0]) - span) / span < 0.02
+
+
+def test_the_flown_gust_spacing_reproduces_the_recorded_five_seconds():
+    """TM-102186's "about 5 sec apart", against the flown vertical wind.
+
+    Stated in the paper's PROSE (p. 3-4), not read off a figure, so there is no
+    digitisation error on the reference -- only the author's "about".
+
+    The residual is a speed difference, not a field error. Exactly 5.0 s needs
+    250 m/s over the 4,104 ft core separation; this 747 flies 236 m/s because
+    that is the Mach its derivative set is tabulated at. The DC-10's own true
+    airspeed appears in no source held here, and 6% between two transports at
+    37,000 ft is unremarkable.
+    """
+    enc, _ = _mehta_run()
+    w = enc.window
+    times = _gust_times(enc.t[w], enc.w_up[w], 0.40 * wind.MEHTA_HANNIBAL_V0)
+    assert len(times) == 4
+
+    up1, dn1, up2, dn2 = times
+    readings = {
+        "peak-to-peak": up2 - up1,
+        "trough-to-trough": dn2 - dn1,
+        "centre-to-centre": (up2 + dn2) / 2 - (up1 + dn1) / 2,
+    }
+    # The claim must not depend on which reading of "apart" was taken.
+    assert max(readings.values()) - min(readings.values()) < 0.20
+
+    for name, s in readings.items():
+        rel = abs(s - wind.TM102186_HANNIBAL_GUST_PERIOD) / \
+            wind.TM102186_HANNIBAL_GUST_PERIOD
+        assert rel < 0.10, f"{name} {s:.3f} s"
+
+    # And the model is SLOW, not fast -- which is the direction a 747 at M 0.80
+    # against a faster DC-10 has to be. A fast model would need explaining.
+    assert min(readings.values()) > wind.TM102186_HANNIBAL_GUST_PERIOD
+
+
+def test_mehtas_cost_converts_without_n_and_beats_nothing_it_should_not():
+    """Eq. (A3) carries a 1/N, so J is a mean square and N is not needed.
+
+    That is the whole reason this bound exists. Read as a SUM the cost would be
+    uninterpretable: at any plausible N -- the record is about a minute of
+    1-to-4 Hz DFDR data -- the implied residual lands well below the error of the
+    winds being fitted, by a factor of 4.1 even at N = 30, which no honest fit
+    can do.
+
+    So the mean-square reading is checked here the only way it can be, by its
+    consequence: the residual must EXCEED the reconstruction error of its own
+    data, and it does, by a margin that leaves room for real unmodelled wind.
+    """
+    resid = wind.mehta_residual_ceiling()
+    measured = math.sqrt(sum(v ** 2 for v in wind.DFDR_WIND_RMS_ERROR.values()))
+
+    assert resid == pytest.approx(math.sqrt(wind.MEHTA_COST[5]) * FT2M)
+    assert resid > measured, "a fit cannot track data better than the data are"
+    # Read as a sum over even 30 points the residual would be 0.81 m/s, i.e.
+    # a quarter of the data error. This is that reading failing.
+    assert math.sqrt(wind.MEHTA_COST[5] / 30.0) * FT2M < measured
+
+
+def test_the_five_vortex_array_is_where_the_model_family_runs_out():
+    """The converged costs fall monotonically and then stop paying.
+
+    Mehta p. 30 states n = 6, 7 do not lower the cost at all -- the algorithm
+    pushes the extra vortices out of the flight path. So J(5) is a FLOOR for a
+    Rankine array against this record, which is what lets the residual bound
+    the field FORM rather than one author's stopping rule.
+    """
+    ns = sorted(wind.MEHTA_COST)
+    assert ns == [2, 3, 4, 5]
+    costs = [wind.MEHTA_COST[n] for n in ns]
+    assert costs == sorted(costs, reverse=True)
+
+    # The last vortex buys under 3% of RMS, against 14% for the first refit.
+    assert math.sqrt(wind.MEHTA_COST[5] / wind.MEHTA_COST[4]) > 0.97
+    assert wind.MEHTA_COST_SATURATES_AT == max(ns)
+
+    # 482 is the MANUAL startup estimate and is kept out of the fitted series.
+    # Pairing it with a converged cost is the error this project caught
+    # TM-102186 making with Schultz's Table 1 -- see PROJECT.md section 5.
+    assert wind.MEHTA_COST_STARTUP not in costs
+    assert wind.MEHTA_COST_STARTUP > costs[0]
+
+
+def test_the_unmodelled_wind_is_bracketed_by_two_sourced_bounds():
+    """What the vortex array leaves in the air, from two independent papers.
+
+    Mehta's residual is against RECONSTRUCTED winds, so it contains Lester's
+    reconstruction error. Removing that in quadrature leaves the physical
+    fluctuation the model omits -- which Mehta names on p. 30 as "the small,
+    random fluctuations that are part of the overall turbulence".
+
+    Both ends are needed. The lower bound assumes independence and takes
+    Lester's errors at face value, and both assumptions push the true value UP;
+    the ceiling assumes the entire residual is vertical and unmodelled, which
+    pushes it as far up as it can go.
+    """
+    floor = wind.mehta_unmodelled_wind()
+    ceiling = wind.mehta_residual_ceiling()
+    assert 0.0 < floor < ceiling
+
+    measured = sum((v / FT2M) ** 2 for v in wind.DFDR_WIND_RMS_ERROR.values())
+    assert floor == pytest.approx(
+        math.sqrt((wind.MEHTA_COST[5] - measured) / 2.0) * FT2M)
+
+    # The startup fit had further to fall, so it must bound looser at both ends.
+    assert wind.mehta_unmodelled_wind(2) > floor
+    assert wind.mehta_residual_ceiling(2) > ceiling
+
+
+def test_the_propagated_input_band_does_not_reach_the_recorded_load():
+    """The 32% shortfall is not inside the uncertainty of the inputs.
+
+    Flown at the most favourable corner of both sweeps -- V0 at the top of
+    Lester's error and r0 at the bottom of a declared +/-15% -- the run still
+    reaches under three quarters of the DC-10's recorded peak-to-peak. That
+    turns "68% of the record" from a number with no error bar into a bounded
+    statement: no admissible choice of the identified parameters closes it.
+
+    r0's range is DECLARED, not sourced. Mehta's sensitivity study reports
+    convergence from initial guesses of 100-1300 ft, which is a statement about
+    his algorithm and not about how well r0 is known.
+    """
+    lo_rec, hi_rec = wind.TM102186_HANNIBAL_NZ
+    recorded = hi_rec - lo_rec
+    frac = wind.DFDR_WIND_RMS_ERROR["vertical"] / wind.MEHTA_HANNIBAL_V0
+    assert frac == pytest.approx(0.0845, abs=0.0005)
+
+    _, (lo, hi) = _mehta_run(v0_scale=1.0 + frac, r0_scale=0.85)
+    assert (hi - lo) / recorded < 0.75
+    # And it is an improvement on the unperturbed run, so the corner really is
+    # the favourable one rather than merely a different one.
+    _, (lo0, hi0) = _mehta_run()
+    assert (hi - lo) > (hi0 - lo0)
+
+
+def test_no_gust_strength_reaches_the_recorded_peak_inside_the_linear_range():
+    """The peak load is saturated: the aircraft pitches away and sheds the gust.
+
+    This is TM-102186 Fig. 8's incidence-gain mechanism seen from the inside,
+    and it is why the load shortfall cannot be an amplitude error. TRIPLING the
+    identified V0 leaves the up-increment near half the recorded one and peak
+    |alpha| within a degree of where it started -- the relief scales with the
+    gust.
+
+    THE TWO BOUNDARIES COINCIDE, which is the sharp form of the claim and the
+    reason this test brackets rather than sampling one point. The peak first
+    reaches the recorded +1.7 g between 3.25 and 3.5 times V0, and |alpha|
+    leaves the 10 deg linear range in the SAME interval:
+
+        x3.25   n_z max 1.642   |alpha| 9.12 deg    short,   inside
+        x3.50   n_z max 1.787   |alpha| 10.35 deg   reaches, OUTSIDE
+
+    So there is no gust strength at which this model both reaches the record and
+    may be believed. A coarser sweep would have supported only "the shortfall is
+    large", which is a weaker statement and would not have excluded amplitude.
+    """
+    from atisim.units import RAD2DEG
+
+    def peak_alpha(enc):
+        return float(np.abs(enc.alpha_air[enc.window]).max() * RAD2DEG)
+
+    _, (_, hi0) = _mehta_run()
+    recorded = wind.TM102186_HANNIBAL_NZ[1]
+
+    # Tripling barely moves the peak: a response that tracked the gust would
+    # have elasticity ~1, and this one is under 0.2 and changes sign en route.
+    enc3, (_, hi3) = _mehta_run(v0_scale=3.0)
+    assert hi3 - 1.0 < 0.85 * (recorded - 1.0)
+    assert abs(((hi3 - 1.0) / (hi0 - 1.0) - 1.0) / 2.0) < 0.20
+    assert peak_alpha(enc3) < 10.0
+
+    # The bracket. Below the crossing the model is believable and short; above
+    # it the model reaches and is outside its own validity.
+    enc_lo, (_, hi_lo) = _mehta_run(v0_scale=3.25)
+    enc_hi, (_, hi_hi) = _mehta_run(v0_scale=3.5)
+
+    assert hi_lo < recorded and peak_alpha(enc_lo) < 10.0
+    assert hi_hi >= recorded and peak_alpha(enc_hi) > 10.0
