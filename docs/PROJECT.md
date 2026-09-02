@@ -208,7 +208,12 @@ spacing from a free parameter into a cited one.
 > **What the two new sources establish is narrower and more useful: these are two fits of
 > one encounter, and 500 ft is the later one.** Parks was presented as AIAA 84-0270
 > (January 1984); Mehta as AIAA 84-2083 (August 1984), citing Parks, refitting the same
-> data with five vortices and a documented cost history (482 → 214). TM-102186 then reports
+> data with five vortices and a documented cost history. ~~(482 → 214).~~ **Session 23c:
+> that pairing was this document making TM-102186's own mistake.** 482 is the cost of
+> Mehta's *manual startup estimate*; the converged series is **355 → 303 → 226 → 214** at
+> n = 2, 3, 4, 5. Quoting a startup value beside a converged one as a single "history" is
+> exactly the Schultz Table 1 error §5 flags. Now separated in code as
+> `wind.MEHTA_COST_STARTUP` and `wind.MEHTA_COST`. TM-102186 then reports
 > Mehta's converged numbers. 600 ft is not an error to correct — it is an earlier answer to
 > supersede, and **Parks' Scorer ratio belongs to it**, which is why that check no longer
 > reproduces at the radius this project flies.
@@ -367,6 +372,165 @@ layer only adds variance around it.
 implies, and MIL-F-8785C gives σ_w as a chart against altitude and exceedance
 probability that §3 records as un-digitised. Comparing the two is the next step,
 not a step already taken.
+
+> **Session 23c bounded it from the other direction, and the news is not good for
+> this explanation.** Mehta's own fit residual puts the unmodelled random
+> component at **2.11–4.46 m/s**, and 4.46 is the ceiling — it requires the
+> *entire* residual to be vertical, unmodelled, and free of reconstruction
+> error. So σ_w ≈ 4–5 m/s is not merely un-validated, it sits **at or above the
+> top of what the source data permit.** Flown at the sourced lower bound the run
+> does not reach the band at all. See the next subsection.
+
+#### The Hannibal comparison with error bars on both sides (session 23c)
+
+Everything here comes from `scripts/cat_uncertainty.py`, figure `06-uncertainty.png`.
+Until this pass every load number quoted against TM-102186 was a point compared
+with a point, so "68% of the recorded peak-to-peak" could not be split into *the
+model is 32% wrong* and *the inputs are not known to 32%*.
+
+**The standing problem this addresses.** The vortex parameters were identified
+**from** the recorded accelerations, through Parks' and Mehta's aircraft model.
+Predicting those accelerations back therefore tests the composition of two
+aircraft models, not this one alone. Two ways out are taken below: a channel
+outside that loop, and a bound on what the loop's inputs are worth.
+
+##### A. Gust spacing — the channel the identification did not set
+
+TM-102186 p. 3–4, in **prose**, not a figure: *"sharp up-and-down gusts about
+5 sec apart"*. Spacing is set by the fitted core **positions** and the aircraft's
+speed; it is independent of the fitted **strengths**, and that independence is
+measured rather than asserted — the field is exactly linear in `V₀`, so scaling
+`V₀` by 0.5, 1.5 or 3.0 moves every wind value and **not one turning point**.
+
+| Reading of "apart" | Model | vs record |
+|---|---|---|
+| peak-to-peak | 5.290 s | **+5.8%** |
+| centre-to-centre | 5.360 s | **+7.2%** |
+| trough-to-trough | 5.430 s | **+8.6%** |
+
+The three span 0.14 s, so the answer is a property of the field and not of the
+definition. Geometric prediction from the 4,104 ft core separation at this 747's
+774 ft/s is 5.302 s, and the flown run adds 1.1% to it.
+
+**The residual is a speed proxy, not a field error.** Exactly 5.0 s needs
+**250.2 m/s (M 0.848)**; this 747 flies **235.9 m/s (M 0.800)**, which is the
+Mach its derivative set is tabulated at. The DC-10's own true airspeed is in no
+source held here, and 6% between two transports at 37,000 ft is unremarkable.
+The model is **slow**, which is the direction that mismatch requires — a fast
+model would have needed explaining.
+
+##### B. What Mehta's own fit leaves over
+
+Mehta's Appendix Eq. (A3) is **`J = (1/N) Σ eᵀ B e`**, with `B` the identity for
+every cost he quotes. **The `1/N` is the load-bearing part**: `J` is a *mean*
+square, so it converts to an RMS wind residual without `N` — which the paper
+never states and no source here supplies. Read as a *sum* it is uninterpretable:
+over any plausible `N` the implied residual lands well below the error of the
+winds being fitted — a factor of **4.1 even at `N` = 30**, and 6.0 at `N` = 65 —
+which no honest fit can do.
+
+| n | cost `J` (ft/s)² | RMS residual | Δ`J` | Δ RMS |
+|---|---|---|---|---|
+| 2 | 482 | 6.692 m/s | — | — |
+| 2 | 355 | 5.743 m/s | −26.3% | −14.18% |
+| 3 | 303 | 5.306 m/s | −14.6% | −7.61% |
+| 4 | 226 | 4.582 m/s | −25.4% | −13.64% |
+| 5 | **214** | **4.459 m/s** | −5.3% | −2.69% |
+
+The first row is the **manual startup estimate**, not a fit — see §3, where this
+document previously paired it with a converged cost as one "history".
+
+**J = 214 is a floor, not a stopping point.** Mehta p. 30: *"Further increases in
+the number of vortices (n = 6,7, etc.) do not result in decreases in the cost. In
+fact, the algorithm 'pushes' the extra vortices away from the flight path"*. The
+fifth vortex already buys only 2.7% of RMS. **So the residual bounds the field
+FORM** — what a Rankine array cannot represent about this record — rather than
+one author's patience.
+
+Decomposing it against Lester's reconstruction error, since Mehta fitted
+*reconstructed* winds and his residual therefore contains theirs:
+
+| | RMS wind |
+|---|---|
+| total residual, `√J` | 4.459 m/s |
+| reconstruction floor, Lester Table 1 RSS | 3.316 m/s |
+| **unmodelled, per component** (quadrature) | **2.108 m/s** — a *lower* bound |
+| **ceiling**, all of `J` vertical and unmodelled | **4.459 m/s** — unit-robust |
+
+Both caveats on the lower bound push the same way, **up**: independence is
+assumed where Mehta fits bias and trend terms explicitly, and Lester's case had
+no ATC radar fixes where Hannibal did. The ceiling survives any unit convention
+for the horizontal term because `B = I` makes both squares non-negative.
+
+**Flown, 8 seeds each:**
+
+| σ_w | `n_z` min, mean [min, max] | `n_z` max, mean [min, max] | reaches band? | peak \|α\| |
+|---|---|---|---|---|
+| 2.108 (sourced lower) | −0.394 [−0.506, −0.246] | 1.529 [1.441, 1.568] | **no** | 8.85° |
+| 4.459 (ceiling) | −0.367 [−0.641, −0.031] | 1.663 [1.459, 1.790] | yes | 9.97° |
+
+**This weakens session 23b's Dryden reading rather than confirming it.** The
+intensity that closes the gap is the intensity at the absolute ceiling of what
+the sources permit, and the ceiling run sits **on** the 10° edge of the linear
+range — the last intensity this model may be asked about at all. What the pass
+*does* buy is that σ_w went from unbounded to **2.11–4.46 m/s** without
+digitising anything.
+
+##### C. The propagated input band
+
+`V₀ ± 8.45%` is sourced (Lester's vertical RMS over Mehta's `V₀`) and is a
+**ceiling, not a 1σ** — it is the error of one reconstructed sample, and `V₀` was
+fitted to `N` of them. `r₀ ± 15%` is **declared**: Mehta's sensitivity study
+reports convergence from initial guesses of 100–1300 ft, which is a statement
+about his algorithm, not about how well `r₀` is known.
+
+| Variant | `n_z` min | `n_z` max | p-p | % of recorded | \|α\| |
+|---|---|---|---|---|---|
+| baseline (identified) | −0.3976 | 1.4410 | 1.8385 | 68.1% | 7.86° |
+| `V₀ × 0.9155` (sourced) | −0.3312 | 1.4287 | 1.7599 | 65.2% | 7.72° |
+| `V₀ × 1.0845` (sourced) | −0.4374 | 1.4482 | 1.8855 | 69.8% | 7.89° |
+| `r₀ × 0.85` (declared) | −0.4582 | 1.4765 | 1.9348 | 71.7% | 8.01° |
+| `r₀ × 1.15` (declared) | −0.3418 | 1.4470 | 1.7888 | 66.3% | 7.74° |
+| **corner: `V₀` high, `r₀` low** | −0.5065 | 1.4565 | 1.9631 | **72.7%** | 8.15° |
+
+**The whole input band tops out at 72.7%. The 32% shortfall is not inside the
+uncertainty of the inputs.**
+
+##### Why no amount of wind helps: the peak load is saturated
+
+| `V₀ ×` | `n_z` min | `n_z` max | up increment | elasticity | \|α\| | |
+|---|---|---|---|---|---|---|
+| 1.00 | −0.3976 | 1.4410 | 0.4410 | — | 7.86° | |
+| 1.25 | −0.4422 | 1.4567 | 0.4567 | 0.143 | 7.76° | |
+| 1.50 | −0.3372 | 1.4465 | 0.4465 | 0.025 | 7.97° | |
+| 2.00 | −0.1429 | 1.3820 | 0.3820 | −0.134 | 7.98° | |
+| 3.00 | +0.0820 | 1.5257 | 0.5257 | 0.096 | 8.13° | |
+| **3.25** | −0.2002 | **1.6416** | 0.6416 | 0.202 | **9.11°** | short, **inside** |
+| **3.50** | −0.5839 | **1.7862** | 0.7862 | 0.313 | **10.34°** | reaches, **outside** |
+| 4.00 | −1.9049 | 2.2065 | 1.2065 | 0.579 | 13.93° | outside |
+
+**Tripling the identified gust leaves the up-increment at 0.526 g against a
+recorded 0.70, with peak |α| still near 8°.** A peak that tracked the gust would
+have elasticity ≈ 1; this one is under 0.15 and changes sign. The aircraft
+pitches away and sheds the gust — TM-102186 Fig. 8's incidence-gain mechanism
+seen from the inside.
+
+**And the two boundaries coincide, which is the sharp form of the result.** The
+peak first reaches +1.7 g between **×3.25 and ×3.50**, and |α| leaves the 10°
+linear range in the **same interval**. So there is no gust strength at which this
+model both reaches the record and may be believed. That is a stronger statement
+than "the shortfall is large": it **excludes amplitude** as the explanation
+rather than merely bounding it. Anything past the crossing is past the 12° where
+§7 says this aero reports lift the sources deny — not a harder test, a different
+model.
+
+**What all three sections together leave.** The shortfall is not numerics (0.14%
+over 8× `dt`, session 23b), not the point-sampled gust (≤4.4%), not the strip path
+(0.00%), **not the identified parameters (≤72.7% at the favourable corner), and
+not gust amplitude at any strength inside the linear range.** The random
+component is bounded to 2.11–4.46 m/s and only its ceiling reaches. What is left
+is the aircraft: a DC-10 record flown by a 747, and no buffet-onset data — which
+§5 already lists as structurally out of reach from the sources held.
 
 #### Lester's Greenland 747 — one wave cannot produce both observations
 
@@ -1812,6 +1976,16 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   under-reaches the DC-10's recorded load** — the shortfall is elsewhere. §4 has the table.
   Note which channel moves: the **down** excursion, not the peak.
 
+  **Session 23c closed the remaining wind-side candidates, and the shortfall is now
+  cornered on the aircraft.** Propagating the sourced `V₀` uncertainty with a declared
+  `r₀` band, the most favourable corner reaches **72.7%** of the recorded peak-to-peak;
+  and the peak load turns out to be **saturated** — tripling `V₀` moves the up-increment
+  from 0.441 to 0.526 g against a recorded 0.70, elasticity under 0.15 and changing sign,
+  with peak |α| still near 8°. The peak first reaches +1.7 g between **×3.25 and ×3.50**
+  of the identified `V₀`, and |α| leaves the 10° linear range in the **same interval** —
+  so **there is no gust strength at which this model both reaches the record and may be
+  believed.** That excludes amplitude rather than merely bounding it. §4 has both tables.
+
 - **Gravity is constant at 9.80665 m/s², which is +0.383% high at the 747's cruise
   altitude.** True `g(h) = g₀(R/(R+h))²` is 9.76922 at 12,192 m. **Session 12 measured what
   that costs and decided not to model it**; §4 carries the table and `ASSUMPTIONS.md` §A2
@@ -1924,6 +2098,16 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   *J. Aircraft* 24(11) 789–792, which this project does not hold.** So: reconstruction
   error measured, identification error attributed, orderings-only rule unchanged.
   `docs/ASSUMPTIONS.md` E2 carries the table.
+
+  **Session 23c: the band is now PROPAGATED rather than merely stated, and a third layer
+  got measured.** Flying `V₀` across the 8.45% and `r₀` across a declared ±15%, the most
+  favourable corner reaches 72.7% of the recorded load against a baseline 68.1% — so the
+  parameter uncertainty is real but far too small to be the discrepancy. Separately,
+  Mehta's published cost series bounds the **field-form** error, which is the layer
+  neither Lester nor Bach speaks to: his Eq. (A3) is a *mean* square, so `J` = 214
+  converts to a 4.46 m/s RMS residual without knowing `N`, and he states that n = 6, 7 do
+  not improve on it. What the array cannot represent is therefore bounded at
+  **2.11–4.46 m/s** of wind. §4 has both.
 
 - **The lee wave carries no horizontal perturbation, so half the F-factor is missing.**
   `wind.LeeWave` is purely vertical and constant in altitude. That is divergence-free, so
@@ -2056,6 +2240,19 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   aircraft type; Parks' two cases are DC-10s at 37–39 kft against this project's 747 at
   40 kft with roughly 0.8× the wing loading. Every load comparison is order-of-magnitude
   or clustering. Assert bands and orderings, never values.
+
+  **Session 23c turned this from a caveat into the surviving explanation.** It used to be
+  a reason not to over-claim; it is now what is left after everything else was excluded on
+  the Hannibal run — numerics (0.14%), the point gust (≤4.4%), the strip path (0.00%), the
+  identified parameters (≤72.7% at the favourable corner) and gust amplitude at *any*
+  strength inside the linear range. The aircraft is the residual, and closing it needs a
+  DC-10 derivative set, which is the highest-value acquisition on the list.
+
+  **The wing-loading figure in this entry is unverified and may be inverted.** AtiSim's
+  747 is W/S ≈ 115.8 lb/ft²; no sourced DC-10 wing loading is held here, so "roughly 0.8×"
+  rests on nothing in the project. Flagged rather than corrected, because correcting it
+  needs the source that is not held. Nothing downstream depends on the number — the entry
+  stands on aircraft type alone.
 - **Half of the Fig. 8 load band is unreachable inside the linear range.** Read as an
   *absolute* load factor, the band's −1.9 g needs about 13.8° of elevator from trim and
   drives |α| to roughly 18.5° — half again past the 12° where §7 says this model reports
@@ -2336,8 +2533,10 @@ source exactly. A smoother interpolant would agree with the source less.
   2.917 against his quoted 2.92, self-consistent to three figures. 3500/1000 = 3.500,
   which he does not quote. A transcription error would have broken that consistency, so
   **600 ft is Parks' genuine identified value.** Mehta then refits the same data with five
-  vortices (cost 482 → 214) and converges to 500.5 ft; TM-102186 reports Mehta's answer.
-  Parks January 1984, Mehta August 1984 citing Parks.
+  vortices (converged cost 355 at n = 2 down to 214 at n = 5; the 482 this entry used to
+  quote is his *manual startup* estimate, separated in session 23c) and converges to
+  500.5 ft; TM-102186 reports Mehta's answer. Parks January 1984, Mehta August 1984
+  citing Parks.
 
   **So the Scorer ratio belongs to the superseded radius**, which is exactly why
   `test_the_spacing_to_core_diameter_ratio_and_what_session_22_cost_it` must keep recording
@@ -2349,6 +2548,27 @@ source exactly. A smoother interpolant would agree with the source less.
   the 2.92 both remain second-hand — self-consistent second-hand, which is much stronger
   than before, but not a reading of the document. J. Aircraft **22**(2), 124–129
   (DOI 10.2514/3.45095).
+
+- **New, session 23c: what are the units of Mehta's cost `J`, and what was `N`?** The
+  decomposition in §4 rests on `e` being a difference of winds in **ft/s** for both
+  components. That is the natural reading — `e` comes from his Eq. (4), which is
+  homogeneous in `V₀`, and `V₀` is quoted in ft/s throughout — but he never labels `J`,
+  and his own Fig. 5 plots the *horizontal* wind in knots while the vertical is in ft/s.
+
+  **What survives either way, and what does not.** `mehta_residual_ceiling` is immune:
+  `B` is the identity, so both terms are non-negative and either one alone is bounded by
+  `J` whatever the other's scale. The 4.46 m/s ceiling therefore stands unconditionally.
+  `mehta_unmodelled_wind`'s 2.11 m/s does **not** — it splits `J` evenly between the two
+  components, which a mixed-unit `e` would break. Both functions say so in their
+  docstrings.
+
+  **`N` is separately unrecoverable and would sharpen nothing structural.** It is not
+  needed for any number quoted — that is the whole point of the `1/N` in Eq. (A3) — but it
+  would say how many degrees of freedom the fit had, which is the missing ingredient for
+  turning the residual into a confidence interval on `V₀` and `r₀` rather than the
+  conservative per-sample ceiling §4 uses. TM-102186 Table II gives DFDR sample rates by
+  parameter and aircraft, but its text layer OCRs to unaligned columns and the wind
+  reconstruction's own output rate is not stated anywhere held here.
 
 - **New, session 23: what does `PARKS_CASES["hannibal"]` being a hybrid cost?** It pairs
   Fig. 4's radius (500 ft) with Parks' strength (85 ft/s); Mehta and TM-102186 both pair
@@ -2371,6 +2591,74 @@ source exactly. A smoother interpolant would agree with the source less.
   touch the core response.
 
 ## 9. Session log
+
+### Session 23c — error bars on both sides, and the shortfall stops being a wind problem
+
+Three follow-ups, all aimed at the same weakness: **every load comparison in this project
+is partly circular.** The vortex parameters were identified *from* the recorded
+accelerations, through Parks' and Mehta's aircraft model, so predicting those
+accelerations back tests the composition of two models rather than this one.
+
+**What was built.** `wind.MEHTA_COST_STARTUP`, `wind.MEHTA_COST`,
+`wind.MEHTA_COST_SATURATES_AT`, `wind.mehta_residual_ceiling`,
+`wind.mehta_unmodelled_wind`; `scripts/cat_uncertainty.py` with figure
+`06-uncertainty.png`; eight tests; four ledger entries.
+
+**Three results.**
+
+1. **A non-circular channel reproduces.** Gust *spacing* is set by the fitted core
+   positions and the aircraft's speed, not by the fitted strengths — measured, not
+   asserted: the field is exactly linear in `V₀`, so scaling it by 0.5, 1.5 or 3.0 moves
+   every wind value and **not one turning point**. The flown run gives **5.29–5.43 s**
+   depending on which reading of "apart" is taken, against TM-102186's prose "about
+   5 sec". The three readings span 0.14 s, so the answer belongs to the field and not to
+   the definition. The 6% residual is a speed proxy — 5.0 s needs M 0.848 and this 747
+   flies M 0.800 — and the model is **slow**, which is the direction that mismatch
+   requires.
+
+2. **Mehta's own fit residual bounds the field form, and it needed re-reading the
+   Appendix to get right.** Eq. (A3) carries a **1/N**: the cost is a *mean* square, so
+   `J` = 214 converts to a 4.46 m/s RMS residual **without knowing `N`**, which the paper
+   never states. Two readings of that formula differ by ~65× and give opposite
+   conclusions, so it was rendered from the PDF rather than guessed. Subtracting Lester's
+   reconstruction error leaves the unmodelled wind at **2.11–4.46 m/s**.
+
+3. **The 32% shortfall is not in the wind at all.** The propagated input band tops out at
+   **72.7%** of the recorded peak-to-peak, and the peak load is **saturated**: tripling
+   `V₀` moves the up-increment from 0.441 to 0.526 g against a recorded 0.70, elasticity
+   under 0.15 and changing sign, with peak |α| still near 8°. The aircraft pitches away
+   and sheds the gust — Fig. 8's own mechanism, seen from the inside. Bracketing finer
+   than the first sweep did turned this from a bound into an **exclusion**: the peak
+   first reaches +1.7 g between ×3.25 and ×3.50, and |α| leaves the linear range in the
+   same interval, so no gust strength both reaches the record and may be believed.
+
+**This weakens a previous session's conclusion rather than extending it.** Session 23b
+reported σ_w ≈ 4–5 m/s closing the upper extreme. That still happens, but 4.46 m/s is now
+known to be the **ceiling** of what Mehta's residual permits — it requires the entire
+residual to be vertical, unmodelled, and free of reconstruction error — and the ceiling
+run sits *on* the 10° edge of the linear range. At the sourced lower bound the run does
+not reach the band at all. The Dryden explanation is not excluded, but it now needs the
+top of its own range rather than the middle.
+
+**A mistake of this document's own, found and fixed.** §3 and §8 both described Mehta's
+"documented cost history (482 → 214)". 482 is his *manual startup estimate*; the converged
+series is 355 → 303 → 226 → 214. Pairing a startup value with a converged one as a single
+history is precisely the error §5 flags TM-102186 for making with Schultz's Table 1 —
+made here, by this project, about the same paper family. Now separated in code, with a
+test asserting the separation.
+
+**Guards that fired.** `test_the_provenance_ledger_does_not_cover_the_source_modules`
+failed the build on two unledgered constants, and was fixed by writing entries. A first
+draft of the invariance test used an absolute gust threshold against a scaled field, so it
+compared thresholds rather than gusts; caught because the extremum count changed with
+scale.
+
+**What is now left.** The shortfall is cornered on the **aircraft** — a DC-10 record flown
+by a 747, with no buffet-onset data. That is §5's structural entry, and it has stopped
+being a caveat and become the surviving explanation. A DC-10 derivative set is the
+highest-value acquisition on the list. Also flagged, not fixed: §5's "roughly 0.8× the
+wing loading" is unverified and may be inverted — AtiSim's 747 is W/S ≈ 115.8 lb/ft² and
+no sourced DC-10 figure is held.
 
 ### Session 23 — eleven papers arrive, and four "not quantified" entries stop being that
 
@@ -3390,6 +3678,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 | `.venv/Scripts/python.exe scripts/vortex_compare.py --png runs/vc.png` | **The cross-code vortex comparison.** Flies atisim through the identical field the frozen reference was generated from and reports where the two engines part, against Wingrove & Bach's own g-loads. Imports no jsbsim. |
 | `.venv/Scripts/python.exe scripts/vortex_diagnose.py` | **Why the comparison's two large errors are large.** Three experiments: the same start state flown in still air, atisim flown from its own trim, and a one-lever-at-a-time sweep against the DFDR. Imports no jsbsim. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_bounds.py --outdir runs/cat` | **The bounding experiments (session 23 follow-up).** What the point-sampled gust, the strip path and the step size cost on the Mehta run; what Dryden intensity would close the residual load gap; and Lester's Greenland 747 against a lee wave, inverted on both the g-load and the altitude gain. Same `PYTHONPATH` rule. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_uncertainty.py --outdir runs/cat` | **The Hannibal comparison with error bars (session 23c).** Measures the gust SPACING against TM-102186's "about 5 sec apart" -- the one channel the identification did not set -- converts Mehta's own Eq. (A3) cost into an RMS wind residual and decomposes it against Lester's reconstruction error, then flies the propagated `V0` and `r0` band and a gust-strength sweep to show the peak load is saturated. Writes `06-uncertainty.png`. Same `PYTHONPATH` rule. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_validation.py --outdir runs/cat` | **The CAT source pass (session 23).** Flies Mehta 1987's five-vortex Hannibal field, reproduces TM-102186 Fig. 8's three-aircraft ordering and tests its stated mechanism across the whole registry, compares the 747's short period at a third CR-2144 flight condition, and grades every run on Misaka's `σ_n`. Prints every number and writes four figures. **`PYTHONPATH` is mandatory** — `python scripts/…` resolves `atisim` to the main checkout, which this script detects and prints on its first line. |
 | `docs/summary/jsbsim-atisim-vortex-report.html` | **The written comparison** — the numbers above with the reasoning, the figure, and what the result does and does not establish. Not generated; edit it when the numbers move. |
 

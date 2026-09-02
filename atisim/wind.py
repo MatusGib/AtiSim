@@ -362,6 +362,38 @@ MEHTA_HANNIBAL_CORE_PAIR = (2, 3)
 TM102186_HANNIBAL_NZ = (-1.0, 1.7)  # g, measured min and max
 TM102186_HANNIBAL_GUST_PERIOD = 5.0  # s, "sharp up-and-down gusts about 5 sec apart"
 
+# ---------------------------------------------------------------------------
+# HOW WELL MEHTA'S FIT ACTUALLY FITS, from his own Appendix.
+#
+# Eq. (A3) defines the cost he quotes at every array size:
+#
+#     J = (1/N) * sum_{j=1..N} e^T(j) B e(j),   e(j) = W_actual(j) - W_model(j)
+#
+# with B the identity matrix for every number below (p. 29, "with B an identity
+# matrix"). THE 1/N IS THE LOAD-BEARING PART. J is a MEAN square, not a sum, so
+# it converts to an RMS wind residual WITHOUT knowing N -- which the paper never
+# states, and which no source held here supplies. Read as a sum it would be
+# meaningless: at any plausible N the implied residual falls well below the
+# reconstruction error of the data being fitted -- a factor of 4.1 even at N = 30
+# -- which no honest fit can do.
+#
+# UNITS ARE ASSUMED, AND THE ASSUMPTION IS BOUNDED. Mehta never labels J. Its
+# natural unit is (ft/s)^2: e is a difference of winds from Eq. (4), which is
+# homogeneous in V0, and V0 is quoted in ft/s throughout. Fig. 5 nevertheless
+# plots the HORIZONTAL wind in knots, so a mixed-unit e cannot be ruled out.
+# `mehta_residual_ceiling` is immune to that -- B = I makes both terms
+# non-negative, so either one alone is bounded by J whatever the other's scale.
+# `mehta_unmodelled_wind` is NOT immune and says so.
+MEHTA_COST_STARTUP = 482.0  # p. 29, the MANUAL startup estimate, n = 2
+MEHTA_COST = {2: 355.0, 3: 303.0, 4: 226.0, 5: 214.0}  # p. 29-30, converged
+
+# Mehta p. 30: "Further increases in the number of vortices (n = 6,7, etc.) do
+# not result in decreases in the cost. In fact, the algorithm 'pushes' the extra
+# vortices away from the flight path". So MEHTA_COST[5] is a FLOOR for this
+# model family and not merely where the author stopped -- which is what makes it
+# usable as a bound on the field form rather than on one author's patience.
+MEHTA_COST_SATURATES_AT = 5
+
 
 def vortex_wind(pos_ned: Array, array: VortexArray) -> Array:
     """Wind velocity (NED, m/s) induced by the array at a point.
@@ -630,6 +662,50 @@ LESTER_GREENLAND_ALTITUDE = 33000.0 * FT2M  # m
 # these are "40%-50% greater than those estimated for NCAR aircraft".
 DFDR_WIND_RMS_ERROR = {"horizontal": 2.449, "vertical": 2.236}
 DFDR_WIND_RMS_ERROR_SPEED = 250.0  # m/s, the level-flight speed Table 1 assumes
+
+
+def mehta_residual_ceiling(n: int = MEHTA_COST_SATURATES_AT) -> float:
+    """RMS of Mehta's total fit residual, m/s. A CEILING on either component.
+
+    `sqrt(J)` with J from `MEHTA_COST`. Because B is the identity, J is the mean
+    of `e_xy**2 + e_z**2`, i.e. the sum of two non-negative means -- so either
+    component's own mean square is bounded by J and neither component's RMS can
+    exceed `sqrt(J)`. That includes the vertical one, which is what a gust model
+    cares about, and it holds whatever unit the horizontal term is in. This is
+    the one number here that survives that ambiguity.
+    """
+    return math.sqrt(MEHTA_COST[n]) * FT2M
+
+
+def mehta_unmodelled_wind(n: int = MEHTA_COST_SATURATES_AT) -> float:
+    """RMS per-component wind Mehta's fit does not represent, m/s.
+
+    His residual is the model's error against RECONSTRUCTED winds, so it already
+    contains the reconstruction error `DFDR_WIND_RMS_ERROR`. Removing that in
+    quadrature leaves the physical fluctuation the vortex array omits -- which
+    Mehta names on p. 30: "the small, random fluctuations that are part of the
+    overall turbulence".
+
+    A LOWER BOUND, not an estimate, and it is worth being clear which way each
+    caveat pushes. Both push the same way, UP:
+
+      - Independence is assumed in subtracting the squares. Mehta fits bias and
+        trend terms explicitly, so the correlated part of the reconstruction
+        error is partly absorbed into those and is not in the residual.
+      - Lester's table is a DIFFERENT encounter, one with no ATC radar fixes
+        (PROJECT.md section 3), so its errors are if anything an overestimate
+        for Hannibal, which had them.
+
+    So the true value lies between this and `mehta_residual_ceiling`.
+
+    UNLIKE THE CEILING, THIS IS NOT UNIT-ROBUST. Splitting J evenly between the
+    two components assumes both are in the same unit, and Mehta never labels J
+    -- see the block above MEHTA_COST_STARTUP, and PROJECT.md section 8. If his
+    horizontal residual is in knots the even split is wrong and only the ceiling
+    survives.
+    """
+    measured = sum((v / FT2M) ** 2 for v in DFDR_WIND_RMS_ERROR.values())
+    return math.sqrt(max(MEHTA_COST[n] - measured, 0.0) / 2.0) * FT2M
 
 
 class LeeWave(NamedTuple):

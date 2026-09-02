@@ -688,6 +688,42 @@ Bach & Parks 1987, *J. Aircraft* 24(11), 789–792, **which this project does no
 So: the reconstruction error is now measured, the identification error is still attributed,
 and the orderings-only rule stands.
 
+**Session 23c added a THIRD layer neither of those speaks to, and bounded it.** Both layers
+above are about how well the *winds* were recovered. Neither says how well a five-vortex
+Rankine array can represent them at all — the **field-form** error. Mehta's own published
+cost supplies it, and reading it correctly turned on one detail of his Appendix:
+
+> Eq. (A3) is `J = (1/N) Σⱼ eᵀ(j) B e(j)`, with `B` the identity for every cost he quotes.
+
+**The `1/N` is what makes this usable.** `J` is a *mean* square, so it converts to an RMS
+wind residual **without `N`**, which the paper never states and no source held here
+supplies. Read as a sum instead, the implied residual over any plausible `N` lands well
+below the error of the winds being fitted — a factor of **4.1 even at `N` = 30**, and 6.0
+at `N` = 65 — which no honest fit can do, and which is how the mean reading is checked
+rather than assumed.
+
+| n vortices | cost `J` | RMS residual |
+|---|---|---|
+| 2 (**manual startup**, not a fit) | 482 | 6.692 m/s |
+| 2 converged | 355 | 5.743 m/s |
+| 3 | 303 | 5.306 m/s |
+| 4 | 226 | 4.582 m/s |
+| **5** | **214** | **4.459 m/s** |
+
+Mehta p. 30 states n = 6, 7 do **not** lower the cost — the algorithm pushes the extra
+vortices off the flight path — so `J` = 214 is a **floor for the model family**, not the
+point one author stopped. Subtracting Lester's reconstruction error in quadrature leaves
+the physical fluctuation the array omits, which Mehta himself names as *"the small, random
+fluctuations that are part of the overall turbulence"*:
+
+**2.11 m/s (lower bound) to 4.46 m/s (ceiling).** The lower bound assumes independence and
+takes Lester's table at face value, and both assumptions push the true value **up**; the
+ceiling assumes the entire residual is vertical and unmodelled, and is immune to how the
+horizontal term is scaled because `B = I` makes both squares non-negative.
+
+Stored as `wind.MEHTA_COST`, `wind.MEHTA_COST_STARTUP`, `wind.MEHTA_COST_SATURATES_AT`,
+with `wind.mehta_residual_ceiling` and `wind.mehta_unmodelled_wind` doing the conversion.
+
 **Bound, measured session 23b — what it costs on the run that matters.** The scale ratio
 above says the correction is doing real work; this says how much the answer moves if it is
 done better. On the Mehta five-vortex run, swapping the tangent gust rates for rates fitted
@@ -701,6 +737,27 @@ rates are the only channel that can probe this at all.
 under-reaches the record by 32%.** So this is not where the gap is. It remains the weakest
 link in the vortex result and it is no longer a candidate explanation for the headline
 discrepancy.
+
+**Session 23c: the gap is not on the wind side at all.** Two further measurements, and
+both come back negative for a wind explanation:
+
+- **Propagated parameter band.** Flying `V₀` across the sourced ±8.45% with `r₀` across a
+  declared ±15%, the most favourable corner reaches **72.7%** of the recorded
+  peak-to-peak against a baseline 68.1%. No admissible choice of the identified
+  parameters closes 32%.
+- **The peak load is saturated, and the two boundaries coincide.** Tripling `V₀` moves
+  the up-increment from 0.441 to 0.526 g against a recorded 0.70 — elasticity under 0.15,
+  and it changes sign — with peak |α| still near 8°. The aircraft pitches away and sheds
+  the gust, which is TM-102186 Fig. 8's own incidence-gain mechanism seen from the
+  inside. The peak first reaches +1.7 g between **×3.25 and ×3.50**, and |α| leaves the
+  10° linear range in the **same interval**: 1.642 g at 9.11° against 1.786 g at 10.34°.
+  **So there is no gust strength at which this model both reaches the record and may be
+  believed** — which excludes amplitude rather than merely bounding it.
+
+So the assumption bounded here is one of five wind-side candidates now excluded on this
+run, and what remains is the aircraft: a DC-10 record flown by a 747, with no buffet-onset
+data. See PROJECT.md §5's structural entry, which has stopped being a caveat and become
+the surviving explanation.
 
 **Bound, measured session 13 — the consequence, not just the scale ratio.** The point model
 takes the gust gradient as the tangent at the CG. `wind.sampled_rates` fits the slope across

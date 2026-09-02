@@ -340,8 +340,45 @@ LEDGER: dict[str, Entry] = {
     "wind.TM102186_HANNIBAL_GUST_PERIOD": Entry(
         "SOURCED",
         "5 s. NASA TM-102186 p. 3-4: 'sharp up-and-down gusts about 5 sec "
-        "apart'. Nothing in the model consumes it; it is carried so a run's "
-        "gust spacing can be checked against the record.",
+        "apart'. Nothing in the model consumes it -- it is a REFERENCE, and "
+        "session 23c made it the one this project checks itself against that "
+        "the identification did not set. V0 and r0 were fitted to these winds, "
+        "so an amplitude comparison partly re-derives the fit; the spacing "
+        "comes from the core positions and the aircraft's speed instead. The "
+        "flown run gives 5.29-5.43 s depending on which reading of 'apart' is "
+        "taken, and the whole residual is accounted for by this 747 flying "
+        "M 0.80 where 5.0 s over the 4,104 ft separation needs M 0.85.",
+    ),
+    "wind.MEHTA_COST_STARTUP": Entry(
+        "SOURCED",
+        f"482. {_MEHTA} p. 29, the cost of the MANUAL startup estimate for "
+        "n = 2 -- 'the cost ... is 482 for the initial estimates'. Held apart "
+        "from MEHTA_COST because it is a guess and not a fit. Quoting it "
+        "beside a converged cost as one 'history' is the same error this "
+        "project caught TM-102186 making with Schultz's Table 1 initial "
+        "estimates (PROJECT.md section 5), and PROJECT.md section 3 made it "
+        "once before session 23c separated them.",
+    ),
+    "wind.MEHTA_COST": Entry(
+        "SOURCED",
+        f"{{2: 355, 3: 303, 4: 226, 5: 214}}. {_MEHTA} pp. 29-30, the CONVERGED "
+        "cost at each array size, from his Eq. (A3) with B the identity. Eq. "
+        "(A3) carries a 1/N, so these are MEAN squares and convert to an RMS "
+        "wind residual without N -- which the paper never states and no source "
+        "held here supplies. Units are assumed (ft/s)^2: e is a difference of "
+        "winds from Eq. (4), which is homogeneous in V0, and V0 is quoted in "
+        "ft/s. Fig. 5 nevertheless plots the horizontal wind in knots, so "
+        "mehta_residual_ceiling is written to be immune to that and "
+        "mehta_unmodelled_wind is not.",
+    ),
+    "wind.MEHTA_COST_SATURATES_AT": Entry(
+        "SOURCED",
+        f"5. {_MEHTA} p. 30: 'Further increases in the number of vortices "
+        "(n = 6,7, etc.) do not result in decreases in the cost. In fact, the "
+        "algorithm pushes the extra vortices away from the flight path'. This "
+        "is what makes MEHTA_COST[5] a FLOOR for a Rankine array against this "
+        "record rather than the point one author stopped, and therefore what "
+        "lets the residual bound the field FORM.",
     ),
     "wind.LESTER_LEE_WAVE_WAVELENGTH": Entry(
         "SOURCED",
