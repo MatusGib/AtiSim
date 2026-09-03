@@ -2669,6 +2669,23 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   project with nonlinear data is the Cessna, which is out of scope; **CR-2144 provides no
   buffet-onset table for the 747**. Reproducing this needs a source the project does not
   have. Do not promise it.
+
+  **Session 25 splits this in two, and only one half is still blocked.** The *nonlinear lift
+  curve* is genuinely not published in anything reachable — §4's session-21 search found
+  CR-114494 draws `CL_BASIC` as straight lines annotated *"extrapolate linearly to higher α
+  if required"*. But the **buffet-onset BOUNDARY is held**, on a page this project has
+  already read: `refs/NASA-CR-114494.pdf` p. 2.0-38 is titled *"LIFT COEFFICIENT — BUFFET
+  BOUNDARY AND C_Lmax"* and carries **two** curves against Mach, flaps up, gear up, trimmed
+  — *maximum demonstrated `C_L`/trimmed `C_Lmax`*, which session 21 digitised, and *initial
+  buffet boundary*, which it did not. The sheet points to **§19 for revised data**, and
+  p. 428 defines the boundary in α and Mach and notes that above M 0.85 buffet is
+  shock growth rather than stall.
+
+  **The boundary buys a bound, not the asymmetry.** It cannot produce a falling lift curve,
+  so the ±g asymmetry stays structurally impossible. What it can do is say *where the linear
+  model stops being defensible in `C_L`–Mach* — the service `panel.ALPHA_LINEAR_DEG`
+  performs in α, and currently the only guard of its kind. §1's envelope would gain a
+  sourced ceiling in place of a declared one.
 - **Absolute agreement with the papers' g-loads.** Wingrove & Bach never identifies an
   aircraft type; Parks' two cases are DC-10s at 37–39 kft against this project's 747 at
   40 kft with roughly 0.8× the wing loading. Every load comparison is order-of-magnitude
@@ -2790,7 +2807,7 @@ T2, build T3's foundation on the way*.
 | # | Document | Unblocks |
 |---|---|---|
 | 1 | a **DC-10 cruise derivative set** | the last remaining explanation for the 32% load shortfall, and the sealed prediction `dc10_does_not_close_the_hannibal_gap`. Every load comparison to date is a 747 flown against a DC-10 record |
-| 2 | **747 buffet onset / nonlinear C_L** | the ±g asymmetry both source papers attribute to buffet, and the negative excursion that has been short throughout |
+| 2 | **747 buffet onset / nonlinear C_L** | **SPLIT, session 25 — half of it was already held.** The buffet-onset BOUNDARY is on `refs/NASA-CR-114494.pdf` p. 2.0-38, the same sheet session 21 digitised `C_Lmax` from, with revised data in its §19: not an acquisition, a digitisation. The nonlinear lift curve is not published there or anywhere reachable, so the ±g asymmetry stays structurally impossible. **Acquire nothing; digitise the second curve** |
 | 3 | **MIL-F-8785C Fig. 7**, digitised | **DOCUMENT ACQUIRED session 25** (`refs/MIL-F-8785C.pdf`, free, everyspec.com). The digitisation of Fig. 7 is still to do; JSBSim's independent transcription says to expect ≈4.82 m/s at 37,000 ft on the severe curve, which makes the reading a check rather than a discovery. **Arriving already closed something else**: §3.7.1.2 p. 47 turns both Dryden spectral forms from second-hand into cited |
 | 3 | **Yoshimura 2023 figshare dataset (21152203)** | **DOWNLOADING session 25** — CC BY 4.0, `data.tar`, 17.9 GB, md5 `d23cbb3c…`, to `UROP/yoshimura-figshare-21152203/` outside the repo. A published LES CAT wind field: the first field in this project not identified from the aircraft's own accelerations. **It does NOT carry a recorded acceleration history** — the three onboard records and the PIREP are withheld under confidentiality — so it does not unblock the observed half of the spectral protocol, which is what this row used to claim |
 | 4 | **Bach & Parks 1987**, J. Aircraft 24(11) | the last unmeasured term in the input uncertainty; a good substitute already holds |
@@ -3160,7 +3177,7 @@ bug to fix.
 | # | Document | Found? | What the search established |
 |---|---|---|---|
 | 1 | DC-10 cruise derivative set | **no** | Not in the open literature. Heffley's own library — the source of CR-2144 — has no DC-10, and its other compilation, CR-96008, is 1969, before the type flew. Every hit was the winglet programme (NTRS 19850002628, 19870008261), which reports that winglets *did not change* the stability characteristics and therefore prints no baseline table. This is the highest-value item and it is the one nobody is giving away |
-| 2 | 747 buffet onset / nonlinear `C_L` | **no** | The open 747 buffet literature is the **Shuttle Carrier Aircraft**: 0.03- and 0.046-scale tail-buffet wind-tunnel tests (NTRS 19750025089, 19770003191). That is the orbiter's wake on the empennage, not wing buffet onset at cruise — **the wrong buffet**, and quoting it would be worse than having nothing. NASA TN D-7131, whose title promises "Maneuver and Buffet Characteristics", is fighters |
+| 2 | 747 buffet onset / nonlinear `C_L` | **no — and it turned out half of it was on the shelf** | **The boundary is held**: `refs/NASA-CR-114494.pdf` p. 2.0-38 is *"LIFT COEFFICIENT — BUFFET BOUNDARY AND C_Lmax"* and carries an *initial buffet boundary* curve beside the `C_Lmax` curve session 21 digitised off the same sheet. The web search was looking for something the folder already had. What is genuinely absent is the NONLINEAR LIFT CURVE, and the open 747 buffet literature is the **Shuttle Carrier Aircraft**: 0.03- and 0.046-scale tail-buffet wind-tunnel tests (NTRS 19750025089, 19770003191). That is the orbiter's wake on the empennage, not wing buffet onset at cruise — **the wrong buffet**, and quoting it would be worse than having nothing. NASA TN D-7131, whose title promises "Maneuver and Buffet Characteristics", is fighters |
 | 3 | **MIL-F-8785C Fig. 7** | **YES, free** | The specification itself is public at everyspec.com, and DTIC's Background Information and User Guide (ADA119421) is on archive.org. **And an independent transcription already exists**: JSBSim's `FGWinds.cpp` carries the table under the comment *"this is Figure 7 from p. 49 of MIL-F-8785C"*, values in **ft/s**, rows a probability-of-exceedance index 1–7 with *"3=light, 4=moderate, 6=severe"* |
 | 4 | Yoshimura figshare **21152203** | **YES — but not for what it was named for** | CC BY 4.0, one file `data.tar`, **17,942,056,960 bytes (17.9 GB)**: LES outputs at dx = 500/250/70/35 m, the flight-simulation code and its outputs, GrADS control and script files. **The three onboard flight records and the JAL PIREP are excluded by confidentiality agreement** — the paper says so and the dataset page repeats it |
 
@@ -3229,6 +3246,31 @@ is: **ask what the held papers contain, not only what they were fetched for.** S
 took TM-102186's two-number band and moved on. Session 24 inferred the `v`/`w` spectral
 identity that MIL-F-8785C prints. Both were right; both left something on the table that a
 second reading found.
+
+**A third reading found a third one, and it changes the shape of phase 3.** The plan's
+item 2 is "747 buffet onset / nonlinear `C_L`". `refs/NASA-CR-114494.pdf` p. 2.0-38 is
+titled *"LIFT COEFFICIENT — BUFFET BOUNDARY AND C_Lmax"* and draws **two** curves against
+Mach. Session 21 digitised the upper one — §4's `CL_MAX(M)` table cites that exact page —
+and left the *initial buffet boundary* beside it untouched, with the sheet's own pointer to
+§19 for revised data. **The web search in this session was looking for a document the
+folder already held.**
+
+**So phase 3's premise was wrong about three of its four items, and the corrected list is
+much shorter:**
+
+| Plan item | What it actually is |
+|---|---|
+| DC-10 cruise derivative set | **the only genuine acquisition.** Not in the open literature |
+| 747 buffet onset | **held** — CR-114494 p. 2.0-38's second curve, plus §19. The *nonlinear* curve is unreachable and stays a §5 impossibility |
+| MIL-F-8785C Fig. 7 | **held** — free, fetched this session |
+| Yoshimura figshare | **obtainable, but not for the stated reason.** The recorded trace it was wanted for is TM-102186 Fig. 6, held since session 23 |
+
+**Three digitisations and one acquisition**, where the plan wrote four acquisitions. Every
+one of the three is a figure in a PDF already on disk, and each has a stated difficulty
+rather than an assumed one — Fig. 7 is a rotated scan, TM-102186 Fig. 6 is a dense
+oscillatory trace at low print resolution, and the buffet boundary is the easiest of the
+three because it is a smooth single-valued curve of exactly the kind session 21 has already
+done twice on that same sheet.
 
 **Suite: 788 → 806 passed, 1 skipped.** Twelve unit checks on the estimators, all against
 signals whose answer is closed-form, and six on the flown result — including a still-air
