@@ -33,7 +33,9 @@ from atisim.units import FT2M, RAD2DEG
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from vortex_compare import atisim_run, partial_field_model  # noqa: E402
 
-CASES = [("cimarron", "wingrove"), ("hannibal", "wingrove"), ("morton", "wingrove")]
+# (case, radius_source). One run per case since session 26; `radius_source`
+# names the paper the parameters came from, not which of two radii was flown.
+CASES = [("cimarron", "wingrove"), ("hannibal", "parks"), ("morton", "parks")]
 
 # Wingrove & Bach p. 755, the only case with a published per-case load pair.
 CIMARRON_DFDR = {"dn_plus": +0.73, "dn_minus": -1.20}

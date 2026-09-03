@@ -245,50 +245,51 @@ Arrays are linear superposition. Identified cases, both DC-10s near the tropopau
 Parks checks that ratio against Scorer's theoretical 2.7 — which is what turned the array
 spacing from a free parameter into a cited one.
 
-> **~~Note a source conflict:~~ RESOLVED, session 23.** Wingrove & Bach 1994 Fig. 4 gives
-> Hannibal's core diameter as 1000 ft; Parks 1985 as transcribed gives r₀ = 600 ft, i.e.
-> **1200 ft**. Two further documents now settle it in favour of **500 ft**:
+> **~~Note a source conflict:~~ ~~RESOLVED, session 23 in favour of 500 ft.~~
+> **REVERSED, SESSION 26: PARKS IS IN HAND AND THE TABLE ABOVE IS HIS.**
 >
-> - **Mehta 1987** fits this exact encounter and converges to r₀ = 500.5 ft, V₀ = 86.8 ft/s.
-> - **TM-102186** states it in prose: "Each vortex has a diameter of 1,000 ft and a
->   circumferential velocity of 87 ft/sec."
-> **A first reading of this said 600 ft was a pre-fit guess mistaken for a result — Mehta's
-> manual startup estimate is exactly 600 ft. That reading is wrong, and Parks' own Scorer
-> check is what kills it:**
+> The 500 ft reading is real and is Wingrove & Bach 1994 Fig. 4's, which gives this vortex
+> a **1000 ft diameter**. Session 23 adopted it on the reasoning that Fig. 4 was the source
+> actually held while "Parks 1985 has never been obtained". Parks 1985 has now been
+> obtained — J. Aircraft **22**(2) 124–129, DOI 10.2514/3.45095 — and says r₀ = 600 ft
+> with V₀ = 85 ft/s and 3500 ft of spacing, p. 127.
 >
-> ```
-> 3500 ft spacing / 1200 ft diameter = 2.917   and Parks quotes 2.92
-> 3500 ft spacing / 1000 ft diameter = 3.500   which he does not
-> ```
+> **His abstract settles radius-versus-diameter without any inference.** p. 124: *"the
+> vortex cores had diameters in the range of 900 to 1200 ft with tangential velocities in
+> the range of 70 to 85 ft/s"* — 900 = 2×450 and 1200 = 2×600. Session 22 had to deduce
+> that Fig. 4's column was a diameter from Morton happening to agree; the primary source
+> states it.
 >
-> Parks' radius, spacing and published ratio are **self-consistent to three figures at
-> 600 ft**. A transcription error would have broken that. So 600 ft is his genuine
-> identified value and the transcription is faithful.
+> **And the Scorer check reads differently from the paper than from memory.** p. 129 gives
+> Scorer's ratio as *"of the order of 2.7"* and says that for these two cases *"the ratio
+> of spacing to core diameter ranged from about 2.9 to 3.5"* — **a range across both
+> cases**. This document previously said "Parks quotes 2.92"; he does not. 2.92 is our
+> arithmetic on his Hannibal numbers, and that it lands inside his printed range is the
+> check. It reproduces at 600 ft and does not at 500 ft, where Hannibal would give 3.50 and
+> the lower end of his range would be unreachable.
 >
-> **What the two new sources establish is narrower and more useful: these are two fits of
-> one encounter, and 500 ft is the later one.** Parks was presented as AIAA 84-0270
-> (January 1984); Mehta as AIAA 84-2083 (August 1984), citing Parks, refitting the same
-> data with five vortices and a documented cost history. ~~(482 → 214).~~ **Session 23c:
-> that pairing was this document making TM-102186's own mistake.** 482 is the cost of
-> Mehta's *manual startup estimate*; the converged series is **355 → 303 → 226 → 214** at
-> n = 2, 3, 4, 5. Quoting a startup value beside a converged one as a single "history" is
-> exactly the Schultz Table 1 error §5 flags. Now separated in code as
-> `wind.MEHTA_COST_STARTUP` and `wind.MEHTA_COST`. TM-102186 then reports
-> Mehta's converged numbers. 600 ft is not an error to correct — it is an earlier answer to
-> supersede, and **Parks' Scorer ratio belongs to it**, which is why that check no longer
-> reproduces at the radius this project flies.
+> **~~What remains a hybrid, deliberately.~~ THE HYBRID IS GONE.** From session 22 to 25
+> `PARKS_CASES["hannibal"]` paired Fig. 4's *radius* (500 ft) with Parks' *strength*
+> (85 ft/s) and Parks' *spacing* (3500 ft) — a vortex no paper states, kept because §4
+> baselines sat downstream of it. Session 26 restored Parks' triple and re-measured every
+> baseline that moved rather than leaving the hybrid in place; `docs/ASSUMPTIONS.md` **E12**
+> carries the four lineages and what the disagreement is worth.
 >
-> **Nothing rescues the Scorer check at either radius.** Mehta's five cores sit at
-> perpendicular spacings of 5179, 5695, 3522 and 7562 ft, so his own array's
-> spacing-to-diameter ratios run **3.5 to 7.6**. A uniform billow train is a Parks-shaped
-> idealisation of a field that is not uniform.
+> **What the correction cost, and it is in the uncomfortable direction.** JSBSim's Hannibal
+> peak-to-peak `n_z` falls from 1.8969 g to **1.8162 g**, i.e. from 70.3% to **67.3%** of
+> the recorded 2.70 g. A solid-body core has `dw/dx = V₀/r₀`, so a larger core at the same
+> tangential velocity is a *gentler* gradient. **The load shortfall §5 records got worse.**
 >
-> **What remains a hybrid, deliberately.** `PARKS_CASES["hannibal"]` pairs Fig. 4's
-> *radius* (500 ft) with Parks' *strength* (85 ft/s); Mehta and TM-102186 both pair 500 ft
-> with 87. No single source states the pair in use. It is left alone because §4 baselines
-> sit downstream of it; the coherent single-source pair is `wind.MEHTA_HANNIBAL_*`, flown
-> beside it, and the field is exactly linear in `V₀` so the whole spread is **2.1%**
-> (86.8 against 85; TM-102186's rounded 87 makes it 2.35%).
+> **Both cases are DC-10s** — p. 127 and p. 128 — which was not previously recorded and
+> doubles what a DC-10 derivative set buys: one set serves both validation cases.
+>
+> **The two fits are not equally good, and Parks says so.** Case 1 shows *"reasonably good
+> agreement"*; case 2 *"some agreement, but not as good as that shown previously for case
+> 1"*, which he attributes to *"strong mountain wave activity which influences the
+> short-period wind pattern"*. Morton therefore carries a contaminant in exactly the band a
+> vortex-passage comparison measures. **Quote Hannibal as the primary case and Morton as
+> support**, and say which when they disagree. `wind.PARKS_FIT_QUALITY` carries both
+> assessments.
 >
 > **The array spacing is confirmed, and its convention identified.** Mehta's two
 > core-penetrating vortices are 4,104 ft apart *along the flight path*. The vortex lines
@@ -3028,33 +3029,30 @@ source exactly. A smoother interpolant would agree with the source less.
 
 ## 8. Open questions
 
-- ~~**Hannibal's core radius: 500 ft or 600 ft?**~~ **ANSWERED, session 23 — 500 ft.**
-  (This entry also described `PARKS_CASES` as carrying 600 ft, which had been stale since
-  session 22 moved it to 500.) Two documents settle it independently of Wingrove & Bach
-  1994 Fig. 4: **Mehta 1987** fits this exact encounter and converges to r₀ = 500.5 ft,
-  V₀ = 86.8 ft/s, and **TM-102186** states "a diameter of 1,000 ft and a circumferential
-  velocity of 87 ft/sec". Three sources now agree.
+- ~~**Hannibal's core radius: 500 ft or 600 ft?**~~ **CLOSED, session 26 — 600 ft, on the
+  paper that identified it.** Parks et al. 1985 is now held: J. Aircraft **22**(2) 124–129,
+  DOI 10.2514/3.45095, p. 127 — r₀ = 600 ft, V₀ = 85 ft/s, spacing 3500 ft, and an abstract
+  giving core **diameters** of 900–1200 ft that removes the radius-versus-diameter question
+  entirely.
 
-  **It is a supersession, not a correction — and an earlier session-23 reading that
-  called 600 ft a "pre-fit guess" was wrong.** Parks' Scorer check settles it: 3500/1200 =
-  2.917 against his quoted 2.92, self-consistent to three figures. 3500/1000 = 3.500,
-  which he does not quote. A transcription error would have broken that consistency, so
-  **600 ft is Parks' genuine identified value.** Mehta then refits the same data with five
-  vortices (converged cost 355 at n = 2 down to 214 at n = 5; the 482 this entry used to
-  quote is his *manual startup* estimate, separated in session 23c) and converges to
-  500.5 ft; TM-102186 reports Mehta's answer. Parks January 1984, Mehta August 1984
-  citing Parks.
+  **Session 23 answered this the other way and the reasoning is worth keeping**, because it
+  was sound on what it had. It read Mehta 1987's converged 500.5 ft and TM-102186's "1,000 ft
+  diameter" as two independent confirmations of Fig. 4, and Parks as an unretrievable
+  transcription. Two of those three premises survive: Mehta's refit is real and better
+  converged, and TM-102186 does report it. The third does not — Parks is retrievable, says
+  600 ft, and the "three sources now agree" was really **one later fit reported three times**.
 
-  **So the Scorer ratio belongs to the superseded radius**, which is exactly why
-  `test_the_spacing_to_core_diameter_ratio_and_what_session_22_cost_it` must keep recording
-  the loss rather than being retuned. And nothing rescues that check at either radius:
-  Mehta's own five cores give spacing-to-diameter ratios of 3.5 to 7.6, so a *uniform*
-  billow train is a Parks-shaped idealisation of a field that is not uniform.
+  **What is left is not a resolved question but a carried disagreement**, and it now lives in
+  `ASSUMPTIONS.md` **E12** with all four lineages and what the spread is worth. The project
+  flies Parks' triple in `PARKS_CASES` and Mehta's five-core field in `MEHTA_HANNIBAL_*`, and
+  never crosses them. The hybrid that existed from session 22 to 25 — Fig. 4's radius with
+  Parks' strength and spacing — is gone.
 
-  **Still worth obtaining.** Parks et al. 1985 has never been read here, so the 600 ft and
-  the 2.92 both remain second-hand — self-consistent second-hand, which is much stronger
-  than before, but not a reading of the document. J. Aircraft **22**(2), 124–129
-  (DOI 10.2514/3.45095).
+  **The correction cost 4.26% of the headline peak-to-peak load, downward**, taking JSBSim's
+  Hannibal from 70.3% to 67.3% of the recorded 2.70 g. `dw/dx = V₀/r₀` inside a solid-body
+  core, so a larger core at fixed V₀ is a gentler gradient. It makes §5's shortfall worse,
+  which is the direction that argues it was not chosen for convenience.
+
 
 - **New, session 23d: why do the two engines choose different cores on the array?**
   On a single Parks core AtiSim and JSBSim put their load extremes within two metres of

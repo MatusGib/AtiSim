@@ -16,9 +16,12 @@ from atisim.aircraft import REGISTRY
 from atisim.units import FT2M
 
 EXPECTED_KEYS = {
+    # ONE run per case, from the ONE paper that states its parameters.
+    # `radius_source` names that paper. Until session 26 every case was flown at
+    # BOTH radii; see the generator's CASE_SOURCE comment for why that stopped.
     ("cimarron", "wingrove"),
-    ("hannibal", "wingrove"), ("hannibal", "parks"),
-    ("morton", "wingrove"), ("morton", "parks"),
+    ("hannibal", "parks"),
+    ("morton", "parks"),
     # Session 23d. A different KIND of encounter from the four above: Mehta's
     # converged FIVE-vortex array with an oblique traverse, which is the field
     # the headline atisim result flies. Several tests below characterise a
@@ -35,7 +38,12 @@ def reference():
 
 
 def test_every_expected_encounter_is_present(reference):
-    """Cimarron has no `parks` run because Parks 1985 does not contain it."""
+    """One run per case, and `radius_source` names the paper it came from.
+
+    Cimarron is `wingrove` because Parks 1985 does not contain it; Hannibal and
+    Morton are `parks` because he identifies both and states a coherent triple
+    for each. A second run per case would have to cross two papers to exist.
+    """
     assert set(reference.encounters) == EXPECTED_KEYS
 
 
@@ -56,7 +64,7 @@ def test_each_case_flew_the_airframe_whose_band_contains_it(reference):
             f"its band of [{low / FT2M:.0f}, {high / FT2M:.0f}] ft"
         )
     assert reference.encounters[("cimarron", "wingrove")].aircraft == "boeing737"
-    assert reference.encounters[("hannibal", "wingrove")].aircraft == "boeing747_jsbsim"
+    assert reference.encounters[("hannibal", "parks")].aircraft == "boeing747_jsbsim"
 
 
 def test_the_gradient_was_not_injected_into_jsbsim(reference):
@@ -127,9 +135,9 @@ def test_far_field_preconditioning_is_bounded_and_is_not_trim_decay(reference):
     *** This test was first written as a 0.5% "drift" bound, on the assumption
     that fixed-control flight SHEDS airspeed and that any loss was a trim
     imbalance to be minimised. Measurement says otherwise and the test was
-    changed to match. *** Along hannibal/wingrove the true airspeed runs
-    236.055 -> 236.334 -> 236.814 -> 236.942 -> 237.632 m/s: it RISES,
-    monotonically, and it rises fastest as the core is approached.
+    changed to match. *** Along hannibal/parks the true airspeed RISES
+    monotonically from 236.055 m/s, and it rises fastest as the core is
+    approached.
 
     That is the vortex's own 1/r far field doing work on the aircraft, not the
     engine failing to hold trim. It is physical, it is present in BOTH engines,
@@ -161,12 +169,13 @@ def test_far_field_preconditioning_is_bounded_and_is_not_trim_decay(reference):
     # scripts/vortex_compare.py reports the Mehta case from the window edge.
     mehta = reference.encounters[("mehta", "mehta")].entry_speed_drift()
     assert 0.02 < mehta < 0.03, f"array preconditioning moved to {mehta:.2%}"
-    # Hannibal's two runs are now the same radius, so they must precondition
-    # identically. Before session 22 this asserted an ORDERING -- the 600 ft
-    # core preconditioning more than the 500 ft one, which it did -- and that
-    # ordering was the evidence the effect really is the far field. What
-    # survives of it is the equality.
-    assert worst[("hannibal", "parks")] == worst[("hannibal", "wingrove")]
+    # Hannibal's preconditioning at Parks' own 600 ft core, recorded so a change
+    # in the field or the lead-in is visible. It was 0.70% here; the ORDERING
+    # this once asserted -- a 600 ft core preconditioning MORE than a 500 ft one,
+    # which was the evidence that the effect really is the far field -- needed
+    # two runs of one case at two radii, and those crossed two papers to exist.
+    # The evidence is in the session-22 history; the bound is here.
+    assert worst[("hannibal", "parks")] == pytest.approx(0.00703, abs=1e-4)
 
 
 def test_the_encounter_is_a_single_core_as_fig_4_draws_it(reference):
@@ -196,41 +205,27 @@ def test_the_encounter_is_a_single_core_as_fig_4_draws_it(reference):
     assert int(np.sum(np.diff(np.sign(w)) != 0)) > 1
 
 
-def test_both_sources_now_agree_on_every_case_so_every_pair_is_identical(reference):
-    """After session 22 the two radius sources give the same number everywhere.
+def test_hannibal_flies_parks_own_radius(reference):
+    """The reversal of session 22, pinned where the runs can see it.
 
-    Morton always agreed -- Fig. 4's 900 ft diameter halves to PARKS_CASES'
-    450 ft. Hannibal did not, until session 22 adopted Fig. 4's 500 ft there
-    too. So the `radius_source` dimension is now degenerate, and every pair of
-    runs is the same case flown twice.
+    Parks et al. 1985 was obtained in session 26 and states r0 = 600 ft with
+    V0 = 85 ft/s and 3500 ft of spacing -- one coherent identification. The
+    project flew 500 ft from session 22 to 25, taken from Wingrove & Bach Fig.
+    4's 1000 ft diameter while keeping Parks' strength and spacing: a vortex no
+    paper states.
 
-    That is worth keeping rather than deleting, for two reasons. It records that
-    two sources were consulted and what each said. And a pair of runs that must
-    be bit-identical is a determinism check on the whole harness -- generator,
-    frozen XML, parser and analysis -- which nothing else here provides.
+    The frozen XML must have been regenerated at 600 ft. One still carrying 500
+    would make every number downstream describe a vortex the project no longer
+    flies, and nothing else here would notice.
     """
-    for case in ("hannibal", "morton"):
-        a = reference.encounters[(case, "wingrove")]
-        b = reference.encounters[(case, "parks")]
-        assert a.values["r0"] == b.values["r0"], case
-        assert a.load_increments() == b.load_increments(), case
-        assert a.pitch_increments() == b.pitch_increments(), case
-        assert a.core_response() == b.core_response(), case
+    enc = reference.encounters[("hannibal", "parks")]
+    assert enc.values["r0"] == pytest.approx(600.0 * FT2M)
+    assert enc.values["r0"] == pytest.approx(wind.PARKS_CASES["hannibal"]["r0"])
+    # The companion: it is NOT Fig. 4's radius, and the two dicts still differ.
+    assert enc.values["r0"] != pytest.approx(
+        wind.WINGROVE_FIG4_CASES["hannibal"]["r0"])
+    # Morton is where the papers agree, so its run cannot distinguish them.
+    morton = reference.encounters[("morton", "parks")]
+    assert morton.values["r0"] == pytest.approx(
+        wind.WINGROVE_FIG4_CASES["morton"]["r0"])
 
-
-def test_hannibal_now_flies_fig_4s_radius(reference):
-    """The decision of session 22, pinned where the runs can see it.
-
-    Fig. 4 gives Hannibal a 1000 ft core diameter, so 500 ft of radius; the
-    superseded transcription from Parks 1985 said 600 ft. The reference must
-    have been regenerated at the new value -- an XML still carrying 600 ft would
-    make every number downstream describe a vortex the project no longer flies,
-    and nothing else here would notice.
-    """
-    for source in ("wingrove", "parks"):
-        enc = reference.encounters[("hannibal", source)]
-        assert enc.values["r0"] == pytest.approx(500.0 * FT2M), source
-        assert enc.values["r0"] == pytest.approx(
-            wind.PARKS_CASES["hannibal"]["r0"]
-        ), source
-        assert enc.values["r0"] != pytest.approx(wind.HANNIBAL_R0_SUPERSEDED)

@@ -115,12 +115,13 @@ class VortexArray(NamedTuple):
     core, so N is fixed by their shape -- changing the count recompiles, which
     is correct, and vmapping over encounter geometry batches these leaves.
 
-    Identified values, both DC-10s near the tropopause:
-      Case 1, Hannibal MO, 37,000 ft: r0 = 500 ft, V0 = 85 ft/s, spacing 3500 ft
+    Identified values, both DC-10s near the tropopause, all six numbers from
+    Parks et al. 1985 pp. 127-128 and none of them crossed with another paper:
+      Case 1, Hannibal MO, 37,000 ft: r0 = 600 ft, V0 = 85 ft/s, spacing 3500 ft
       Case 2, Morton WY,   39,000 ft: r0 = 450 ft, V0 = 70 ft/s, spacing 3200 ft
 
-    Hannibal's radius is Wingrove & Bach 1994 Fig. 4's, NOT Parks'; the strength
-    and both spacings are Parks pp. 127-128. See PARKS_CASES for why.
+    See PARKS_CASES for the source, and ASSUMPTIONS.md E12 for the 500 ft
+    reading this project flew from session 22 to 25 and no longer does.
     """
 
     north: Array  # (N,) m, NED north of each core
@@ -142,94 +143,79 @@ class VortexArray(NamedTuple):
     sin_dpsi: Array = 0.0
 
 
-# The two cases Parks et al. 1985 identifies, J. Aircraft 22(2) pp. 127-128.
+# The two cases Parks et al. 1985 identifies.
+#
+# Source: E. K. Parks, R. C. Wingrove, R. E. Bach Jr., R. S. Mehta,
+# "Identification of Vortex-Induced Clear Air Turbulence Using Airline Flight
+# Records", J. Aircraft 22(2), Feb 1985, pp. 124-129, DOI 10.2514/3.45095.
+# Case 1 p. 127, case 2 p. 128. *** OBTAINED SESSION 26. ***
+#
 # They live here rather than in a script because more than one entry point needs
 # them, and a sourced number restated in two places is a number that will
 # eventually disagree with itself.
 #
-# *** HANNIBAL'S RADIUS IS NOT PARKS' -- IT IS WINGROVE & BACH Fig. 4's. ***
-# Decided session 22, and the citation moves with the number rather than being
-# left pointing at a document that says something else.
+# *** EACH CASE IS ONE PAPER'S COHERENT TRIPLE. DO NOT CROSS THEM. ***
 #
-# This entry read 600 ft, attributed to Parks 1985, until Wingrove & Bach 1994
-# was obtained. That paper's Fig. 4 gives the same Hannibal vortex a 1000 ft
-# core DIAMETER -- a 500 ft radius. The two disagree by 20% and Parks 1985 has
-# never been retrieved, so the conflict could not be arbitrated on the documents.
-# It was resolved in favour of the source actually held and read:
+#     Case 1  Hannibal, MO   3 April 1981   DC-10   37,000 ft
+#             r0 = 600 ft,  V0 = 85 ft/s,  spacing 3500 ft
+#     Case 2  Morton, WY    16 July 1982    DC-10   39,000 ft
+#             r0 = 450 ft,  V0 = 70 ft/s,  spacing 3200 ft
 #
-#   - Fig. 4 is a table of identified values in a paper that IS in hand, whose
-#     Morton row (900 ft diameter -> 450 ft radius) reproduces this dict's
-#     Morton radius to the digit. That agreement is what establishes the column
-#     as a diameter, and it makes Fig. 4 a checked source rather than a guess.
-#   - The 600 ft was a transcription from a paper nobody here has read.
+# The radius, the strength and the spacing of a case are ONE identification.
+# Taking the radius from one paper and the strength from another produces a
+# vortex no source states, and this dict carried exactly that from session 22 to
+# session 25: Wingrove Fig. 4's 500 ft radius paired with Parks' 85 ft/s and
+# Parks' 3500 ft spacing, under a comment declaring the hybrid deliberate. It
+# was not defensible and it is gone. The discrepancy it was straddling is REAL
+# and is recorded in `docs/ASSUMPTIONS.md` E12 rather than averaged away.
 #
-# The superseded value is recorded rather than erased: Parks 1985 as transcribed
-# gave r0 = 600 ft, and if that document is ever retrieved this is the line to
-# revisit. `WINGROVE_FIG4_CASES` below still holds Fig. 4's numbers separately,
-# so the two sources remain distinguishable even though they now agree.
+# THE ABSTRACT SETTLES RADIUS-VERSUS-DIAMETER FROM THE PRIMARY SOURCE. p. 124:
+# "the vortex cores had diameters in the range of 900 to 1200 ft with tangential
+# velocities in the range of 70 to 85 ft/s". 900 = 2 x 450 and 1200 = 2 x 600,
+# so `r0` is unambiguously a RADIUS and Hannibal's is 600 ft. Session 22 had to
+# INFER that from Morton happening to agree with Fig. 4; the paper states it.
 #
-# *** SESSION 23: THE DISAGREEMENT IS REAL, BOTH TRANSCRIPTIONS ARE FAITHFUL,
-# AND THEY ARE TWO DIFFERENT FITS OF ONE ENCOUNTER. ***
+# WHAT THE SCORER CHECK ACTUALLY SAYS, now that it can be read rather than
+# reconstructed. p. 129: Scorer's calculated ratio of spacing to core diameter
+# is "of the order of 2.7", and "for the two cases discussed in this paper, the
+# ratio of spacing to core diameter ranged from about 2.9 to 3.5".
 #
-# Session 23 first concluded that 600 ft was a pre-fit guess mistaken for a
-# result -- Mehta's manual startup estimate is exactly 600 ft, which made a
-# tidy story. THAT WAS WRONG, and the arithmetic that kills it is Parks' own
-# Scorer check:
+#     Hannibal  3500 / 1200 = 2.92
+#     Morton    3200 /  900 = 3.56
 #
-#     3500 ft spacing / 1200 ft diameter = 2.917,  and Parks quotes 2.92.
-#     3500 ft spacing / 1000 ft diameter = 3.500,  which he does not.
-#
-# Parks' radius, his spacing and his published ratio are SELF-CONSISTENT to
-# three figures at 600 ft. A transcription error would have broken that. So
-# 600 ft is Parks' genuine identified value and the transcription is faithful.
-#
-# What the two new sources establish is therefore narrower and more useful:
-#
-#   - Mehta 1987 refits THE SAME ENCOUNTER with five vortices by modified
-#     Newton-Raphson, cost falling 482 -> 214, and converges to r0 = 500.5 ft,
-#     V0 = 86.8 ft/s. His startup estimate was 600 ft, read off the data by
-#     inspection; the fit moved it.
-#   - NASA TM-102186 p. 3-4 reports Mehta's converged answer in words: "a
-#     diameter of 1,000 ft and a circumferential velocity of 87 ft/sec".
-#
-# Parks was presented as AIAA 84-0270 (January 1984) and Mehta as AIAA 84-2083
-# (August 1984), and Mehta cites Parks. So the ordering is: Parks fits it,
-# Mehta refits it with more vortices and a documented cost history, TM-102186
-# reports Mehta's numbers.
-#
-# *** THE PRACTICAL CONSEQUENCE. *** 500 ft is the later and better-converged
-# value and is what this project flies. 600 ft is not an error to be corrected
-# but an earlier answer to be superseded, and Parks' Scorer ratio belongs to
-# it -- which is why that check no longer reproduces here and why
-# test_wind.py::test_the_spacing_to_core_diameter_ratio_and_what_session_22_cost_it
-# must keep recording the loss rather than being retuned.
-#
-# Nothing about this rescues the Scorer check at either radius, and Mehta makes
-# that plain: his five cores sit at perpendicular spacings of 5179, 5695, 3522
-# and 7562 ft, so his own array's spacing-to-diameter ratios run 3.5 to 7.6.
-# A uniform KH billow train is a Parks-shaped idealisation of a field that is
-# not uniform.
-#
-# *** WHAT IS STILL A HYBRID, AND DELIBERATELY LEFT SO. *** This entry now
-# pairs Fig. 4's RADIUS (500 ft) with Parks' STRENGTH (85 ft/s). Mehta and
-# TM-102186 pair 500 ft with 87 ft/s, so no single source states the pair
-# below. It is left alone because it is upstream of frozen PROJECT.md section 4
-# baselines and moving it silently would invalidate them. The coherent
-# single-source pair lives in MEHTA_HANNIBAL_1987 and is flown beside this one;
-# what the 2.1% strength difference costs is MEASURED, in
-# test_wind.py::test_the_mehta_and_parks_hannibal_strengths_bracket_the_load,
-# rather than argued about here.
-#
-# `spacing` is still Parks': Fig. 4 gives core size and strength and says
-# nothing about array spacing, so that number has not moved and cannot.
+# which is that range. *** THE PROJECT PREVIOUSLY WROTE "Parks quotes 2.92". HE
+# DOES NOT *** -- he quotes a range across both cases, and 2.92 is this
+# project's own arithmetic on his Hannibal numbers. The conclusion it was used
+# for survives and is stronger: his radius, his spacing and his published ratio
+# are self-consistent at 600 ft, and are not at 500.
 PARKS_CASES: dict[str, dict[str, float]] = {
-    "hannibal": {"r0": 500.0 * FT2M, "v0": 85.0 * FT2M, "spacing": 3500.0 * FT2M},
+    "hannibal": {"r0": 600.0 * FT2M, "v0": 85.0 * FT2M, "spacing": 3500.0 * FT2M},
     "morton": {"r0": 450.0 * FT2M, "v0": 70.0 * FT2M, "spacing": 3200.0 * FT2M},
 }
 
-# What Hannibal's radius was before session 22, and where it came from. Kept so
-# the change is visible in the code and not only in the history.
-HANNIBAL_R0_SUPERSEDED = 600.0 * FT2M  # Parks 1985 as transcribed; see above.
+# BOTH CASES ARE DC-10s, and that is worth naming rather than leaving in prose.
+# p. 127, "a DC-10 encountered severe turbulence"; p. 128, "a DC-10 airliner
+# encountered severe turbulence". ONE published derivative set therefore serves
+# BOTH validation cases, which doubles what PROJECT.md section 7's highest-value
+# acquisition buys and was not known when that row was written.
+PARKS_CASE_AIRCRAFT = "DC-10"
+
+# Parks' own assessment of his two fits, and the reason they are NOT equally
+# weighted as validation targets. Case 1, p. 127: "reasonably good agreement".
+# Case 2, p. 128: "some agreement, but not as good as that shown previously for
+# case 1. The problem in modeling the winds in case 2 appears to be the presence
+# of strong mountain wave activity which influences the short-period wind
+# pattern. This was not the situation in case 1, in which the wave activity was
+# fairly mild in comparison."
+#
+# So Morton's identified field carries a contaminant Hannibal's does not, in
+# exactly the band a vortex-passage comparison measures. Quote Hannibal as the
+# primary case; quote Morton as support, and say this when the two disagree.
+PARKS_FIT_QUALITY: dict[str, str] = {
+    "hannibal": "reasonably good agreement (p. 127)",
+    "morton": "not as good as case 1; mountain-wave contamination of the "
+              "short-period wind pattern (p. 128)",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -254,13 +240,21 @@ HANNIBAL_R0_SUPERSEDED = 600.0 * FT2M  # Parks 1985 as transcribed; see above.
 # thing distinguishing a diameter column from a radius column; without it every
 # core here would risk being a factor of two out with nothing to catch it.
 #
-# ~~*** HANNIBAL DISAGREES, AND THAT IS NOT RESOLVED HERE. ***~~ RESOLVED IN
-# SESSION 23. Fig. 4's 1000 ft diameter is a 500 ft radius, and Mehta 1987's
-# converged fit (500.5 ft) plus TM-102186's prose ("a diameter of 1,000 ft")
-# now agree with it independently. See the PARKS_CASES comment above for why
-# 600 ft is Parks' own earlier fit, superseded rather than mistaken.
-# The core STRENGTH is where the sources now split: Fig. 4 and Parks both say
-# 85 ft/s, Mehta says 86.8 and TM-102186 says 87.
+# *** HANNIBAL DISAGREES WITH PARKS, AND THAT IS A FACT ABOUT THE LITERATURE,
+# NOT A THING TO RESOLVE HERE. *** Fig. 4's 1000 ft diameter is a 500 ft radius
+# against Parks' own 600. Session 23 read that as Parks being superseded and
+# moved PARKS_CASES to 500 ft; session 26 obtained Parks and reversed it, because
+# a dict named for a paper must carry that paper's numbers. Both readings are
+# kept, in the two dicts, and ASSUMPTIONS.md E12 holds the discrepancy.
+#
+# THE LINEAGES ARE THE THING TO KEEP STRAIGHT, and they do not interleave:
+#
+#   Parks 1985          r0 600 ft   V0 85 ft/s    spacing 3500 ft
+#   Wingrove Fig. 4     r0 500 ft   V0 85 ft/s    (no spacing published)
+#   TM-102186 prose     r0 500 ft   V0 87 ft/s    spacing 3400 ft
+#   Mehta 1987 (5-core) r0 500.5 ft V0 86.8 ft/s  five published core positions
+#
+# Never pair a radius from one row with a strength from another.
 #
 # CIMARRON APPEARS ONLY HERE. Parks identifies two cases; this paper adds a
 # third, and it is the one with published time histories (Fig. 3 and Fig. 6a)

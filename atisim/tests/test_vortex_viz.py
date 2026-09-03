@@ -87,11 +87,22 @@ def pushdown():
 # ORIGINALLY captured from `fly` BEFORE it was changed to log the SimState it
 # flew, as the guard on that change, at 2.239956221700959 / -1.2352174348304876.
 # Re-captured session 22 when Hannibal's core radius moved from 600 ft to
-# Fig. 4's 500 ft: the encounter itself changed, so a pin taken at the old
-# radius could only ever fail. What that costs is worth stating plainly -- these
-# numbers no longer certify the logging refactor, because they were taken after
-# it. What they still do is hold the rollout arithmetic-exact from here on.
-FIG8_VORTEX = (2.1601976247303707, -1.260600307461945)
+# Fig. 4's 500 ft, at 2.1601976247303707 / -1.260600307461945 -- and that cost
+# the pin its meaning, because numbers taken AFTER the logging refactor cannot
+# certify it.
+#
+# *** SESSION 26 RESTORED PARKS' OWN 600 ft AND THE ORIGINAL PIN CAME BACK
+# BIT-FOR-BIT. *** Not to a tolerance: 2.239956221700959 and
+# -1.2352174348304876, the exact doubles captured before the refactor existed.
+# That is a stronger statement than any test here was written to make. It says
+# the session-22 change and its session-26 reversal moved the CORE RADIUS and
+# nothing else -- through the trim solve, the rollout, the logging path and the
+# windowing -- because a single altered bit anywhere in that chain would have
+# landed somewhere other than exactly where it started.
+#
+# So this constant certifies the logging refactor again, which the comment above
+# had recorded as permanently lost.
+FIG8_VORTEX = (2.239956221700959, -1.2352174348304876)
 FIG8_VORTEX_BEFORE_LOGGING = FIG8_VORTEX  # old name, kept for one release
 
 
