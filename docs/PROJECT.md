@@ -4,7 +4,7 @@ A 6-DOF fixed-wing flight-dynamics core in JAX, built as a foundation for turbul
 modelling. This document is the standing record: what exists, what is validated, what is
 known-broken, and what happens next.
 
-**Last updated:** session 25 (response spectra, load exceedance, and where the four phase-3 documents are). This line had been stale at session 18 for six sessions.
+**Last updated:** session 26 (Parks 1985 arrives and reverses the Hannibal radius; the buffet boundary digitised; the wing-loading sign checked).
 
 **To run any of it, see §10.**
 
