@@ -1095,11 +1095,10 @@ def dryden_vertical_field(
 #
 #     Phi_u(Omega) = sigma_u^2 (2 L_u/pi) / (1 + (L_u Omega)^2)
 #
-# WHY THIS IS MORE THAN A TRANSCRIPTION. MIL-F-8785C is not in the folder --
-# PROJECT.md section 3 records only its sigma chart as un-digitised, but the
-# spectral forms are second-hand here too, and the vertical one already was.
-# What can be checked without the document is that the two forms belong to the
-# SAME isotropic field, through the standard relation
+# WHY THIS WAS MORE THAN A TRANSCRIPTION -- AND THE DOCUMENT HAS SINCE ARRIVED.
+# When this was written MIL-F-8785C was not in the folder, so both spectral
+# forms were second-hand and the only available check was that they belong to
+# the SAME isotropic field, through the standard relation
 #
 #     Phi_transverse = 0.5 * (Phi_long - Omega dPhi_long/dOmega)
 #
@@ -1108,6 +1107,18 @@ def dryden_vertical_field(
 # `dryden_spectrum` term for term. `test_lateral.py` verifies it numerically
 # rather than trusting this comment. That check is worth more than the
 # transcription: a wrong pair of forms would almost certainly fail it.
+#
+# *** SESSION 25: `refs/MIL-F-8785C.pdf` is now held, and both forms match
+# section 3.7.1.2 "Turbulence model (Dryden form)", printed p. 47, VERBATIM: ***
+#
+#     Phi_u(Omega) = sigma_u^2 (2 L_u/pi) / [1 + (L_u Omega)^2]
+#     Phi_v(Omega) = sigma_v^2 (L_v/pi) [1 + 3(L_v Omega)^2] / [1 + (L_v Omega)^2]^2
+#     Phi_w(Omega) = sigma_w^2 (L_w/pi) [1 + 3(L_w Omega)^2] / [1 + (L_w Omega)^2]^2
+#
+# The spec prints v and w with identical right-hand sides, which is the source's
+# own statement of what this file inferred from isotropy -- so the inference was
+# right and is now also cited. THE SIGMA CHART (Figure 7, p. 49) IS STILL
+# UN-DIGITISED: the document being held closes the FORMS, not the intensity.
 # ---------------------------------------------------------------------------
 
 

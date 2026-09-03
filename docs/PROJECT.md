@@ -216,7 +216,7 @@ rigid-rotation self-consistency test that found them. **Read it before changing 
 | **Doyle, Jiang, Smith & Grubišić 2011**, *Mon. Wea. Rev.* 139, 3–23, DOI 10.1175/2010MWR3466.1 | **the lee-wave amplitudes** — T-REX Gulfstream V over the Sierra Nevada, IOP 4 primary wave, 6 and 12 m/s crest-to-trough | gives a **tropospheric** wavelength band (20–35 km) and says stratospheric ones are shorter **without a number** — see §5 |
 | **Proctor, Hinton & Bowles 2000**, 9th Conf. Aviation Range & Aerospace Meteorology, paper 7.7, 482–487 | **the F-factor** — Eq. (3) `F = U̇ₓ/g − w/Vₐ`, Eq. (4) for the shear term, Eq. (7) for the **1 km average**, the `F > (T−D)/W` thrust criterion, the 0.1/0.13 thresholds, and F = 0.2–0.36 in real accidents | its thresholds are **low-altitude** (§4.1 bounds the threat below 500 m) **and jet-transport only** — it states the scale and threshold "are yet to be determined" for piston aircraft |
 | **Oseguera & Bowles 1988**, NASA TM-100632 | **the microburst** — Eqs. (5)–(6), an axisymmetric stagnation flow satisfying continuity, with four stated constants (r/R = 1.1212, z_m/z* = 0.22, z*/ε = 12.5, u_max = 0.2357λR) | the example's `R` is legible only in a scanned figure, so the downdraft radius is declared inside the 1–4 km band Wilson et al. use to define a microburst |
-| MIL-F-8785C | **the Dryden vertical spatial PSD and `L_w` = 1750 ft above 2000 ft**, implemented session 23 as `wind.dryden_vertical_field` — a frozen spatial realisation rather than a shaping filter, because `ASSUMPTIONS.md` E3 already commits this project to a frozen field | σ_w is **still** a chart read, not a formula, and is **not** implemented — every use sweeps it and reports what value the result implies. §4's σ_w ≈ 4–5 m/s is an implication, not a validated intensity |
+| **MIL-F-8785C** — **now held, `refs/MIL-F-8785C.pdf`, session 25** (5 Nov 1980, 95 pp., everyspec.com) | **the Dryden spectral forms, first-hand.** §3.7.1.2 "Turbulence model (Dryden form)", printed p. 47, prints all three components, and both implemented forms match it **verbatim** — including that the spec gives `v` and `w` identical right-hand sides, which this project had inferred from isotropy and now cites. Also `L_w` = 1750 ft above 2000 ft | **σ_w is still un-digitised.** Figure 7, *"Turbulence exceedance probability"*, printed p. 49, is confirmed present — a rotated scan, axes RMS turbulence amplitude σ (ft/sec TAS) against altitude, curves 10⁻¹ to 10⁻⁶ banded LIGHT/MODERATE/SEVERE. **Holding the document closed the FORMS, not the intensity**; every use still sweeps σ_w and reports what value the result implies. §4's σ_w ≈ 4–5 m/s is an implication, not a validated intensity |
 | **Caughey, *Introduction to Aircraft Stability and Control*, Cornell MAE 5070 notes, Ch. 5** | an **independent implementation** of CR-2144's 747 power-approach case: dimensional derivatives Eq. (5.51), plant matrix Eq. (5.52), characteristic polynomial (5.53), roots (5.54) | **not an independent dataset** — its Eq. (5.48)–(5.50) cite CR-2144, the same document §IX comes from. Same inputs, different code. Also states V = 279.1 ft/s (M 0.25 at sea level) where Table IX-2's header says 165 KTAS = 278.49 ft/s, a 0.2% difference |
 | **Mehta 1987**, *J. Guidance, Control & Dynamics* 10(1) 27–31 (AIAA 84-2083) | **the only wind field in the project that declares nothing**: the converged five-vortex Hannibal solution — five core positions, `r₀` = 500.5 ft, `V₀` = 86.8 ft/s, ψ = 31°, altitude, bias and trend terms. Also the identification method behind Parks, and the cost at each array size | the fit is to DFDR-derived winds, so it inherits their reconstruction error (bounded by Lester below). States the encounter as **July** 1981 where two NASA documents say April |
 | **Wingrove, Bach & Schultz 1989**, NASA TM-102186 | the Hannibal encounter's **measured** normal acceleration (+1.7 to −1.0 g, gusts ~5 s apart); the vortex-array model in words (1,000 ft diameter, 87 ft/s, 3,400 ft spacing); **Fig. 8's three-aircraft simulation** at V = 150 / 700 / 800 ft/s and the mechanism it states | Fig. 8's exact wind field is not recoverable from the paper, so only orderings and excursion ratios can be compared. **Quotes Schultz 1990's Table 1 *initial estimates* as if they were his converged DFW results** — see §5 |
@@ -2772,8 +2772,8 @@ T2, build T3's foundation on the way*.
 |---|---|---|
 | 1 | a **DC-10 cruise derivative set** | the last remaining explanation for the 32% load shortfall, and the sealed prediction `dc10_does_not_close_the_hannibal_gap`. Every load comparison to date is a 747 flown against a DC-10 record |
 | 2 | **747 buffet onset / nonlinear C_L** | the ±g asymmetry both source papers attribute to buffet, and the negative excursion that has been short throughout |
-| 3 | **MIL-F-8785C Fig. 7**, digitised | whether the background-turbulence explanation is physically available at all; settles `mil_f_8785c_sigma_w_exceeds_the_mehta_ceiling` |
-| 3 | **Yoshimura 2023 figshare dataset (21152203)** | a published LES CAT wind field, and a recorded acceleration history to run the observed half of the spectral protocol against |
+| 3 | **MIL-F-8785C Fig. 7**, digitised | **DOCUMENT ACQUIRED session 25** (`refs/MIL-F-8785C.pdf`, free, everyspec.com). The digitisation of Fig. 7 is still to do; JSBSim's independent transcription says to expect ≈4.82 m/s at 37,000 ft on the severe curve, which makes the reading a check rather than a discovery. **Arriving already closed something else**: §3.7.1.2 p. 47 turns both Dryden spectral forms from second-hand into cited |
+| 3 | **Yoshimura 2023 figshare dataset (21152203)** | **DOWNLOADING session 25** — CC BY 4.0, `data.tar`, 17.9 GB, md5 `d23cbb3c…`, to `UROP/yoshimura-figshare-21152203/` outside the repo. A published LES CAT wind field: the first field in this project not identified from the aircraft's own accelerations. **It does NOT carry a recorded acceleration history** — the three onboard records and the PIREP are withheld under confidentiality — so it does not unblock the observed half of the spectral protocol, which is what this row used to claim |
 | 4 | **Bach & Parks 1987**, J. Aircraft 24(11) | the last unmeasured term in the input uncertainty; a good substitute already holds |
 
 **Phase 3 is entirely acquisition and this project cannot do the acquiring** — the cost is
@@ -3168,6 +3168,25 @@ transcription of a figure is not a digitisation of it, and §3's rule that every
 carries the table it came from exists for exactly this case. The number is recorded here as
 what to *expect*, which is the honest use of it — and it makes the digitisation a check
 rather than a discovery.
+
+**Then both obtainable documents were fetched, and one of them closed something on
+arrival.** `refs/MIL-F-8785C.pdf` (95 pp., 5 Nov 1980) and the 17.9 GB figshare tarball.
+Figure 7 is confirmed on printed p. 49 — *"Turbulence exceedance probability"*, a rotated
+scan whose σ axis reads **RMS TURBULENCE AMPLITUDE, σ (FT/SEC — TAS)**, which independently
+confirms the units JSBSim's transcription uses. The digitisation itself is a session's work
+on a poor scan and is deliberately not attempted in passing; the prediction stays sealed
+until it is done properly.
+
+**What did close, unasked, is the pair of Dryden spectral forms.** §3.7.1.2, printed p. 47,
+prints all three components, and `wind.dryden_spectrum` and
+`wind.dryden_longitudinal_spectrum` match it **verbatim** — including that the spec gives
+`v` and `w` *identical* right-hand sides, which session 24 had inferred from the isotropy
+relation and can now cite. `test_lateral.py` gains a check against the printed formula at
+three arguments chosen so the values are arithmetic rather than a re-typing of the code:
+Ω = 0 pins the factor of 2 on the longitudinal form, LΩ = 1 is where the two forms cross
+exactly, and LΩ = 2 pins the 3 in the numerator against the square in the denominator by
+which form is larger. **Holding the document closed the forms, not the intensity** — and
+the forms were the part nobody had asked about.
 
 **Suite: 788 → 806 passed, 1 skipped.** Twelve unit checks on the estimators, all against
 signals whose answer is closed-form, and six on the flown result — including a still-air
