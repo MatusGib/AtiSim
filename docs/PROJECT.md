@@ -2241,6 +2241,14 @@ sourced range.
 | 2.108 (`mehta_unmodelled_wind`) | 0.1400 | −14.7% | 0.1200–0.2000 | 0.0823 | 300 m altitude, 12.9 m/s (5.4% of V), \|α\| range 3.98° |
 | 4.459 (`mehta_residual_ceiling`) | 0.1700 | +3.6% | 0.1200–0.2400 | 0.1836 | **703 m** altitude, **30.9 m/s (13.1% of V)**, \|α\| range **8.38°** |
 
+**And TM-102186 states this mechanism in words, which the spectrum now measures.** Its
+p. 3-4 discussion of Fig. 8 says the pitch and load variations "are dependent upon the
+relationship between the time span of the vortex traverse and the aircraft's short
+oscillatory period", and explains its three-aircraft ordering by exactly that relationship.
+That is the resonance argument, asserted by the source and never tested here because the
+project had no frequency-domain statistic. It now has one, and the headline run's peak
+lands on the short period.
+
 **The robust form of this result is not the peak location.** An averaged periodogram at
 N = 32 is still noisy and the peak moved a bin and a half between the two intensities. The
 statement that does not depend on N is a ratio of two numbers: the Dryden **input** has
@@ -2391,8 +2399,19 @@ of them stale. If one moves, the derivative chain or the integrator changed.
 
   - a **digitised acceleration history** from a recorded CAT encounter, which is what turns
     limb B from "the model agrees with its own dynamics" into "the model agrees with a
-    record". Yoshimura's own is in the figshare dataset (21152203) named in §7; TM-102186's
-    Hannibal trace exists as a figure this project has never digitised.
+    record". **This one is NOT an acquisition, and an earlier draft of this entry said it
+    was.** `Reference_papers/19890016606.pdf` — TM-102186, held since session 23 — carries
+    the Hannibal DFDR **g-load time history as Figure 6**, p. 3-5, plotted against GMT
+    1:21–1:26 on a −1 to +2 g axis, beside the horizontal and vertical winds derived from
+    it. Yoshimura's equivalent is *not* in the figshare set (withheld by confidentiality),
+    so this held figure is the only recorded trace within reach.
+
+    **Its difficulty is real and is a different difficulty from the project's earlier
+    digitisations.** `CL_MAX(M)` and `CLα(M)` were smooth single-valued curves; this is a
+    dense oscillatory trace whose severe passage occupies perhaps 15% of a five-minute axis
+    on a 1989 scan, so the usable band is set by print resolution rather than by the DFDR.
+    Attempt it as a bounded experiment with its reading uncertainty measured first — and if
+    the band it supports does not reach the 0.164 Hz short period, say so and stop.
   - a **published load-exceedance curve** for transport-category cruise. The model's own
     curve now exists with N in its denominator; there is nothing held to overlay it with.
     TM-102186's two-number band and Wingrove & Bach's twelve incidents are not rates.
@@ -3187,6 +3206,29 @@ three arguments chosen so the values are arithmetic rather than a re-typing of t
 exactly, and LΩ = 2 pins the 3 in the numerator against the square in the denominator by
 which form is larger. **Holding the document closed the forms, not the intensity** — and
 the forms were the part nobody had asked about.
+
+**Then a second search, of the folder rather than the web, moved one more item off the
+acquisition list.** The plan named "a digitised acceleration history" as something to
+acquire, and this document's own §5 entry repeated it. **It is already held.** TM-102186
+is `Reference_papers/19890016606.pdf`, in the project since session 23, and its **Figure 6**
+is the Hannibal DFDR **g-load time history** — the recorded trace whose +1.7/−1.0 g extremes
+this project has been quoting as `wind.TM102186_HANNIBAL_NZ` for two sessions **without ever
+looking at the curve between them**. Yoshimura's equivalent is the part figshare withholds,
+so this is the only recorded trace within reach, and it was never out of reach.
+
+**The same page also supplies the phase-2 result's source.** TM-102186 p. 3-4 explains its
+three-aircraft ordering by saying the pitch and load variations "are dependent upon the
+relationship between the time span of the vortex traverse and the aircraft's short
+oscillatory period". **That is the resonance claim the spectrum measures**, asserted by the
+source and untestable here until this session — the project had no frequency-domain
+statistic at all. §4 now cites it beside the measurement.
+
+**Two lessons, and they are the same lesson.** `ASSUMPTIONS.md` E10 already records it —
+*ask what every case has in common, not just what each one assumes* — and the folder version
+is: **ask what the held papers contain, not only what they were fetched for.** Session 23
+took TM-102186's two-number band and moved on. Session 24 inferred the `v`/`w` spectral
+identity that MIL-F-8785C prints. Both were right; both left something on the table that a
+second reading found.
 
 **Suite: 788 → 806 passed, 1 skipped.** Twelve unit checks on the estimators, all against
 signals whose answer is closed-form, and six on the flown result — including a still-air
