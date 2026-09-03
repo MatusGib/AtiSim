@@ -58,6 +58,53 @@ def _perpendicular():
 # ---------------------------------------------------------------------------
 
 
+def test_both_dryden_spectra_match_the_specification_now_that_it_is_held():
+    """MIL-F-8785C 3.7.1.2, printed p. 47, against the two implemented forms.
+
+    *** THIS TEST COULD NOT BE WRITTEN UNTIL SESSION 25. *** The spec was not in
+    the folder when these functions landed, so the check below it -- that the two
+    forms belong to one isotropic field -- was the best available and is kept.
+    `refs/MIL-F-8785C.pdf` is now held and section 3.7.1.2 prints:
+
+        Phi_u = sigma_u^2 (2 L_u/pi) / [1 + (L_u Om)^2]
+        Phi_v = sigma_v^2 (L_v/pi) [1 + 3(L_v Om)^2] / [1 + (L_v Om)^2]^2
+        Phi_w = sigma_w^2 (L_w/pi) [1 + 3(L_w Om)^2] / [1 + (L_w Om)^2]^2
+
+    Asserted at three arguments whose values are arithmetic rather than a
+    re-typing of the code, which is what makes this a check and not a mirror.
+    Between them they pin the three things that can be wrong: the factor of 2 on
+    the longitudinal form, the 3 in the transverse numerator, and the SQUARE on
+    the transverse denominator.
+
+    What it does NOT close: Figure 7, the sigma chart on p. 49, is still
+    un-digitised. Holding the document closes the FORMS, not the intensity.
+    """
+    sigma, L = 3.0, 500.0
+    base = sigma ** 2 * L / np.pi
+
+    # Om = 0. Longitudinal is exactly TWICE transverse -- the factor of 2.
+    assert float(wind.dryden_longitudinal_spectrum(jnp.array(0.0), sigma, L))         == pytest.approx(2.0 * base, rel=1e-12)
+    assert float(wind.dryden_spectrum(jnp.array(0.0), sigma, L))         == pytest.approx(base, rel=1e-12)
+
+    # L*Om = 1. Phi_u = 2/(1+1) = 1 and Phi_w = (1+3)/(1+1)^2 = 1, both in
+    # units of base -- so the two forms CROSS here, and they must cross exactly.
+    one = jnp.array(1.0 / L)
+    assert float(wind.dryden_longitudinal_spectrum(one, sigma, L))         == pytest.approx(base, rel=1e-12)
+    assert float(wind.dryden_spectrum(one, sigma, L))         == pytest.approx(base, rel=1e-12)
+
+    # L*Om = 2. Phi_u = 2/5 = 0.4, Phi_w = (1+12)/25 = 0.52. Past the crossing
+    # the transverse form is the LARGER, which is the square in the denominator
+    # losing to the 3 in the numerator -- get either wrong and this flips.
+    two = jnp.array(2.0 / L)
+    assert float(wind.dryden_longitudinal_spectrum(two, sigma, L))         == pytest.approx(0.4 * base, rel=1e-12)
+    assert float(wind.dryden_spectrum(two, sigma, L))         == pytest.approx(0.52 * base, rel=1e-12)
+
+    # The spec prints v and w with identical right-hand sides. `dryden_spectrum`
+    # serves both, so that is true here by construction -- asserted anyway,
+    # because the construction is the claim.
+    assert wind.DRYDEN_LV == wind.DRYDEN_LW
+
+
 def test_the_two_dryden_spectra_belong_to_the_same_isotropic_field():
     """*** The check that substitutes for a document this project does not hold.
 
