@@ -368,6 +368,22 @@ MEHTA_HANNIBAL_CORE_PAIR = (2, 3)
 # A BAND TO BE REPORTED AGAINST, NOT A TARGET TO BE HIT. The aircraft is a
 # DC-10 at 37,000 ft; this project's 747 has roughly 0.8x the wing loading, and
 # PROJECT.md section 5 rules absolute load agreement structurally out of reach.
+#
+# *** THAT 0.8x IS UNVERIFIED AND ITS SIGN IS THE WHOLE CLAIM -- session 26. ***
+# No sourced DC-10 wing loading is held. What IS measured is the direction:
+# C_L,trim = (W/S)/q, so dn goes as 1/(W/S) and a LOWER-loaded aircraft takes
+# MORE g from the same gust. Flown at 1.3x this 747's wing loading -- the
+# direction test_wind.py states for the DC-10 -- the load falls from 70.1% to
+# 56.4% of the recorded peak-to-peak. So if the figure is right, aircraft type
+# moves the shortfall the WRONG WAY and cannot be its explanation.
+#
+# DO NOT FIT W/S TO REPRODUCE THE BAND ABOVE. Parks Fig. 7 is the vortex array
+# and his Fig. 6 is the g trace from the same encounter, so fitting the airframe
+# to the trace would convert this project's only end-to-end check into a
+# calibration. Section 5 states the tolerance a real acquisition needs instead:
+# Bach & Parks 1987 Eq. (4) gives ~0.05 deg of alpha per 1% of C_L, so a DC-10
+# wing loading good to a few per cent is enough and precision beyond that buys
+# nothing.
 # Quoted here so a run can be drawn against it without the number being
 # retyped into a plotting script.
 TM102186_HANNIBAL_NZ = (-1.0, 1.7)  # g, measured min and max
