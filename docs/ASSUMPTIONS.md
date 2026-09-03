@@ -1127,6 +1127,42 @@ did not. The lesson generalises past this entry — §6's two air-relative bugs 
 because every test was still air, and this survived because every field was
 one-dimensional. **Ask what every case has in common, not just what each one assumes.**
 
+### E11. A response spectrum assumes a stationary record, and fixed controls do not hold one
+
+**Where:** `atisim/response.py` and `scripts/cat_spectra.py`, session 25.
+
+A power spectral density is only meaningful for a record whose statistics do not change
+across it. The Dryden ensemble flies **fixed controls** — deliberately, because §7's
+discriminator separates turbulence from manoeuvring by whether pitch correlates with
+elevator, so an autopilot in the loop would blur the very distinction being measured. The
+consequence is that **nothing is holding the flight condition**, and over a 100 s record it
+moves.
+
+**Measured, worst of 32 flights, over the kept record:**
+
+| σ_w, m/s | altitude range | speed range | \|α\| range |
+|---|---|---|---|
+| 2.108 | 300 m | 12.9 m/s, 5.4% of V | 3.98° |
+| 4.459 | 703 m | 30.9 m/s, **13.1% of V** | **8.38°** |
+
+**What that costs.** Dynamic pressure goes as V², so 13.1% of airspeed is about 25% of `q`,
+and the upper-σ ensemble is therefore an average over a range of flight conditions rather
+than a spectrum of one. It is also the explanation for the +5.46% "superlinearity" measured
+between the two intensities — `aero.py` is linear in α and the entry carries no `CL` table,
+so the aerodynamics cannot produce it and the drift can. And 8.38° leaves little margin to
+the 10° linear limit in PROJECT.md §1's envelope.
+
+**Verdict: the lower-σ ensemble is the clean measurement and the upper one is a bound.**
+The peak location survives either reading — both land inside the sealed prediction's band —
+but any *amplitude* statement from the upper-σ ensemble carries this with it.
+
+**What would fix it, and why none of it is free.** A shorter record trades the drift for
+frequency resolution the peak search cannot spare at 0.164 Hz. An autopilot removes the
+drift and destroys the category definition. Trimming continuously is not a thing a real
+aircraft does either. The honest options are to report the drift with the result — which is
+what the script now does, per ensemble — or to fly a condition-holding case as a *separate*
+category with its own name, which is new work rather than a fix.
+
 ## F. Numerics
 
 ### F1. Fixed-step RK4 at 50 Hz
@@ -1263,11 +1299,17 @@ solver preconditions live rather than a defect repair.
 | 12 | **A4 / D2** no ground, no atmosphere floor | **declared, guarded at one call site** | a 747-approach integrates to −698 m through air of increasing density. Truncate at your own clearance |
 | 13 | **E7** along-track shear needs the caller's turn rate | **repaired, residual on the caller** | the term was missing entirely; worth **ΔF = 0.1423** at a standard-rate turn, and identically zero on all 77,036 samples of the runs on record |
 | 14 | **F7** singular control Jacobian returns NaN silently | **latent** | no shipped solver carries rudder as an unknown; a steady-turn solve would be the first |
+| 15 | **E10** no wind field varied across the span | **capability CLOSED session 24; NOT validated** | the strip path moves peak bank +22.9%, its first non-zero effect. No source held records a lateral CAT response, so every lateral number is a capability demonstration |
+| 16 | **E11** a response spectrum assumes a stationary record | **measured session 25, and it bites at the upper σ** | fixed controls hold no condition: 703 m of altitude and **13.1% of airspeed** over 100 s at σ = 4.459 m/s, which is ~25% of `q` and is the true cause of the +5.46% "superlinearity". Lower σ is the clean ensemble; upper is a bound. Report the drift with the spectrum |
 
 Items 1 and 5 — the two session 11 flagged as new and actionable — are both closed by
 measurement, and in both cases the measurement changed the answer the reasoning had given.
 Items 2 and 3 are honest limits rather than bugs, and the correct response to both is to
 stop short of claims they cannot support.
+
+**Items 15 and 16 were added by phases 1 and 2 of the finishing plan** (sessions 24
+and 25). Neither is a repair: E10 is a capability that now exists and is not validated,
+and E11 is a limit on what the new statistics mean, measured rather than assumed.
 
 **Items 8–14 were added by the remediation pass**, from the audit's list of assumptions
 the code makes and the register never declared. Two things are worth saying about them as

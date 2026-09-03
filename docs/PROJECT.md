@@ -4,7 +4,7 @@ A 6-DOF fixed-wing flight-dynamics core in JAX, built as a foundation for turbul
 modelling. This document is the standing record: what exists, what is validated, what is
 known-broken, and what happens next.
 
-**Last updated:** session 18 (the AtiSim rename, and correcting five stale claims).
+**Last updated:** session 25 (response spectra, load exceedance, and where the four phase-3 documents are). This line had been stale at session 18 for six sessions.
 
 **To run any of it, see §10.**
 
@@ -87,6 +87,16 @@ airspeed, what happens to the load if the aircraft is slower, does the ordering 
 §4 records six-for-six monotone agreement on TM-102186's stated mechanism and both
 halves of its three-aircraft ordering — including the counter-intuitive half.
 
+**Session 25 adds a frequency-domain member to that list, and it is a different kind of
+claim.** The `n_z` response spectrum of the headline run peaks 0.23 of a bin from the
+aircraft's own short period and 1.64 bins from the mean core-passage frequency of the
+array forcing it, and over a Dryden ensemble the response carries **3× more** energy at
+the short period than at 0.05 Hz where the **input** carries more. That is a statement
+about **coupling** — which frequencies the airframe selects out of what it is given —
+and no comparison of peaks could have made it. It is still a comparative claim: it is
+tested against the aircraft's own linearised dynamics, not against a recorded spectrum,
+because none is held. §5 says what would change that.
+
 **What it does not buy.** Any statement of the form *"the load will be X g"*. The
 headline load comparison reaches 67% of a recorded peak-to-peak, and §5 records that
 the remaining explanation is the aircraft rather than the wind. Absolute agreement was
@@ -132,6 +142,7 @@ ruled structurally out of reach in session 7 and nothing since has changed that.
 | **`analysis/`** | `artifact.py` (run artifacts: Parquet + `meta.json` + `checks.json`, and `rebuild_field`), `series.py` (every plotted channel), `figures.py` (pure Plotly figures) | needs the **`ui` extra**. Imports `atisim`, never the reverse. Nothing in `atisim/` proper imports it, so the simulator and every script keep working without it |
 | **`apps/`** | `sweep.py` — the Dash analysis UI | **the only package that imports Dash, and it computes nothing.** It never runs the simulator either: `n_steps` is a `static_argname`, so every distinct dt pays a fresh 0.6–0.9 s compile and a panel whose contents depend on machine warmth is not a check |
 | `vortex_viz.py` | encounter analysis and the Fig. 8 figure | air-relative throughout; deliberately separate from `viz.py`. `fly` for a wind field with fixed controls, `manoeuvre` for an elevator schedule at zero wind; both go through `_measure`, so the three Fig. 8 points cannot drift apart |
+| **`response.py`** | **tier 3 — RUN statistics**: `spectrum`, `peak_frequency`, `exceedance` | added session 25 (phase 2). A run as a SPECTRUM and as a RATE, rather than as a peak. Numpy, takes a sampled history, same standing as `checks.py` — nothing here is jitted or differentiated. Note the name collision worth keeping straight: `wind.dryden_spectrum` is an INPUT spectrum, this is the RESPONSE. Every unit check in `test_response.py` is against a signal whose answer is closed-form |
 
 ### The two interfaces turbulence depends on
 
@@ -2193,6 +2204,91 @@ now has a ceiling. **And the higher-value fix first:** `Xu`, `Zu`, `Mu` are exac
 numbers already in Table IX-4, which `_boeing_747` skips with the note "the speed and alpha-dot
 derivatives are outside this model's form". No digitisation, no reading uncertainty.
 
+### Response spectra and load exceedance — session 25 (phase 2)
+
+**The statistic changed, not the run.** Every row above this one compares a **peak** from a
+single encounter. That is one realisation of a random process and its error bar does not
+shrink with effort. `atisim/response.py` adds the two statistics that do, and neither
+existed anywhere in the tree before: there was no FFT, periodogram or PSD of any
+**response** (`wind.dryden_spectrum` is an *input* spectrum), and no exceedance count of
+anything. `scripts/cat_spectra.py --seeds 32`, figure `09-spectra.png`.
+
+**1. The Mehta run follows the airframe, not the forcing.** Mehta's five-core array is not
+uniform: its four core spacings pass the aircraft at **0.0909, 0.1224, 0.1354 and
+0.1886 Hz** at once, mean 0.1343. The 747 at that condition has one short period,
+**0.16404 Hz** (ω_n = 1.0307 rad/s, ζ = 0.36455).
+
+| | Hz | where the response peak sits relative to it |
+|---|---|---|
+| response peak, `n_z` PSD | **0.16885** | — |
+| the airframe's short period | 0.16404 | **+2.9% above it**, 0.23 of a bin |
+| the array's mean core passage | 0.13433 | +25.7% above it, 1.64 bins |
+
+The record is 47.4 s, so a bin is 0.0211 Hz and the two candidates are only 1.4 bins apart
+— which is why this alone is suggestive rather than decisive, and why the next row uses a
+stationary field and an ensemble. **This is the first statement in this project about
+which frequency the load followed, rather than how large it got.**
+
+**2. Yoshimura's protocol, run.** Yoshimura et al. 2023 (GRL 50, e2022GL101286) validate a
+CAT simulation by comparing the frequency spectrum of vertical acceleration against flight
+records and checking the peak lands near the aircraft's own natural frequency — 0.14 Hz for
+their B787, from 151 virtual flights of 100 s. Here: **32 flights × 100 s** through
+`wind.dryden_field`, first 20 s of each discarded (declared), σ at the two ends of the
+sourced range.
+
+| σ_w, m/s | ensemble peak, Hz | vs short period | half-power band, Hz | `n_z` rms, g | worst condition drift over the record |
+|---|---|---|---|---|---|
+| 2.108 (`mehta_unmodelled_wind`) | 0.1400 | −14.7% | 0.1200–0.2000 | 0.0823 | 300 m altitude, 12.9 m/s (5.4% of V), \|α\| range 3.98° |
+| 4.459 (`mehta_residual_ceiling`) | 0.1700 | +3.6% | 0.1200–0.2400 | 0.1836 | **703 m** altitude, **30.9 m/s (13.1% of V)**, \|α\| range **8.38°** |
+
+**The robust form of this result is not the peak location.** An averaged periodogram at
+N = 32 is still noisy and the peak moved a bin and a half between the two intensities. The
+statement that does not depend on N is a ratio of two numbers: the Dryden **input** has
+strictly *more* energy at 0.05 Hz than at the short period (it is flat below Ω = 1/L_w and
+falls as Ω⁻² above), and the **response** has more than **3×** *less*. That reversal is the
+whole content of "the airframe organises the load", and `test_cat_spectra.py` asserts it in
+that form.
+
+**3. The two σ limbs are one test, and what they measure is the drift.**
+`dryden_field(σ, seed)` takes its phases from the seed alone and its amplitudes scale
+exactly as σ, so seed *k* at the two intensities is the same field scaled — a linear
+aircraft would return the same normalised spectrum from both. Measured: σ ratio 2.1156,
+`n_z` rms ratio **2.2312**, i.e. **+5.46% against exact linearity**, with the normalised
+spectra differing by 0.129 in L1.
+
+**That superlinearity is not aerodynamic and the run was nearly quoted as if it were.**
+`aero.py` is linear in α and `boeing747` carries no `CL` table, so the aero *cannot*
+produce it. The drift column above is the candidate, and it is large: with fixed controls
+there is nobody flying the aeroplane, so it leaves the condition it was trimmed for —
+703 m of altitude and **13.1% of airspeed** at the upper σ, which moves dynamic pressure
+by about a quarter. **The upper-σ ensemble is therefore not a spectrum of one flight
+condition**, and its |α| range of 8.38° is inside §1's 10° envelope with little to spare.
+Read the lower-σ ensemble as the clean one and the upper as a bound. Registered as
+`ASSUMPTIONS.md` **E11**.
+
+**4. The first exceedance curve.** Upcrossings per second of each load level over the same
+ensemble, both signs, N in the denominator — 32 flights, **3,199 s of record** at each σ.
+
+| Δn level, g | σ = 2.108 m/s, up / down per s | σ = 4.459 m/s, up / down per s |
+|---|---|---|
+| 0.10 | 0.551 / 0.555 | 0.937 / 0.922 |
+| 0.20 | 0.049 / 0.060 | 0.617 / 0.590 |
+| 0.30 | 0.0025 / 0.0025 | 0.312 / 0.266 |
+| peak \|Δn\| reached | 0.346 | 0.825 |
+
+Up and down agree to **0.973–1.175** at the upper σ across every level both populate, which
+is the sampling error on the exact odd symmetry §5 records as structural. **At the lower σ
+the same ratio reads 0.500–1.012, and that 0.500 is one event against two** in a tail bin —
+which is the whole argument for the statistic: a rate has an N, so its error bar is visible
+and shrinks, where a peak's is neither.
+
+**What this does NOT establish, and the script says so before the figure.** It is not yet a
+*comparison*. No published exceedance curve is held — TM-102186 gives Hannibal's load as a
+two-number band and Wingrove & Bach 1994 Table 2 gives twelve single incidents, neither of
+which is a rate — and no digitised acceleration history exists here, so the observed half of
+Yoshimura's protocol cannot be run. Both are named in §5 as acquisitions rather than quietly
+dropped.
+
 ### The validated baseline — do not touch these tolerances
 
 `test_conservation.py`, `test_cr2144_modes.py`, `test_drag_polar.py`, `test_navion.py`,
@@ -2275,6 +2371,34 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   1994 supplies *"no lateral data"*, which had been recorded as a limitation of the paper
   rather than as a hole in the model. Treat every lateral number as a capability
   demonstration, never as evidence.
+
+- **Nothing in the project measured a response in the frequency domain, and the one paper
+  the dossier calls a blueprint validates that way.** Until session 25 there was no FFT,
+  periodogram, PSD or Welch estimate anywhere in the tree. Every comparison matched a
+  **peak** from a single encounter — one realisation of a random process, whose error bar
+  does not shrink however much more work is done. Yoshimura et al. 2023 compare **spectra**
+  and check the peak against the aircraft's own natural frequency; that protocol could not
+  be run here at all.
+
+  **Session 25 (phase 2) closed the capability half.** `atisim/response.py` supplies the
+  estimators, `scripts/cat_spectra.py` runs Yoshimura's protocol on this project's aircraft
+  and its only stochastic field, and §4 has the numbers — including the result that the
+  load follows the airframe's short period rather than the array's core-passage frequency,
+  which is a statement about coupling that no peak could have made.
+
+  **The comparison half is still open, and it is source-gated.** Two documents would close
+  it, and neither is held:
+
+  - a **digitised acceleration history** from a recorded CAT encounter, which is what turns
+    limb B from "the model agrees with its own dynamics" into "the model agrees with a
+    record". Yoshimura's own is in the figshare dataset (21152203) named in §7; TM-102186's
+    Hannibal trace exists as a figure this project has never digitised.
+  - a **published load-exceedance curve** for transport-category cruise. The model's own
+    curve now exists with N in its denominator; there is nothing held to overlay it with.
+    TM-102186's two-number band and Wingrove & Bach's twelve incidents are not rates.
+
+  Until then, treat the spectra as evidence about the **model's internal consistency** —
+  which is real, and is what §4's rows claim — and not as agreement with the atmosphere.
 
 - **Gravity is constant at 9.80665 m/s², which is +0.383% high at the 747's cruise
   altitude.** True `g(h) = g₀(R/(R+h))²` is 9.76922 at 12,192 m. **Session 12 measured what
@@ -2621,6 +2745,44 @@ form needs at least one test that flies through a non-zero wind field —
 
 ## 7. Plan
 
+> **THE ORIGINAL TEN-STEP PLAN IS BELOW AND IS ESSENTIALLY COMPLETE.** The plan the
+> project is now executing is the five-phase one written at the end of session 23d, in
+> answer to "what would make this a predictive tool?". It is recorded here because it is
+> §7's job to carry it; sessions 24 and 25 refer to its phase numbers throughout.
+
+### The finishing plan — phases, gates and status
+
+The decision it rests on: **"predictive tool" is three different projects.** **T1**
+comparative and mechanistic, already true and — until session 24 — unclaimed. **T2**
+bounded absolute load, months and source-gated. **T3** CAT hazard including roll, which
+needs the lateral capability built from nothing. The chosen route is *bank T1 now, target
+T2, build T3's foundation on the way*.
+
+| Phase | What | Gate | Status |
+|---|---|---|---|
+| **0** | Bank what is already true: a formal validation claim in §1 with its envelope attached, and the lateral gap written into §5 | §1 carries the claim; §5 and `ASSUMPTIONS.md` E10 carry the gap | **DONE, session 24.** Writing the claim is what found the gap |
+| **1** | Give the model a lateral dimension: Dryden `u`/`v`, lateral channels on `Encounter`, the vortex as lines in space | the strip path moves a reported number for the first time | **DONE, session 24.** +22.9% on peak bank, after nine sessions of exactly 0.000000 |
+| **2** | Change what counts as agreement: response spectra instead of peaks, exceedance distributions over ensembles | a load-exceedance curve with N in its denominator becomes sayable | **DONE, session 25.** §4 has both. The comparison against a *published* curve is now the open half, and it is source-gated |
+| **3** | Acquire four documents, in priority order | each arrival settles a sealed prediction or closes a §5 entry | **In progress, session 25 searched for all four** — see the table below |
+| **4** | Keep the predictive discipline running: every new capability ships with a prediction made before it is tested | at least one sealed prediction settled, right or wrong | **First one settled, session 25** — `the_dryden_response_peaks_at_the_short_period`, right, and at both intensities |
+
+**Phase 3's four documents**, in the priority the plan gives them, with what each unblocks:
+
+| # | Document | Unblocks |
+|---|---|---|
+| 1 | a **DC-10 cruise derivative set** | the last remaining explanation for the 32% load shortfall, and the sealed prediction `dc10_does_not_close_the_hannibal_gap`. Every load comparison to date is a 747 flown against a DC-10 record |
+| 2 | **747 buffet onset / nonlinear C_L** | the ±g asymmetry both source papers attribute to buffet, and the negative excursion that has been short throughout |
+| 3 | **MIL-F-8785C Fig. 7**, digitised | whether the background-turbulence explanation is physically available at all; settles `mil_f_8785c_sigma_w_exceeds_the_mehta_ceiling` |
+| 3 | **Yoshimura 2023 figshare dataset (21152203)** | a published LES CAT wind field, and a recorded acceleration history to run the observed half of the spectral protocol against |
+| 4 | **Bach & Parks 1987**, J. Aircraft 24(11) | the last unmeasured term in the input uncertainty; a good substitute already holds |
+
+**Phase 3 is entirely acquisition and this project cannot do the acquiring** — the cost is
+in finding a document, not in using one, and every harness that would consume these already
+exists. What session 25 could do was establish *where each one is and what it costs*, which
+is the table in §9's session-25 entry.
+
+### The original ten-step plan
+
 ```
 1. [DONE] Rankine vortex array, cited to Parks 1985       -> verify: source's own three
                                                                     stated properties
@@ -2916,6 +3078,100 @@ source exactly. A smoother interpolant would agree with the source less.
   touch the core response.
 
 ## 9. Session log
+
+### Session 25 — a statistic with an N in it, and where the four documents actually are
+
+Phases 2 and 3 of the finishing plan recorded in §7.
+
+**Phase 2 — change what counts as agreement.** Every comparison in §4 matched a *peak* from
+a single encounter: one realisation of a random process, whose error bar does not shrink
+however much more work is done. `atisim/response.py` adds the two statistics that do —
+a one-sided PSD of a response history and an upcrossing exceedance rate. Neither existed
+anywhere in this tree. `wind.dryden_spectrum` is an **input** spectrum, which is a different
+object, and the collision of names is worth keeping straight.
+
+**The bet was sealed before the machinery was pointed at an aircraft**, which is what
+commit `2e6fd2b` is for: `scripts/cat_spectra.py` was written and committed unrun, beside a
+prediction that the ensemble response peak would land within 20% of the 747's own short
+period, 0.1640 Hz. **Settled RIGHT, at both intensities and not comfortably** — 0.1400 Hz
+at σ = 2.108 m/s and 0.1700 at 4.459, against a predicted [0.131, 0.197]. The lower one
+sits less than one bin inside the band's edge, pulled down by the falling Dryden input
+exactly as the sealed reasoning said it would compete. A tighter band would have been wrong.
+
+**The robust form of the result is not the peak location, and the entry says so.** An
+averaged periodogram at N = 32 is still noisy. What does not depend on N is a ratio of two
+numbers: the **input** has strictly more energy at 0.05 Hz than at the short period, and
+the **response** has more than 3× less. That reversal is the whole content of "the airframe
+organises the load", and it is what `test_cat_spectra.py` asserts.
+
+**And the headline run answers a question it could not previously be asked.** Mehta's array
+is not uniform — its four core spacings force the aircraft at 0.0909, 0.1224, 0.1354 and
+0.1886 Hz at once. The response peaks at **0.16885 Hz**: 0.23 of a bin from the airframe's
+short period and 1.64 bins from the mean forcing. **The load follows the aeroplane, not the
+array.**
+
+**A tripwire fired, and it was right to.** `test_predictions.py` asserted that every sealed
+claim was blocked on a source §5 names as unobtainable, on the reasoning that a claim
+checkable from what is held "is not a prediction — it is a run someone has not done yet".
+The new entry is exactly that kind. The rule the tripwire was protecting turns out not to
+be the unobtainable source but the **seal preceding the run**, which is a fact about the git
+history; an unobtainable source merely makes that ordering free. Rewritten as two admissible
+classes, so adding an entry means classifying it rather than incrementing a count.
+
+**What phase 2 did NOT do**, and the script prints it before the figure: it is not yet a
+*comparison*. No published exceedance curve is held and no digitised acceleration history
+exists here, so the observed half of Yoshimura's protocol cannot be run. §5 now carries both
+as named acquisitions.
+
+**And it produced one result that was nearly written up as physics.** The two ensembles
+differ in `n_z` rms by **+5.46%** more than their σ ratio, which reads as a superlinear
+response to gust intensity. It is not: `aero.py` is linear in α and `boeing747` carries no
+`CL` table, so the aerodynamics *cannot* produce it. Measuring what else changed found it —
+**with fixed controls there is nobody flying the aeroplane**, and over the 100 s record at
+the upper σ it drifts **703 m in altitude and 13.1% in airspeed**, which is about a quarter
+of dynamic pressure, with |α| reaching 8.38° against §1's 10° limit. So the upper-σ
+ensemble is an average over flight conditions rather than a spectrum of one. Registered as
+`ASSUMPTIONS.md` E11, reported per ensemble by the script from now on, and the reason the
+lower-σ ensemble is the one to quote. **The fixed controls are not a defect** — §7's
+discriminator is *defined* by them — which is why this is a limit to declare rather than a
+bug to fix.
+
+**Phase 3 — the four documents, and the search changed their order.**
+
+| # | Document | Found? | What the search established |
+|---|---|---|---|
+| 1 | DC-10 cruise derivative set | **no** | Not in the open literature. Heffley's own library — the source of CR-2144 — has no DC-10, and its other compilation, CR-96008, is 1969, before the type flew. Every hit was the winglet programme (NTRS 19850002628, 19870008261), which reports that winglets *did not change* the stability characteristics and therefore prints no baseline table. This is the highest-value item and it is the one nobody is giving away |
+| 2 | 747 buffet onset / nonlinear `C_L` | **no** | The open 747 buffet literature is the **Shuttle Carrier Aircraft**: 0.03- and 0.046-scale tail-buffet wind-tunnel tests (NTRS 19750025089, 19770003191). That is the orbiter's wake on the empennage, not wing buffet onset at cruise — **the wrong buffet**, and quoting it would be worse than having nothing. NASA TN D-7131, whose title promises "Maneuver and Buffet Characteristics", is fighters |
+| 3 | **MIL-F-8785C Fig. 7** | **YES, free** | The specification itself is public at everyspec.com, and DTIC's Background Information and User Guide (ADA119421) is on archive.org. **And an independent transcription already exists**: JSBSim's `FGWinds.cpp` carries the table under the comment *"this is Figure 7 from p. 49 of MIL-F-8785C"*, values in **ft/s**, rows a probability-of-exceedance index 1–7 with *"3=light, 4=moderate, 6=severe"* |
+| 4 | Yoshimura figshare **21152203** | **YES — but not for what it was named for** | CC BY 4.0, one file `data.tar`, **17,942,056,960 bytes (17.9 GB)**: LES outputs at dx = 500/250/70/35 m, the flight-simulation code and its outputs, GrADS control and script files. **The three onboard flight records and the JAL PIREP are excluded by confidentiality agreement** — the paper says so and the dataset page repeats it |
+
+**Two of those findings change the plan rather than execute it.**
+
+- **Item 4 was listed as the route to a recorded acceleration history. It is not** — that is
+  precisely the part that could not be released. What it *is* is a published **LES CAT wind
+  field**, which is the non-circular field §5 has wanted since session 23: every load
+  comparison in this project so far is flown through a field identified *from* the
+  aircraft's own accelerations. That is a different and still substantial prize, at 17.9 GB.
+- **Item 3 is free and immediate**, which promotes it above items 1 and 2 on cost even
+  though the plan ranks it third on value. Better still, it can be done the way this project
+  does everything else: **digitise the figure from the document, then check it against
+  JSBSim's independent transcription**, which is the same two-independent-readings pattern
+  as the vortex fields agreeing to 8.8e-10 m/s.
+
+**The sealed prediction it would settle is left SEALED, deliberately.**
+`mil_f_8785c_sigma_w_exceeds_the_mehta_ceiling` bets that the severe curve at 37,000 ft
+exceeds 4.46 m/s. Interpolating JSBSim's transcription between its 35,000 ft and 45,000 ft
+columns on the severe row gives **15.82 ft/s = 4.82 m/s**, which would settle it RIGHT.
+**That is not this project's evidence and the entry is not being settled on it.** Its own
+`settled_by` says "MIL-F-8785C Figure 7, **digitised** at 37,000 ft"; a third party's
+transcription of a figure is not a digitisation of it, and §3's rule that every number
+carries the table it came from exists for exactly this case. The number is recorded here as
+what to *expect*, which is the honest use of it — and it makes the digitisation a check
+rather than a discovery.
+
+**Suite: 788 → 806 passed, 1 skipped.** Twelve unit checks on the estimators, all against
+signals whose answer is closed-form, and six on the flown result — including a still-air
+negative control in which every statistic in the new module returns exactly zero.
 
 ### Session 24 — the model gets a lateral dimension, and the record gets a claim
 
@@ -4102,7 +4358,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 
 | Command | What it does |
 |---|---|
-| `.venv/Scripts/python.exe -m pytest -q` | **758 passed, 1 skipped, 17m06s** (measured session 23b; the 626 this row claimed was stale by five sessions, and the 322 before that by several more — this row has now been wrong twice, so re-measure it rather than trusting it). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. |
+| `.venv/Scripts/python.exe -m pytest -q` | **806 passed, 1 skipped, 15m03s** (measured session 25; it was 788 at session 24 and **758 measured session 23b**; the 626 this row claimed was stale by five sessions, and the 322 before that by several more — this row has now been wrong twice, so re-measure it rather than trusting it). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. |
 | `.venv/Scripts/python.exe scripts/sanity.py` | **The ladder, for a reader who does not yet trust the model.** Twelve cases from degenerate inputs upward — zero the wind, zero a coefficient so a motion becomes impossible, then signs, then hand-computable numbers, then structural properties. Every expected value is derived by hand in the source and printed beside the model's answer, so it is read rather than trusted. Ends with the item 08 convention probe, which is a measurement rather than a pass/fail. |
 | `.venv/Scripts/python.exe -m pytest --nbval-lax notebooks/ -q` | **The second gate.** Executes `notebooks/solver-validation.ipynb` so it cannot rot. Needs the `dev` extra (`jupyter`, `nbval`). Deliberately *not* in `testpaths` and `--nbval-lax` is deliberately *not* in `addopts`: that would make every `pytest` run fail with "unrecognized arguments" wherever nbval is absent. **Run it from a worktree with an ABSOLUTE `PYTHONPATH`** — nbval starts the kernel with its cwd in `notebooks/`, so a relative `PYTHONPATH=.` resolves to the wrong directory and `atisim` silently loads from the main checkout. |
 | `.venv/Scripts/python.exe scripts/checkpoint.py` | 747 only, no flags. Trim residuals, 60 s fixed-control hold, longitudinal modes against CR-2144 Table IX-5. |
@@ -4123,6 +4379,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_bounds.py --outdir runs/cat` | **The bounding experiments (session 23 follow-up).** What the point-sampled gust, the strip path and the step size cost on the Mehta run; what Dryden intensity would close the residual load gap; and Lester's Greenland 747 against a lee wave, inverted on both the g-load and the altitude gain. Same `PYTHONPATH` rule. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/lateral.py --outdir runs/cat` | **The lateral dimension (session 24, phase 1).** Reconciles `wind.line_vortex_wind` against `wind.vortex_wind` along the flight path, shows where the oblique difference is, then flies Mehta's field three ways -- point, line, and line with strip-integrated loads -- and reports the bank, sideslip and rolling gust rate the project could not previously see. Writes `08-lateral.png`. Same `PYTHONPATH` rule. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_ensemble.py --outdir runs/cat` | **Fig. 8 with error bars (session 23d, section 7 step 6).** Superposes a Dryden layer at the SOURCED sigma_w range from Mehta's residual and reports whether the vortex/updraft/manoeuvre ordering survives, and by how much margin on each of Fig. 8's two axes. Writes `07-ensemble.png`. Same `PYTHONPATH` rule. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_spectra.py --outdir runs/cat` | **Response spectra and load exceedance (session 25, phase 2).** Three limbs: Mehta's headline field as a `n_z` spectrum against the aircraft's short period and the array's four core-passage frequencies; Yoshimura et al. 2023's protocol -- N virtual flights through `wind.dryden_field`, spectra averaged, peak against the airframe's own frequency -- which settles a sealed prediction; and the first load-exceedance curve, both signs, with N in the denominator. `--seeds` defaults to 32 (Yoshimura used 151). Writes `09-spectra.png`. Same `PYTHONPATH` rule. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_uncertainty.py --outdir runs/cat` | **The Hannibal comparison with error bars (session 23c).** Measures the gust SPACING against TM-102186's "about 5 sec apart" -- the one channel the identification did not set -- converts Mehta's own Eq. (A3) cost into an RMS wind residual and decomposes it against Lester's reconstruction error, then flies the propagated `V0` and `r0` band and a gust-strength sweep to show the peak load is saturated. Writes `06-uncertainty.png`. Same `PYTHONPATH` rule. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_validation.py --outdir runs/cat` | **The CAT source pass (session 23).** Flies Mehta 1987's five-vortex Hannibal field, reproduces TM-102186 Fig. 8's three-aircraft ordering and tests its stated mechanism across the whole registry, compares the 747's short period at a third CR-2144 flight condition, and grades every run on Misaka's `σ_n`. Prints every number and writes four figures. **`PYTHONPATH` is mandatory** — `python scripts/…` resolves `atisim` to the main checkout, which this script detects and prints on its first line. |
 | `docs/summary/jsbsim-atisim-vortex-report.html` | **The written comparison** — the numbers above with the reasoning, the figure, and what the result does and does not establish. Not generated; edit it when the numbers move. |

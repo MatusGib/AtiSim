@@ -161,6 +161,22 @@ PREDICTIONS: tuple[Prediction, ...] = (
         settled_by="scripts/cat_spectra.py, the Dryden ensemble limb",
         sealed_at="2837ddd",
         digest="60843c1f7237db6d",
+        status="SETTLED",
+        outcome=(
+            "RIGHT, at both intensities and not comfortably. 32 flights of "
+            "100 s each: the ensemble-averaged peak is 0.1400 Hz at "
+            "sigma = 2.108 m/s and 0.1700 Hz at sigma = 4.459, against a "
+            "predicted [0.131, 0.197]. The lower one sits 14.7% below the "
+            "short period and 0.009 Hz -- less than one bin -- inside the "
+            "band's lower edge, which is the falling Dryden input pulling the "
+            "peak below the resonance exactly as the reasoning said it would "
+            "compete. A tighter band would have been wrong. The robust form of "
+            "the result is not the argmax at all: the input has strictly MORE "
+            "energy at 0.05 Hz than at the short period and the response has "
+            "more than three times LESS, and that reversal is a ratio of two "
+            "numbers rather than a peak location. Pinned in "
+            "test_cat_spectra.py."
+        ),
     ),
 )
 
