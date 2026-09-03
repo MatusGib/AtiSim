@@ -151,14 +151,19 @@ def test_every_open_prediction_is_declared_and_classified():
     assert set(predictions.BY_NAME) == SOURCE_GATED | set(RUN_GATED)
     root = Path(__file__).resolve().parents[2]
     for p in PREDICTIONS:
-        assert p.status == "SEALED", p.name
         if p.name in RUN_GATED:
+            # A run-gated entry may already be settled -- the run is in this
+            # repository, so settling it needs nobody to send a document.
+            assert p.status in ("SEALED", "SETTLED"), p.name
             script = RUN_GATED[p.name]
             assert script in p.settled_by, p.name
             assert (root / script).is_file(), (
                 f"{p.name} is settled by {script}, which does not exist"
             )
         else:
+            # A source-gated entry cannot be settled here by definition, so a
+            # SETTLED one means a document arrived and section 3 should say so.
+            assert p.status == "SEALED", p.name
             assert p.sealed_at == "0c72200", p.name
 
 

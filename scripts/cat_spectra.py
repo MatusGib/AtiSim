@@ -52,6 +52,7 @@ import numpy as np
 import atisim  # noqa: F401  -- enables x64
 from atisim import predictions, response, trim, validation, vortex_viz, wind
 from atisim.aircraft import CRUISE, REGISTRY
+from atisim.units import RAD2DEG
 
 PALETTE = {
     "model": "#1D5D77", "reference": "#A9501C", "wind": "#3E6A48",
@@ -135,9 +136,59 @@ def fly_dryden(ac, V, H, sigma, seed, dt):
     )
 
 
+def half_power_band(f_hz, psd, *, floor=None):
+    """The contiguous run of frequencies around the peak that is within 3 dB.
+
+    Reported because the peak of a broad resonance is not a sharp number, and
+    quoting it as one would oversell it: at 32 flights the peak moved 0.140 ->
+    0.170 Hz between the two intensities while staying inside a band 0.08-0.12
+    Hz wide both times.
+
+    *** THIS WIDTH IS NOT A CLEAN MEASUREMENT OF THE DAMPING, and an earlier
+    draft of this docstring said it was. *** A second-order resonance at
+    zeta = 0.365 has a half-power width of 2*zeta = 0.73 of its centre, and at
+    32 flights this returns 0.57 and 0.71 -- close enough to look like
+    agreement. At 4 and 6 flights it returns 0.14 and 0.21, because an averaged
+    periodogram is still noisy at small N and the 3 dB contour fragments on the
+    spikes. So the width is a property of the ESTIMATE as much as of the
+    aircraft until N is large, and it is reported with its N attached rather
+    than quoted as a damping.
+    """
+    floor = response.PHUGOID_FLOOR_HZ if floor is None else floor
+    band = f_hz >= floor
+    f_b, p_b = f_hz[band], psd[band]
+    i = int(np.argmax(p_b))
+    over = p_b >= 0.5 * p_b[i]
+    lo = i
+    while lo > 0 and over[lo - 1]:
+        lo -= 1
+    hi = i
+    while hi < over.size - 1 and over[hi + 1]:
+        hi += 1
+    return float(f_b[lo]), float(f_b[hi])
+
+
 def tail(enc, dt):
     """The record with the start transient dropped, as a plain array."""
     return np.asarray(enc.n_z)[int(round(SETTLE_SECONDS / dt)):]
+
+
+def drift(enc, dt):
+    """How far the flight condition itself moved across the kept record.
+
+    A spectrum of a non-stationary record is a spectrum of several conditions
+    averaged, and fixed controls in turbulence do not hold a condition: there
+    is nothing flying the aeroplane. Reported per ensemble because it is the
+    limit on what these statistics mean, and because measuring it turned an
+    apparent aerodynamic nonlinearity into a drift -- see PROJECT.md section 4.
+    """
+    k = int(round(SETTLE_SECONDS / dt))
+    speed = np.linalg.norm(np.asarray(enc.log.vel_body)[k:], axis=1)
+    return dict(
+        altitude=float(np.ptp(np.asarray(enc.altitude)[k:])),
+        speed=float(np.ptp(speed)),
+        alpha_deg=float(np.ptp(np.asarray(enc.alpha_air)[k:]) * RAD2DEG),
+    )
 
 
 def main() -> None:
@@ -180,7 +231,7 @@ def main() -> None:
           f"bin {f_a[1] - f_a[0]:.4f} Hz")
     print(f"  the array forces at FOUR frequencies, not one:")
     for s, hz in zip(spacings, passage):
-        print(f"    {s:8.1f} m core spacing -> {V / hz:5.2f} s -> {hz:.4f} Hz")
+        print(f"    {s:8.1f} m core spacing -> {s / V:5.2f} s -> {hz:.4f} Hz")
     print(f"  mean core passage: {passage.mean():.4f} Hz")
     print(f"  response peak:     {peak_a:.4f} Hz")
     print(f"    vs short period  {f_sp:.4f} Hz  ->  {100 * (peak_a / f_sp - 1):+.1f}%")
@@ -204,16 +255,18 @@ def main() -> None:
 
     ensembles = {}
     for sigma in (lo_s, hi_s):
-        records = [tail(fly_dryden(ac, V, H, sigma, seed, args.dt), args.dt)
+        flights = [fly_dryden(ac, V, H, sigma, seed, args.dt)
                    for seed in range(args.seeds)]
+        records = [tail(f, args.dt) for f in flights]
+        drifts = [drift(f, args.dt) for f in flights]
         spectra = [response.spectrum(r, args.dt) for r in records]
         f_b = spectra[0][0]
         mean_psd = np.mean([s[1] for s in spectra], axis=0)
         peak_b = response.peak_frequency(f_b, mean_psd)
         peaks = np.array([response.peak_frequency(f_b, s[1]) for s in spectra])
         rms = np.array([r.std() for r in records])
-        ensembles[sigma] = dict(f=f_b, psd=mean_psd, peak=peak_b,
-                                peaks=peaks, records=records, rms=rms)
+        ensembles[sigma] = dict(f=f_b, psd=mean_psd, peak=peak_b, peaks=peaks,
+                                records=records, rms=rms, drifts=drifts)
         print(f"  sigma = {sigma:.3f} m/s")
         print(f"    ensemble-averaged peak   {peak_b:.4f} Hz  "
               f"({100 * (peak_b / f_sp - 1):+.1f}% of the short period)")
@@ -221,6 +274,42 @@ def main() -> None:
               f"[{peaks.min():.4f}, {peaks.max():.4f}]")
         print(f"    n_z rms                  {rms.mean():.4f} g "
               f"[{rms.min():.4f}, {rms.max():.4f}]")
+        lo_h, hi_h = half_power_band(f_b, mean_psd)
+        print(f"    half-power band          {lo_h:.4f}-{hi_h:.4f} Hz "
+              f"({hi_h - lo_h:.4f} Hz wide, {(hi_h - lo_h) / peak_b:.2f} of the "
+              "peak frequency)")
+        worst = {k: max(d[k] for d in drifts) for k in drifts[0]}
+        print(f"    CONDITION DRIFT over the kept record, worst of {args.seeds}: "
+              f"altitude {worst['altitude']:.0f} m, speed {worst['speed']:.1f} m/s "
+              f"({100 * worst['speed'] / V:.1f}% of V), "
+              f"|alpha| range {worst['alpha_deg']:.2f} deg")
+        if worst["alpha_deg"] > 10.0:
+            print("      *** ALPHA LEAVES THE 10 deg LINEAR RANGE -- section 1's "
+                  "envelope. This ensemble is not evidence. ***")
+
+    # THE TWO SIGMA LIMBS ARE NOT TWO INDEPENDENT TESTS, and saying so is the
+    # honest reading. `dryden_field(sigma, seed)` takes its phases from `seed`
+    # alone and its amplitudes scale exactly as sigma, so seed k at the two
+    # intensities is the SAME field scaled -- and a linear aircraft would
+    # return the same normalised spectrum from both. Every difference below is
+    # therefore the dynamics being nonlinear, which makes this a measurement of
+    # how far from linear the response is rather than a second sample.
+    e_lo, e_hi = ensembles[lo_s], ensembles[hi_s]
+    ratio = e_hi["rms"].mean() / e_lo["rms"].mean()
+    print("\n  LINEARITY, which is what the two sigmas really measure:")
+    print(f"    sigma ratio      {hi_s / lo_s:.4f}")
+    print(f"    n_z rms ratio    {ratio:.4f}  "
+          f"({100 * (ratio / (hi_s / lo_s) - 1):+.2f}% against exact linearity)")
+    shape = np.trapezoid(np.abs(
+        e_hi["psd"] / np.trapezoid(e_hi["psd"], e_hi["f"])
+        - e_lo["psd"] / np.trapezoid(e_lo["psd"], e_lo["f"])), e_lo["f"])
+    print(f"    normalised spectra differ by {shape:.3f} in L1")
+    print("    The response is superlinear in gust intensity. DO NOT read that")
+    print("    as aerodynamic nonlinearity: `aero.py` is linear in alpha and")
+    print("    the entry flown here carries no CL table. The drift line above")
+    print("    is the candidate -- with fixed controls and nobody flying, the")
+    print("    aeroplane leaves the condition it was trimmed for, and dynamic")
+    print("    pressure changes with it. Attributed, not merely noted.")
 
     # The sealed prediction, settled here.
     pred = predictions.BY_NAME["the_dryden_response_peaks_at_the_short_period"]
@@ -304,7 +393,10 @@ def figure(path, f_a, psd_a, peak_a, ensembles, curves, levels, f_sp, passage,
             color=PALETTE["model"], ms=6, label=f"peak {peak_a:.3f} Hz")
     _style(ax, "frequency, Hz", "$n_z$ PSD, g$^2$/Hz",
            "A. Mehta's array, one transient")
-    ax.set_xlim(0.01, 5.0)
+    ax.set_xlim(0.02, 5.0)
+    # Six decades below the peak is already far past anything physical; letting
+    # matplotlib autoscale to 1e-16 makes the hump that matters a flat line.
+    ax.set_ylim(1e-8, 3.0 * psd_a.max())
     ax.legend(fontsize=7.5, frameon=False, loc="lower left")
 
     ax = axes[1]
@@ -318,7 +410,9 @@ def figure(path, f_a, psd_a, peak_a, ensembles, curves, levels, f_sp, passage,
                label="sealed prediction band")
     _style(ax, "frequency, Hz", "$n_z$ PSD, g$^2$/Hz",
            f"B. Dryden ensemble, {seeds} flights averaged")
-    ax.set_xlim(0.01, 5.0)
+    ax.set_xlim(0.02, 5.0)
+    top = max(e["psd"].max() for e in ensembles.values())
+    ax.set_ylim(1e-8, 3.0 * top)
     ax.legend(fontsize=7.5, frameon=False, loc="lower left")
 
     ax = axes[2]
