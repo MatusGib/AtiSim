@@ -987,16 +987,22 @@ def test_the_wind_hold_costs_the_headline_figure_more_than_E4_bounds_it():
     dt. Measured on the number `scripts/vortex.py` actually prints, the in-core
     Fig-8 d(theta):
 
-        dt = 0.02   hold 2.1261 deg   per-stage 2.1628 deg   +1.72%
-        dt = 0.01   hold 2.1602 deg   per-stage 2.1434 deg   -0.78%
+        dt = 0.02   hold 2.2596 deg   per-stage 2.2230 deg   -1.62%
+        dt = 0.01   hold 2.2400 deg   per-stage 2.2216 deg   -0.82%
 
     So the cost at the production step is ~0.8%, not ~1e-4 -- about 80x the
     register's figure, and it halves with dt as an O(h) error must.
 
-    RE-MEASURED session 22, at Hannibal's new 500 ft core radius; the figures
-    above were 2.2596/2.2230/-1.62% and 2.2400/2.2216/-0.82% at 600 ft. The
-    MAGNITUDES barely moved and still halve with dt, which is the finding. The
-    SIGN at dt = 0.02 flipped, and that is expected rather than alarming: the
+    *** THESE NUMBERS HAVE NOW BEEN MEASURED AT BOTH RADII AND CAME BACK. ***
+    Session 22 re-measured them at Hannibal's then-new 500 ft core and got
+    2.1261/2.1628/+1.72% and 2.1602/2.1434/-0.78%. Session 26 obtained Parks et
+    al. 1985, restored his own 600 ft, and the original figures returned to the
+    digit -- which is a check on the whole chain, since nothing but the radius
+    was supposed to have changed.
+
+    What survived both radii is the finding: the MAGNITUDE is ~1% at dt = 0.02
+    and halves with dt, as an O(h) error must. The SIGN at dt = 0.02 flipped
+    between the two radii, which is expected rather than alarming -- the
     quantity is a max-minus-min over a sampled trace, so which sample lands
     nearest the peak shifts with both the step and the core size. The assertion
     that carries the conclusion is `abs(rel) > 1e-3`, not the sign.
@@ -1049,9 +1055,9 @@ def test_the_wind_hold_costs_the_headline_figure_more_than_E4_bounds_it():
     per_stage = math.degrees(theta[wp].max() - theta[wp].min())
 
     rel = (per_stage - held) / held
-    assert held == pytest.approx(2.1261, abs=0.005)
-    assert per_stage == pytest.approx(2.1628, abs=0.005)
-    assert abs(rel) == pytest.approx(0.0172, abs=0.004)
+    assert held == pytest.approx(2.2596, abs=0.005)
+    assert per_stage == pytest.approx(2.2230, abs=0.005)
+    assert abs(rel) == pytest.approx(0.0162, abs=0.004)
     assert abs(rel) > 1e-3, (
         "the wind hold now costs less than 0.1% at dt=0.02; ASSUMPTIONS.md E4's "
         "~1e-4 bound may have become correct and this test should be re-measured")
@@ -1108,13 +1114,15 @@ def test_the_longitudinal_station_set_is_one_sided_and_biases_the_pitch_secant()
     assert correction(-0.99) == pytest.approx(1.80, abs=0.05)
     # and the boundary values are asymmetric for the same reason
     assert correction(+1.00) == pytest.approx(2.00, abs=0.02)
-    # 0.156 at Hannibal's old 600 ft core; 0.182 at the 500 ft radius adopted in
-    # session 22. This is the ONE value here that moved, and it moved for a
-    # reason worth keeping: it sits exactly on the core boundary, where the
-    # Rankine field's derivative is discontinuous, so what the station set
-    # straddles depends on the core size relative to the fuselage length. The
-    # interior and +1.00 values did not move, because they do not straddle it.
-    assert correction(-1.00) == pytest.approx(0.182, abs=0.02)
+    # 0.156 at Parks' own 600 ft core, restored session 26; it was 0.182 at the
+    # 500 ft radius the project flew from session 22 to 25. This is the ONE
+    # value here that moves with the radius, and it moves for a reason worth
+    # keeping: it sits exactly on the core boundary, where the Rankine field's
+    # derivative is discontinuous, so what the station set straddles depends on
+    # the core size relative to the fuselage length. The interior and +1.00
+    # values do not move, because they do not straddle it -- which is why this
+    # one is a check on the radius change and those two are controls on it.
+    assert correction(-1.00) == pytest.approx(0.156, abs=0.02)
 
 
 def test_trim_returns_absurd_roots_from_plausible_guesses_on_real_aircraft():
@@ -1976,11 +1984,12 @@ def test_along_track_shear_carries_the_heading_rotation_of_a_turning_aircraft():
     delta_f = abs(got) / G0
     single_core = case["v0"] * rate / G0
     assert single_core == pytest.approx(0.1383, abs=5e-4)
-    # 0.1423 at Hannibal's old 600 ft core, 0.1411 at the 500 ft radius adopted
-    # session 22. The single-core figure above does NOT move -- it depends only
-    # on v0, which was never in dispute -- so all of the 0.0012 is the second
-    # core's contribution changing with the core size at fixed spacing.
-    assert delta_f == pytest.approx(0.1411, abs=5e-4), (
+    # 0.1423 at Parks' own 600 ft core, restored session 26; 0.1411 at the 500 ft
+    # radius flown from session 22 to 25. The single-core figure above does NOT
+    # move -- it depends only on v0, which was never in dispute between the
+    # papers -- so all of the 0.0012 is the second core's contribution changing
+    # with core size at fixed spacing, and that is the control on this pin.
+    assert delta_f == pytest.approx(0.1423, abs=5e-4), (
         f"the standard-rate turn now costs dF = {delta_f:.4f}")
     assert delta_f > single_core > 0.1, "still above the FAA 0.1 threshold"
 

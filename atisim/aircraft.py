@@ -1609,3 +1609,70 @@ CRUISE: dict[str, dict[str, float]] = {
     "cherokee": {"altitude": 4920.0 * FT2M, "airspeed": 50.0},
     "cessna172": {"altitude": 5000.0 * FT2M, "airspeed": 60.0},
 }
+
+
+# ---------------------------------------------------------------------------
+# THE 747's INITIAL BUFFET BOUNDARY, digitised session 26.
+#
+# Source: C. R. Hanke and D. R. Nordwall, "The Simulation of a Jumbo Jet
+# Transport Aircraft, Volume II: Modeling Data", Boeing D6-30643-VOL-2 /
+# NASA CR-114494, September 1970 -- `refs/NASA-CR-114494.pdf`, sheet
+# "LIFT COEFFICIENT / BUFFET BOUNDARY AND C_Lmax", printed page 2.0-38,
+# REV. D. Flaps up, gear up, trimmed. The sheet carries the note
+# "SEE SECTION 19 FOR REVISED DATA", which has NOT been read; this is the
+# base-section curve.
+#
+# WHY IT IS HERE AND WHAT IT IS FOR. PROJECT.md section 5 records the +-g
+# asymmetry as structurally impossible: `aero.py` is CL = CL0 + CLa*alpha,
+# exactly odd-symmetric, and no reachable source publishes a post-stall 747
+# lift curve -- CR-114494's own CL_BASIC is straight lines annotated
+# "extrapolate linearly to higher alpha if required". This table does NOT fix
+# that and is NOT wired into the aero. What it does is say WHERE THE LINEAR
+# MODEL STOPS BEING DEFENSIBLE in CL-Mach, which is the service
+# `panel.ALPHA_LINEAR_DEG` performs in alpha and was until now the only guard
+# of its kind. A run that crosses this boundary is reporting lift the source
+# says is already breaking down.
+#
+# HOW IT WAS READ, AND THE CHECK THAT MAKES IT CREDIBLE. The sheet is a
+# rotated scan on graph paper. Axes were calibrated on the two heavy axis
+# lines and verified against the printed gridlines, which land within 3 px
+# (0.001 in Mach, 0.0002 in CL). The curves were isolated by keeping only ink
+# in a run of >= 6 px BOTH vertically and horizontally -- which deletes the
+# graph paper, whose lines are 4-5 px in one direction and long in the other --
+# then taken as connected components, with per-column strand continuity so the
+# label's leader line is not followed where it meets the curve.
+#
+# *** THE SAME SHEET CARRIES A CURVE THIS PROJECT ALREADY DIGITISED, AND THAT
+# IS THE VALIDATION. *** Session 21 read `CL_MAX(M)` off the upper curve and
+# recorded it in PROJECT.md section 4 with a stated +-0.02 reading uncertainty.
+# Running this pipeline on that curve reproduces the published table with a
+# mean offset of +0.0052, an RMS of 0.0052 and a worst point of 0.0063 -- four
+# times inside their stated uncertainty, from an independent trace. The offset
+# is systematic and is about half a stroke width.
+#
+# So: quote this table to +-0.02, session 21's figure, and not better.
+B747_BUFFET_MACH = (
+    0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.75, 0.78,
+    0.80, 0.82, 0.84, 0.86, 0.88, 0.90, 0.92, 0.94, 0.96,
+)
+B747_BUFFET_CL = (
+    0.826, 0.824, 0.821, 0.814, 0.803, 0.787, 0.760, 0.743, 0.731,
+    0.721, 0.711, 0.696, 0.670, 0.624, 0.567, 0.499, 0.419, 0.334,
+)
+B747_BUFFET_CL_UNCERTAINTY = 0.02  # session 21's figure for this sheet
+
+
+def buffet_cl(mach):
+    """Initial-buffet `CL` at `mach`, linearly interpolated, for the 747.
+
+    Clamps at the ends of the digitised range (M 0.10 to 0.96) the way JSBSim's
+    own `<table>` blocks do. OUTSIDE that range it is an extrapolation by
+    clamping and should not be quoted; inside it, it is good to +-0.02.
+
+    Not used by `aero.py` and deliberately so -- a hard ceiling is a kink, and
+    PROJECT.md section 4 records eleven tests going red the last time one was
+    tried. This is a REPORTING boundary, not a force model.
+    """
+    return float(jnp.interp(jnp.asarray(mach, dtype=float),
+                            jnp.asarray(B747_BUFFET_MACH),
+                            jnp.asarray(B747_BUFFET_CL)))

@@ -1163,6 +1163,55 @@ aircraft does either. The honest options are to report the drift with the result
 what the script now does, per ensemble — or to fly a condition-holding case as a *separate*
 category with its own name, which is new work rather than a fix.
 
+### E12. Four papers describe the Hannibal vortex and they do not agree
+
+**Where:** `wind.PARKS_CASES`, `wind.WINGROVE_FIG4_CASES`, `wind.MEHTA_HANNIBAL_*`.
+Recorded session 26, when Parks et al. 1985 was finally obtained.
+
+**The lineages, and they do not interleave:**
+
+| Source | `r₀` | `V₀` | spacing | standing |
+|---|---|---|---|---|
+| **Parks et al. 1985**, J. Aircraft 22(2) 124–129, p. 127 | **600 ft** | **85 ft/s** | **3500 ft** | the first identification, and the only one publishing a complete triple |
+| Wingrove & Bach 1994 Fig. 4 | 500 ft | 85 ft/s | *none published* | a later paper's table, reporting the refit |
+| NASA TM-102186 p. 3-4 | 500 ft | 87 ft/s | 3400 ft | prose restatement of Mehta's converged fit |
+| Mehta 1987, five-core | 500.5 ft | 86.8 ft/s | five published core positions | a different and better-converged FIT of the same encounter |
+
+**What this project flies, and what it flew.** `PARKS_CASES` carries Parks' triple.
+`MEHTA_HANNIBAL_*` carries Mehta's five-core field, which is a *different field*, not a
+different opinion about this one, and is what the headline result flies. `WINGROVE_FIG4_CASES`
+keeps Fig. 4's numbers because Cimarron exists nowhere else.
+
+**From session 22 to session 25 it flew a vortex no paper states.** `PARKS_CASES["hannibal"]`
+paired Fig. 4's 500 ft radius with Parks' 85 ft/s and Parks' 3500 ft spacing, under a comment
+declaring the hybrid deliberate on the grounds that Parks "has never been retrieved". He has
+now been retrieved and the triple is restored. **The lesson is not that 500 was wrong** — it is
+a real reading of a real paper — **but that a dict named for a source must carry that source's
+numbers, and that a hybrid is not a compromise between two readings, it is a third thing
+nobody measured.**
+
+**What the disagreement is worth, measured across the two radii at fixed `V₀` and spacing:**
+
+| Quantity | at 500 ft | at 600 ft | move |
+|---|---|---|---|
+| JSBSim Hannibal peak-to-peak `n_z` | 1.8969 g | **1.8162 g** | **−4.26%** |
+| … as a fraction of the DFDR's 2.70 g | 70.3% | **67.3%** | −3.0 points |
+| in-core Fig-8 Δθ at dt = 0.02 (§4's E4 row) | 2.1261° | **2.2596°** | +6.3% |
+| longitudinal station-set correction at the core boundary | 0.182 | **0.156** | −14% |
+| along-track shear ΔF at a standard-rate turn | 0.1411 | **0.1423** | +0.85% |
+
+**The correction moves the headline in the uncomfortable direction**, and that is worth saying
+plainly: the load shortfall §5 records got *worse*, not better. It is physical rather than
+surprising — a solid-body core has `dw/dx = V₀/r₀`, so a **larger** core at the same tangential
+velocity is a **gentler** gradient, and the aircraft has longer to respond. Nobody would adopt
+this radius to flatter the model.
+
+**Verdict: not an assumption to remove, a disagreement to carry.** Only new evidence about the
+1981 encounter could close it, and none is in prospect. Quote Parks for Parks' case, Mehta for
+the five-core field, and **never pair a radius from one row of the table above with a strength
+or a spacing from another.** `test_wind.py::test_each_case_carries_one_papers_coherent_triple_and_never_a_hybrid`
+enforces exactly that, including the three crossings that must not reappear.
+
 ## F. Numerics
 
 ### F1. Fixed-step RK4 at 50 Hz
@@ -1301,6 +1350,7 @@ solver preconditions live rather than a defect repair.
 | 14 | **F7** singular control Jacobian returns NaN silently | **latent** | no shipped solver carries rudder as an unknown; a steady-turn solve would be the first |
 | 15 | **E10** no wind field varied across the span | **capability CLOSED session 24; NOT validated** | the strip path moves peak bank +22.9%, its first non-zero effect. No source held records a lateral CAT response, so every lateral number is a capability demonstration |
 | 16 | **E11** a response spectrum assumes a stationary record | **measured session 25, and it bites at the upper σ** | fixed controls hold no condition: 703 m of altitude and **13.1% of airspeed** over 100 s at σ = 4.459 m/s, which is ~25% of `q` and is the true cause of the +5.46% "superlinearity". Lower σ is the clean ensemble; upper is a bound. Report the drift with the spectrum |
+| 17 | **E12** four papers disagree on the Hannibal core radius | **carried, not resolved; the hybrid is gone** | Parks' own triple (600 ft / 85 ft/s / 3500 ft) restored session 26 after three sessions flying a radius from one paper with a strength and spacing from another. Worth −4.26% on the headline peak-to-peak load, in the UNCOMFORTABLE direction. Never cross the rows |
 
 Items 1 and 5 — the two session 11 flagged as new and actionable — are both closed by
 measurement, and in both cases the measurement changed the answer the reasoning had given.

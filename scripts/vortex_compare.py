@@ -275,28 +275,34 @@ def main():
 
 
 def _hannibal_spread(ref):
-    a = ref.encounters[("hannibal", "wingrove")]
-    b = ref.encounters[("hannibal", "parks")]
-    an, bn = a.load_increments(), b.load_increments()
-    print("=== the unresolved Hannibal radius, in JSBSim ===")
-    print(f"   Fig. 4   r0 = {a.values['r0'] / FT2M:.0f} ft -> "
-          f"dn {an[0]:+.4f} / {an[1]:+.4f} g")
-    print(f"   Parks    r0 = {b.values['r0'] / FT2M:.0f} ft -> "
-          f"dn {bn[0]:+.4f} / {bn[1]:+.4f} g")
-    print(f"   spread   {abs(an[1] - bn[1]):.4f} g on the negative peak, "
-          f"{abs((an[1] - bn[1]) / bn[1]) * 100:.1f}% -- and Parks 1985 has "
-          "never been obtained to settle which is right.\n")
-    m = ref.encounters[("morton", "wingrove")].load_increments()
-    mp = ref.encounters[("morton", "parks")].load_increments()
-    print(f"   Morton control (both sources agree on 450 ft): "
-          f"{m == mp} -- identical, so the spread above is the radius\n")
+    """~~The unresolved Hannibal radius~~ -- RESOLVED, and this no longer runs.
+
+    Until session 26 the reference carried every case at BOTH radii and this
+    printed the spread between them. Parks et al. 1985 was then obtained, his own
+    triple went back into `wind.PARKS_CASES`, and the second run per case was
+    removed -- it only ever existed by crossing Fig. 4's radius with Parks'
+    spacing, which is a vortex no paper states.
+
+    What the spread was worth is not lost: `docs/ASSUMPTIONS.md` E12 carries it,
+    measured across the two radii on the headline load, and this function is kept
+    as the pointer rather than deleted so a reader looking for the old output
+    finds out where it went.
+    """
+    hb = ref.encounters[("hannibal", "parks")]
+    print("=== the Hannibal radius ===")
+    print(f"   Parks 1985  r0 = {hb.values['r0'] / FT2M:.0f} ft, "
+          f"V0 = {hb.values['v0'] / FT2M:.0f} ft/s, one coherent triple")
+    print("   The two-radius spread this used to print is ASSUMPTIONS.md E12:")
+    print("   1.8969 -> 1.8162 g peak-to-peak going 500 ft -> 600 ft, i.e.")
+    print("   70.3% -> 67.3% of the DFDR's 2.70 g. A larger core at the same")
+    print("   V0 is a GENTLER gradient, so the correction cost load.\n")
 
 
 def _figure(ref, runs, path):
     import matplotlib.pyplot as plt
 
-    keys = [("cimarron", "wingrove"), ("hannibal", "wingrove"),
-            ("morton", "wingrove")]
+    keys = [("cimarron", "wingrove"), ("hannibal", "parks"),
+            ("morton", "parks")]
     fig, axes = plt.subplots(len(keys), 3, figsize=(15, 4 * len(keys)))
     for row, key in enumerate(keys):
         enc = ref.encounters[key]

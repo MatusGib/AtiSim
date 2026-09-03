@@ -180,12 +180,17 @@ def test_two_cores_are_penetrated_and_three_are_not():
 def test_the_two_source_strengths_scale_the_wind_exactly():
     """What the 2.1% strength disagreement between the sources is worth.
 
-    PARKS_CASES pairs Fig. 4's 500 ft radius with Parks' 85 ft/s; Mehta and TM
-    pair 500 ft with 87. `vortex_wind` multiplies by v0 exactly once on every
-    branch, so the induced wind scales exactly and the spread on any
-    wind-derived quantity is that same 2.1%. (TM-102186 rounds Mehta's 86.8
-    to 87, which against Parks is 2.35% -- so the sources span 2.1-2.4%
-    depending on which pair is taken, and the tests pin the Mehta figure.)
+    The papers agree on the RADIUS nowhere and on the STRENGTH nearly: Parks
+    says 85 ft/s with a 600 ft core, Mehta 86.8 with 500.5, TM-102186 87 with
+    500. `vortex_wind` multiplies by v0 exactly once on every branch, so the
+    induced wind scales exactly and the spread on any wind-derived quantity is
+    that same 2.1%. (TM-102186 rounds Mehta's 86.8 to 87, which against Parks
+    is 2.35% -- so the sources span 2.1-2.4% depending on which pair is taken,
+    and the tests pin the Mehta figure.)
+
+    THIS TEST IS ABOUT THE STRENGTH ALONE and deliberately holds the radius
+    fixed, which is what makes it a clean scaling check rather than a mixture
+    of the two disagreements. The radius disagreement is `ASSUMPTIONS.md` E12.
     """
     p = jnp.array([300.0, 0.0, -_ALT - 200.0])
     parks = np.asarray(wind.vortex_wind(p, _single(v0=85.0 * FT2M)))
@@ -1265,7 +1270,7 @@ def test_the_two_engines_part_on_the_array_where_they_did_not_on_one_core():
 
     ref = jsbsim_vortex_ref.load()
     arr = ref.encounters[("mehta", "mehta")]
-    one = ref.encounters[("hannibal", "wingrove")]
+    one = ref.encounters[("hannibal", "parks")]
 
     lo, hi = arr.window_bounds()
 

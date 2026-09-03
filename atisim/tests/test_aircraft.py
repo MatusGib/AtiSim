@@ -14,7 +14,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from atisim import trim
+from atisim import aircraft, trim
 from atisim.aircraft import CESSNA172_TABLES, CRUISE, REGISTRY
 from atisim.sensors import sense
 from atisim.atmosphere import G0
@@ -467,3 +467,90 @@ def test_the_recovery_band_reaches_no_force():
     after = aero.coefficients(*args, moved, jnp.array(303.0))
     for b, a in zip(before, after):
         assert float(b) == float(a)
+
+
+# ---------------------------------------------------------------------------
+# The 747's initial buffet boundary, digitised session 26 from
+# refs/NASA-CR-114494.pdf p. 2.0-38. See aircraft.py for the method.
+# ---------------------------------------------------------------------------
+
+
+def test_the_buffet_boundary_is_monotone_and_spans_the_sheet():
+    """Shape checks that would catch a trace that wandered onto something else.
+
+    The drawn curve falls monotonically across the whole sheet and steepens past
+    the drag-rise Mach. A digitisation that picked up the label's leader line, a
+    gridline or the other curve would break one of these.
+    """
+    m, cl = aircraft.B747_BUFFET_MACH, aircraft.B747_BUFFET_CL
+    assert len(m) == len(cl)
+    assert list(m) == sorted(m)
+    assert all(b < a for a, b in zip(cl, cl[1:])), "must fall monotonically"
+    assert cl[0] == pytest.approx(0.826, abs=0.001)   # M 0.10
+    assert cl[-1] == pytest.approx(0.334, abs=0.001)  # M 0.96
+    # It steepens: the last decade of Mach costs far more CL than the first.
+    assert (cl[0] - cl[6]) < 0.10          # M 0.10 -> 0.70
+    assert (cl[-6] - cl[-1]) > 0.30        # M 0.86 -> 0.96
+
+
+def test_the_buffet_boundary_sits_below_the_clmax_curve_from_the_same_sheet():
+    """The two curves on p. 2.0-38 must not cross, and they must stay apart.
+
+    Session 21 digitised the upper one (`CL_MAX(M)`) and PROJECT.md section 4
+    records it. Buffet onset is a boundary the aircraft meets BEFORE maximum
+    lift, so the lower curve is below the upper everywhere -- and if a trace had
+    hopped between them this is where it would show.
+    """
+    clmax = {0.10: 1.097, 0.30: 1.053, 0.50: 1.008, 0.70: 0.952, 0.78: 0.910,
+             0.82: 0.878, 0.86: 0.834, 0.90: 0.763, 0.94: 0.678}
+    for mach, top in clmax.items():
+        bot = aircraft.buffet_cl(mach)
+        assert bot < top, mach
+        assert 0.10 < top - bot < 0.35, (mach, top - bot)
+
+
+def test_buffet_cl_interpolates_and_clamps_like_the_source_tables():
+    """`jnp.interp`, matching every other table in this project and JSBSim's own
+    `<table>` blocks. Outside the digitised range it clamps rather than
+    extrapolating a curve the sheet does not draw."""
+    assert aircraft.buffet_cl(0.10) == pytest.approx(0.826, abs=1e-6)
+    assert aircraft.buffet_cl(0.81) == pytest.approx(0.716, abs=1e-6)  # midpoint
+    assert aircraft.buffet_cl(0.0) == aircraft.buffet_cl(0.10)   # clamped low
+    assert aircraft.buffet_cl(1.5) == aircraft.buffet_cl(0.96)   # clamped high
+
+
+def test_the_747_flies_its_cruise_with_about_one_and_a_quarter_g_to_buffet():
+    """What the boundary is FOR, as a number rather than a table.
+
+    At the Mehta condition -- 37,000 ft, M 0.80, the field the headline result
+    flies -- `boeing747` trims at CL 0.572 against a buffet boundary of 0.721.
+    That is a load-factor margin of 1.26 g, and the Hannibal encounter drives
+    n_z to about 1.68 g.
+
+    *** SO THE HEADLINE RUN GOES WELL PAST INITIAL BUFFET, AND THE MODEL CANNOT
+    KNOW IT. *** PROJECT.md section 5 records the +-g asymmetry as structurally
+    impossible because `aero.py` is linear; this test puts a sourced number on
+    where that stops mattering and starts biting. It is a REPORTING boundary --
+    nothing in the force model reads it.
+    """
+    from atisim.atmosphere import density, speed_of_sound
+    from atisim import wind
+
+    ac = aircraft.REGISTRY["boeing747"]
+    V = aircraft.CRUISE["boeing747"]["airspeed"]
+    alt = wind.MEHTA_HANNIBAL_ALTITUDE
+    rho = float(density(jnp.array(alt)))
+    mach = V / float(speed_of_sound(jnp.array(alt)))
+    cl_trim = float(ac.mass) * G0 / (0.5 * rho * V * V * float(ac.S))
+
+    assert mach == pytest.approx(0.800, abs=0.002)
+    assert cl_trim == pytest.approx(0.5718, abs=0.002)
+    boundary = aircraft.buffet_cl(mach)
+    assert boundary == pytest.approx(0.7212, abs=0.002)
+    n_buffet = boundary / cl_trim
+    assert n_buffet == pytest.approx(1.261, abs=0.01)
+    # The reading uncertainty on the boundary carries straight through.
+    assert aircraft.B747_BUFFET_CL_UNCERTAINTY / cl_trim == pytest.approx(
+        0.035, abs=0.005)
+    # And the encounter exceeds it -- by a lot, not marginally.
+    assert 1.68 > n_buffet + 0.3

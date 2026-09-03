@@ -111,22 +111,34 @@ CASES = [
 # 37,000 ft is inside that entry's declared band of [35,000, 41,000] ft.
 MEHTA_CASE = ("mehta", "B747", "boeing747_jsbsim", 0.80)
 
-# Both radii for every case, so the Hannibal conflict is flown rather than
-# argued. "wingrove" is Fig. 4's (500 ft); "parks" is wind.py's incumbent
-# (600 ft). For Morton the two agree exactly, which makes that pair a control:
-# any difference between its two runs is numerical noise, not a radius effect.
-RADIUS_SOURCES = ("wingrove", "parks")
+# WHICH PAPER EACH CASE'S NUMBERS COME FROM. One source per case, not two.
+#
+# This used to be `RADIUS_SOURCES = ("wingrove", "parks")` -- every case flown
+# at BOTH radii so the Hannibal conflict was "flown rather than argued". Two
+# things were wrong with that and session 26 removed it:
+#
+#   1. The "wingrove" arm was itself a CROSSING. It took Fig. 4's 500 ft radius
+#      and flew it in a harness whose spacing and geometry are Parks'. No paper
+#      states that vortex, so a run of it measures nothing about either paper.
+#   2. After session 22 moved PARKS_CASES to 500 ft the two arms became
+#      DEGENERATE -- identical runs under two labels -- and the test that noticed
+#      kept them for determinism checking rather than for the radius question
+#      they were built for.
+#
+# `radius_source` survives in the XML, with a better meaning: it names the paper
+# each case's parameters were taken from, so the citation travels with the run.
+CASE_SOURCE = {
+    "hannibal": "parks",     # Parks 1985 p.127: 600 ft, 85 ft/s
+    "morton": "parks",       # Parks 1985 p.128: 450 ft, 70 ft/s
+    "cimarron": "wingrove",  # only in Wingrove & Bach 1994 Fig. 4
+}
 
 
-def radius_and_strength(case, source):
-    """(r0, v0) in metres and m/s, from whichever paper is being flown."""
-    if source == "wingrove":
-        entry = WINGROVE_FIG4_CASES[case]
-    else:
-        if case not in PARKS_CASES:
-            return None  # Cimarron is not in Parks; the caller skips it.
-        entry = PARKS_CASES[case]
-    return entry["r0"], entry["v0"]
+def radius_and_strength(case):
+    """(r0, v0, source) in metres and m/s, from the ONE paper that states them."""
+    source = CASE_SOURCE[case]
+    entry = PARKS_CASES[case] if source == "parks" else WINGROVE_FIG4_CASES[case]
+    return entry["r0"], entry["v0"], source
 
 
 def rankine(north, down, core_north, core_down, r0, v0):
@@ -224,7 +236,7 @@ def run_case(case, model, mach, source, pad_radii=6.0, mehta=False):
         cos_dpsi = math.cos(math.radians(MEHTA_HANNIBAL_PSI_DEG))
     else:
         altitude = WINGROVE_CASE_ALTITUDE[case]
-        r0, v0 = radius_and_strength(case, source)
+        r0, v0, _ = radius_and_strength(case)
         cos_dpsi = 1.0
 
     configure(model)
@@ -327,14 +339,10 @@ def main():
     L.append("    <gradient_injected>false</gradient_injected>")
     L.append("  </provenance>")
 
-    runs = [(c, m, e, ma, src, False)
-            for (c, m, e, ma) in CASES for src in RADIUS_SOURCES]
+    runs = [(c, m, e, ma, CASE_SOURCE[c], False) for (c, m, e, ma) in CASES]
     runs.append(MEHTA_CASE + ("mehta", True))
 
     for case, model, entry, mach, source, mehta in runs:
-        if not mehta and radius_and_strength(case, source) is None:
-            print(f"{case:9} {source:9} SKIPPED -- not in that source")
-            continue
         values, initial, samples, cores = run_case(
             case, model, mach, source, mehta=mehta)
         nz = [s["Nz"] for s in samples]

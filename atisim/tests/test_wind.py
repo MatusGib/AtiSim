@@ -24,7 +24,7 @@ from atisim import dynamics, wind
 from atisim.units import FT2M
 
 # Parks Table/prose values, Case 1 (Hannibal, MO, 3 April 1981, DC-10, 37,000 ft)
-CASE1_R0 = 500.0 * FT2M  # Fig. 4's radius; see PARKS_CASES
+CASE1_R0 = 600.0 * FT2M  # Parks 1985 p.127, obtained session 26
 CASE1_V0 = 85.0 * FT2M
 CASE1_SPACING = 3500.0 * FT2M
 
@@ -172,53 +172,39 @@ def test_the_core_is_solid_body_and_the_outside_is_irrotational():
         assert speed(mult * CASE1_R0) == pytest.approx(CASE1_V0 / mult, rel=1e-9)
 
 
-def test_the_spacing_to_core_diameter_ratio_and_what_session_22_cost_it():
-    """Parks p.128 checks its identified arrays against Scorer's theory: "Scorer
-    calculated that the ratio of spacing to core diameter would be of the order
-    of 2.7. For the two cases discussed in this paper, the ratio of spacing to
-    core diameter ranged from about 2.9 to 3.5."
+def test_the_spacing_to_core_diameter_ratio_reproduces_the_paper():
+    """Parks' own Scorer comparison, against the paper rather than a memory.
 
-    *** THIS CHECK NO LONGER REPRODUCES, AND THAT IS EVIDENCE AGAINST THE
-    RADIUS THIS PROJECT NOW FLIES. IT IS RECORDED, NOT SUPPRESSED. ***
+    *** THIS CHECK WENT RED WHEN THE PROJECT ADOPTED 500 ft IN SESSION 22, AND
+    THAT WAS THE EVIDENCE. *** The test that recorded the loss is now this one,
+    which records the recovery: with Parks obtained (session 26) and PARKS_CASES
+    back on his own triple, his stated range reproduces.
 
-    With Hannibal at Parks' transcribed 600 ft the two ratios are 2.92 and 3.56,
-    which is "about 2.9 to 3.5" -- the source's own sentence, reproduced. With
-    Fig. 4's 500 ft, adopted session 22, they become 3.50 and 3.56, and the
-    lower end of that range has gone. Parks' stated range is only recoverable at
-    600 ft.
+    p. 129: Scorer's calculated ratio of spacing to core diameter is "of the
+    order of 2.7", and "for the two cases discussed in this paper, the ratio of
+    spacing to core diameter ranged from about 2.9 to 3.5".
 
-    How much that weighs:
-
-      AGAINST 500 ft. A transcription error in r0 would normally BREAK the
-      consistency between the radius and the quoted ratio range. These two
-      numbers agree at 600 ft, which is what a faithful transcription looks
-      like.
-
-      FOR 500 ft, and why it was still chosen. The ratio quote and the 600 ft
-      come from the SAME unretrieved document and the same transcription, so
-      they are not independent -- a transcriber working from one table would
-      carry an error into both. Against that, Wingrove & Bach 1994 is in hand,
-      its Fig. 4 gives 1000 ft of diameter, and its own text (p. 760) says "the
-      vortex cores have diameters of 900-1000 ft", which is a second statement
-      in the same held paper. Its Morton row also reproduces this project's
-      Morton radius exactly, so it is a checked source.
-
-    The honest position is that the two papers disagree and only Parks can close
-    it. This test now pins the CURRENT ratios so the loss is visible, and pins
-    what they would be at the superseded radius so the argument survives in the
-    code rather than only in a commit message.
+    NOTE WHAT THE PAPER DOES AND DOES NOT SAY. He quotes a RANGE across the two
+    cases, not 2.92 for Hannibal -- an earlier version of this project wrote
+    "Parks quotes 2.92", which he does not. 2.92 is our arithmetic on his
+    numbers, and the fact it lands inside his printed range is the check.
     """
     ratio1 = CASE1_SPACING / (2.0 * CASE1_R0)
     ratio2 = CASE2_SPACING / (2.0 * CASE2_R0)
-    # What the project flies now, at Fig. 4's 500 ft.
-    assert ratio1 == pytest.approx(3.50, abs=0.01)
+    assert ratio1 == pytest.approx(2.92, abs=0.01)
     assert ratio2 == pytest.approx(3.56, abs=0.01)
-    # Both still sit above Scorer's order-of-2.7, which is the physics check.
+    # The paper's own range, "about 2.9 to 3.5", contains both to its precision.
+    assert 2.85 < ratio1 < 3.55
+    assert 2.85 < ratio2 < 3.60
+    # Both sit above Scorer's order-of-2.7, which is the physics check.
     for r in (ratio1, ratio2):
-        assert 2.7 < r < 3.6
-    # And what the superseded radius gave -- Parks' own "about 2.9".
-    superseded = CASE1_SPACING / (2.0 * wind.HANNIBAL_R0_SUPERSEDED)
-    assert superseded == pytest.approx(2.92, abs=0.01)
+        assert r > 2.7
+    # THE COMPANION THAT MUST FAIL: at the 500 ft this project flew from session
+    # 22 to 25, the lower end of Parks' range is unreachable. That is why the
+    # radius went back.
+    at_500 = CASE1_SPACING / (2.0 * 500.0 * FT2M)
+    assert at_500 == pytest.approx(3.50, abs=0.01)
+    assert not 2.85 < at_500 < 3.00
 
 
 # --- the wind-model contract -------------------------------------------------
@@ -1048,31 +1034,68 @@ def test_wingrove_fig4_cases_are_radii_and_morton_fixes_the_interpretation():
     )
 
 
-def test_hannibal_radius_conflict_was_resolved_in_favour_of_the_held_source():
-    """The two sources disagreed on Hannibal; session 22 chose Fig. 4's 500 ft.
+def test_each_case_carries_one_papers_coherent_triple_and_never_a_hybrid():
+    """The no-crossing rule, enforced rather than described.
 
-    Fig. 4 gives a 1000 ft core diameter, so a 500 ft radius. `PARKS_CASES` read
-    600 ft, transcribed from Parks et al. 1985 -- which has never been retrieved.
-    The conflict could not be settled on the documents, so it was settled on
-    which document is actually held and readable: Fig. 4, whose Morton row
-    reproduces this project's Morton radius to the digit and is therefore a
-    checked source rather than a guess.
+    From session 22 to 25 `PARKS_CASES["hannibal"]` was a HYBRID -- Wingrove
+    Fig. 4's 500 ft radius, Parks' 85 ft/s strength, Parks' 3500 ft spacing --
+    and its own comment declared the hybrid deliberate. No source states that
+    vortex. Session 26 obtained Parks and put his triple back.
 
-    PARKS_CASES now carries 500 ft and its comment carries the reattribution --
-    the citation moved with the number instead of being left pointing at a paper
-    that says something else. The superseded value is kept as a named constant so
-    the change is visible in the code, not only in the history.
+    Four lineages describe this one encounter and they do not interleave:
+
+        Parks 1985           r0 600 ft    V0 85 ft/s    spacing 3500 ft
+        Wingrove Fig. 4      r0 500 ft    V0 85 ft/s    (no spacing published)
+        TM-102186 prose      r0 500 ft    V0 87 ft/s    spacing 3400 ft
+        Mehta 1987 (5-core)  r0 500.5 ft  V0 86.8 ft/s  five core positions
+
+    This test pins the rows that live in `wind` and asserts the crossings are
+    absent. `docs/ASSUMPTIONS.md` E12 holds the discrepancy itself.
     """
-    assert wind.PARKS_CASES["hannibal"]["r0"] == pytest.approx(500.0 * FT2M)
+    hb = wind.PARKS_CASES["hannibal"]
+    assert hb["r0"] == pytest.approx(600.0 * FT2M)
+    assert hb["v0"] == pytest.approx(85.0 * FT2M)
+    assert hb["spacing"] == pytest.approx(3500.0 * FT2M)
+
+    # Wingrove Fig. 4 is a DIFFERENT reading and keeps its own dict.
     assert wind.WINGROVE_FIG4_CASES["hannibal"]["r0"] == pytest.approx(500.0 * FT2M)
-    assert wind.HANNIBAL_R0_SUPERSEDED == pytest.approx(600.0 * FT2M)
-    # Strength was never in dispute; only the radius was.
-    assert wind.WINGROVE_FIG4_CASES["hannibal"]["v0"] == pytest.approx(
-        wind.PARKS_CASES["hannibal"]["v0"]
+    assert hb["r0"] != pytest.approx(
+        wind.WINGROVE_FIG4_CASES["hannibal"]["r0"]
+    ), "the two papers disagree on Hannibal's radius; that is the point"
+
+    # THE CROSSINGS THAT MUST NOT EXIST. Each is a pairing no source states.
+    assert hb["v0"] != pytest.approx(87.0 * FT2M)      # TM-102186's strength
+    assert hb["spacing"] != pytest.approx(3400.0 * FT2M)  # TM-102186's spacing
+    assert hb["r0"] != pytest.approx(wind.MEHTA_HANNIBAL_R0)  # Mehta's fit
+
+    # Morton is the case where the two papers AGREE, which is what established
+    # that Fig. 4's column is a diameter at all.
+    assert wind.PARKS_CASES["morton"]["r0"] == pytest.approx(
+        wind.WINGROVE_FIG4_CASES["morton"]["r0"]
     )
-    # Spacing is still Parks' and cannot come from Fig. 4, which does not give one.
-    assert "spacing" in wind.PARKS_CASES["hannibal"]
+    # Spacing is Parks' and cannot come from Fig. 4, which publishes none.
+    assert "spacing" in hb
     assert "spacing" not in wind.WINGROVE_FIG4_CASES["hannibal"]
+
+
+def test_both_parks_cases_are_dc10s_and_morton_is_the_weaker_fit():
+    """Two facts from the paper that change what an acquisition is worth.
+
+    BOTH cases are DC-10s (pp. 127, 128), so one published derivative set serves
+    both validation targets rather than one -- PROJECT.md section 7's
+    highest-value acquisition is worth twice what that row assumed.
+
+    And they are NOT equally good targets. Parks says case 2 shows "some
+    agreement, but not as good as that shown previously for case 1", and
+    attributes the difference to "strong mountain wave activity which influences
+    the short-period wind pattern" -- a contaminant in exactly the band a
+    vortex-passage comparison measures.
+    """
+    assert wind.PARKS_CASE_AIRCRAFT == "DC-10"
+    assert set(wind.PARKS_FIT_QUALITY) == set(wind.PARKS_CASES)
+    assert "reasonably good" in wind.PARKS_FIT_QUALITY["hannibal"]
+    assert "mountain-wave" in wind.PARKS_FIT_QUALITY["morton"]
+    assert "not as good" in wind.PARKS_FIT_QUALITY["morton"]
 
 
 def test_cimarron_exists_only_in_the_1994_paper():
