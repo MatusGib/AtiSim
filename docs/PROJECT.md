@@ -211,7 +211,7 @@ rigid-rotation self-consistency test that found them. **Read it before changing 
 | McCormick (via a worked example) | Cherokee PA-28-180 dimensional derivatives | no second source for the lateral set; `Izz < Iyy` flagged by its own author |
 | Roskam / USAF DATCOM via PyFME | Cessna 172 non-dimensional tables | rudder derivatives omitted and inconsistent — the whole rudder set is zeroed |
 | Nelson / Etkin / McRuer | Navion per-radian derivatives | no extractable published mode table was found; tests assert ranges, not values |
-| **Parks, Wingrove, Bach & Mehta 1985**, J. Aircraft 22(2) 124–129 | **the vortex model** — Rankine core, array by superposition, and identified parameters | α is *inferred* from accelerometers through an assumed aero model — see §5 |
+| **Parks, Wingrove, Bach & Mehta 1985**, J. Aircraft **22**(2) 124–129, DOI 10.2514/3.45095 — **HELD, session 26** | **the vortex model and both identified cases, first-hand.** Rankine core, array by superposition, Eqs. (3)–(6). Case 1 Hannibal p. 127: r₀ 600 ft, V₀ 85 ft/s, spacing 3500 ft. Case 2 Morton p. 128: 450, 70, 3200. **Both DC-10s.** The abstract gives core *diameters* 900–1200 ft, which settles radius-versus-diameter. His own assessment of the two fits, p. 128, is in `wind.PARKS_FIT_QUALITY` | α is *inferred* from accelerometers through an assumed aero model — see §5. Gives **no** aircraft weight or wing area, deferring aerodynamic characteristics to a 1982 SFTE symposium paper. **Case 2 is the weaker fit and he says so**: "not as good as … case 1", attributed to "strong mountain wave activity which influences the short-period wind pattern" |
 | **Wingrove & Bach 1994**, J. Aircraft 31(4) 753–760 | updraft magnitudes/duration, g-load statistics, the Fig. 8 discriminator | never identifies an aircraft type; no updraft edge gradient; no lateral data |
 | **Doyle, Jiang, Smith & Grubišić 2011**, *Mon. Wea. Rev.* 139, 3–23, DOI 10.1175/2010MWR3466.1 | **the lee-wave amplitudes** — T-REX Gulfstream V over the Sierra Nevada, IOP 4 primary wave, 6 and 12 m/s crest-to-trough | gives a **tropospheric** wavelength band (20–35 km) and says stratospheric ones are shorter **without a number** — see §5 |
 | **Proctor, Hinton & Bowles 2000**, 9th Conf. Aviation Range & Aerospace Meteorology, paper 7.7, 482–487 | **the F-factor** — Eq. (3) `F = U̇ₓ/g − w/Vₐ`, Eq. (4) for the shear term, Eq. (7) for the **1 km average**, the `F > (T−D)/W` thrust criterion, the 0.1/0.13 thresholds, and F = 0.2–0.36 in real accidents | its thresholds are **low-altitude** (§4.1 bounds the threat below 500 m) **and jet-transport only** — it states the scale and threshold "are yet to be determined" for piston aircraft |
@@ -221,6 +221,8 @@ rigid-rotation self-consistency test that found them. **Read it before changing 
 | **Mehta 1987**, *J. Guidance, Control & Dynamics* 10(1) 27–31 (AIAA 84-2083) | **the only wind field in the project that declares nothing**: the converged five-vortex Hannibal solution — five core positions, `r₀` = 500.5 ft, `V₀` = 86.8 ft/s, ψ = 31°, altitude, bias and trend terms. Also the identification method behind Parks, and the cost at each array size | the fit is to DFDR-derived winds, so it inherits their reconstruction error (bounded by Lester below). States the encounter as **July** 1981 where two NASA documents say April |
 | **Wingrove, Bach & Schultz 1989**, NASA TM-102186 | the Hannibal encounter's **measured** normal acceleration (+1.7 to −1.0 g, gusts ~5 s apart); the vortex-array model in words (1,000 ft diameter, 87 ft/s, 3,400 ft spacing); **Fig. 8's three-aircraft simulation** at V = 150 / 700 / 800 ft/s and the mechanism it states | Fig. 8's exact wind field is not recoverable from the paper, so only orderings and excursion ratios can be compared. **Quotes Schultz 1990's Table 1 *initial estimates* as if they were his converged DFW results** — see §5 |
 | **Lester, Sen & Bach 1989**, *Mon. Wea. Rev.* 117 1103–1107 | **Table 1: the RMS error of a DFDR-plus-radar wind reconstruction** (2.449 m/s horizontal, 2.236 m/s vertical at V = 250 m/s); a **B-747** mountain-wave encounter at 33,000 ft, +2.7/−1.0 g, 1,000 ft altitude gain; a **measured 22 km lee-wave wavelength** ~1 km above the tropopause | one case, over Greenland rather than the Sierra Nevada that `LEE_WAVE_AMPLITUDE` comes from; no ATC radar fixes, so the track was initialised from the pilot's log and a six-minute mean was removed from the derived vertical velocity |
+| **Bach & Parks 1987**, J. Aircraft **24**(11) 789–792 — **HELD, session 26** | **the error budget on the identification this project's fields rest on.** Eq. (2) gives `C_L` from body-axis accelerations and thrust over `QS`, so **mass and wing area enter only as the ratio `m/S`**. Eq. (4)'s error analysis: the AOA estimate moves **about 0.05° for a 1% error in acceleration**, and "also about 0.05 deg for a 1% error in the lift coefficient" | **contains no DC-10.** Its two validation cases are an **L-1011** and a **B-747SP**, so it does not help §7's acquisition #1. It bounds the input, not the airframe |
+| **Ashburn, Waco & Melvin 1970**, AFFDL-TR-70-101 (HICAT) — **HELD, session 26** | **measured** high-altitude turbulence: probability densities and **exceedance curves of RMS gust velocity**, from U-2 flights | **its band is 45,000–70,000 ft and this project flies 33,000–41,000.** Against MIL-F-8785C Fig. 7 in that band it is an *extrapolated* check, and possibly not an independent one — the report compares itself against **MIL-A-8861A** and against **Steiner's NASA U-2** data, so the high-altitude end of Fig. 7 may descend from the same aircraft. Settling that needs the spec's Background Information and User Guide (ADA119421), which is **not held** |
 | **Misaka, Obayashi & Endo 2008**, *J. Aircraft* 45(4) 1217–1229 | **the RMS normal load severity index** — `σ_n` over a moving 5 s average, moderate 0.2–0.3 g, severe ≥ 0.3 g (attributed there to Hamilton & Proctor). Defined at cruise altitude, which the F-factor thresholds are not | its own Figs. 26–27 show `σ_n` tracks the *trend* of measured acceleration and misses the peaks, by construction of the 5 s window |
 | **Yoshimura et al. 2022**, *J. Appl. Meteor. Climatol.* 61 503–519 | Tables A2/A3/A5: a **third CR-2144 747 flight condition** — M 0.8 at 6,096 m — with a complete non-dimensional longitudinal set including `C_mα̇`, the flight condition, and the short-period pair (`ω_n` 1.29, `ζ` 0.57) | **not an independent dataset** — Table A2 is attributed to Heffley & Jewell, i.e. CR-2144 again. Same standing as Caughey. Its own conclusion misreads Table A5's `s⁻¹` as `Hz` — see §5 |
 
@@ -979,8 +981,36 @@ during the traverse.
 Two findings there. **Gust strength dominates**: the fitted Rankine core is smoother than
 the data Fig. 4 itself overlays on it, and a 40% stronger core closes the gap almost
 exactly. **Airframe mass does not matter at all** — a clean null. The intuition that a
-heavier aircraft holds more of the quasi-steady load is wrong, because Δn = ΔC_L/C_L,trim
-and C_L,trim = W/qS, so wing loading cancels; four times the mass moves the answer by 0.6%.
+heavier aircraft holds more of the quasi-steady load is wrong, because Δn = ΔC_L/C_L,trim.
+
+> ### ⚠ That row's *explanation* was wrong, and session 26 measured the right one
+>
+> It read "…and C_L,trim = W/qS, **so wing loading cancels**; four times the mass moves the
+> answer by 0.6%". **Wing loading does not cancel — it is the only thing that matters.**
+> `C_L,trim = (W/S)/q`, so `Δn = C_Lα·(w_g/V)·q/(W/S)`, and the load goes as **1/(W/S)**.
+>
+> **The measurement never tested it.** The row is *737 → 747*, and those two entries differ
+> by **5.95× in mass but only 1.267× in wing loading** — mass and area moved together, which
+> is what an aircraft family does. A controlled sweep, one airframe at one condition
+> (`boeing747`, Mehta's field, first core):
+>
+> | change | W/S | peak-to-peak Δn | vs baseline | `1/(W/S)` would give |
+> |---|---|---|---|---|
+> | mass ×0.8 | 4434 | 2.2553 g | ×1.192 | ×1.250 |
+> | **baseline** | **5542** | **1.8918 g** | — | — |
+> | mass ×1.25 | 6928 | 1.5742 g | ×0.832 | ×0.800 |
+> | area ×1.25 | 4434 | 2.2543 g | ×1.192 | ×1.250 |
+> | **mass ×1.25 *and* area ×1.25** | **5542** | **1.8895 g** | **×0.999** | ×1.000 |
+>
+> The last row is the real null: **change the mass by a quarter and the area with it, and the
+> load does not move — 0.1%.** And `mass ×0.8` and `area ×1.25` land on the same wing loading
+> and the same load to four figures, from opposite directions. The scaling is slightly
+> **sub**-inverse (×1.192 where 1/(W/S) says ×1.250) because an aircraft that responds more
+> also pitches away more, which is §4's own shedding effect.
+>
+> **So the original sentence had the right null and the wrong reason**, and the reason is what
+> §5 and a sealed prediction were both leaning on. See §5 for what that does to the
+> aircraft-type explanation.
 
 ### Comparison preconditions (session 21)
 
@@ -2710,11 +2740,43 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   aircraft type but the missing buffet nonlinearity, and this entry is right for the wrong
   reason. Do not settle it by editing this paragraph — settle it by flying a DC-10.
 
-  **The wing-loading figure in this entry is unverified and may be inverted.** AtiSim's
-  747 is W/S ≈ 115.8 lb/ft²; no sourced DC-10 wing loading is held here, so "roughly 0.8×"
-  rests on nothing in the project. Flagged rather than corrected, because correcting it
-  needs the source that is not held. Nothing downstream depends on the number — the entry
-  stands on aircraft type alone.
+  > ### ⚠ **THE SIGN, CHECKED — session 26 — AND IT POINTS AGAINST THIS ENTRY**
+  >
+  > The wing-loading figure was flagged as "unverified and may be inverted", with the note
+  > that "nothing downstream depends on the number". **The number is still unverified. The
+  > DIRECTION is now measured, and everything depends on it.**
+  >
+  > §4's controlled sweep gives the load as **1/(W/S)**, slightly sub-inverse. So **lower
+  > wing loading means MORE gust response**. The project's own two statements of the figure
+  > agree with each other — §5 said the 747 has "roughly 0.8×" and `test_wind.py` says "the
+  > DC-10's wing loading is roughly 1.3× the 747's, so the 747 takes MORE g for the same
+  > gust" — and 1/1.3 = 0.77. **They also both point the wrong way for this entry.**
+  >
+  > Flown: `boeing747` at 1.3× its wing loading on Mehta's field reaches **56.4%** of the
+  > recorded 2.70 g against the baseline's **70.1%** — peak-to-peak 1.5231 g against 1.8918.
+  >
+  > **A DC-10 with 1.3× the 747's wing loading would therefore be worse, by 14 points, not
+  > better.** If that figure survives verification, aircraft type is not the surviving
+  > explanation for the shortfall — it is a term with the wrong sign, and this entry is
+  > wrong in a way that no amount of DC-10 derivative data would repair. (Peak |α| reaches
+  > 9.24° in that run, close to the 10° linear limit, so read it as a direction with a
+  > magnitude attached rather than a prediction.)
+  >
+  > **The sealed prediction is the beneficiary and its stated reasoning is not.**
+  > `dc10_does_not_close_the_hannibal_gap` bets the DC-10 will not close the gap, resting on
+  > "wing loading cancels" — which §4 now records as false. The bet looks **more** likely to
+  > land, for a reason its author did not give. The entry is SEALED and has not been touched;
+  > that is what the register is for.
+  >
+  > **What would settle it, and how precisely.** A sourced DC-10 wing loading — not weight
+  > and area separately, since Bach & Parks 1987 Eq. (2) shows `m` and `S` enter their
+  > identification only as `m/S`. **And it does not need to be precise:** their Eq. (4) gives
+  > about **0.05° of α per 1% of `C_L`**, so 1% of wing loading is 0.05° of α against
+  > excursions of 7–9°. Anything better than a few per cent buys nothing.
+  >
+  > **What not to do.** Parks Fig. 7 is the vortex array and Fig. 6 is the g trace for the
+  > same encounter. **Do not fit `W/S` to reproduce Fig. 6.** That converts the project's
+  > only end-to-end check into a calibration, and there would then be nothing left to test.
 - **Half of the Fig. 8 load band is unreachable inside the linear range.** Read as an
   *absolute* load factor, the band's −1.9 g needs about 13.8° of elevator from trim and
   drives |α| to roughly 18.5° — half again past the 12° where §7 says this model reports
@@ -2807,16 +2869,28 @@ T2, build T3's foundation on the way*.
 
 | # | Document | Unblocks |
 |---|---|---|
-| 1 | a **DC-10 cruise derivative set** | the last remaining explanation for the 32% load shortfall, and the sealed prediction `dc10_does_not_close_the_hannibal_gap`. Every load comparison to date is a 747 flown against a DC-10 record |
+| 1 | a **DC-10 cruise derivative set** | **STILL OPEN — the only genuine acquisition, and now worth twice as much.** Parks identifies *both* cases as DC-10s, so one set serves Hannibal **and** Morton. Weight Morton lower: Parks calls its fit "not as good as case 1" and blames mountain-wave contamination of the short-period pattern. **But check §5's sign first** — at 1.3× wing loading the load falls to 56.4% of the record, so if the DC-10 is the heavier-loaded aircraft this acquisition makes the shortfall worse, not better |
 | 2 | **747 buffet onset / nonlinear C_L** | **SPLIT, session 25 — half of it was already held.** The buffet-onset BOUNDARY is on `refs/NASA-CR-114494.pdf` p. 2.0-38, the same sheet session 21 digitised `C_Lmax` from, with revised data in its §19: not an acquisition, a digitisation. The nonlinear lift curve is not published there or anywhere reachable, so the ±g asymmetry stays structurally impossible. **Acquire nothing; digitise the second curve** |
-| 3 | **MIL-F-8785C Fig. 7**, digitised | **DOCUMENT ACQUIRED session 25** (`refs/MIL-F-8785C.pdf`, free, everyspec.com). The digitisation of Fig. 7 is still to do; JSBSim's independent transcription says to expect ≈4.82 m/s at 37,000 ft on the severe curve, which makes the reading a check rather than a discovery. **Arriving already closed something else**: §3.7.1.2 p. 47 turns both Dryden spectral forms from second-hand into cited |
+| 3 | **MIL-F-8785C Fig. 7**, digitised | **DOCUMENT HELD** (`refs/MIL-F-8785C.pdf`, session 25); Fig. 7 confirmed on printed p. 49. The digitisation is still to do. **Session 26 adds a caution about the check:** AFFDL-TR-70-101 (HICAT) is now held and measures the same quantity, but its band is 45,000–70,000 ft against this project's 33,000–41,000, and it compares itself against MIL-A-8861A and Steiner's NASA U-2 data — so Fig. 7's high-altitude end may descend from the same aircraft and would not be an independent check. Settling that needs ADA119421, not held |
 | 3 | **Yoshimura 2023 figshare dataset (21152203)** | **HELD session 25, verified** — CC BY 4.0, `data.tar`, 17,942,056,960 B, md5 `d23cbb3c77b3940653a0b643147d71c3` matching figshare's stated checksum, in `UROP/yoshimura-figshare-21152203/` outside the repo with a `PROVENANCE.txt` beside it. Five nested bz2 archives: the four LES domains (2.3, 3.6, 4.0 and **7.5 GB** for dx = 500/250/70/**35** m) and **`flightsim-data.tar.bz2`, only 561 MB** — Yoshimura's own 2-D B787 simulation code and its outputs, i.e. the SIMULATED half of their Fig. 6. That last one is the cheap one and supports a cross-code response-spectrum comparison the way JSBSim serves the vortex work. A published LES CAT wind field: the first field in this project not identified from the aircraft's own accelerations. **It does NOT carry a recorded acceleration history** — the three onboard records and the PIREP are withheld under confidentiality — so it does not unblock the observed half of the spectral protocol, which is what this row used to claim |
-| 4 | **Bach & Parks 1987**, J. Aircraft 24(11) | the last unmeasured term in the input uncertainty; a good substitute already holds |
+| 4 | **Bach & Parks 1987**, J. Aircraft 24(11) | **HELD, session 26 — and it does NOT help #1.** Its two validation cases are an L-1011 and a B-747SP; no DC-10. What it does give is the error budget: Eq. (2) shows `m` and `S` enter only as `m/S`, and Eq. (4) gives ~0.05° of α per 1% of `C_L`, which is what sets the tolerance on #2 |
+| 5 | **Parks et al. 1985**, J. Aircraft 22(2) | **HELD, session 26 — §8's open question CLOSED.** r₀ = 600 ft with V₀ 85 and spacing 3500, and an abstract giving core *diameters* 900–1200 ft that removes radius-versus-diameter entirely. Reversed the 500 ft this project flew from session 22 to 25 and deleted the hybrid; `ASSUMPTIONS.md` E12 carries the four lineages. Cost 4.26% of the headline load, downward |
+| 6 | **AFFDL-TR-70-101** (HICAT), Ashburn, Waco & Melvin 1970 | **HELD, session 26.** Measured RMS gust exceedances from U-2 flights — the published exceedance data phase 2 lacked. **Band mismatch is the catch**: 45,000–70,000 ft against this project's 33,000–41,000, so any comparison is extrapolated, and it may share its U-2 lineage with Fig. 7 |
 
-**Phase 3 is entirely acquisition and this project cannot do the acquiring** — the cost is
-in finding a document, not in using one, and every harness that would consume these already
-exists. What session 25 could do was establish *where each one is and what it costs*, which
-is the table in §9's session-25 entry.
+**~~Phase 3 is entirely acquisition and this project cannot do the acquiring.~~ Sessions 25
+and 26 emptied most of it, and almost none of what was left was an acquisition.** Session 25
+searched and found that three of the original four were digitisations of documents already on
+disk. Session 26 received four more papers and closed items 3, 4 and 5 outright.
+
+**What is left is one document and three digitisations:**
+
+| Still needed | Kind |
+|---|---|
+| a **DC-10 wing loading** (`m/S`, to a few per cent — Eq. (4) says better buys nothing) | acquisition, small |
+| a **DC-10 cruise derivative set** | acquisition, and **check §5's sign before spending on it** |
+| **MIL-F-8785C Fig. 7** at 33–41 kft | digitisation, held |
+| **TM-102186 Fig. 6**, the recorded g trace | digitisation, held |
+| ~~747 buffet onset boundary~~ | **DONE session 26** — `aircraft.buffet_cl` |
 
 ### The original ten-step plan
 
@@ -3112,6 +3186,93 @@ source exactly. A smoother interpolant would agree with the source less.
   touch the core response.
 
 ## 9. Session log
+
+### Session 26 — four papers arrive, and one of them says the project was flying the wrong vortex
+
+**Parks et al. 1985 is in hand** — J. Aircraft **22**(2) 124–129, the paper §8 had listed as
+unobtainable since the audit. With it, Bach & Parks 1987, and AFFDL-TR-70-101 (HICAT).
+
+**The headline is a correction, not an addition.** `PARKS_CASES["hannibal"]` carried a
+**hybrid**: Wingrove Fig. 4's 500 ft radius with Parks' 85 ft/s and Parks' 3500 ft spacing,
+under a comment declaring the hybrid deliberate because Parks "has never been retrieved". He
+says **600 ft, 85 ft/s, 3500 ft** — one coherent triple — and TM-102186's rival triple is
+equally coherent and equally whole: **1000 ft diameter, 87 ft/s, 3400 ft**. The project had
+been flying one number from each. `ASSUMPTIONS.md` **E12** now holds all four lineages with
+the rule never to cross them, and a test names the three crossings that must not reappear.
+
+**His abstract settles the question session 22 had to infer.** *"the vortex cores had
+diameters in the range of 900 to 1200 ft"* — 900 = 2×450, 1200 = 2×600. And he quotes the
+Scorer ratio as *a range across both cases*, "about 2.9 to 3.5"; this document said "Parks
+quotes 2.92", which he does not.
+
+**The reversal cost 4.26% of the headline load, downward** — JSBSim's Hannibal peak-to-peak
+1.8969 → 1.8162 g, 70.3% → 67.3% of the recorded 2.70. `dw/dx = V₀/r₀` in a solid-body core,
+so a bigger core at fixed `V₀` is a *gentler* gradient. It makes §5's shortfall worse, which
+is the direction that argues nobody chose it for convenience.
+
+**And the pin came back bit-for-bit.** `test_vortex_viz`'s Fig-8 coordinates return to
+`2.239956221700959 / -1.2352174348304876` — the exact doubles captured *before* the logging
+refactor, which session 22 had recorded as permanently lost. Not to a tolerance. Through the
+trim solve, the rollout, the logging path and the windowing, one altered bit anywhere would
+have landed somewhere else. It says the two changes moved the radius and nothing else.
+
+**Both cases are DC-10s**, p. 127 and p. 128 — so one derivative set serves both, and §7's
+highest-value acquisition is worth twice what that row assumed. **And they are not equally
+good targets:** Parks calls case 2 *"not as good as … case 1"* and blames *"strong mountain
+wave activity which influences the short-period wind pattern"* — a contaminant in exactly the
+band a vortex-passage comparison measures. `wind.PARKS_FIT_QUALITY` carries both assessments.
+
+**THE SIGN CHECK IS THE LARGEST RESULT, AND IT GOES AGAINST §5.** That entry names aircraft
+type as the surviving explanation for the load shortfall, with a flagged note that the
+"0.8× wing loading" figure "is unverified and may be inverted" and that "nothing downstream
+depends on the number". **Nothing depended on the number; everything depends on its sign.**
+
+- §4's row *"737 → 747, four times the mass … no effect"* was explained as *"wing loading
+  cancels"*. It does not. `C_L,trim = (W/S)/q`, so `Δn ∝ 1/(W/S)`. **The measurement never
+  tested it**: those two entries differ by 5.95× in mass and only **1.267×** in wing loading.
+- A controlled sweep on one airframe at one condition settles it. Change mass by ×1.25 **and**
+  area by ×1.25 — wing loading unchanged — and the load moves **0.1%**. Change either alone
+  and it moves as 1/(W/S), slightly sub-inverse because an aircraft that responds more also
+  pitches away more.
+- Flown at **1.3× wing loading**, the direction `test_wind.py` states for the DC-10, the load
+  falls to **56.4%** of the record against the baseline's 70.1%.
+
+**So if that figure survives verification, a DC-10 set makes the shortfall worse by 14 points
+and aircraft type is a term with the wrong sign.** The sealed prediction
+`dc10_does_not_close_the_hannibal_gap` becomes *more* likely to land — for a reason its author
+did not give, since its stated reasoning is the "wing loading cancels" line §4 now records as
+false. **The entry is SEALED and has not been touched.** That is what the register is for.
+
+**What settling it needs is small, and the paper says how small.** Bach & Parks Eq. (2) shows
+`m` and `S` enter their identification only as `m/S`, and Eq. (4) gives about **0.05° of α per
+1% of `C_L`** — so 1% of wing loading is 0.05° against excursions of 7–9°. A DC-10 wing loading
+to a few per cent is enough; precision beyond that buys nothing. **And Parks Fig. 7 is the
+array while Fig. 6 is the g trace for the same encounter, so `W/S` must not be fitted to
+reproduce Fig. 6** — that would convert the only end-to-end check into a calibration.
+
+**Bach & Parks does not help acquisition #1**: its two validation cases are an L-1011 and a
+B-747SP. **HICAT does supply measured RMS gust exceedances** — the published exceedance data
+phase 2 lacked — but over **45,000–70,000 ft** against this project's 33,000–41,000, so any
+comparison is extrapolated; and it compares itself against MIL-A-8861A and Steiner's NASA U-2
+data, so **Fig. 7's high-altitude end may descend from the same aircraft** and would not be an
+independent check. Settling that needs ADA119421, which is not held.
+
+**The buffet boundary is digitised** from `refs/NASA-CR-114494.pdf` p. 2.0-38 — the sheet
+session 21 read `CL_max` off, whose *second* curve nobody had traced. `aircraft.buffet_cl`.
+The method is in that file; the check that makes it credible is that the same pipeline run on
+the **upper** curve reproduces session 21's published table to **rms 0.0052, worst 0.0063**,
+four times inside their stated ±0.02, from an independent trace.
+
+**It buys a number where §5 had an argument.** At 37,000 ft and M 0.80 the 747 trims at
+`C_L` 0.572 against a boundary of 0.721 — **1.26 g to initial buffet** — and the Hannibal
+encounter drives `n_z` to **1.68 g**. The run is well past initial buffet and the linear aero
+cannot know it. Nothing in the force model reads the table; a hard ceiling is a kink and §4
+records eleven tests going red the last time one was tried.
+
+**`d9d4442` is merged.** The thrust-moment bound the audit found abandoned on
+`claude/jolly-bhaskara-def594` since 14 August — 0.38° of equivalent elevator at cruise trim,
+1.5% of pitch authority, from CR-114494 p. 19.0-2. `ASSUMPTIONS.md` C5 stops saying
+"unquantified".
 
 ### Session 25 — a statistic with an N in it, and where the four documents actually are
 
