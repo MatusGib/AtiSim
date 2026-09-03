@@ -119,6 +119,49 @@ PREDICTIONS: tuple[Prediction, ...] = (
         sealed_at="0c72200",
         digest="3fb6e8c238194d1d",
     ),
+    # -----------------------------------------------------------------------
+    # Sealed session 25 (phase 2), against tree 2837ddd, BEFORE any response
+    # spectrum had been computed anywhere in this project. `atisim/response.py`
+    # and its unit tests existed; nothing had been flown through them.
+    # -----------------------------------------------------------------------
+    Prediction(
+        name="the_dryden_response_peaks_at_the_short_period",
+        claim=(
+            "The ensemble-averaged n_z response spectrum of boeing747 flown "
+            "through wind.dryden_field at wind.MEHTA_HANNIBAL_ALTITUDE, "
+            "searched above response.PHUGOID_FLOOR_HZ, will peak within "
+            "+/-20% of the aircraft's own short-period frequency at that "
+            "condition -- 0.1640 Hz, from validation.longitudinal_modes -- "
+            "that is, between 0.131 and 0.197 Hz."
+        ),
+        falsified_if=(
+            "the ensemble-averaged peak lands outside [0.131, 0.197] Hz, and "
+            "emphatically if it lands at the 0.05 Hz search floor, which would "
+            "mean the load follows the input's own spectrum and the airframe's "
+            "resonance does not organise the response at all."
+        ),
+        reasoning=(
+            "The gust-to-load transfer is band-pass at both ends and the "
+            "Dryden input supplies no peak of its own. At zero frequency a "
+            "sustained updraft is a new equilibrium -- the aircraft climbs "
+            "with the air and dn returns to zero -- so the transfer function "
+            "vanishes there; at the short period, zeta = 0.3645 gives a "
+            "resonant gain near 1/(2 zeta). The input is flat below "
+            "Omega = 1/L_w (0.070 Hz at this speed) and falls as Omega^-2 "
+            "above it, which is a factor 2.4 against the short period between "
+            "those two frequencies -- against a factor near 8 of resonant "
+            "gain in its favour. The product must therefore peak near the "
+            "airframe's frequency and not at the input's flat end. This is "
+            "the first test in this project of the COUPLING rather than the "
+            "amplitude, and PROJECT.md section 5 already records that "
+            "Yoshimura 2022's own resonance argument is wrong by a factor of "
+            "2*pi -- so the corrected version deserves to be bet on before it "
+            "is run."
+        ),
+        settled_by="scripts/cat_spectra.py, the Dryden ensemble limb",
+        sealed_at="2837ddd",
+        digest="60843c1f7237db6d",
+    ),
 )
 
 # The digests above are LITERALS on purpose. An earlier draft computed them at
