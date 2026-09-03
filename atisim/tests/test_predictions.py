@@ -1,10 +1,14 @@
 """The seal on `atisim.predictions`, and the rules that make it worth having.
 
-These tests do not check whether a prediction is RIGHT -- none of them can be
-settled from anything this project holds, which is the point of sealing them.
-They check that the register behaves like a register: claims are falsifiable,
-digests match the text they were computed from, and settling an entry cannot
-quietly rewrite what was predicted.
+These tests do not check whether a prediction is RIGHT. They check that the
+register behaves like a register: claims are falsifiable, digests match the text
+they were computed from, and settling an entry cannot quietly rewrite what was
+predicted.
+
+*** THIS FILE USED TO SAY "none of them can be settled from anything this
+project holds, which is the point of sealing them". Session 25 sealed one that
+CAN be, deliberately, and the last test in this file records what changed about
+the rule and what did not. ***
 """
 
 import re
@@ -108,22 +112,54 @@ def test_settling_cannot_rewrite_what_was_predicted():
     assert digest_of(reshaped) != p.digest
 
 
-def test_the_two_open_predictions_are_the_ones_the_project_says_matter():
-    """A tripwire on scope, not on content.
+SOURCE_GATED = {
+    # Settled only by a document PROJECT.md section 5 names as not held here.
+    "dc10_does_not_close_the_hannibal_gap",
+    "mil_f_8785c_sigma_w_exceeds_the_mehta_ceiling",
+}
+RUN_GATED = {
+    # Settled by a run in this repository. Admissible ONLY because the seal
+    # commit precedes the run -- see the test below for why that is the rule.
+    "the_dryden_response_peaks_at_the_short_period": "scripts/cat_spectra.py",
+}
 
-    Both sealed claims are blocked on a source PROJECT.md section 5 already
-    names as unobtainable here. If a future session seals something checkable
-    from what is already held, that is not a prediction -- it is a run someone
-    has not done yet -- and this test is where that gets noticed.
+
+def test_every_open_prediction_is_declared_and_classified():
+    """A tripwire on scope, not on content -- and it fired once, as designed.
+
+    ITS ORIGINAL FORM asserted that both sealed claims were blocked on a source
+    section 5 names as unobtainable, on the reasoning that a claim checkable
+    from what is already held "is not a prediction -- it is a run someone has
+    not done yet, and this test is where that gets noticed". Session 25 added
+    exactly that kind of entry and this test went red. That was the notice.
+
+    WHAT CHANGED AND WHAT DID NOT. The objection is right about the failure it
+    fears: a claim that could have been checked in five minutes, sealed and
+    settled in one breath, manufactures a cheap win and is worth nothing. But
+    an unobtainable source was never what defeated that -- what defeats it is
+    the SEAL PRECEDING THE RUN, which is a fact about the git history and is
+    the only thing predictions.py has ever claimed to rest on. An unobtainable
+    source merely makes the ordering obvious for free.
+
+    So the rule is now two admissible classes, and adding an entry means
+    classifying it here rather than adding one to a count. A RUN_GATED entry
+    additionally has to name a script that exists, because "settled by a run"
+    with no run named is the same cheap win wearing a different hat.
     """
-    assert len(PREDICTIONS) == 2
-    assert set(predictions.BY_NAME) == {
-        "dc10_does_not_close_the_hannibal_gap",
-        "mil_f_8785c_sigma_w_exceeds_the_mehta_ceiling",
-    }
+    from pathlib import Path
+
+    assert set(predictions.BY_NAME) == SOURCE_GATED | set(RUN_GATED)
+    root = Path(__file__).resolve().parents[2]
     for p in PREDICTIONS:
-        assert p.sealed_at == "0c72200"
-        assert p.status == "SEALED"
+        assert p.status == "SEALED", p.name
+        if p.name in RUN_GATED:
+            script = RUN_GATED[p.name]
+            assert script in p.settled_by, p.name
+            assert (root / script).is_file(), (
+                f"{p.name} is settled by {script}, which does not exist"
+            )
+        else:
+            assert p.sealed_at == "0c72200", p.name
 
 
 def test_the_dc10_claim_contradicts_the_projects_own_current_story():
