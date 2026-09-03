@@ -2809,7 +2809,7 @@ T2, build T3's foundation on the way*.
 | 1 | a **DC-10 cruise derivative set** | the last remaining explanation for the 32% load shortfall, and the sealed prediction `dc10_does_not_close_the_hannibal_gap`. Every load comparison to date is a 747 flown against a DC-10 record |
 | 2 | **747 buffet onset / nonlinear C_L** | **SPLIT, session 25 — half of it was already held.** The buffet-onset BOUNDARY is on `refs/NASA-CR-114494.pdf` p. 2.0-38, the same sheet session 21 digitised `C_Lmax` from, with revised data in its §19: not an acquisition, a digitisation. The nonlinear lift curve is not published there or anywhere reachable, so the ±g asymmetry stays structurally impossible. **Acquire nothing; digitise the second curve** |
 | 3 | **MIL-F-8785C Fig. 7**, digitised | **DOCUMENT ACQUIRED session 25** (`refs/MIL-F-8785C.pdf`, free, everyspec.com). The digitisation of Fig. 7 is still to do; JSBSim's independent transcription says to expect ≈4.82 m/s at 37,000 ft on the severe curve, which makes the reading a check rather than a discovery. **Arriving already closed something else**: §3.7.1.2 p. 47 turns both Dryden spectral forms from second-hand into cited |
-| 3 | **Yoshimura 2023 figshare dataset (21152203)** | **DOWNLOADING session 25** — CC BY 4.0, `data.tar`, 17.9 GB, md5 `d23cbb3c…`, to `UROP/yoshimura-figshare-21152203/` outside the repo. A published LES CAT wind field: the first field in this project not identified from the aircraft's own accelerations. **It does NOT carry a recorded acceleration history** — the three onboard records and the PIREP are withheld under confidentiality — so it does not unblock the observed half of the spectral protocol, which is what this row used to claim |
+| 3 | **Yoshimura 2023 figshare dataset (21152203)** | **HELD session 25, verified** — CC BY 4.0, `data.tar`, 17,942,056,960 B, md5 `d23cbb3c77b3940653a0b643147d71c3` matching figshare's stated checksum, in `UROP/yoshimura-figshare-21152203/` outside the repo with a `PROVENANCE.txt` beside it. Five nested bz2 archives: the four LES domains (2.3, 3.6, 4.0 and **7.5 GB** for dx = 500/250/70/**35** m) and **`flightsim-data.tar.bz2`, only 561 MB** — Yoshimura's own 2-D B787 simulation code and its outputs, i.e. the SIMULATED half of their Fig. 6. That last one is the cheap one and supports a cross-code response-spectrum comparison the way JSBSim serves the vortex work. A published LES CAT wind field: the first field in this project not identified from the aircraft's own accelerations. **It does NOT carry a recorded acceleration history** — the three onboard records and the PIREP are withheld under confidentiality — so it does not unblock the observed half of the spectral protocol, which is what this row used to claim |
 | 4 | **Bach & Parks 1987**, J. Aircraft 24(11) | the last unmeasured term in the input uncertainty; a good substitute already holds |
 
 **Phase 3 is entirely acquisition and this project cannot do the acquiring** — the cost is
@@ -3272,9 +3272,21 @@ oscillatory trace at low print resolution, and the buffet boundary is the easies
 three because it is a smooth single-valued curve of exactly the kind session 21 has already
 done twice on that same sheet.
 
-**Suite: 788 → 806 passed, 1 skipped.** Twelve unit checks on the estimators, all against
-signals whose answer is closed-form, and six on the flown result — including a still-air
-negative control in which every statistic in the new module returns exactly zero.
+**The figshare tarball landed and verified**, 17,942,056,960 bytes to the byte and md5
+`d23cbb3c…` against figshare's own checksum. Its shape is more useful than the headline
+size suggests: four LES domains at 2.3, 3.6, 4.0 and 7.5 GB, and **`flightsim-data.tar.bz2`
+at only 561 MB** — Yoshimura's own 2-D B787 simulation code and outputs, the *simulated*
+half of their Fig. 6. **The 3% of the download that is not LES field is the part that can be
+used first**, and it supports a cross-code response-spectrum comparison of exactly the kind
+`scripts/vortex_compare.py` already does against JSBSim. The LES field remains the larger
+prize and the harder one: it is the first field available to this project that was **not**
+identified from an aircraft's own accelerations, which is the circularity §4's session-23
+entry opens with.
+
+**Suite: 788 → 807 passed, 1 skipped, 15m14s.** Twelve unit checks on the estimators, all
+against signals whose answer is closed-form, six on the flown result — including a still-air
+negative control in which every statistic in the new module returns exactly zero — and one
+on the Dryden spectral forms against the specification now that it is held.
 
 ### Session 24 — the model gets a lateral dimension, and the record gets a claim
 
@@ -4461,7 +4473,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 
 | Command | What it does |
 |---|---|
-| `.venv/Scripts/python.exe -m pytest -q` | **806 passed, 1 skipped, 15m03s** (measured session 25; it was 788 at session 24 and **758 measured session 23b**; the 626 this row claimed was stale by five sessions, and the 322 before that by several more — this row has now been wrong twice, so re-measure it rather than trusting it). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. |
+| `.venv/Scripts/python.exe -m pytest -q` | **807 passed, 1 skipped, 15m14s** (measured session 25; it was 788 at session 24 and **758 measured session 23b**; the 626 this row claimed was stale by five sessions, and the 322 before that by several more — this row has now been wrong twice, so re-measure it rather than trusting it). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. |
 | `.venv/Scripts/python.exe scripts/sanity.py` | **The ladder, for a reader who does not yet trust the model.** Twelve cases from degenerate inputs upward — zero the wind, zero a coefficient so a motion becomes impossible, then signs, then hand-computable numbers, then structural properties. Every expected value is derived by hand in the source and printed beside the model's answer, so it is read rather than trusted. Ends with the item 08 convention probe, which is a measurement rather than a pass/fail. |
 | `.venv/Scripts/python.exe -m pytest --nbval-lax notebooks/ -q` | **The second gate.** Executes `notebooks/solver-validation.ipynb` so it cannot rot. Needs the `dev` extra (`jupyter`, `nbval`). Deliberately *not* in `testpaths` and `--nbval-lax` is deliberately *not* in `addopts`: that would make every `pytest` run fail with "unrecognized arguments" wherever nbval is absent. **Run it from a worktree with an ABSOLUTE `PYTHONPATH`** — nbval starts the kernel with its cwd in `notebooks/`, so a relative `PYTHONPATH=.` resolves to the wrong directory and `atisim` silently loads from the main checkout. |
 | `.venv/Scripts/python.exe scripts/checkpoint.py` | 747 only, no flags. Trim residuals, 60 s fixed-control hold, longitudinal modes against CR-2144 Table IX-5. |
