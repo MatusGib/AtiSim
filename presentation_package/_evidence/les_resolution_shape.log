@@ -1,0 +1,20 @@
+ABSOLUTE LEVEL -- confounded by AtiSim frozen CL_alpha (PG factor 1.521)
+domain       dx    atisim  yoshimura   ratio
+D01        500m   0.00747    0.00700   1.067
+D02        250m   0.01820    0.00996   1.827
+D03         70m   0.09049    0.06342   1.427
+D04         35m   0.15728    0.11079   1.420
+
+SHAPE ACROSS RESOLUTION -- each code normalised to its OWN finest domain,
+so any constant per-code error (incl. the frozen slope) CANCELS EXACTLY.
+domain       dx  atisim/D04   yosh/D04  disagreement
+D01        500m      0.0475     0.0632        -24.8%
+D02        250m      0.1157     0.0899         28.7%
+D03         70m      0.5753     0.5724          0.5%
+D04         35m      1.0000     1.0000          0.0%
+
+  D03 -> D04, the two domains that RESOLVE the turbulence:
+    AtiSim grows x1.7381 from 70 m to 35 m
+    Yoshimura   x1.7469
+    -> the two codes agree on the resolution scaling to 0.5%
+    while their absolute levels differ by 42%.
