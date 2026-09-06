@@ -396,6 +396,19 @@ from the tabulated condition inherits a derivative error; on the altitude axis t
 is now 23.5% of `ω_n` per 2.48× of q̄; on the Mach axis it remains unquantified; and this
 is why §5 caps analysis windows at the linear range.
 
+> **Session 27: the Mach axis got a case that dwarfs every excursion in the table above, and
+> it was flown without accounting for this assumption at all.** The LES comparison flies
+> `boeing747` at **M 0.406** against its M 0.80 linearisation — **ΔM = −0.393, thirteen times
+> the lee wave's −0.031**, which had been the largest excursion on record. The `q̄` axis is
+> *not* the problem there (ratio 0.965, so session 23's bound does not apply); it is purely
+> Mach. `aero.py` carries Mach only into `wave_drag`, so `C_Lα` is used unchanged, and the
+> Prandtl–Glauert ratio between the two conditions is **1.521**. Gust load goes linearly as
+> `C_Lα`, and the measured AtiSim/Yoshimura rms ratio on the two resolved domains is **1.427
+> and 1.420**. **The discrepancy is the size this assumption predicts.** PROJECT.md §4 has the
+> arithmetic and the falsification test — rescale `C_Lα` by the PG ratio and re-fly. If the
+> ratio collapses toward 1, **this is the first quantified point on the Mach axis**, obtained
+> without the chart read §7 has been declining since session 12.
+
 **Session 23b: the altitude axis is now GUARDED as well as bounded.** `boeing747` declares
 `valid_altitude = [35,000, 45,000] ft` and `valid_mach = [0.70, 0.90]`, so
 `checks.recovery_band` reports a run outside them instead of letting it look ordinary. The

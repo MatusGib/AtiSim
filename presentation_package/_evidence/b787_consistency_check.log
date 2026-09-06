@@ -1,0 +1,46 @@
+Yoshimura condition: U0=133.0 m/s, H=3000 m, rho=0.9091, q-bar=8041 Pa
+
+IMPLIED CL_alpha from their own Z_a = -59.078, via Z_a = -(CLa+CD)*q*S/m
+wing area definition               mass                         m/S      CLa   physical?
+trapezoidal ref (3501.39 sq ft)    MTOW 476,000 lb            663.7    4.847   YES
+trapezoidal ref (3501.39 sq ft)    OEW 239,200 lb             333.5    2.421   too low
+trapezoidal ref (3501.39 sq ft)    mid (OEW+MTOW)/2           498.6    3.634   too low
+
+Boeing Wimpress (3870.00 sq ft)    MTOW 476,000 lb            600.5    4.382   YES
+Boeing Wimpress (3870.00 sq ft)    OEW 239,200 lb             301.8    2.187   too low
+Boeing Wimpress (3870.00 sq ft)    mid (OEW+MTOW)/2           451.2    3.285   too low
+
+Piano gross (4028.47 sq ft)        MTOW 476,000 lb            576.9    4.209   YES
+Piano gross (4028.47 sq ft)        OEW 239,200 lb             289.9    2.100   too low
+Piano gross (4028.47 sq ft)        mid (OEW+MTOW)/2           433.4    3.154   too low
+
+A swept transport at M 0.41 should have CLa ~ 4.5-6.0 /rad.
+B787-8 (Piano trapezoidal ref): m=215,910 kg  S=325.3 m2  b=58.67 m  c=6.437 m
+Yoshimura fs.f90: Ix=1.5453e+07  Iz=3.7385e+07  Ixz=7.4349e+05 kg m2
+
+I_yy is NOT in their code. Two independent estimates:
+   747 ratio  Iy/Iz=0.666      -> 2.4899e+07
+   lamina     Iy = Iz - Ix     -> 2.1932e+07
+   spread 12.7%  -> DECLARED, midpoint used below
+
+  Iyy=2.490e+07 (747-ratio) -> CLa= 4.847  CLq=  8.173  Cma=-0.8606  Cmq= -32.813
+  Iyy=2.342e+07 (midpoint ) -> CLa= 4.847  CLq=  8.173  Cma=-0.8094  Cmq= -30.858
+  Iyy=2.193e+07 (lamina   ) -> CLa= 4.847  CLq=  8.173  Cma=-0.7581  Cmq= -28.904
+
+  LATERAL: CYb=-0.4317 Clb=-0.2515 Cnb= 0.1596 Clp=-0.6313 Cnp=-0.0563 Clr= 0.2054 Cnr=-0.1447
+  747 for scale: CYb=-0.8781 Clb=-0.2944 Cnb= 0.1715 Clp=-0.3502 Cnp=-0.0465 Clr= 0.2979 Cnr=-0.2530
+ROUND-TRIP: does the choice of I_yy change the DYNAMICS?
+  Cma is recovered, then converted straight back to M_a. If M_a is
+  invariant, I_yy is unobservable in the response and may be DECLARED.
+
+        I_yy       Cma        Cmq ->  M_a recovered  M_q recovered
+  2.1932e+07   -0.7581    -28.904 ->      -0.582000      -0.537000
+  2.3416e+07   -0.8094    -30.859 ->      -0.582000      -0.537000
+  2.4899e+07   -0.8607    -32.814 ->      -0.582000      -0.537000
+  4.0000e+07   -1.3826    -52.715 ->      -0.582000      -0.537000
+  1.0000e+07   -0.3457    -13.179 ->      -0.582000      -0.537000
+
+  Yoshimura fs.f90:                            M_a = -0.582000   M_q = -0.537000
+
+  -> INVARIANT. I_yy and Cma are a single unobservable pair; only their
+     product M_a enters the dynamics, and M_a is SOURCED from their code.
