@@ -455,7 +455,7 @@ comparison can currently claim, and it is a real claim.
 about absolute load, any statement that the two codes agree or disagree *in level*, anything
 about the 747 at that condition, and anything lateral.
 
-### The frozen lift-curve slope, and why it probably IS the LES discrepancy — session 27
+### The frozen lift-curve slope: 47-68% of the LES discrepancy, measured — session 27
 
 **`ASSUMPTIONS.md` C3 says derivatives are frozen across the envelope and calls the Mach axis
 UNBOUNDED. The LES runs are the largest Mach excursion in the project's history, and nothing
@@ -493,6 +493,49 @@ their own condition.**
 before attributing anything in the LES comparison to either code.** It is also the cheapest
 Mach-axis bound the project has ever had within reach — C3 has wanted one since session 12 and
 declined it because it needed chart reads off a poor scan; this needs no chart at all.
+
+> ### THE TEST WAS RUN, AND IT CUT THE CLAIM ABOVE IN HALF — session 27
+>
+> `scripts/les_mach_test.py`, D03, 16 flights, identical field, path and condition.
+> **The heading of this section is too strong and is corrected here rather than rewritten:
+> the frozen slope is about HALF of the discrepancy, not all of it.**
+>
+> | run | `C_Lα` | rms (high-passed) | vs Yoshimura 0.06342 | short period | excess closed |
+> |---|---|---|---|---|---|
+> | **baseline `boeing747`** | 4.9441 | **0.0905 g** | **1.427** | 0.1647 Hz | — |
+> | **full PG correction** | 3.2465 | **0.0777 g** | **1.225** | **0.1272 Hz** | **47%** |
+> | **lift-only** (`C_Lα`,`C_Lq`,`C_Lδe`) | 3.2465 | **0.0720 g** | **1.135** | 0.1568 Hz | **68%** |
+> | *pure `C_Lα` linearity would give* | *3.2465* | *0.0594 g* | *0.937* | *—* | *100%* |
+>
+> **The baseline reproduces the weekly worktree's 0.09049 exactly**, so this tree and that one
+> agree and the comparison is sound.
+>
+> **The correction is large and real but not sufficient, and the two variants bracket it.**
+> Holding the resonance fixed (lift-only) closes **68%** of the excess over 1.0; the physically
+> consistent full PG correction closes only **47%**. Neither reaches the ×0.6566 that pure
+> linearity in `C_Lα` predicts — the lift-only run falls ×0.7956 and the full one ×0.8586.
+>
+> **The difference between the two variants is itself the finding, and it was predicted before
+> the run.** The full PG set scales `C_mα` too, dropping the short period **0.1647 → 0.1272 Hz**
+> — *toward* the energetic low-frequency end of the LES spectrum — which pushes load back up and
+> cancels a third of the lift reduction. **Correcting compressibility more completely makes the
+> agreement worse, because the airframe's resonance moves into more energetic turbulence.** That
+> is a statement about how gust load is set in this regime, and no peak comparison could have
+> made it.
+>
+> **What may now be said, and it is narrower than the heading promised:** the frozen lift-curve
+> slope is the **dominant identified contributor** to the LES load discrepancy — **47–68% of it,
+> depending on whether the resonance is held fixed** — and it is **this project's error, not
+> Yoshimura's.** What may **not** be said is that it explains the discrepancy. A residual ratio
+> of **1.14–1.23** survives the best correction available, and the leading remaining candidate is
+> the aircraft mismatch itself: their short period is **0.1436 Hz** against 0.1568–0.1647 here.
+>
+> **And the residual is now small enough that the `boeing787_yoshimura` entry could close it.**
+> Before this run the discrepancy was 43% and unattributed; it is now 14% with a named candidate.
+>
+> **This is still the first quantified point on the Mach axis** — the thing C3 has wanted since
+> session 12 — and it cost no chart read: **a ΔM of −0.393 on a frozen derivative set moves a
+> gust-load rms by ×0.859, of which the lift slope alone predicts ×0.657.**
 
 **Until then:** the LES runs stand as a capability demonstration and a reader for their field —
 the field reader itself is independently validated, correlating **+0.978 / −0.968 / −0.935**
