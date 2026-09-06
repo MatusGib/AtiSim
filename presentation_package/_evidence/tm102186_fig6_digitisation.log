@@ -1,0 +1,49 @@
+==============================================================================
+NASA TM-102186 FIG. 6, DIGITISED -- the Hannibal DFDR g-load trace
+==============================================================================
+  render         page 6 at 600 dpi, clip (78.0, 60.0, 320.0, 385.0)
+  time axis      289.23 px per minute, 1:21 at x = 396.9
+                 worst tick residual 4.1 px = 0.85 s
+  load axis      196.0 px per g, 0 g at y = 2165.5
+                 labels at ['1769.5', '1969.5', '2165.5', '2351.5']
+
+------------------------------------------------------------------------------
+A. WHAT THE TRACE SAYS
+------------------------------------------------------------------------------
+  1420 columns, t = 6.9 .. 301.2 s after 1:21:00
+  pre-encounter cruise   0.9513 g   sd 0.0100
+  absolute peak          +1.855 g at t = 216.0 s
+  absolute trough        -0.972 g at t = 213.1 s
+  peak-to-peak           2.827 g
+
+------------------------------------------------------------------------------
+B. THE THREE CHECKS
+------------------------------------------------------------------------------
+  1  paper's band, p. 3-4:            -1.00 / +1.70 g
+     digitised trough:                -0.972 g   (0.028 off)
+     digitised SECOND peak:           +1.702 g   (0.002 off)
+     99.5th pctile of upper envelope: +1.701 g   (0.001 off)
+     -> the prose quotes the SUSTAINED band. The absolute peak is
+        +1.855 g, one narrow spike 0.153 g above it,
+        and the paper does not mention it.
+
+  2  NEGATIVE CONTROL, vertical-wind panel, same method:
+     pre-encounter cruise  +1.17 ft/s   (must be 0 -- smooth air)
+     -> the method carries no vertical bias, so the 0.951 g
+        baseline above belongs to the G LOAD panel, not to this code.
+
+  3  GUST SPACING, the channel the identification did not set.
+     the two principal UP gusts land at t = 209.3 and 214.9 s
+     digitised spacing   5.60 s
+     paper's prose       'about 5 sec apart'
+     cat_uncertainty.py's flown model, centre-to-centre:  5.36 s
+     -> the model is -4.3% against the DIGITISED
+        record, where against the prose alone it read +7.2%. The figure
+        is a tighter reference than the sentence it is described by.
+
+     recorded vertical gust extremes: +64.8 / -98.3 ft/s
+     the 747 flown through Mehta's field sees:  +59.1 / -86.8 ft/s
+
+  data -> runs\cat\tm102186-fig6-gload.csv
+  figure -> runs\cat\10-tm102186-fig6.png
+EXIT=0

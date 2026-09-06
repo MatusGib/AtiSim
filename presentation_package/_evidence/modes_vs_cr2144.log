@@ -1,0 +1,33 @@
+IMPORTED FROM: C:\Users\mateusz\UROP\Claude_Flight_Sim\.claude\worktrees\cv-entry-project-e44ed6\atisim\__init__.py
+
+trim: alpha=4.6362 deg  elev=-0.0254 deg  thr=0.7376
+trim residual norm = 1.933e-20
+V=235.9152 m/s  H=12192.0 m
+
+==============================================================================
+LONGITUDINAL MODES - THE SIMULATOR (atisim.dynamics, exact jacfwd linearisation)
+==============================================================================
+  phugoid wn (rad/s)             sim=  0.05532  CR-2144= 0.06730  err=  -17.80%
+  phugoid zeta                   sim=  0.05596  CR-2144= 0.04890  err=  +14.43%
+  short period wn (rad/s)        sim=  0.95077  CR-2144= 0.96400  err=   -1.37%
+  short period zeta              sim=  0.34253  CR-2144= 0.38700  err=  -11.49%
+
+==============================================================================
+LONGITUDINAL MODES - AUGMENTED TEXTBOOK MODEL (NOT the simulator)
+  CR-2144 Table IX-4 full derivative set incl. Xu/Zu/Mu/Zwdot/Mwdot
+  Built only to ATTRIBUTE the simulator's gap. Tolerance asserted: rel=0.03
+==============================================================================
+  phugoid wn (rad/s)             aug=  0.06719  CR-2144= 0.06730  err=   -0.16%
+  phugoid zeta                   aug=  0.04836  CR-2144= 0.04890  err=   -1.11%
+  short period wn (rad/s)        aug=  0.96295  CR-2144= 0.96400  err=   -0.11%
+  short period zeta              aug=  0.38617  CR-2144= 0.38700  err=   -0.22%
+
+==============================================================================
+LATERAL MODES - THE SIMULATOR vs CR-2144 Table IX-9
+==============================================================================
+  dutch roll wn (rad/s)    sim=   0.94320  CR-2144=   0.94700  err=   -0.40%  tol rel=0.02
+  dutch roll zeta          sim=   0.03609  CR-2144=   0.03490  err=   +3.40%  tol rel=0.10
+  roll tau (s)             sim=   1.79537  CR-2144=   1.77936  err=   +0.90%  tol rel=0.05
+  spiral tau (s)           sim= 138.04241  CR-2144= 136.98630  err=   +0.77%  tol rel=0.02
+
+spiral_tau > 0 (stable, as CR-2144 states): True

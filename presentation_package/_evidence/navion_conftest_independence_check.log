@@ -1,0 +1,45 @@
+ATISIM: C:\Users\mateusz\UROP\Claude_Flight_Sim\.claude\worktrees\cv-entry-project-e44ed6\atisim\__init__.py
+field               conftest fixture         test_navion   identical?
+CL0                             0.41                0.41   True
+CLa                             4.44                4.44   True
+CLq                              3.8                 3.8   True
+CLde                           0.355               0.355   True
+Cma                           -0.683              -0.683   True
+Cmq                            -9.96               -9.96   True
+Cmde                          -0.923              -0.923   True
+CYb                           -0.564              -0.564   True
+CYp                          -0.0192             -0.0192   True
+CYr                            0.335               0.335   True
+CYdr                           0.157               0.157   True
+Clb                           -0.074              -0.074   True
+Clp                            -0.41               -0.41   True
+Clr                            0.107               0.107   True
+Clda                           0.134               0.134   True
+Cldr                          0.0107              0.0107   True
+Cnb                            0.071               0.071   True
+Cnp                          -0.0575             -0.0575   True
+Cnr                           -0.125              -0.125   True
+Cnda                         -0.0035             -0.0035   True
+Cndr                          -0.072              -0.072   True
+Cm0                             0.05                   0   False
+CD0                             0.05         0.034763514   False
+e                                0.8          0.57923914   False
+AR                         6.0842105           6.0628261   False
+t_over_c                        0.12                0.15   False
+kappa_airfoil                   0.87                0.87   True
+sweep                              0                   0   True
+S                               17.1           17.094159   False
+b                               10.2            10.18032   False
+c                               1.74             1.73736   False
+mass                            1250            1247.379   False
+
+23 of 32 fields bit-identical
+
+-- geometry/mass: is the conftest fixture the Navion rounded to 3 s.f.? --
+  Navion b  33.4 ft   -> 10.18032 m ; fixture b  = 10.2
+  Navion S   184 ft2  -> 17.09416 m2; fixture S  = 17.1
+  Navion c   5.7 ft   -> 1.73736 m ; fixture c  = 1.74
+  Navion Ixx 1048 sft2-> 1420.8972   ; fixture Ixx= 1420.0
+  Navion Iyy 3000 sft2-> 4067.4539   ; fixture Iyy= 4070.0
+  Navion Izz 3530 sft2-> 4786.0374   ; fixture Izz= 4780.0
+  Navion W   2750 lb  -> 1247.3790 kg; fixture m = 1250.0

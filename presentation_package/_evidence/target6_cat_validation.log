@@ -1,0 +1,55 @@
+atisim imported from: C:\Users\mateusz\UROP\Claude_Flight_Sim\.claude\worktrees\cv-entry-project-e44ed6\atisim\__init__.py
+
+==============================================================================
+1. MEHTA 1987's FIVE-VORTEX HANNIBAL FIELD, FLOWN BY THE 747
+==============================================================================
+  altitude        11278 m (37000 ft) -- Mehta's own
+  airspeed        235.9 m/s
+  cores           5, at x = (-12384.0, -6669.0, -343.0, 3761.0, 12272.0) ft
+  r0 / V0 / psi   500.5 ft / 86.8 ft/s / 31 deg
+  start offset    -0.0001 g from cos(theta0) -- moving-air start
+  vertical gust   -86.8 to +59.1 ft/s
+  MODEL n_z       -0.398 to +1.441 g
+  MEASURED n_z    -1.0 to +1.7 g   (DC-10, TM-102186 Fig. 6)
+  alpha (air)     -5.98 to +7.86 deg
+  air vs inertial alpha diverge by up to 6.85 deg
+  sigma_n         0.6394 g
+
+==============================================================================
+2. THE THREE-AIRCRAFT ORDERING, AND THE MECHANISM BEHIND IT
+==============================================================================
+  aircraft              V ft/s  trav/Tsp  pitch p-p   g min   g max   frozen   gain  |a| pk  band
+  cherokee                 164     4.024      46.98   0.403   1.595     25.6   0.21    5.44  linear
+  cessna172                197     4.046      74.92   0.413   1.934     20.6   0.18    5.51  linear
+  boeing737_approach       439     0.599      17.17  -0.136   1.753     12.7   0.54    7.06  linear
+  boeing747_approach       278     0.512      40.08   0.070   2.281     19.5   0.56    9.78  linear
+  boeing737                776     0.363       7.35  -0.374   1.616      6.4   1.00    5.17  linear
+  boeing747                774     0.196       6.70  -0.398   1.441      6.4   1.49    7.86  linear
+  ('band' is the declared linear-aero range: linear <= 10 deg, invalid > 12 deg.
+   Every run above is inside it -- and the reason is the mechanism itself:
+   the slow aircraft pitch into the flow and never see the incidence a frozen attitude would.)
+
+  TM-102186 Fig. 8, digitised (+/- 3 deg, +/- 0.15 g):
+  RPV                      150            --       66.0    0.35    2.05
+  EXECUTIVE                700            --       16.0   -0.35    1.95
+  AIRLINER                 800            --        5.0   -0.55    1.55
+
+==============================================================================
+3. THE 747 AT A THIRD CR-2144 FLIGHT CONDITION (M 0.8 / 6,096 m)
+==============================================================================
+  U0 252.8 m/s (Table A3: 253)   rho 0.6527 (0.653)   CL 0.2657 (0.266)
+  AtiSim, FC9 derivatives        wn 1.5926 (+23.46%)   zeta 0.4723 (-17.14%)
+  AtiSim, Table A2 derivatives   wn 1.2823 ( -0.60%)   zeta 0.5031 (-11.73%)
+  reference (Table A5)           wn 1.2900            zeta 0.5700
+
+==============================================================================
+4. SEVERITY (Misaka 2008: moderate 0.2-0.3 g, severe >= 0.3 g)
+==============================================================================
+  cherokee             sigma_n 0.5565 g
+  cessna172            sigma_n 0.8856 g
+  boeing737_approach   sigma_n 0.7357 g
+  boeing747_approach   sigma_n 0.7960 g
+  boeing737            sigma_n 0.6130 g
+  boeing747            sigma_n 0.6394 g
+
+figures -> runs\cat

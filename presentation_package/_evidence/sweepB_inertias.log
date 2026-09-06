@@ -1,0 +1,12 @@
+atisim.__file__ = C:\Users\mateusz\UROP\Claude_Flight_Sim\.claude\worktrees\cv-entry-project-e44ed6\atisim\__init__.py
+
+name              mass_kg          Ixx          Iyy          Izz   Izz>Iyy?
+boeing747        288773.2   2.4676e+07   4.4878e+07   6.7384e+07   True
+boeing747_approach   255840.6   1.9253e+07   4.3793e+07   6.1554e+07   True
+boeing747_jsbsim   249973.8   2.4692e+07   4.4893e+07   6.7384e+07   True
+boeing737         48534.4   8.0206e+05   2.0874e+06    2.693e+06   True
+boeing737_approach    48534.4   8.0206e+05   2.0874e+06    2.693e+06   True
+cherokee           1090.0         3100         1700         1400   False
+cessna172          1043.3       1285.3       1824.7       2666.7   True
+
+registry keys: ['boeing747', 'boeing747_approach', 'boeing747_jsbsim', 'boeing737', 'boeing737_approach', 'cherokee', 'cessna172']

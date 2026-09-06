@@ -1,0 +1,20 @@
+ATISIM FILE: C:\Users\mateusz\UROP\Claude_Flight_Sim\.claude\worktrees\cv-entry-project-e44ed6\atisim\__init__.py
+FL200 condition: H = 6096.0 m, V = 252.8255 m/s
+
+reference Table A5: wn = 1.2900 rad/s (= 0.20531 Hz), zeta = 0.5700
+FC9 (40,000 ft) derivatives, as shipped    wn 1.5926 (+23.46%)  zeta 0.4723 (-17.14%)
+Table A2 (6,096 m) derivatives swapped in  wn 1.2823 (-0.60%)  zeta 0.5031 (-11.73%)
+  + Cmadot = -5.40 (Table A2)              wn 1.2823 (-0.59%)  zeta 0.5708 (+0.14%)
+
+--- Yoshimura Table A5 closure from Table A2 derivatives ---
+wn  recomputed = 1.2860  vs table's 1.29   (rad/s if the units are s^-1)
+zeta recomputed = 0.5690 vs table's 0.57
+wn in Hz = 0.20468 Hz
+
+--- the unit inconsistency, arithmetically ---
+if 1.29 were Hz : resonant wavelength = U0/f = 253/1.29 = 196.1 m
+  (paper's conclusion divides 258 by 1.29 -> 200.0 m)
+if 1.29 is rad/s: resonant wavelength = 2*pi*U0/wn = 2*pi*258/1.29 = 1256.6 m
+ratio = 2*pi = 6.2832
+
+FC9 747 at Mehta altitude 11277.6 m: sp wn = 1.03068 rad/s = 0.16404 Hz, zeta = 0.36455

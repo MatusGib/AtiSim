@@ -1,0 +1,14 @@
+atisim.__file__ = C:\Users\mateusz\UROP\Claude_Flight_Sim\.claude\worktrees\cv-entry-project-e44ed6\atisim\__init__.py
+MEHTA_HANNIBAL_ALTITUDE m = 11277.6
+LESTER_GREENLAND_ALTITUDE m = 10058.4
+    CRUISE 40000ft h= 12192.00 m (  40000 ft)  M=0.79952  alpha= 4.636 deg  CL=0.6569  M_dd=0.82206  M_crit=0.71434  CDwave=1.053128e-03  CD=0.04324  wave/CD=2.435%  buffet_CL=0.7212
+    Mehta Hannibal h= 11277.60 m (  37000 ft)  M=0.79952  alpha= 3.568 deg  CL=0.5695  M_dd=0.83957  M_crit=0.73185  CDwave=4.195544e-04  CD=0.03610  wave/CD=1.162%  buffet_CL=0.7212
+  Lester Greenland h= 10058.40 m (  33000 ft)  M=0.78846  alpha= 2.532 deg  CL=0.4847  M_dd=0.85654  M_crit=0.74882  CDwave=4.939193e-05  CD=0.03031  wave/CD=0.163%  buffet_CL=0.7268
+
+--- wave drag vs vertical gust (747, Mehta altitude) ---
+ w_gust=  0.00 m/s  CL=0.5695  M=0.79952  CDwave=4.195544e-04  CD=0.03610  wave/CD=1.162%
+ w_gust=  5.00 m/s  CL=0.6739  M=0.80076  CDwave=1.301925e-03  CD=0.04486  wave/CD=2.902%
+ w_gust= 10.00 m/s  CL=0.7780  M=0.80235  CDwave=3.175494e-03  CD=0.05591  wave/CD=5.680%
+ w_gust= 15.00 m/s  CL=0.8816  M=0.80429  CDwave=6.631947e-03  CD=0.06980  wave/CD=9.501%
+ w_gust= 20.00 m/s  CL=0.9847  M=0.80658  CDwave=1.242543e-02  CD=0.08727  wave/CD=14.238%
+ w_gust= 26.46 m/s  CL=1.1169  M=0.81006  CDwave=2.489611e-02  CD=0.11660  wave/CD=21.351%

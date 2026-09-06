@@ -1,0 +1,25 @@
+IMPORTED FROM: C:\Users\mateusz\UROP\Claude_Flight_Sim\.claude\worktrees\cv-entry-project-e44ed6\atisim\__init__.py
+
+747 DRAG POLAR vs CR-2144 Figure IX-6, 40,000 ft curve (9 digitised points)
+  Mach    sim CD    fig CD   residual     tol      band  pass
+  0.70    0.0603    0.0747    -0.0144   0.020   off-fit    OK
+  0.72    0.0557    0.0691    -0.0134   0.020   off-fit    OK
+  0.78    0.0454    0.0459    -0.0005   0.004  near-fit    OK
+  0.80    0.0432    0.0439    -0.0007   0.004  near-fit    OK
+  0.82    0.0416    0.0427    -0.0011   0.004  near-fit    OK
+  0.85    0.0408    0.0418    -0.0010   0.004  near-fit    OK
+  0.88    0.0422    0.0424    -0.0002   0.004  near-fit    OK
+  0.90    0.0448    0.0427    +0.0021   0.020   off-fit    OK
+  0.92    0.0491    0.0431    +0.0060   0.020   off-fit    OK
+
+worst |residual| near fit (M 0.75-0.88): 0.0011  against tolerance 0.004
+worst |residual| off  fit               : 0.0144  against tolerance 0.02
+
+Both tolerances are DECLARED by the project, not set by any source.
+The M 0.80 point is CIRCULAR: CD0 and e were back-solved from it.
+
+WAVE DRAG ACTIVITY AT EACH AIRCRAFT'S OWN CRUISE POINT
+  boeing747    M=0.800  Mcrit-relevant: YES - wave drag term live
+  boeing737    M=0.780  Mcrit-relevant: YES - wave drag term live
+  cherokee     M=0.149  Mcrit-relevant: no - term inert
+  cessna172    M=0.179  Mcrit-relevant: no - term inert

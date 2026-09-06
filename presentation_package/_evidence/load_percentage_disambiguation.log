@@ -1,0 +1,40 @@
+THE HEADLINE LOAD RATIO: SEVEN DIFFERENT PERCENTAGES, AND WHICH ONE TO QUOTE
+============================================================================
+All are "% of the DC-10's recorded 2.70 g peak-to-peak" (TM-102186 Fig. 6,
+-1.0 to +1.7 g). They differ because the RUNS differ. They are NOT inconsistent
+reports of one run. A presentation that quotes the wrong one is wrong.
+
+ %      p-p(g)   configuration                                          source
+------ -------- ------------------------------------------------------ -----------------
+ 68.1%  1.8390  HEADLINE. Mehta 5-vortex field, `boeing747`, full       PROJECT.md:327
+                model, all gradient terms. scripts/cat_validation.py.   (and :2568)
+ 67.1%  1.8124  AtiSim TRANSLATIONAL ONLY - gradient terms deliberately PROJECT.md:716
+                DISABLED for like-for-like parity with JSBSim, on
+                `boeing747_jsbsim` at JSBSim's start state.
+ 76.0%  2.0517  AtiSim + omega_gust only                                PROJECT.md:717
+ 74.1%  2.0011  AtiSim + BOTH gradient terms (its real configuration)   PROJECT.md:718
+ 74.6%  2.0152  JSBSim - INDEPENDENT ENGINE, same field/aircraft/state  PROJECT.md:715
+ 72.7%  1.9631  Most favourable corner of the V0/r0 uncertainty band    PROJECT.md:557
+ 70.1%  1.8918  Session-26 wing-loading sweep baseline, FIRST CORE ONLY PROJECT.md:1000
+
+VERIFIED ARITHMETIC (recomputed from the ledger's own n_z values):
+  headline: 1.441 - (-0.398) = 1.839 ; 1.839/2.70 = 68.11%   <-- matches "68%"
+
+THE DOCUMENTATION DEFECT (real, but minor and NOT a fabricated number):
+  PROJECT.md:101 (section 1, the validation-claim paragraph) says
+    "The headline load comparison reaches 67% of a recorded peak-to-peak"
+  67% is the LIKE-FOR-LIKE TRANSLATIONAL figure (67.1%, line 716), not the
+  headline. The headline is 68.1%. Section 1 attaches the right number to the
+  wrong run. Five other occurrences in the document say 68%.
+
+WHAT TO QUOTE IN THE PRESENTATION:
+  "About two thirds (68%) of the recorded peak-to-peak load" for the headline run.
+  If the JSBSim cross-check is mentioned, quote 74.6% (JSBSim) vs 67.1% (AtiSim
+  like-for-like) AS A PAIR and say the comparison is deliberately handicapped -
+  AtiSim's own full configuration reaches 74.1%, i.e. within 0.5 points of JSBSim.
+
+THE RESULT THAT MATTERS MOST, AND IT IS NOT THE PERCENTAGE:
+  NEITHER engine reaches the record. An independent, mature flight-dynamics code
+  given the same wind field, the same aeroplane and the same starting state also
+  falls ~25% short. That excludes AtiSim's SOLVER as the explanation for the
+  shortfall, on the headline field, by measurement rather than by inference.

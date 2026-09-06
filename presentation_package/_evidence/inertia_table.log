@@ -1,0 +1,8 @@
+aircraft                        Ixx          Iyy          Izz        Ixz   ordering
+boeing747                24675886.7   44877574.1   67384152.0 -1315219.3   Izz>Iyy OK
+boeing747_approach       19252614.9   43792919.7   61554134.9 -1179629.4   Izz>Iyy OK
+boeing747_jsbsim         24691645.2   44893332.7   67384152.0 -1315143.4   Izz>Iyy OK
+boeing737                  802064.4    2087353.2    2692973.6    25908.5   Izz>Iyy OK
+boeing737_approach         802064.4    2087353.2    2692973.6    25908.5   Izz>Iyy OK
+cherokee                     3100.0       1700.0       1400.0       -0.0   ** Izz<Iyy FLAGGED **
+cessna172                    1285.3       1824.7       2666.7       -0.0   Izz>Iyy OK

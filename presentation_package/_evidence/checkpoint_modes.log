@@ -1,0 +1,18 @@
+=== boeing747: CR-2144 flight condition 9, 40,000 ft, M 0.80 ===
+
+TRIM
+  alpha             +4.636 deg     (source tabulates +4.60)
+  elevator          -0.025 deg
+  throttle          0.7376
+  residual norm   1.93e-20  [udot, wdot, qdot]
+
+HOLD  (60 s, fixed controls, dt = 0.02 s)
+  altitude drift   +0.0000 m   (max excursion 0.0000)
+  airspeed drift   +0.0000 m/s
+  distance north    14.155 km  (expected 14.155)
+  quat norm error 0.00e+00
+
+LONGITUDINAL MODES vs CR-2144 Table IX-5 (FC 9 denominator)
+  phugoid       wn 0.0553 vs 0.0673 rad/s    zeta +0.0560 vs +0.0489
+  short period  wn 0.9508 vs 0.9640 rad/s    zeta +0.3425 vs +0.3870
+EXIT=0

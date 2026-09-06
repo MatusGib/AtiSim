@@ -1,0 +1,32 @@
+ATISIM FILE: C:\Users\mateusz\UROP\Claude_Flight_Sim\.claude\worktrees\cv-entry-project-e44ed6\atisim\__init__.py
+CRUISE airspeed m/s = 235.9152  altitude m = 12192.0
+trim alpha rad=0.08091750 deg=4.636231 elevator=-0.00044303 throttle=0.737647
+
+=== ENGINE AS SHIPPED (jacfwd of the real nonlinear dynamics) ===
+phugoid      wn = 0.055319 rad/s   zeta = 0.055956
+short period wn = 0.950773 rad/s   zeta = 0.342526
+
+CR-2144 Table IX-5 FC9 denominator reference: {'ph_wn': 0.0673, 'ph_z': 0.0489, 'sp_wn': 0.964, 'sp_z': 0.387}
+
+--- signed errors, engine as shipped ---
+phugoid wn   0.055319 vs 0.0673  -> -17.80%
+phugoid zeta 0.055956 vs 0.0489  -> +14.43%
+sp wn        0.950773 vs 0.9640  -> -1.37%
+sp zeta      0.342526 vs 0.3870  -> -11.49%
+
+=== AUGMENTED LINEAR MODEL (test_cr2144_modes._augmented_longitudinal_modes) ===
+built from CR-2144 Table IX-4 FC9 imperial derivatives INCLUDING Xu,Zu,Mu,Zwdot,Mwdot
+phugoid      wn = 0.067189  zeta = 0.048357
+short period wn = 0.962947  zeta = 0.386168
+
+--- signed errors, augmented model ---
+phugoid wn   0.067189 vs 0.0673  -> -0.16%
+phugoid zeta 0.048357 vs 0.0489  -> -1.11%
+sp wn        0.962947 vs 0.9640  -> -0.11%
+sp zeta      0.386168 vs 0.3870  -> -0.22%
+
+=== engine body-axis plant matrix [u,w,q,theta], SI ===
+[[-4.35216659e-03  3.85532474e-02 -1.90821231e+01 -9.77456230e+00]
+ [-5.75922506e-02 -3.17488979e-01  2.33579730e+02 -7.92663919e-01]
+ [ 2.75718509e-04 -3.39996268e-03 -3.35677992e-01  0.00000000e+00]
+ [ 0.00000000e+00  0.00000000e+00  1.00000000e+00  0.00000000e+00]]

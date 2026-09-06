@@ -1,0 +1,9 @@
+=== SWEEP A: skipped-test identification ===
+date: 2026-09-04T23:16:58Z
+IMPORTED FROM: C:\Users\mateusz\UROP\Claude_Flight_Sim\.claude\worktrees\cv-entry-project-e44ed6\atisim\__init__.py
+--- pytest atisim/tests/test_aircraft.py atisim/tests/test_checks.py -q -rs ---
+...........................................s............................ [ 68%]
+.................................                                        [100%]
+=========================== short test summary info ===========================
+SKIPPED [1] atisim\tests\test_aircraft.py:252: approach condition; asserted below instead
+104 passed, 1 skipped in 39.02s

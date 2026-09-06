@@ -1,0 +1,128 @@
+atisim imported from: C:\Users\mateusz\UROP\Claude_Flight_Sim\.claude\worktrees\cv-entry-project-e44ed6\atisim\__init__.py
+
+==============================================================================
+RESPONSE SPECTRA AND LOAD EXCEEDANCE -- phase 2
+==============================================================================
+  boeing747 at 11278 m, 235.9 m/s, dt 0.02 s
+  short period: f = 0.1640 Hz (wn = 1.0307 rad/s), zeta = 0.3645
+  peak searched above response.PHUGOID_FLOOR_HZ = 0.05 Hz (DECLARED)
+
+------------------------------------------------------------------------------
+A. MEHTA'S HANNIBAL FIELD, AS A SPECTRUM
+------------------------------------------------------------------------------
+  record 47.4 s, 2369 samples, bin 0.0211 Hz
+  the array forces at FOUR frequencies, not one:
+      1741.9 m core spacing ->  7.38 s -> 0.1354 Hz
+      1928.2 m core spacing ->  8.17 s -> 0.1224 Hz
+      1250.9 m core spacing ->  5.30 s -> 0.1886 Hz
+      2594.2 m core spacing -> 11.00 s -> 0.0909 Hz
+  mean core passage: 0.1343 Hz
+  response peak:     0.1688 Hz
+    vs short period  0.1640 Hz  ->  +2.9%
+    vs mean passage  0.1343 Hz  ->  +25.7%
+  RESOLUTION CAVEAT: the two candidates are 1.4 bins apart on this record.
+  A transient of a few cycles cannot resolve them better than that,
+  which is why limb B uses a stationary field and an ensemble.
+
+------------------------------------------------------------------------------
+B. YOSHIMURA'S PROTOCOL: N VIRTUAL FLIGHTS, SPECTRA AVERAGED
+------------------------------------------------------------------------------
+  151 flights x 100 s through wind.dryden_field (Yoshimura: 151 x 100 s)
+  first 20 s of each record discarded (DECLARED)
+  sigma over the SOURCED range 2.108-4.459 m/s (mehta_unmodelled_wind .. mehta_residual_ceiling)
+
+  sigma = 2.108 m/s
+    ensemble-averaged peak   0.1700 Hz  (+3.6% of the short period)
+    per-flight peaks         median 0.1700 Hz, [0.0900, 0.3200]
+    n_z rms                  0.0822 g [0.0703, 0.0941]
+    half-power band          0.1200-0.2300 Hz (0.1100 Hz wide, 0.65 of the peak frequency)
+    CONDITION DRIFT over the kept record, worst of 151: altitude 300 m, speed 12.9 m/s (5.4% of V), |alpha| range 4.10 deg
+  sigma = 4.459 m/s
+    ensemble-averaged peak   0.1700 Hz  (+3.6% of the short period)
+    per-flight peaks         median 0.1700 Hz, [0.0900, 0.3500]
+    n_z rms                  0.1840 g [0.1545, 0.2211]
+    half-power band          0.1200-0.2400 Hz (0.1200 Hz wide, 0.71 of the peak frequency)
+    CONDITION DRIFT over the kept record, worst of 151: altitude 703 m, speed 30.9 m/s (13.1% of V), |alpha| range 8.46 deg
+
+  LINEARITY, which is what the two sigmas really measure:
+    sigma ratio      2.1156
+    n_z rms ratio    2.2374  (+5.76% against exact linearity)
+    normalised spectra differ by 0.127 in L1
+    The response is superlinear in gust intensity. DO NOT read that
+    as aerodynamic nonlinearity: `aero.py` is linear in alpha and
+    the entry flown here carries no CL table. The drift line above
+    is the candidate -- with fixed controls and nobody flying, the
+    aeroplane leaves the condition it was trimmed for, and dynamic
+    pressure changes with it. Attributed, not merely noted.
+
+  SEALED PREDICTION `the_dryden_response_peaks_at_the_short_period` (sealed at 2837ddd)
+    predicted band 0.131-0.197 Hz, i.e. +/-20% of 0.1640 Hz
+    sigma 2.108: peak 0.1700 Hz -> INSIDE
+    sigma 4.459: peak 0.1700 Hz -> INSIDE
+    Yoshimura's B787 sat at 0.14 Hz; this 747 sits at 0.1640 Hz.
+    Different aircraft, same statement: the airframe picks the
+    frequency, and the turbulence supplies the energy.
+
+------------------------------------------------------------------------------
+C. LOAD EXCEEDANCE OVER THE ENSEMBLE
+------------------------------------------------------------------------------
+  sigma = 2.108 m/s   151 flights, 15097 s of record, peak |dn| 0.3698 g
+      level, g      up, /s    down, /s   up, /1000 km
+          0.02     1.08472     1.08618        4597.92
+          0.04     0.99470     1.00272        4216.36
+          0.06     0.84878     0.86825        3597.81
+          0.08     0.69385     0.70160        2941.09
+          0.10     0.54104     0.54388        2293.35
+          0.12     0.38935     0.39975        1650.38
+          0.14     0.26310     0.27370        1115.23
+          0.16     0.16175     0.18156         685.65
+          0.18     0.09412     0.11340         398.98
+          0.20     0.06041     0.06366         256.06
+          0.22     0.02941     0.03259         124.66
+          0.24     0.01378     0.01517          58.40
+          0.26     0.00656     0.00742          27.80
+          0.28     0.00305     0.00311          12.92
+          0.30     0.00185     0.00159           7.86
+          0.32     0.00053     0.00053           2.25
+          0.34     0.00013     0.00020           0.56
+          0.36     0.00007     0.00013           0.28
+    up/down ratio where both are non-zero: 0.500 to 1.167
+    Section 5: linear lift is exactly odd-symmetric in the
+    gust, so a ratio away from 1 is the trim state and the
+    finite sample, not an asymmetry the model can represent.
+
+  sigma = 4.459 m/s   151 flights, 15097 s of record, peak |dn| 0.8378 g
+      level, g      up, /s    down, /s   up, /1000 km
+          0.02     1.07048     1.07459        4537.56
+          0.04     1.06200     1.05577        4501.62
+          0.06     1.03027     1.03120        4367.13
+          0.08     0.99556     0.98642        4220.01
+          0.10     0.94357     0.92860        3999.60
+          0.12     0.88495     0.87084        3751.12
+          0.14     0.81672     0.79619        3461.92
+          0.16     0.74843     0.72471        3172.44
+          0.18     0.68457     0.66563        2901.78
+          0.20     0.61522     0.58806        2607.81
+          0.22     0.54481     0.52587        2309.35
+          0.24     0.47652     0.46181        2019.87
+          0.26     0.41386     0.39895        1754.26
+          0.28     0.35769     0.33298        1516.17
+          0.30     0.29821     0.27853        1264.04
+          0.32     0.24561     0.23429        1041.10
+          0.34     0.20189     0.19375         855.79
+          0.36     0.16447     0.16182         697.16
+          0.38     0.13102     0.13003         555.37
+          0.40     0.10234     0.10187         433.79
+    up/down ratio where both are non-zero: 0.996 to 1.074
+    Section 5: linear lift is exactly odd-symmetric in the
+    gust, so a ratio away from 1 is the trim state and the
+    finite sample, not an asymmetry the model can represent.
+
+  WHAT IS AND IS NOT ESTABLISHED BY THIS.
+  The curve is the model's own, with N in the denominator, and it
+  is the first statistic here that improves with more flying. It is
+  NOT yet a comparison: no published exceedance curve is held. The
+  document that would make it one is named in PROJECT.md section 5.
+
+figure -> runs\cat\09-spectra.png
+EXIT=0

@@ -1,0 +1,30 @@
+ATISIM_FILE C:\Users\mateusz\UROP\Claude_Flight_Sim\.claude\worktrees\cv-entry-project-e44ed6\atisim\__init__.py
+
+=== A. TORQUE-FREE RIGID BODY: angular momentum + rotational KE drift ===
+    (exact replica of test_free_rigid_body_conserves_angular_momentum_and_energy)
+  dt=0.01  T=600.0s  n=60000 steps  (~240000 derivative evals)
+  |L| relative magnitude drift  = 5.695769e-13   [test tol 1e-11]
+  L direction drift             = 1.478779e-06 deg   [test tol 3e-5 deg]
+  rotational KE relative drift  = 9.320530e-13   [test tol 2e-11]
+  max |||q||-1| over the run    = 2.220446e-16  (renormalised each step)
+
+=== B. QUATERNION NORM over 1e5 steps (test_integrate.test_quaternion_norm_holds...) ===
+  n = 100000 steps at dt=0.02 (2000 s)
+  max |||q||-1| = 2.220446e-16   [test tol atol 1e-12]
+  final |||q||-1| = 0.000000e+00
+
+=== C. TORQUE-FREE TRAJECTORY vs Jacobi-elliptic closed form ===
+  1500 steps at dt=0.002 (3.0 s), I=(1420.0,4070.0,4780.0), omega0=[0.6, 0.0, 0.9]
+  max |omega_sim - omega_exact| = 1.171979e-14 rad/s   [test tol atol 1e-8]
+  closed form vs Euler's equations, central diff, 2001 pts: max resid = 8.343482e-08   [test tol atol 1e-6]
+
+=== D. TRIMMED FLIGHT HOLDS ALTITUDE/AIRSPEED, 60 s (test_trim) ===
+  max |altitude - 12192.0| over 60 s = 0.000000e+00 m   [test tol 1e-6 m]
+  max |airspeed - 235.9152| over 60 s = 2.842171e-14 m/s [test tol 1e-6 m/s]
+  north distance at 60 s = 14154.912000000 m vs V*60 = 14154.912000000 (rel 2.185e-15)  [test tol rel 1e-9]
+
+=== E. GALILEAN INVARIANCE, uniform horizontal wind 1000 steps ===
+  W = [7.0, -3.0, 0.0] m/s NED, 20 s at dt=0.02
+  max |dquat|  = 2.726118e-15   [test tol atol 1e-11]
+  max |domega| = 6.917210e-16 rad/s [test tol atol 1e-11]
+  max |pos - (pos_still + W t)| = 2.819434e-11 m   [test tol atol 1e-6]

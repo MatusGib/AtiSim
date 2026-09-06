@@ -115,12 +115,22 @@ def test_settling_cannot_rewrite_what_was_predicted():
 SOURCE_GATED = {
     # Settled only by a document PROJECT.md section 5 names as not held here.
     "dc10_does_not_close_the_hannibal_gap",
-    "mil_f_8785c_sigma_w_exceeds_the_mehta_ceiling",
 }
 RUN_GATED = {
     # Settled by a run in this repository. Admissible ONLY because the seal
     # commit precedes the run -- see the test below for why that is the rule.
     "the_dryden_response_peaks_at_the_short_period": "scripts/cat_spectra.py",
+    # MOVED from SOURCE_GATED in session 27, and the move is a fact about the
+    # shelf rather than a convenience. This entry was sealed (0c72200) when
+    # MIL-F-8785C was not held; session 25 fetched it to `refs/MIL-F-8785C.pdf`,
+    # which makes it settleable by a run here exactly as the Dryden entry is.
+    # The seal still precedes the run by many commits, so the rule the class
+    # exists to protect is untouched. Note the script is named in `outcome`
+    # rather than `settled_by`: `settled_by` is inside the digest and a SEALED
+    # entry's claim fields are never edited, so the test below looks in both.
+    "mil_f_8785c_sigma_w_exceeds_the_mehta_ceiling": (
+        "scripts/digitise_mil_f_8785c_fig7.py"
+    ),
 }
 
 
@@ -156,7 +166,13 @@ def test_every_open_prediction_is_declared_and_classified():
             # repository, so settling it needs nobody to send a document.
             assert p.status in ("SEALED", "SETTLED"), p.name
             script = RUN_GATED[p.name]
-            assert script in p.settled_by, p.name
+            # The run must be NAMED somewhere in the entry, which is the whole
+            # point of the check -- "settled by a run" with no run named is the
+            # cheap win this class exists to forbid. It may be named in
+            # `outcome` rather than `settled_by` for an entry sealed before the
+            # script existed, because `settled_by` is inside the digest and a
+            # sealed claim is never edited (predictions.py rule 1).
+            assert script in p.settled_by or script in p.outcome, p.name
             assert (root / script).is_file(), (
                 f"{p.name} is settled by {script}, which does not exist"
             )

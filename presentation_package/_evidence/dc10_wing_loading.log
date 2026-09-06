@@ -1,0 +1,17 @@
+atisim imported from: C:\Users\mateusz\UROP\Claude_Flight_Sim\.claude\worktrees\cv-entry-project-e44ed6\atisim\__init__.py
+
+=== THE 747 AS MODELLED (SOURCED: CR-2144 Table IX-3) ===
+  mass  = 288,773.2 kg   (636,635 lb)
+  S     = 510.97 m^2   (5,500 sq ft)
+  W/S   = 565.15 kg/m^2   (115.75 lb/sq ft)
+
+=== DC-10 VARIANTS (Wikipedia spec table, citing DC-10 Airplane Characteristics) ===
+  DC-10-10  MTOW               W/S =   591.4 kg/m^2   ratio to 747 = 1.046x
+  DC-10-10  OEW                W/S =   330.3 kg/m^2   ratio to 747 = 0.584x
+  DC-10-10  mid (OEW+MTOW)/2   W/S =   460.9 kg/m^2   ratio to 747 = 0.815x
+
+  DC-10-30  MTOW               W/S =   743.0 kg/m^2   ratio to 747 = 1.315x
+  DC-10-30  OEW                W/S =   356.4 kg/m^2   ratio to 747 = 0.631x
+  DC-10-30  mid (OEW+MTOW)/2   W/S =   549.7 kg/m^2   ratio to 747 = 0.973x
+
+The project assumed 1.3x. That corresponds to the DC-10-30 AT MTOW ONLY.
