@@ -1,0 +1,90 @@
+atisim imported from: C:\Users\mateusz\UROP\Claude_Flight_Sim\.claude\worktrees\cv-entry-project-e44ed6\atisim\__init__.py
+
+LES condition: 3000 m, 133.5 m/s -> M 0.4063
+derivatives tabulated at M 0.80
+Prandtl-Glauert factor applied to CLa, CLq, CLde, Cma, Cmq, Cmde: 0.65664   (i.e. 1/1.5229)
+
+scaling LIFT ONLY: CLa, CLq, CLde
+    CLa       +4.9441 ->    +3.2465
+    CLq       +5.9450 ->    +3.9037
+    CLde      +0.3638 ->    +0.2389
+==============================================================================
+ATISIM THROUGH YOSHIMURA'S LES FIELD -- D03 (70m grid)
+==============================================================================
+  ctl     2000 x 2000 x 80, pdef dx 70 m, levels 0..7900 m
+  binary  grads_file_202012301000.dat, ctl predicts 6,448,000,000 B
+  vars    FLATsrf, FLONsrf, Ustg, Vstg, Wstg, PT, p, zssrf
+  origin  grid (i=1126, j=1390) = 35.25013 N, 140.09979 E
+  metric  +i = 72.05 m east, +j = 71.26 m north  (no convergence at 140 E)
+  loaded  subvolume (17, 93, 369) (k 22..38), 7 MB
+  at the flight level: sigma_w 3.147 m/s, sigma_u 4.546 m/s
+  mean flow REMOVED (declared): u +27.86, v +2.55 m/s -- see load_field
+
+------------------------------------------------------------------------------
+A. THE READER, CHECKED AGAINST YOSHIMURA'S OWN SAMPLED WIND
+------------------------------------------------------------------------------
+  1281 points along their path 1, every 10th step
+  Their aircraft flies 090, so body x is east, body y SOUTH, body z
+  down -- the expected signs are +1 on u and -1 on both v and w.
+
+   ours   best match among their three columns        r as read
+    u     -> their u  (r=+0.794, margin +0.207)   +0.7938   OK
+    v     -> their v  (r=-0.866, margin +0.538)   -0.8659   OK
+    w     -> their w  (r=-0.747, margin +0.444)   -0.7466   OK
+
+  REGISTRATION, searched and reported but NOT applied:
+    u: best r=+0.9747 at di=+2.00 dj=-0.25 dk=+1.25   their = +0.888*ours +0.68
+    v: best r=-0.9553 at di=+1.25 dj=+0.25 dk=+1.25   their = -0.921*ours +5.26
+    w: best r=-0.9736 at di=+1.00 dj=+0.00 dk=+1.50   their = -0.791*ours +0.09
+    -> a 1-2 cell horizontal and ~1.3 level vertical residual, i.e.
+       under 150 m. It is NOT fed back into the sampler: fitting an
+       offset until the check passes would turn the only end-to-end
+       check into a calibration. The run below uses ZERO offset.
+
+  AND ONE REAL FINDING ABOUT THEIR SETUP. The u and v intercepts are
+  -24.9 and +7.7 m/s while w's is +0.08: their recorded wind has the
+  MEAN FLOW REMOVED, which w -- being zero-mean already -- does not
+  show. So their columns are gust perturbations, not total wind.
+
+------------------------------------------------------------------------------
+B. THE CONDITION, AND WHY IT IS NOT SECTION 1's
+------------------------------------------------------------------------------
+  boeing747_liftonly at 3000 m, 133.5 m/s, heading 90 -- Yoshimura's own condition
+  trim alpha 7.59 deg
+  this entry's own recovery condition: 12192 m, 235.9 m/s
+  LES top level is 7900 m; boeing747 cruises at 11278 m.
+  THE FIELD CANNOT REACH CRUISE, so this is a comparison at ITS
+  altitude and NOT the cruise-CAT check section 7 wanted from it.
+
+------------------------------------------------------------------------------
+C. FLOWN
+------------------------------------------------------------------------------
+  gust rates: gust_rates, tangent at the CG -- boeing747_liftonly has an implausible tail arm (6.13 chords) so the sampled estimator is REFUSED, not silently NaN
+  track reaches 14.1 km along +east; the box holds 24.3 km  OK
+  16 flights x 100 s, first 20 s discarded, dt 0.02
+  n_z rms, raw     0.1120 g [0.0779, 0.1426]
+  n_z rms, phugoid removed above 0.05 Hz
+                   0.0720 g [0.0558, 0.0897]
+  peak |dn|, raw   1.420 g
+  peak |dn|, h-p   0.353 g
+  response peak    0.0600 Hz   (spectrum of the high-passed record)
+  short period     0.1568 Hz  -> -61.7%
+  condition drift, worst: altitude 486 m, speed 39.5 m/s, |alpha| range 6.82 deg
+  checks.recovery_band: passed=False
+    2.60 band widths OUTSIDE the recovery condition: Mach 0.342-0.452 against [0.7, 0.9]; altitude 2733-3170 m against [10668, 13716]. Out there the entry is extrapolating: no layer of the JSBSim comparison measured it, and nothing else will notice.
+
+  YOSHIMURA'S OWN 70m ENSEMBLE, same field, same condition:
+    n_z rms 0.0799 g, peak 0.0800 Hz, peak |dn| 0.434 g, field sigma_w 2.386 m/s
+    ratio AtiSim/Yoshimura on rms: 0.90x
+    (their aircraft and their code -- the one difference left)
+
+  upcrossing rate, high-passed, per second:
+     0.10 g     0.0437
+     0.20 g     0.0037
+     0.30 g     0.0006
+     0.40 g     0.0000
+     0.60 g     0.0000
+     0.80 g     0.0000
+
+  figure -> runs\cat\13-les-D03-boeing747_liftonly.png
+EXIT=0
