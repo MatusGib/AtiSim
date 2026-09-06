@@ -1523,6 +1523,199 @@ def _boeing_747_jsbsim() -> Aircraft:
     )
 
 
+def boeing787_yoshimura() -> Aircraft:
+    """Yoshimura et al. 2023's OWN aeroplane, as their own code defines it.
+
+    *** THIS IS NOT "A BOEING 787". IT IS THEIR MODEL. ***  The distinction is
+    the whole point of the entry and it is not pedantry: their `fs.f90` gives a
+    longitudinal set consistent with a 787-8 near MTOW and a lateral block its
+    own comment labels `!Lateral/Directional derivatives >>> B747`. That is a
+    crossed source, and this project's rule is to name it rather than tidy it.
+    It is carried VERBATIM anyway, because the purpose here is to reproduce what
+    their code flies -- not to model a real 787. Quote the LONGITUDINAL
+    comparison; do not quote the lateral response as a reference for anything.
+
+    WHY IT EXISTS. Every LES load comparison before it flew `boeing747` at
+    M 0.406 against a M 0.80 linearisation, or `boeing737_approach` whose short
+    period is 83% away from theirs. PROJECT.md section 4's input audit refused
+    those numbers. With this entry both codes fly the same aeroplane through the
+    same field at the same condition, which is the design that made the JSBSim
+    vortex comparison worth having.
+
+    SOURCE. `flightsim-data/src/fs.f90` lines 230-275 of the figshare extract
+    (Yoshimura et al. 2023, GRL 50 e2022GL101286, dataset 21152203, CC BY 4.0).
+    The complete dimensional set, transcribed:
+
+        U_0 = 133.0 m/s, theta_0 = 0, Z_de = M_de = 0 (no control surfaces)
+        X_u -0.006   X_a  6.705    X_q  0
+        Z_u -0.147   Z_a -59.078   Z_q -2.396
+        M_u  0.000   M_a -0.582    M_q -0.537   M_da -0.137
+        Y_v -5.230   Y_p  0        Y_r -1.002
+        L_v -2.498   L_p -1.383    L_r  0.450
+        N_v  0.655   N_p -0.051    N_r -0.131
+        I_x 1.5752e6*9.81   I_z 3.8109e6*9.81   I_xz 7.5789e4*9.81
+
+    MASS AND AREA ARE CHECKED, NOT ASSUMED. Piano's 787-8 analysis gives MTOW
+    476,000 lb, trapezoidal reference area 3,501.39 ft^2 and MAC 21.12 ft.
+    Inverting their own Z_a = -(CLa + CD) qbar S / m at their condition gives
+    CLa = 4.847 /rad at MTOW -- within 2% of this project's 747 -- against 3.63
+    at mid weight and 2.42 at OEW, both unphysical for a swept transport. So the
+    weight is a CONCLUSION drawn from their derivative, not an input to it. Note
+    the area DEFINITION matters: Wimpress (3,870) and Piano gross (4,028) are
+    also published and would move CLa by 15%.
+
+    I_yy IS DECLARED AND CANNOT MATTER. It is not in `fs.f90`. It and Cma enter
+    the dynamics only as their product M_a, which IS sourced, so any I_yy
+    reproduces M_a exactly -- verified by round-trip from 1.0e7 to 4.0e7 in
+    PROJECT.md section 4. The value below is the midpoint of two independent
+    estimates (the 747's I_y/I_z ratio, and the lamina relation I_z - I_x),
+    which differ by 12.7%. Do NOT go looking for a published 787 pitch inertia:
+    the one number that could not be sourced is the one that is unobservable.
+
+    WHAT IS DECLARED BECAUSE THEIR MODEL HAS NO EQUIVALENT. Their aeroplane does
+    not trim, has no drag and no thrust -- it is a gust-response linearisation
+    about level flight with theta_0 = 0. AtiSim cannot fly without those, so:
+
+      * CL0 is set to W/qbar_S at their condition, which puts the trim at
+        alpha ~ 0 and Cm0 = 0 -- i.e. AT their linearisation point, which is the
+        closest this can come to `theta_0 = 0`. It is DERIVED from their
+        condition, not chosen for convenience.
+      * CD0 and e are DECLARED at 0.020 and 0.85, giving L/D 18.7 at trim.
+        They set the trim throttle and nothing the load comparison reads.
+      * max_thrust is DECLARED at 560 kN (two GEnx-1B class), needing 26%
+        throttle at trim -- comfortably inside the envelope, which is all that
+        is asked of it.
+      * sweep, t_over_c and kappa_airfoil are DECLARED and INERT: they enter
+        only through wave drag, which is identically zero at M 0.41.
+      * Control derivatives are their zeros where they state zeros. The runs
+        this entry exists for are fixed-control, so nothing reads them.
+
+    None of those five touch the gust response. The load-critical set -- CLa,
+    CLq, Cma, Cmq, Cmadot, mass, S, c -- is SOURCED from their code throughout.
+
+    *** DELIBERATELY NOT IN `REGISTRY`, AND THAT IS THE POINT. *** It was, for
+    one commit, and the suite said no in eight places at once. `REGISTRY`'s
+    contract is "an aircraft this project FLIES": every member needs autopilot
+    and manual gains (`test_every_aircraft_has_its_own_gains`), must capture
+    altitude and heading steps under closed loop, must have real aileron
+    authority (`Clda > 0`), and must cruise above its own minimum-drag speed.
+    This model satisfies none of those and should not pretend to -- Yoshimura's
+    aeroplane has NO control surfaces at all. Registering it would have meant
+    inventing aileron authority, two sets of autopilot gains and a validity band
+    its source does not state, purely to satisfy invariants written for
+    interactive flight. That is four kinds of invented data to paper over a
+    category error, and section 2's rule forbids exactly that.
+
+    So it is a CONSTRUCTOR, not a registry entry, and callers inject it -- the
+    same shape `scripts/les_mach_test.py` already uses for its sensitivity case.
+    What replaces the registry's tests is a better one: `test_aircraft.py`
+    asserts it reproduces Yoshimura's OWN `A_lon` eigenvalues, which is the only
+    property it exists to have.
+
+    NO VALIDITY BAND, and that is the project's own rule rather than an
+    oversight. `test_a_recovery_band_is_declared_only_where_one_was_measured`
+    says a band belongs only to an entry that IS a fit over a measured range.
+    This is a transcribed linear set at ONE condition, so it gets none --
+    "giving those a band would be inventing a bound their sources do not state".
+
+    AND ONE MEASURED PROPERTY WORTH KNOWING: at their condition this aeroplane
+    sits BELOW its own minimum-drag speed -- 133.0 m/s against V_md 138.0 --
+    i.e. on the back side of the drag curve, like `boeing747_approach`. Note
+    that verdict is set by the DECLARED CD0 and e above and would flip with a
+    slightly different pair, so it is reported and not leaned on.
+    """
+    # -- geometry and mass, Piano 787-8 (SOURCED; the CLa inversion confirms it)
+    m = 476000.0 * LB2KG
+    S = 3501.39 * FT2M * FT2M
+    b = 192.50 * FT2M
+    c = 21.12 * FT2M
+
+    # -- inertia, fs.f90 lines 263-265. Their kgf.m.s^2 x 9.81 -> kg.m^2.
+    Ix = 1.5752e6 * 9.81
+    Iz = 3.8109e6 * 9.81
+    Ixz = 7.5789e4 * 9.81
+    # DECLARED, and unobservable -- see the docstring. Midpoint of the 747's
+    # I_y/I_z ratio applied to their I_z, and the lamina relation I_z - I_x.
+    Iy = 0.5 * ((4.4878e7 / 6.7384e7) * Iz + (Iz - Ix))
+
+    U0 = 133.0                       # fs.f90 line 230
+    rho = 0.909122264495             # ISA at 3,000 m, their flight level
+    fc = FlightCondition(airspeed=U0, density=rho, mass=m,
+                         Ixx=Ix, Iyy=Iy, Izz=Iz, S=S, b=b, c=c)
+
+    # Their derivatives are per-ANGLE (Z_a, M_a); the helpers take per-VELOCITY
+    # (Zw = Z_a/U0, Mw = M_a/U0). CD is the trim drag, entering CLa only.
+    CD_trim = 0.02 + (m * float(G0) / fc.qS) ** 2 / (math.pi * 0.85 * b * b / S)
+    CLa, CLq, CLde, Cma, Cmq, Cmde = from_dimensional_longitudinal(
+        fc, Zw=-59.078 / U0, Zq=-2.396, Mw=-0.582 / U0, Mq=-0.537,
+        Zde=0.0, Mde=0.0, CD=CD_trim,
+    )
+    # Their lateral block, labelled B747 in their own source. Carried verbatim.
+    CYb, Clb, Cnb, Clp, Cnp, Clr, Cnr = from_dimensional_lateral(
+        fc, Yv=-5.230 / U0, Lv=-2.498 / U0, Nv=0.655 / U0,
+        Lp=-1.383, Np=-0.051, Lr=0.450, Nr=-0.131,
+    )
+    # Y_r = -1.002. The helpers do not return it, so it is converted here with
+    # the same non-dimensionalisation they use: Y_r = CYr b qbar_S / (2 V m).
+    CYr = -1.002 * 2.0 * U0 * m / (b * fc.qS)
+    # M_da = -0.137, their alpha-dot term. Shares I_yy's invariance exactly.
+    Cmadot = -0.137 * 2.0 * U0 * Iy / (fc.qS * c * c)
+
+    inertia = jnp.array([[Ix, 0.0, Ixz], [0.0, Iy, 0.0], [Ixz, 0.0, Iz]])
+    return Aircraft(
+        mass=jnp.array(m),
+        inertia=inertia,
+        inertia_inv=jnp.linalg.inv(inertia),
+        S=jnp.array(S), b=jnp.array(b), c=jnp.array(c),
+        # DECLARED. Sets the trim throttle; read by nothing the comparison uses.
+        CD0=jnp.array(0.020),
+        e=jnp.array(0.85),
+        AR=jnp.array(b * b / S),
+        # DECLARED and INERT: wave drag is identically zero at M 0.41.
+        sweep=jnp.array(32.2 * DEG2RAD),
+        t_over_c=jnp.array(0.11),
+        kappa_airfoil=jnp.array(0.95),
+        # DERIVED from their condition so trim lands at alpha ~ 0, matching
+        # their theta_0 = 0. Cm0 = 0 follows.
+        CL0=jnp.array(m * float(G0) / fc.qS),
+        CLa=jnp.array(CLa),
+        CLq=jnp.array(CLq),
+        CLde=jnp.array(0.30),        # DECLARED with Cmde below, same reason
+        Cm0=jnp.array(0.0),
+        Cma=jnp.array(Cma),
+        Cmq=jnp.array(Cmq),
+        # DECLARED, and it has to be. Their Z_de = M_de = 0 because their model
+        # has no control surfaces and never trims. Fed to AtiSim verbatim that
+        # makes the trim Jacobian SINGULAR -- d(qdot)/d(elevator) is identically
+        # zero, the 3x3 solve has a null column, and trim returns NaN. Measured,
+        # not guessed: the first build of this entry did exactly that.
+        #
+        # So a plausible widebody value is declared purely to make the solve
+        # well-posed. It is not exercised: Cm0 = 0 and CL0 puts the trim at
+        # alpha ~ 0, so the elevator solves to ~0 (see the assertion in
+        # test_aircraft.py), and the LES runs are FIXED-CONTROL, which means
+        # nothing after trim reads it either. A different value here moves the
+        # trim deflection and nothing else.
+        Cmde=jnp.array(-1.2),
+        CYb=jnp.array(CYb),
+        CYp=jnp.array(0.0),          # their Y_p is 0
+        CYr=jnp.array(CYr),
+        CYdr=jnp.array(0.0),
+        Clb=jnp.array(Clb), Clp=jnp.array(Clp), Clr=jnp.array(Clr),
+        Clda=jnp.array(0.0), Cldr=jnp.array(0.0),
+        Cnb=jnp.array(Cnb), Cnp=jnp.array(Cnp), Cnr=jnp.array(Cnr),
+        Cnda=jnp.array(0.0), Cndr=jnp.array(0.0),
+        # DECLARED, two GEnx-1B class. 26% throttle at trim.
+        max_thrust=jnp.array(560000.0),
+        thrust_lapse=jnp.array(0.80),
+        elevator_limit=jnp.array(0.35),
+        aileron_limit=jnp.array(0.35),
+        rudder_limit=jnp.array(0.35),
+        Cmadot=jnp.array(Cmadot),
+        # No band: see the docstring. It is a transcribed set, not a fit.
+    )
+
+
 REGISTRY: dict[str, Aircraft] = {
     "boeing747": _boeing_747(),
     "boeing747_approach": _boeing_747_approach(),
