@@ -407,6 +407,54 @@ Yoshimura's `M_α̇ = −0.137`** — the same `M_ẇ` class the 747's phugoid g
 (§4, "Where the longitudinal gap comes from"). Quote that as a known, attributed difference
 rather than discovering it again afterwards.
 
+### What the LES comparison IS good for: resolution, not level — session 27
+
+The audit above refuses the LES *load* comparison. **One thing survives it intact, and it is
+worth more than the number that was refused.**
+
+Both confounders — the wrong aeroplane and the frozen `C_Lα` — are **constant multipliers on
+AtiSim's side across all four domains**: same aircraft, same condition, same Mach, only the
+field changes. So they **cancel exactly** in each code's own resolution ratio. Normalising each
+code to its own finest domain:
+
+| domain | dx | AtiSim / D04 | Yoshimura / D04 | disagreement |
+|---|---|---|---|---|
+| D01 | 500 m | 0.0475 | 0.0632 | −24.8% |
+| D02 | 250 m | 0.1157 | 0.0899 | +28.7% |
+| **D03** | **70 m** | **0.5753** | **0.5724** | **+0.5%** |
+| D04 | 35 m | 1.000 | 1.000 | — |
+
+**On the two domains that resolve the turbulence the two codes agree on the resolution
+scaling to 0.5% — AtiSim grows ×1.7381 from 70 m to 35 m, Yoshimura ×1.7469 — while their
+absolute levels differ by 42%.** That is the project's own "comparative, not absolute" claim,
+demonstrated for the first time **against an independent code on a field that was not
+identified from the accelerations it is asked to predict.** Everything §1 says this model is
+for, and nothing it says it is not.
+
+**Three usable statements, and they are the ones to quote.**
+
+1. **The load is NOT grid-converged at 35 m.** It is still growing **×1.74 per halving of the
+   grid**, and *both codes agree it is*. Any CAT load computed from an LES coarser than this is
+   an underestimate of unknown size — a result about **the meteorology's requirements**, not
+   about either aeroplane.
+2. **Below ~70 m the comparison degrades and the codes stop agreeing** (−24.8%, +28.7% at 250
+   and 500 m). So 500 m and 250 m LES **cannot** drive an aircraft-load calculation, and there
+   are now two independent codes saying where that floor is.
+3. **The field reader is validated infrastructure**: +0.978 / −0.968 / −0.935 against
+   Yoshimura's own sampled wind on u/v/w, registration residual measured at 1–2 cells (under
+   150 m) and deliberately not fed back. It is reusable for any published LES.
+
+**And it reaches Yoshimura's own conclusion by a route their arithmetic cannot.** Their paper
+argues for fine grid spacing from a resonant wavelength of 200 m — computed from the 1.29 Hz
+that §5 shows is a misread `s⁻¹`, where the correct figure is ~1,257 m and would argue the
+opposite way. **The measurement above supports fine grids anyway, empirically, and without
+touching that calculation.** Being right for a reason the source did not have is the most this
+comparison can currently claim, and it is a real claim.
+
+**What it may NOT be used for**, until a `boeing787_yoshimura` entry exists: any statement
+about absolute load, any statement that the two codes agree or disagree *in level*, anything
+about the 747 at that condition, and anything lateral.
+
 ### The frozen lift-curve slope, and why it probably IS the LES discrepancy — session 27
 
 **`ASSUMPTIONS.md` C3 says derivatives are frozen across the envelope and calls the Mach axis
