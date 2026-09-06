@@ -1,0 +1,17 @@
+ATISIM: C:\Users\mateusz\UROP\Claude_Flight_Sim\.claude\worktrees\cv-entry-project-e44ed6\atisim\__init__.py
+trim residual  = 1.776425e-15   (assert < 1e-8)
+alpha          = -0.054422 deg   (assert |alpha| < 2.0 deg)
+elevator       = 0.040271 deg
+throttle       = 0.656965   (assert 0 < throttle < 1)
+phugoid  wn    = 0.214591 rad/s (band 0.08 .. 0.4)
+phugoid  zeta  = 0.075747       (band 0.0 .. 0.25)
+shortper wn    = 3.572078 rad/s (band 1.5 .. 6.0)
+shortper zeta  = 0.575239       (band 0.3 .. 0.9)
+dutchroll wn   = 2.384451 rad/s (band 1.0 .. 4.0)
+dutchroll zeta = 0.208195       (band 0.0 .. 0.4)
+roll tau       = 0.118573 s   (band 0.03 .. 1.0)
+spiral tau     = 118.596028 s  (assert |tau| > 15.0)
+Ixz            = -0.000000e+00
+CD0            = 0.034764
+e              = 0.579239
+AR             = 6.062826

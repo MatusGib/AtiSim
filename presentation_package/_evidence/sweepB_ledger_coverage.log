@@ -1,0 +1,11 @@
+atisim.__file__ = C:\Users\mateusz\UROP\Claude_Flight_Sim\.claude\worktrees\cv-entry-project-e44ed6\atisim\__init__.py
+
+module-level numeric constants in the FIVE enforced modules: 39
+of those, ledgered: 24
+of those, unledgered: 15
+KNOWN_UNLEDGERED baseline size: 18
+new (unrecorded) unledgered: []
+
+uncovered names: [('aero', '_MDD_OFFSET'), ('airframe', 'N_LON'), ('airframe', 'N_SPAN'), ('airframe', 'TAIL_ARM_BAND'), ('airframe', '_SENSITIVITY_TAPER'), ('atmosphere', 'G0'), ('atmosphere', 'GAMMA'), ('atmosphere', 'H_TROPOPAUSE'), ('atmosphere', 'LAPSE'), ('atmosphere', 'P0'), ('atmosphere', 'RHO0'), ('atmosphere', 'R_AIR'), ('atmosphere', 'T0'), ('wind', 'UPDRAFT_SECONDS'), ('wind', 'UPDRAFT_W0')]
+
+coverage over the five enforced modules: 61.5%

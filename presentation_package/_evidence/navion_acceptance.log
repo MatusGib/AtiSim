@@ -1,0 +1,25 @@
+ATISIM: C:\Users\mateusz\UROP\Claude_Flight_Sim\.claude\worktrees\cv-entry-project-e44ed6\atisim\__init__.py
+============================= test session starts =============================
+platform win32 -- Python 3.10.11, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Users\mateusz\UROP\Claude_Flight_Sim\.claude\worktrees\cv-entry-project-e44ed6
+configfile: pyproject.toml
+plugins: anyio-4.14.2, dash-4.4.1, nbval-0.11.0
+collected 4 items
+
+atisim\tests\test_navion.py ....                                         [100%]
+
+============================== 4 passed in 3.12s ==============================
+============================= test session starts =============================
+platform win32 -- Python 3.10.11, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\mateusz\UROP\Claude_Flight_Sim\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\mateusz\UROP\Claude_Flight_Sim\.claude\worktrees\cv-entry-project-e44ed6
+configfile: pyproject.toml
+plugins: anyio-4.14.2, dash-4.4.1, nbval-0.11.0
+collecting ... collected 4 items
+
+atisim/tests/test_navion.py::test_navion_trims_and_reproduces_the_sources_trim_lift PASSED [ 25%]
+atisim/tests/test_navion.py::test_navion_phugoid_and_short_period_are_in_the_expected_bands PASSED [ 50%]
+atisim/tests/test_navion.py::test_navion_lateral_modes_are_in_the_expected_bands PASSED [ 75%]
+atisim/tests/test_navion.py::test_navion_sidesteps_the_cr2144_unprime_pipeline PASSED [100%]
+
+============================== 4 passed in 4.68s ==============================

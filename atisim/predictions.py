@@ -118,6 +118,28 @@ PREDICTIONS: tuple[Prediction, ...] = (
         settled_by="MIL-F-8785C Figure 7, digitised at 37,000 ft",
         sealed_at="0c72200",
         digest="3fb6e8c238194d1d",
+        status="SETTLED",
+        outcome=(
+            "RIGHT, with a margin of 0.34 m/s. Figure 7 digitised from "
+            "refs/MIL-F-8785C.pdf p. 49 by scripts/digitise_mil_f_8785c_fig7.py: "
+            "at 37,000 ft the severe stroke reads 15.7 ft/s = 4.80 m/s against "
+            "the predicted > 4.46. The reading is a BAND, not a point, and the "
+            "reason is in the figure rather than in the method: SEVERE and the "
+            "10^-5 exceedance curve are drawn as ONE stroke of ink at that "
+            "altitude, so the value is 4.80 +/- ~0.12 m/s depending which member "
+            "the stroke belongs to. The whole band clears 4.46, so the merge "
+            "cannot change the verdict. Cross-checked against JSBSim's "
+            "FGWinds.cpp -- an independent transcription of the same figure, "
+            "which neither this reading nor its author set -- whose severe row "
+            "interpolates to 4.822 m/s at 37 kft, 0.5% away and inside the merge "
+            "band. An earlier pass quoted 0.4% by reading the merged stroke as "
+            "though it were SEVERE alone; that was too good and is not what is "
+            "claimed here. WHAT THIS DOES NOT BUY, per the reasoning's own "
+            "reservation: it makes the ~4-5 m/s closure PHYSICALLY AVAILABLE at "
+            "the specification's severe level. It is NOT evidence that Hannibal "
+            "contained it. Section 4 keeps those separate and this outcome does "
+            "not merge them."
+        ),
     ),
     # -----------------------------------------------------------------------
     # Sealed session 25 (phase 2), against tree 2837ddd, BEFORE any response

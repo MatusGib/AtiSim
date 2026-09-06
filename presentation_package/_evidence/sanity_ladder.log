@@ -1,0 +1,82 @@
+747 at 235.9 m/s, 12192 m
+trim alpha = 4.636 deg (residual 1.93e-20)
+
+[1] zero wind doesn't touch the relative velocity
+    expected 0.0
+    got      0.0
+    PASS
+
+[2] no aero + no thrust = straight down at g
+    expected 9.80665
+    got      9.80665
+    PASS
+
+[3] ...and nothing sideways or forwards
+    expected 0.0
+    got      5.677379289539658e-17
+    PASS
+
+[4] Cl=0 AND diagonal inertia -> aileron does nothing to roll rate
+    expected 0.0
+    got      0.0
+    PASS
+
+same case but with the real inertia (Ixz != 0):
+  p_dot = -3.214835e-03
+  not zero, and that's fine - the yaw moment leaks into roll through Ixz
+
+[5] Cm=0 -> even a big elevator input gives zero pitch accel
+    expected 0.0
+    got      0.0
+    PASS
+
+[6] 30 m/s headwind should add 30 m/s to the airspeed
+    expected 265.9152
+    got      265.9152
+    PASS
+
+[7] w equal to u should give alpha of exactly 45 deg
+    expected 45.0
+    got      45.0
+    PASS
+
+static stability: bumping alpha up by 2.9 deg changes Cm by -0.05059
+  should be negative (nose-down, restoring). Cma = -1.012
+  PASS
+
+pitch damping: +0.1 rad/s of q changes Cm by -0.04221
+  should be negative, opposing the rotation. Cmq = -23.923
+  PASS
+
+[8] pitched 10 deg nose-up: gravity along x_b should be -g*sin(10)
+    expected -1.7029069015174023
+    got      -1.7029069015174023
+    PASS
+
+[9] ...and gravity along z_b should be +g*cos(10)
+    expected 9.65766495107717
+    got      9.65766495107717
+    PASS
+
+[10] load factor in trimmed level flight is cos(alpha), NOT 1
+    expected 0.9967279650868429
+    got      0.9967279650868427
+    PASS
+
+[11] wings level, beta=0: elevator alone shouldn't wake up roll/yaw at all
+    expected 0.0
+    got      0.0
+    PASS
+
+checking body-axis vs wind-axis convention for CY (not pass/fail):
+
+  beta    vs body-axis    vs wind-axis
+   0       4.657e-10     4.657e-10
+   5       4.657e-10     2.854e+04
+  10       4.657e-10     1.137e+05
+
+looks like CY is being treated as body-axis already - both columns
+agree at beta=0, which is exactly why nothing else catches this
+
+11/11 checks passed
+EXIT=0

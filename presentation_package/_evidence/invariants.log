@@ -1,0 +1,22 @@
+IMPORTED FROM: C:\Users\mateusz\UROP\Claude_Flight_Sim\.claude\worktrees\cv-entry-project-e44ed6\atisim\__init__.py
+
+==========================================================================
+A. RK4 OBSERVED ORDER OF ACCURACY (harmonic oscillator vs exact solution)
+==========================================================================
+  dt=0.2     err=2.665603e-05
+  dt=0.1     err=1.666501e-06
+  dt=0.05    err=1.041641e-07
+  dt=0.025   err=6.510376e-09
+  pairwise orders : [3.9996, 3.9999, 4.0]
+  fitted order    : 3.999819    (classical RK4 = 4)
+
+==========================================================================
+B. TORQUE-FREE RIGID BODY, 600 s / 60,000 steps, dt=0.01, float64
+==========================================================================
+  angular momentum |L| rel drift  = 5.695769e-13   tolerance 1e-11   PASS
+  angular momentum direction drift= 1.478779e-06 deg  tolerance 3e-5   PASS
+  rotational KE rel drift         = 9.320530e-13   tolerance 2e-11   PASS
+  max | ||quat|| - 1 |            = 2.220446e-16
+
+  All three tolerances are DECLARED by the project (set ~an order of
+  magnitude looser than the measured drift, for platform variance).

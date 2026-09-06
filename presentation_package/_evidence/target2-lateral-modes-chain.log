@@ -1,0 +1,46 @@
+ATISIM MODULE: C:\Users\mateusz\UROP\Claude_Flight_Sim\.claude\worktrees\cv-entry-project-e44ed6\atisim\__init__.py
+
+TRIM: alpha=0.080917 rad, elevator=-0.000443 rad, throttle=0.737647
+V=235.9152 m/s  H=12192.0 m
+
+=== LATERAL MODES vs CR-2144 Tables IX-9/IX-10 (FC9 denominator) ===
+Dutch roll wn (rad/s)    model=    0.943202  CR2144=    0.947000  err= -0.401%
+Dutch roll zeta          model=    0.036085  CR2144=    0.034900  err= +3.396%
+Roll tau (s)             model=    1.795366  CR2144=    1.779359  err= +0.900%
+Spiral tau (s)           model=  138.042408  CR2144=  136.986301  err= +0.771%
+
+=== LONGITUDINAL MODES (as shipped) vs CR-2144 Table IX-5 ===
+Phugoid wn               model=    0.055319  CR2144=    0.067300  err=-17.802%
+Phugoid zeta             model=    0.055956  CR2144=    0.048900  err=+14.428%
+Short-period wn          model=    0.950773  CR2144=    0.964000  err= -1.372%
+Short-period zeta        model=    0.342526  CR2144=    0.387000  err=-11.492%
+
+=== LATERAL CHAIN: CR-2144 Table IX-8 primed -> unprimed -> non-dimensional ===
+det = 1 - Ixz^2/(Ix*Iz) = 0.998959683
+  beta  primed L'= -3.05000 N'= +0.59800 -> raw L=  -3.0818733 N=  +0.6575306 -> Cl= -0.2944447 Cn= +0.1715497
+  p     primed L'= -0.46500 N'= -0.03160 -> raw L=  -0.4633157 N=  -0.0225240 -> Cl= -0.3501794 Cn= -0.0464884
+  r     primed L'= +0.38800 N'= -0.11500 -> raw L=  +0.3941295 N=  -0.1225731 -> Cl= +0.2978876 Cn= -0.2529843
+  da    primed L'= +0.14300 N'= +0.00775 -> raw L=  +0.1425869 N=  +0.0049589 -> Cl= +0.0136229 Cn= +0.0012938
+  dr    primed L'= +0.15300 N'= -0.47500 -> raw L=  +0.1783174 N=  -0.4779863 -> Cl= +0.0170366 Cn= -0.1247066
+  CYb = -0.8780797   CYdr = +0.1146882
+
+As shipped on the Aircraft object:
+  CYb    = -0.87807968
+  CYp    = +0.00000000
+  CYr    = +0.00000000
+  CYdr   = +0.11468818
+  Clb    = -0.29444472
+  Clp    = -0.35017937
+  Clr    = +0.29788760
+  Clda   = +0.01362287
+  Cldr   = +0.01703659
+  Cnb    = +0.17154970
+  Cnp    = -0.04648839
+  Cnr    = -0.25298431
+  Cnda   = +0.00129377
+  Cndr   = -0.12470660
+
+Inertia tensor (SI, kg m^2):
+[[24675886.65963149        0.         -1315219.33568656]
+ [       0.         44877574.08976935        0.        ]
+ [-1315219.33568656        0.         67384152.03207059]]

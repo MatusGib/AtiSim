@@ -1,0 +1,32 @@
+============================= test session starts =============================
+platform win32 -- Python 3.10.11, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\mateusz\UROP\Claude_Flight_Sim\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\mateusz\UROP\Claude_Flight_Sim\.claude\worktrees\cv-entry-project-e44ed6
+configfile: pyproject.toml
+plugins: anyio-4.14.2, dash-4.4.1, nbval-0.11.0
+collecting ... collected 22 items
+
+atisim/tests/test_drag_polar.py::test_drag_polar_matches_figure_ix6_off_the_fitted_point[0.7] PASSED [  4%]
+atisim/tests/test_drag_polar.py::test_drag_polar_matches_figure_ix6_off_the_fitted_point[0.72] PASSED [  9%]
+atisim/tests/test_drag_polar.py::test_drag_polar_matches_figure_ix6_off_the_fitted_point[0.78] PASSED [ 13%]
+atisim/tests/test_drag_polar.py::test_drag_polar_matches_figure_ix6_off_the_fitted_point[0.8] PASSED [ 18%]
+atisim/tests/test_drag_polar.py::test_drag_polar_matches_figure_ix6_off_the_fitted_point[0.82] PASSED [ 22%]
+atisim/tests/test_drag_polar.py::test_drag_polar_matches_figure_ix6_off_the_fitted_point[0.85] PASSED [ 27%]
+atisim/tests/test_drag_polar.py::test_drag_polar_matches_figure_ix6_off_the_fitted_point[0.88] PASSED [ 31%]
+atisim/tests/test_drag_polar.py::test_drag_polar_matches_figure_ix6_off_the_fitted_point[0.9] PASSED [ 36%]
+atisim/tests/test_drag_polar.py::test_drag_polar_matches_figure_ix6_off_the_fitted_point[0.92] PASSED [ 40%]
+atisim/tests/test_wave_drag.py::test_no_wave_drag_below_critical_mach PASSED [ 45%]
+atisim/tests/test_wave_drag.py::test_drag_rise_slope_is_one_tenth_at_drag_divergence PASSED [ 50%]
+atisim/tests/test_wave_drag.py::test_higher_lift_lowers_the_critical_mach PASSED [ 54%]
+atisim/tests/test_wave_drag.py::test_sweep_and_thinness_raise_the_critical_mach PASSED [ 59%]
+atisim/tests/test_wave_drag.py::test_boeing_747_cruise_point PASSED      [ 63%]
+atisim/tests/test_wave_drag.py::test_unswept_light_aircraft_never_sees_wave_drag PASSED [ 68%]
+atisim/tests/test_wave_drag.py::test_wave_drag_is_continuous_and_flat_at_onset PASSED [ 72%]
+atisim/tests/test_navion.py::test_navion_trims_and_reproduces_the_sources_trim_lift PASSED [ 77%]
+atisim/tests/test_navion.py::test_navion_phugoid_and_short_period_are_in_the_expected_bands PASSED [ 81%]
+atisim/tests/test_navion.py::test_navion_lateral_modes_are_in_the_expected_bands PASSED [ 86%]
+atisim/tests/test_navion.py::test_navion_sidesteps_the_cr2144_unprime_pipeline PASSED [ 90%]
+atisim/tests/test_conservation.py::test_free_rigid_body_conserves_angular_momentum_and_energy PASSED [ 95%]
+atisim/tests/test_conservation.py::test_coordinated_turn_matches_g_tan_phi_over_v PASSED [100%]
+
+============================= 22 passed in 6.92s ==============================

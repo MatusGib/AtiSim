@@ -1,0 +1,15 @@
+atisim.__file__ = C:\Users\mateusz\UROP\Claude_Flight_Sim\.claude\worktrees\cv-entry-project-e44ed6\atisim\__init__.py
+
+PARKS_CASES (SI, and in ft):
+  hannibal {'r0': 182.88, 'v0': 25.908, 'spacing': 1066.8} ->ft: {'r0': 600.0, 'v0': 85.0, 'spacing': 3500.0}
+  morton {'r0': 137.16, 'v0': 21.336, 'spacing': 975.36} ->ft: {'r0': 450.0, 'v0': 70.0, 'spacing': 3200.0}
+
+WINGROVE_FIG4_CASES:
+  hannibal ->ft: {'r0': 500.0, 'v0': 85.0}
+  morton ->ft: {'r0': 450.0, 'v0': 70.0}
+  cimarron ->ft: {'r0': 450.0, 'v0': 50.0}
+
+PARKS_FIT_QUALITY: {'hannibal': 'reasonably good agreement (p. 127)', 'morton': 'not as good as case 1; mountain-wave contamination of the short-period wind pattern (p. 128)'}
+PARKS_CASE_AIRCRAFT: DC-10
+
+WINGROVE_CASE_ALTITUDE ft: {'hannibal': 37000, 'morton': 39000, 'cimarron': 33000}

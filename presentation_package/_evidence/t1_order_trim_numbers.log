@@ -1,0 +1,60 @@
+ATISIM_FILE C:\Users\mateusz\UROP\Claude_Flight_Sim\.claude\worktrees\cv-entry-project-e44ed6\atisim\__init__.py
+jax 0.6.2 x64 True
+747 cruise V=235.9152 m/s H=12192.0 m
+
+=== 1. RK4 ORDER, harmonic oscillator (exact solution) ===
+  dt=0.2      err=2.665603e-05
+  dt=0.1      err=1.666501e-06
+  dt=0.05     err=1.041641e-07
+  dt=0.025    err=6.510376e-09
+  fitted order = 3.999819351358985   [test asserts 4.0 +- 0.05]
+
+=== 2. RK4 ORDER, real 6-DOF still air vs dt_ref=1/1024 ===
+  dt=0.25       |pos-ref|=5.689713e-05 m
+  dt=0.125      |pos-ref|=3.623200e-06 m
+  dt=0.0625     |pos-ref|=2.276342e-07 m
+  dt=0.03125    |pos-ref|=1.421953e-08 m
+  pairwise orders = [3.973, 3.9925, 4.0008]
+  fitted order = 3.9891273780396452   [test asserts 4.0 +- 0.05]
+  smallest fitted error / 7e-11 floor = 203.1x
+
+=== 3. ORDER through a C-infinity spatially varying wind (lee wave 1200 m, 25 m/s) ===
+  dt=0.25       |pos-ref|=1.779465e+00 m
+  dt=0.125      |pos-ref|=8.458321e-01 m
+  dt=0.0625     |pos-ref|=4.091031e-01 m
+  dt=0.03125    |pos-ref|=1.986695e-01 m
+  pairwise orders = [1.073, 1.0479, 1.0421]
+  fitted order = 1.0536910873785605   [test asserts 1.0 +- 0.1]
+
+=== 4. Rankine core traverse: non-monotone, no order exists ===
+  dt=0.0625     |pos-ref|=4.352563e-01 m
+  dt=0.03125    |pos-ref|=3.960198e-02 m
+  dt=0.015625   |pos-ref|=8.265195e-02 m
+  dt=0.0078125  |pos-ref|=8.063046e-02 m
+  monotone? False   [test asserts NOT monotone]
+  min error = 3.960198e-02 m  [test asserts > 1e-4, i.e. off the 7e-11 floor]
+  (a fitted slope would read 0.6235928711522889 -- MEANINGLESS)
+
+=== 5. TRIM residuals, whole registry, at its own cruise ===
+  boeing747            V=235.915  H=12192.0  alpha=  4.6362 deg de=-0.000443029 thr=0.737647038 |res|=1.9330e-20 is_physical=True
+  boeing747_approach   V=84.883   H=0.0      alpha=  5.6219 deg de=+0.001281966 thr=0.296129269 |res|=5.8794e-20 is_physical=True
+  boeing747_jsbsim     V=236.055  H=11561.3  alpha=  4.3321 deg de=-0.142295367 thr=0.650587549 |res|=2.3080e-18 is_physical=True
+  boeing737            V=236.519  H=9130.8   alpha=  1.9807 deg de=-0.053361596 thr=0.779502465 |res|=7.1596e-20 is_physical=True
+  boeing737_approach   V=133.758  H=1523.6   alpha=  3.6380 deg de=-0.076574228 thr=0.550127782 |res|=2.2256e-16 is_physical=True
+  cherokee             V=50.000   H=1499.6   alpha=  0.0124 deg de=-0.000066975 thr=0.658771283 |res|=8.8037e-17 is_physical=True
+  cessna172            V=60.000   H=1524.0   alpha=  1.8171 deg de=-0.035071524 thr=0.820062972 |res|=1.7873e-15 is_physical=True
+
+=== 6. Newton residual history, 747 (quadratic convergence signature) ===
+  iter 0: |res| = 2.297995e+00
+  iter 1: |res| = 4.277288e-02
+  iter 2: |res| = 8.335234e-08
+  iter 3: |res| = 5.333706e-15
+  iter 4: |res| = 1.779906e-15
+  iter 5: |res| = 1.776359e-15
+  iter 6: |res| = 1.779824e-15
+  usable iterates = 3, log-residual exponent ratios = [3.3004]
+  max ratio = 3.3004   [test asserts > 1.6; 2 = quadratic]
+
+=== 7. free fall through a swinging wind (no -m dW/dt body force) ===
+  max_position_error = 3.979039e-12 m   [test asserts < 1e-9]
+  peak_wind = 29.461817 m/s   peak_dwdt = 88.385519 m/s^2 (9.0128 g)   elapsed = 5.99999999999996

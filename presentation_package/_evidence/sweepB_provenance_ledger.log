@@ -1,0 +1,47 @@
+atisim.__file__ = C:\Users\mateusz\UROP\Claude_Flight_Sim\.claude\worktrees\cv-entry-project-e44ed6\atisim\__init__.py
+
+LEDGER entries: 42
+  b747.S                                   SOURCED
+  b747.b                                   SOURCED
+  b747.c                                   SOURCED
+  b747.Zq                                  SOURCED
+  b747.Mq                                  SOURCED
+  b747.CLq                                 DERIVED
+  b747.Cmq                                 DERIVED
+  b747.Clp                                 SOURCED
+  b747.l_eff                               DERIVED
+  strip.loading_shape                      DECLARED
+  strip.lift_slope                         CALIBRATED
+  strip.n_stations                         DECLARED
+  wind.MICROBURST_ZM_OVER_ZSTAR            SOURCED
+  wind.MICROBURST_PEAK_RADIUS_RATIO        SOURCED
+  wind.MICROBURST_ZSTAR_OVER_EPS           SOURCED
+  wind.MICROBURST_UMAX_COEFF               SOURCED
+  wind.LEE_WAVE_WAVELENGTH                 DECLARED
+  aero.V_MIN                               DECLARED
+  trim.ALPHA_LIMIT                         DECLARED
+  airframe.tail_arm_band                   DECLARED
+  wind.MEHTA_HANNIBAL_X_FT                 SOURCED
+  wind.MEHTA_HANNIBAL_Z_FT                 SOURCED
+  wind.MEHTA_HANNIBAL_R0                   SOURCED
+  wind.MEHTA_HANNIBAL_V0                   SOURCED
+  wind.MEHTA_HANNIBAL_PSI_DEG              SOURCED
+  wind.MEHTA_HANNIBAL_ALTITUDE             SOURCED
+  wind.MEHTA_HANNIBAL_CORE_PAIR            DERIVED
+  wind.TM102186_HANNIBAL_NZ                SOURCED
+  wind.TM102186_HANNIBAL_GUST_PERIOD       SOURCED
+  wind.MEHTA_COST_STARTUP                  SOURCED
+  wind.MEHTA_COST                          SOURCED
+  wind.MEHTA_COST_SATURATES_AT             SOURCED
+  wind.LESTER_LEE_WAVE_WAVELENGTH          SOURCED
+  wind.LESTER_GREENLAND_NZ                 SOURCED
+  wind.LESTER_GREENLAND_ALTITUDE_GAIN      SOURCED
+  wind.LESTER_GREENLAND_ALTITUDE           SOURCED
+  wind.DFDR_WIND_RMS_ERROR                 DERIVED
+  wind.DFDR_WIND_RMS_ERROR_SPEED           SOURCED
+  wind.DRYDEN_LW                           SOURCED
+  wind.DRYDEN_LU                           SOURCED
+  wind.DRYDEN_LV                           SOURCED
+  wind.DRYDEN_ALTITUDE_FLOOR               SOURCED
+
+module-level UPPER names in provenance.py: ['CATEGORIES', 'LEDGER', '_CR2144_IX3', '_CR2144_IX4', '_CR2144_IX8', '_LESTER', '_MEHTA']

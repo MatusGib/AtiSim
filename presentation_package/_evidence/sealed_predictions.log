@@ -1,0 +1,19 @@
+IMPORTED FROM: C:\Users\mateusz\UROP\Claude_Flight_Sim\.claude\worktrees\cv-entry-project-e44ed6\atisim\__init__.py
+n = 3
+
+========================================================================
+NAME    : dc10_does_not_close_the_hannibal_gap
+STATUS  : SEALED   seal: OK   sealed_at: 0c72200
+CLAIM   : Flown on wind.mehta_hannibal_array at 37,000 ft with fixed controls, a DC-10 built from a published derivative set will reach a peak-to-peak n_z within +/-15% of the 747's 1.8385 g -- that is, between 1.563 and 2.114 g -- and will NOT reach the 2.70 g the DFDR recorded.
+SETTLED : any published DC-10-10/-30 longitudinal derivative set at cruise, flown through scripts/cat_uncertainty.py's harness
+========================================================================
+NAME    : mil_f_8785c_sigma_w_exceeds_the_mehta_ceiling
+STATUS  : SEALED   seal: OK   sealed_at: 0c72200
+CLAIM   : When MIL-F-8785C's sigma_w chart is digitised at 37,000 ft, the severe-turbulence curve (10^-5 exceedance) will give sigma_w greater than 4.46 m/s -- the ceiling wind.mehta_residual_ceiling derives from Mehta's own fit residual.
+SETTLED : MIL-F-8785C Figure 7, digitised at 37,000 ft
+========================================================================
+NAME    : the_dryden_response_peaks_at_the_short_period
+STATUS  : SETTLED   seal: OK   sealed_at: 2837ddd
+CLAIM   : The ensemble-averaged n_z response spectrum of boeing747 flown through wind.dryden_field at wind.MEHTA_HANNIBAL_ALTITUDE, searched above response.PHUGOID_FLOOR_HZ, will peak within +/-20% of the aircraft's own short-period frequency at that condition -- 0.1640 Hz, from validation.longitudinal_modes -- that is, between 0.131 and 0.197 Hz.
+SETTLED : scripts/cat_spectra.py, the Dryden ensemble limb
+OUTCOME : RIGHT, at both intensities and not comfortably. 32 flights of 100 s each: the ensemble-averaged peak is 0.1400 Hz at sigma = 2.108 m/s and 0.1700 Hz at sigma = 4.459, against a predicted [0.131, 0.197]. The lower one sits 14.7% below the short period and 0.009 Hz -- less than one bin -- inside the band's lower edge, which is the falling Dryden input pulling the peak below the resonance exactly as 
