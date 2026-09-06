@@ -554,3 +554,65 @@ def test_the_747_flies_its_cruise_with_about_one_and_a_quarter_g_to_buffet():
         0.035, abs=0.005)
     # And the encounter exceeds it -- by a lot, not marginally.
     assert 1.68 > n_buffet + 0.3
+
+
+def test_the_yoshimura_model_reproduces_its_own_source_eigenvalues():
+    """`aircraft.boeing787_yoshimura` against Yoshimura et al. 2023's own code.
+
+    This is the test that replaces registry membership for that constructor.
+    It is deliberately NOT in REGISTRY -- see its docstring -- so none of the
+    parametrised checks above touch it, and the property it actually exists to
+    have needs asserting somewhere.
+
+    The reference values are not transcribed from the paper. They are the
+    eigenvalues of the 4x4 `A_lon` that `flightsim-data/src/fs.f90` builds at
+    lines 276-282, assembled here from the dimensional derivatives it declares
+    at lines 252-254 and solved with numpy. So the comparison is this project's
+    nonlinear model, linearised by jax.jacfwd, against their linear model built
+    the way they build it -- two different routes to the same matrix.
+
+    Their paper states 0.14 Hz for the short period; their code gives 0.1436.
+    """
+    import numpy as np
+
+    from atisim.aircraft import boeing787_yoshimura
+    from atisim.validation import longitudinal_modes
+
+    U0, g = 133.0, 9.81  # fs.f90 line 230; their g, not ours
+    X_u, X_a, X_q = -0.006, 6.705, 0.0
+    Z_u, Z_a, Z_q = -0.147, -59.078, -2.396
+    M_u, M_a, M_q, M_da = 0.000, -0.582, -0.537, -0.137
+    M_u_ = M_u + M_da * Z_u / U0
+    M_a_ = M_a + M_da * Z_a / U0
+    M_q_ = M_q + M_da * (U0 + Z_q) / U0
+    A = np.array([
+        [X_u, X_a, X_q, -g],
+        [Z_u / U0, Z_a / U0, (U0 + Z_q) / U0, 0.0],
+        [M_u_, M_a_, M_q_, 0.0],
+        [0.0, 0.0, 1.0, 0.0],
+    ])
+    theirs = sorted(
+        (abs(lam), -lam.real / abs(lam))
+        for lam in np.linalg.eigvals(A) if lam.imag > 1e-9
+    )
+    their_phugoid, their_short = theirs
+
+    ac = boeing787_yoshimura()
+    V, H = 133.0, 3000.0
+    x, residual = trim.trim(jnp.array(V), jnp.array(H), ac)
+    assert float(np.linalg.norm(residual)) < 1e-10
+
+    # CL0 is derived so the trim lands at their linearisation point, theta_0 = 0.
+    # If this moves, the entry is no longer being compared where they linearised.
+    assert abs(float(x[0])) < 1e-3, "trim alpha should be ~0, matching their theta_0"
+    assert abs(float(x[1])) < 1e-3, "elevator should be ~0, so Cmde is unexercised"
+
+    phugoid, short = longitudinal_modes(ac, float(x[0]), float(x[1]), float(x[2]), V, H)
+
+    # 1% on the short period: this is the mode the LES load comparison turns on,
+    # and the two routes agree to 0.01% as measured. The band is headroom for
+    # platform variance, not slack for a real disagreement.
+    assert float(short[0]) == pytest.approx(their_short[0], rel=0.01)
+    assert float(short[1]) == pytest.approx(their_short[1], rel=0.01)
+    # The phugoid is the ill-conditioned pair and gets 2%; measured 0.20%.
+    assert float(phugoid[0]) == pytest.approx(their_phugoid[0], rel=0.02)

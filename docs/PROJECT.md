@@ -4,7 +4,7 @@ A 6-DOF fixed-wing flight-dynamics core in JAX, built as a foundation for turbul
 modelling. This document is the standing record: what exists, what is validated, what is
 known-broken, and what happens next.
 
-**Last updated:** session 27 (the recorded trace digitised at last, and it says the *wind* is 12% light; a second sealed prediction settled RIGHT; the DC-10 wing loading found unpinnable, withdrawing session 26's sign; the LES comparison audited and its numbers refused, because the frozen lift-curve slope at M 0.41 predicts the 1.42x discrepancy it reports).
+**Last updated:** session 27 (the recorded trace digitised, and it says the *wind* is 12% light; a second sealed prediction settled RIGHT; the DC-10 wing loading found unpinnable, withdrawing session 26's sign; the LES comparison audited, refused, then re-run with Yoshimura's OWN aeroplane rebuilt from their source code -- 1.427 to 1.202, with the residual now attributable to neither aircraft nor Mach).
 
 **To run any of it, see §10.**
 
@@ -406,6 +406,54 @@ both codes flying the same aeroplane. **Note the one term AtiSim still will not 
 Yoshimura's `M_α̇ = −0.137`** — the same `M_ẇ` class the 747's phugoid gap is attributed to
 (§4, "Where the longitudinal gap comes from"). Quote that as a known, attributed difference
 rather than discovering it again afterwards.
+
+### The LES comparison with the aeroplane MATCHED — session 27
+
+`aircraft.boeing787_yoshimura()` is built from their own `fs.f90` derivative set and
+**reproduces their own `A_lon` eigenvalues to 0.01%** on the short period and 0.20% on the
+phugoid, trimming at α = +0.0000° and elevator −0.0000° — i.e. at their `θ_0 = 0`
+linearisation point, with residual 7.4e-17. That agreement is a result in its own right:
+**this project's nonlinear model linearised by `jax.jacfwd`, against their hand-built 4×4
+matrix, by two entirely different routes.** `test_aircraft.py` asserts it.
+
+Flown through D03, 16 flights, against Yoshimura's own ensemble, both sides high-passed
+identically:
+
+| run | rms (h-p) | ratio | excess closed | short period | response peak |
+|---|---|---|---|---|---|
+| baseline `boeing747` (wrong aeroplane **and** frozen slope) | 0.0905 g | **1.427** | — | 0.1647 Hz | 0.0600 Hz |
+| full PG-corrected 747 | 0.0777 g | 1.225 | 47% | 0.1272 Hz | 0.0600 Hz |
+| lift-only corrected 747 | 0.0720 g | 1.135 | 68% | 0.1568 Hz | 0.0600 Hz |
+| **matched `boeing787_yoshimura`** | **0.0762 g** | **1.202** | **53%** | **0.1441 Hz** | **0.1300 Hz** |
+| *Yoshimura's own* | *0.06342 g* | *1.000* | — | *0.1436 Hz* | *0.0800 Hz* |
+
+**Matching the aeroplane closes 53% of the discrepancy, and it does it the honest way:** the
+matched entry carries derivatives tabulated AT M 0.406, so unlike every 747 row above it has
+**no frozen-slope error at all** — nothing was corrected, there was nothing to correct.
+
+**The qualitative change is larger than the ratio suggests.** With the 747 the response peaked
+at 0.0600 Hz — the bottom of the search band, nowhere near the airframe. With the matched
+aeroplane it peaks at **0.1300 Hz**, 9.8% below its own 0.1441 Hz short period. **The airframe
+has started selecting its own frequency out of the field**, which is the mechanism §4's spectral
+work is about, and the 747 at M 0.41 could not show it.
+
+**A 20% disagreement survives, and it is now attributable to neither the aeroplane nor Mach.**
+Both are eliminated by construction. What is left, in order of suspicion:
+
+1. **Condition drift.** AtiSim's aeroplane loses **39.8 m/s over the record — 30% of its
+   airspeed** — and 552 m of altitude, because it flies fixed-control with real drag. Yoshimura's
+   holds altitude to 26–43 m and cannot decelerate, having neither drag nor thrust. Load goes as
+   q̄, so a decelerating aeroplane and a non-decelerating one are not measuring the same thing.
+   **This is the next experiment**: hold the condition, or high-pass harder, and re-read.
+2. **Model class.** Nonlinear 6-DOF against a frozen 9-state linear model — the irreducible
+   difference, and the one a cross-code comparison exists to expose.
+3. Their response peaks at 0.0800 Hz where the matched entry peaks at 0.1300, so the two codes
+   still disagree about *which* frequency the load follows, not only how large it is.
+
+**`checks.recovery_band` reports `passed=False` and that is an artefact, not a violation:** the
+entry declares no band (§4's rule — it is a transcribed set, not a fit), so the check has
+nothing to compare against. Do not read it as an envelope excursion. The |α| range is **5.74°**,
+comfortably inside the linear band, where the 747 at this condition ran to 11.81°.
 
 ### What the LES comparison IS good for: resolution, not level — session 27
 
