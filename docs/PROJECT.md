@@ -319,6 +319,72 @@ spacing from a free parameter into a cited one.
 
 Every figure below is measured, with the tolerance the test asserts.
 
+### The LES comparison is NOT like-for-like — input audit, session 27
+
+**The runs exist and their numbers are not admitted here.** `scripts/les_flight.py` and
+`les_compare.py` were run in the weekly worktree over all four LES domains and two aircraft,
+and report AtiSim/Yoshimura rms ratios of **1.068, 1.827, 1.427, 1.420** (D01…D04). **No row
+of §4 quotes them**, because an audit of the two codes' inputs finds differences large enough
+to account for a ratio of that size without any code disagreement at all.
+
+**Yoshimura's own aircraft, recovered from their own source** — `flightsim-data/src/fs.f90`
+lines 252–265 in the figshare extract, which carries their **complete dimensional derivative
+set**. Built into their own `A_lon` exactly as their code builds it:
+
+| | from their `fs.f90` |
+|---|---|
+| short period | **ω_n 0.9023 rad/s = 0.1436 Hz**, ζ = 0.621 |
+| phugoid | ω_n 0.0880 rad/s = 0.0140 Hz, ζ = 0.012 |
+| airspeed `U_0` | 133.0 m/s |
+| `θ_0` | **0** — they do not trim |
+| `Z_δe`, `M_δe` | **0** — no control surfaces at all |
+| `I_x`, `I_z`, `I_xz` | 1.5752e6, 3.8109e6, 7.5789e4 (× 9.81) |
+
+**0.1436 Hz against the paper's stated 0.14 Hz** — so their prose is confirmed by their code,
+and this project now holds the frequency as SOURCED rather than quoted.
+
+**The mismatches, in the order they matter.**
+
+| # | Input | Yoshimura | AtiSim as flown | Consequence |
+|---|---|---|---|---|
+| 1 | **Aircraft** | short period **0.1436 Hz** | `boeing747` 0.1513 Hz (**+5.4%**); `boeing737_approach` 0.2627 Hz (**+82.9%**) | Neither is their aeroplane. The resonance the whole comparison turns on sits in a different place |
+| 2 | **Envelope** | n/a — frozen linear model, no envelope | `boeing747` at **M 0.31–0.50, 2,661–3,209 m** against a validated M 0.70–0.90 / 10,668–13,716 m. `checks.recovery_band` **fails at 2.63 band widths** | The 747 rows are **extrapolation**, not measurement. Its derivatives were linearised at M 0.80 / 40 kft and are frozen (ASSUMPTIONS C3, unbounded) |
+| 3 | **Trim** | `θ_0 = 0`, untrimmed | trims to **α 4.92°** | Different starting attitude, and AtiSim's α excursion reaches **11.81°** — past the 10° linear band |
+| 4 | **Model class** | 9-state **linear**, frozen derivatives | nonlinear 6-DOF | The irreducible difference, and the *point* of a cross-code check — but only once 1–3 are removed |
+| 5 | Time step | 1/128 s | 0.02 s | Minor; bounded elsewhere at ~0.14% |
+| 6 | `g` | 9.81 | 9.80665 | 0.034%, negligible |
+
+**And one thing wrong inside their own model, which matters for anyone reading it.** Their
+lateral block is commented **`!Lateral/Directional derivatives >>> B747`** while the
+longitudinal set gives a 0.1436 Hz short period and inertias about 0.63× the 747's — i.e.
+**their aeroplane appears to be a B787 longitudinally and a B747 laterally.** This project's
+own rule against crossing sources says what to do with that: quote their **longitudinal**
+comparison, which is what the load is, and do not use their lateral response as a reference.
+
+**Why the 747/737 choice is a genuine dilemma rather than an oversight.** The LES tops out at
+**5,215 m** and cannot reach 747 cruise at 11,278 m, so the comparison must happen at ~3,000 m.
+At that condition the only registry entry *inside* its own validated envelope is
+`boeing737_approach` — whose short period is **83% away from theirs**. The entry closest in
+frequency, `boeing747`, is the one 2.63 band widths outside its envelope. **You cannot
+currently match both the aeroplane and the envelope, and the runs on disk chose to match
+neither cleanly.**
+
+**What would make this admissible, and it is the design the project has already used twice.**
+Build a registry entry **from Yoshimura's own derivative set**, exactly as `boeing737` and
+`boeing747_jsbsim` were built from JSBSim's running engine. Then both codes fly the same
+aeroplane through the same field at the same condition, and a disagreement is a defect in one
+of the two implementations — which is what made the JSBSim vortex comparison worth having.
+**What is still missing for that entry is `m`, `S`, `c` and `I_yy`**: their dimensional
+derivatives are already mass- and inertia-normalised, so the set cannot be non-dimensionalised
+without them, and they are not in `fs.f90`. Sourcing four B787 numbers is a far smaller
+acquisition than a DC-10 derivative set, and it is now the gate on this limb.
+
+**Until then:** the LES runs stand as a capability demonstration and a reader for their field —
+the field reader itself is independently validated, correlating **+0.978 / −0.968 / −0.935**
+against Yoshimura's own sampled wind on all three components, with the registration residual
+measured (1–2 cells, under 150 m) and **deliberately not fed back**. That part is sound and
+reusable. The **load comparison** is not yet a comparison.
+
 ### The recorded trace, digitised at last — session 27
 
 **The project quoted `wind.TM102186_HANNIBAL_NZ` = −1.0 / +1.7 g for four sessions without
@@ -3048,7 +3114,8 @@ disk. Session 26 received four more papers and closed items 3, 4 and 5 outright.
 | ~~**TM-102186 Fig. 6**, the recorded g trace~~ | **DONE session 27** — `scripts/digitise_tm102186_fig6.py`; and it moved two numbers, see §4 |
 | ~~747 buffet onset boundary~~ | **DONE session 26** — `aircraft.buffet_cl` |
 | **the Hannibal flight record** (operator, tail, weight) | **NEW, session 27.** The only thing that would pin the wing-loading ratio, and therefore the only thing that would let the aircraft-type explanation be tested rather than argued |
-| **run the LES limb here and record it** | **NEW, and it should be first.** `scripts/les_flight.py`, `les_compare.py`, `yoshimura_flightsim.py` were rescued from another worktree in session 27 but **not re-run**, so no number from them is in §4. The data is held. This is the project's **only route out of the circularity** every load row carries — Parks, Mehta and Lester all fitted their fields to the DFDR records those fields are then asked to predict; Yoshimura's comes from a weather model instead |
+| **four B787 numbers — `m`, `S`, `c`, `I_yy`** | **NEW, session 27, and it is the gate on the LES limb.** Yoshimura's complete dimensional derivative set is already held in their own `fs.f90`, but dimensional derivatives are mass- and inertia-normalised, so a registry entry cannot be built from them without these four. With them, both codes fly **the same aeroplane** and the comparison becomes the JSBSim design. A far smaller acquisition than a DC-10 set |
+| ~~run the LES limb~~ | **ALREADY RUN, session 3–4 Sept, and found NOT LIKE-FOR-LIKE in session 27.** All four domains × two aircraft are on disk. §4's input audit says why no number from them is quoted: the aeroplane is 5.4% or 82.9% away in natural frequency, and the entry closest in frequency is 2.63 band widths outside its own envelope. The **field reader is sound** (+0.978/−0.968/−0.935 against their own sampled wind) and reusable; the **load comparison is not yet a comparison.** This remains the project's only route out of the circularity every load row carries |
 
 ### The original ten-step plan
 
@@ -3367,15 +3434,18 @@ and this row says so rather than implying they were.**
 |---|---|
 | `scripts/digitise_tm102186_fig6.py` | **RE-RUN HERE, verified against this tree.** §4 carries the result |
 | `scripts/digitise_mil_f_8785c_fig7.py` | **RE-RUN HERE, verified.** §4 carries the result; it settles a sealed prediction |
-| `scripts/les_flight.py` | **NOT RUN THIS SESSION.** Flies AtiSim through domain D03 of the LES behind Yoshimura et al. 2023 — **the first field in this project not identified from the accelerations it is then asked to predict**, which is the standing circularity every §4 load row carries. Needs the figshare extract, which **is present** at `UROP/yoshimura-figshare-21152203/` (17,942,056,960 B, md5 verified session 25) |
-| `scripts/les_compare.py` | **NOT RUN THIS SESSION.** Puts all four LES resolutions beside Yoshimura's own ensemble through the same four, both sides high-passed identically — because with fixed controls AtiSim drifts 250–450 m where theirs holds 26–43 m, so a raw rms comparison would be a turbulence response *plus a phugoid* against a turbulence response alone |
-| `scripts/yoshimura_flightsim.py` | **NOT RUN THIS SESSION.** Reads the simulated half of their Fig. 6 — 604 flights, ~17 hours of record |
+| `scripts/les_flight.py` | **ALREADY RUN in the weekly worktree — all four domains × two aircraft, with logs, `.npy` arrays and summary CSVs (`runs/cat/les-D0*.log`, `les-summary.csv`).** Not re-run here. **Its results are NOT admitted to §4** — see the input-matching audit below, which is why |
+| `scripts/les_compare.py` | **ALREADY RUN** — `les-comparison.csv`, `14-les-resolution.png`. Same status |
+| `scripts/yoshimura_flightsim.py` | **ALREADY RUN** — `12-yoshimura-flightsim.png`. Reads the simulated half of their Fig. 6, 604 flights, ~17 hours of record |
 
-**The LES limb is the single most valuable unrecorded thing in the project** and it is now
-tracked rather than stranded. It is *not* claimed as a result: no number from those three
-scripts appears in §4, and the next session's first job is to run them here, check the import
-path, and write down what they say — including if it disagrees with what the other worktree's
-PNGs show.
+**A correction to this entry's own first draft.** It said these three were "not run". They had
+been run, extensively, on 3–4 September — the same failure mode as the two digitisations, one
+layer deeper: the *outputs* were there to be found and the entry recorded their absence
+instead of reading them. **Check the artefacts before describing the state of the work.**
+
+**The LES limb is the single most valuable unrecorded thing in the project.** It is now tracked
+rather than stranded, and §4 records what its inputs would have to satisfy before any number
+from it can be quoted.
 
 **Second, the recorded trace.** §4 has the table. The headline is that the project quoted
 `−1.0 / +1.7 g` for four sessions **without looking at the curve between them**, and the curve
@@ -3405,9 +3475,26 @@ right** — and the register's rules were followed exactly: only `status` and `o
 the digest is unchanged, and `test_predictions.py`'s classification was corrected (the entry
 moved SOURCE_GATED → RUN_GATED) **because the document arrived**, not to make anything pass.
 
+**Fifth, and it reverses one of this session's own recommendations.** The wing loading was
+argued here as the highest-value cheap fix. **It was not** — it was the item whose answer was
+least likely to exist, and fetching it produced a withdrawal rather than a result. The
+higher-value work turned out to be **reading what was already on disk**: two digitisations and
+a full LES run, all complete, none recorded. **Prefer auditing held artefacts over acquiring
+new ones** until the held ones are known to be exhausted.
+
+**Sixth, the LES limb was audited against its inputs and its numbers are refused.** §4 has the
+table. The short version: their aeroplane's short period is **0.1436 Hz** (recovered from their
+own `fs.f90`, confirming the paper's 0.14), against `boeing747` at +5.4% and
+`boeing737_approach` at **+82.9%** — and the field tops out at 5,215 m, so the 747 flies it
+**2.63 band widths outside its validated envelope** with `checks.recovery_band` failing on
+every row. A 1.4× rms ratio means nothing against that. **The field reader is sound and stays;
+the load comparison is withdrawn until a registry entry is built from Yoshimura's own
+derivatives.**
+
 **What this session did NOT do**, so the next one does not look for it: it did not fit `W/S` to
-Fig. 6, it did not "correct" the trace's 0.951 g cruise datum, and it did not move §4's
-headline denominator off 2.70 g — all three are recorded in §4 as deliberate.
+Fig. 6, it did not "correct" the trace's 0.951 g cruise datum, it did not move §4's headline
+denominator off 2.70 g, and it did not re-run the LES with a better-matched aircraft **because
+no such aircraft exists in the registry yet** — all four are recorded in §4 as deliberate.
 
 ### Session 26 — four papers arrive, and one of them says the project was flying the wrong vortex
 

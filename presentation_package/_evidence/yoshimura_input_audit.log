@@ -1,0 +1,7 @@
+YOSHIMURA fs.f90 lines 252-254, A_lon built as their code builds it:
+  phugoid        wn=0.0880 rad/s = 0.0140 Hz  zeta=+0.0115
+  short period   wn=0.9023 rad/s = 0.1436 Hz  zeta=+0.6205
+  paper states 0.14 Hz; code gives 0.1436 Hz
+
+I_x = 1.5752e6*9.81 = 1.5453e+07 kg m^2   (747 is 2.4676e+07, ratio 0.626x)
+I_z = 3.8109e6*9.81 = 3.7385e+07 kg m^2   (747 is 6.7384e+07, ratio 0.555x)
