@@ -4,7 +4,7 @@ A 6-DOF fixed-wing flight-dynamics core in JAX, built as a foundation for turbul
 modelling. This document is the standing record: what exists, what is validated, what is
 known-broken, and what happens next.
 
-**Last updated:** session 27 (the recorded trace digitised at last, and it says the *wind* is 12% light; MIL-F-8785C Fig. 7 digitised and a second sealed prediction settled RIGHT; the DC-10 wing loading fetched and found unpinnable, withdrawing session 26's sign).
+**Last updated:** session 27 (the recorded trace digitised at last, and it says the *wind* is 12% light; a second sealed prediction settled RIGHT; the DC-10 wing loading found unpinnable, withdrawing session 26's sign; the LES comparison audited and its numbers refused, because the frozen lift-curve slope at M 0.41 predicts the 1.42x discrepancy it reports).
 
 **To run any of it, see §10.**
 
@@ -369,15 +369,82 @@ frequency, `boeing747`, is the one 2.63 band widths outside its envelope. **You 
 currently match both the aeroplane and the envelope, and the runs on disk chose to match
 neither cleanly.**
 
-**What would make this admissible, and it is the design the project has already used twice.**
-Build a registry entry **from Yoshimura's own derivative set**, exactly as `boeing737` and
-`boeing747_jsbsim` were built from JSBSim's running engine. Then both codes fly the same
-aeroplane through the same field at the same condition, and a disagreement is a defect in one
-of the two implementations — which is what made the JSBSim vortex comparison worth having.
-**What is still missing for that entry is `m`, `S`, `c` and `I_yy`**: their dimensional
-derivatives are already mass- and inertia-normalised, so the set cannot be non-dimensionalised
-without them, and they are not in `fs.f90`. Sourcing four B787 numbers is a far smaller
-acquisition than a DC-10 derivative set, and it is now the gate on this limb.
+**The gate is now open: the four B787 numbers are obtained, and three of them are checked
+against Yoshimura's own derivatives rather than merely looked up.**
+
+| | value | provenance |
+|---|---|---|
+| `m` | **215,910 kg** (476,000 lb, MTOW) | SOURCED — Piano 787-8 analysis; **and confirmed by the check below** |
+| `S` | **325.3 m²** (3,501.39 ft², **trapezoidal reference**) | SOURCED, same. *The definition matters*: Wimpress 3,870 ft² and Piano gross 4,028 ft² also exist and differ by 15% |
+| `c̄` | **6.437 m** (21.12 ft, trapezoidal MAC) | SOURCED, same |
+| `I_yy` | **≈ 2.34e7 kg·m² ± 12.7%** | **DECLARED — and it does not matter, see below** |
+
+**The mass and area are not assumed, they are pinned by their own `Z_a`.** Inverting
+`Z_α = −(C_Lα + C_D)·q̄·S/m` at their condition:
+
+| mass | implied `C_Lα` (trapezoidal S) | verdict |
+|---|---|---|
+| **MTOW 476,000 lb** | **4.847 /rad** | physical, and within 2% of this project's 747 (4.944) |
+| mid (OEW+MTOW)/2 | 3.634 /rad | too low for a swept transport |
+| OEW 239,200 lb | 2.421 /rad | unphysical |
+
+**So their aeroplane is a 787-8 at or near maximum takeoff weight**, and that is a conclusion
+drawn from their derivative rather than an assumption fed into it. Every other coefficient
+recovers physical too: `C_mα` −0.76…−0.86, `C_mq` −29…−33, `C_lβ` −0.2515, `C_nβ` +0.1596 —
+all the same sign and order as the 747's.
+
+**`I_yy` is unobservable and therefore free.** `C_mα` and `I_yy` enter the dynamics only as
+their product `M_α`, which is SOURCED. Verified numerically by round-trip: `I_yy` from 1.0e7
+to 4.0e7 moves `C_mα` from −0.346 to −1.383 and recovers **`M_α = −0.582000` and
+`M_q = −0.537000` exactly, every time** (`_evidence/b787_consistency_check.log`). So the one
+number that could not be sourced is the one number that cannot affect the answer. **Declare it,
+state the range, and move on** — do not go looking for a published 787 pitch inertia.
+
+**What remains is implementation, not acquisition:** build the registry entry, give it a
+`valid_mach` / `valid_altitude` band around *its own* condition, and re-run the LES limb with
+both codes flying the same aeroplane. **Note the one term AtiSim still will not carry:
+Yoshimura's `M_α̇ = −0.137`** — the same `M_ẇ` class the 747's phugoid gap is attributed to
+(§4, "Where the longitudinal gap comes from"). Quote that as a known, attributed difference
+rather than discovering it again afterwards.
+
+### The frozen lift-curve slope, and why it probably IS the LES discrepancy — session 27
+
+**`ASSUMPTIONS.md` C3 says derivatives are frozen across the envelope and calls the Mach axis
+UNBOUNDED. The LES runs are the largest Mach excursion in the project's history, and nothing
+in them accounts for it.**
+
+| | cruise, where the 747 was linearised | the LES condition |
+|---|---|---|
+| altitude | 12,192 m | 3,000 m |
+| airspeed | 235.9 m/s | 133.5 m/s |
+| **Mach** | **0.7995** | **0.4063** |
+| dynamic pressure | 8,392 Pa | 8,101 Pa — **ratio 0.965** |
+
+**The `q̄` axis is essentially matched.** That matters, because `q̄` is the axis session 23
+*bounded* (23.5% of `ω_n` per 2.48× of `q̄`). Here it is 1.04×, so that bound is not the
+issue. **What moves is Mach, by ΔM = −0.393 — and the largest excursion C3 previously
+recorded is the lee wave's ΔM = −0.031. This is thirteen times larger than anything the
+assumption had been stress-tested against.**
+
+`aero.py` carries Mach **only** into `wave_drag`. There is no Prandtl–Glauert factor and no
+compressibility correction on `C_Lα`, `C_mα` or anything else — they are literally constant.
+So the 747 flies the LES field with its **M 0.80** lift-curve slope:
+
+- Prandtl–Glauert `1/√(1−M²)`: **1.6649** at M 0.80, **1.0944** at M 0.406
+- ⇒ a slope tabulated at M 0.80 is **1.521× too large** at M 0.406
+- `C_Lα` carried: **4.944 /rad**; PG-consistent value there: **3.250 /rad**
+
+**Gust load goes linearly as `C_Lα`, so this alone predicts AtiSim/Yoshimura ≈ 1.52×.**
+Measured on the runs on disk: **D03 1.427, D04 1.420** — the two domains that actually resolve
+the turbulence. **The discrepancy the LES comparison reports is the size the frozen derivative
+predicts, and Yoshimura's model does not share the error because theirs is linearised at
+their own condition.**
+
+**This is a mechanism, not yet a measurement**, and it is falsifiable in one run: rescale the
+747's `C_Lα` by the PG ratio, re-fly D03/D04, and the ratio should collapse toward 1. **Do that
+before attributing anything in the LES comparison to either code.** It is also the cheapest
+Mach-axis bound the project has ever had within reach — C3 has wanted one since session 12 and
+declined it because it needed chart reads off a poor scan; this needs no chart at all.
 
 **Until then:** the LES runs stand as a capability demonstration and a reader for their field —
 the field reader itself is independently validated, correlating **+0.978 / −0.968 / −0.935**
@@ -3114,7 +3181,9 @@ disk. Session 26 received four more papers and closed items 3, 4 and 5 outright.
 | ~~**TM-102186 Fig. 6**, the recorded g trace~~ | **DONE session 27** — `scripts/digitise_tm102186_fig6.py`; and it moved two numbers, see §4 |
 | ~~747 buffet onset boundary~~ | **DONE session 26** — `aircraft.buffet_cl` |
 | **the Hannibal flight record** (operator, tail, weight) | **NEW, session 27.** The only thing that would pin the wing-loading ratio, and therefore the only thing that would let the aircraft-type explanation be tested rather than argued |
-| **four B787 numbers — `m`, `S`, `c`, `I_yy`** | **NEW, session 27, and it is the gate on the LES limb.** Yoshimura's complete dimensional derivative set is already held in their own `fs.f90`, but dimensional derivatives are mass- and inertia-normalised, so a registry entry cannot be built from them without these four. With them, both codes fly **the same aeroplane** and the comparison becomes the JSBSim design. A far smaller acquisition than a DC-10 set |
+| ~~four B787 numbers — `m`, `S`, `c`, `I_yy`~~ | **OBTAINED session 27, and three of the four are CHECKED rather than looked up.** m = 215,910 kg, S = 325.3 m² (trapezoidal), c̄ = 6.437 m, all confirmed by inverting their own `Z_a` to a physical `C_Lα` = 4.847. `I_yy` is DECLARED and provably **unobservable** — it cancels against `C_mα`. §4 has the table. **This is now an implementation task, not an acquisition** |
+| **build the `boeing787_yoshimura` registry entry, then re-fly the LES** | **NEW, session 27, and it is the top of the list.** All inputs are in hand. Give it a `valid_mach`/`valid_altitude` band around its own condition. Carry the known difference that AtiSim has no `M_α̇` where Yoshimura has −0.137 |
+| **test the frozen-`C_Lα` explanation of the LES ratio** | **NEW, session 27, and it is CHEAP.** Rescale the 747's `C_Lα` by the Prandtl–Glauert ratio 1.521 and re-fly D03/D04. If the 1.42× ratio collapses toward 1, the LES discrepancy is this project's frozen derivative and **not** a code disagreement — and it becomes the **first quantified point on the Mach axis** ASSUMPTIONS C3 has left unbounded since session 12, with no chart read needed |
 | ~~run the LES limb~~ | **ALREADY RUN, session 3–4 Sept, and found NOT LIKE-FOR-LIKE in session 27.** All four domains × two aircraft are on disk. §4's input audit says why no number from them is quoted: the aeroplane is 5.4% or 82.9% away in natural frequency, and the entry closest in frequency is 2.63 band widths outside its own envelope. The **field reader is sound** (+0.978/−0.968/−0.935 against their own sampled wind) and reusable; the **load comparison is not yet a comparison.** This remains the project's only route out of the circularity every load row carries |
 
 ### The original ten-step plan
@@ -3491,10 +3560,33 @@ every row. A 1.4× rms ratio means nothing against that. **The field reader is s
 the load comparison is withdrawn until a registry entry is built from Yoshimura's own
 derivatives.**
 
+**Seventh, and it is the session's most useful finding: the LES discrepancy is probably ours,
+and it is the oldest known limitation in the model.** Asked whether "AtiSim is only accurate
+near cruise" had been fixed or quietly ignored, the answer is **neither fixed nor accounted
+for**. `ASSUMPTIONS.md` C3 is explicit that derivatives are frozen and that the **Mach axis is
+unbounded**; session 23 bounded only the *altitude* axis. The LES runs fly the 747 at
+**M 0.406** against its M 0.80 linearisation — **ΔM = −0.393, thirteen times the largest
+excursion C3 had ever been tested against** — while the `q̄` ratio is a harmless 0.965, so the
+one bound that exists does not apply. `aero.py` carries Mach only into `wave_drag`, so
+`C_Lα` is used unchanged; the Prandtl–Glauert ratio between the conditions is **1.521**; load
+goes linearly as `C_Lα`; and the measured ratio on the two resolved domains is **1.427 and
+1.420**. **The discrepancy is the size the frozen derivative predicts.** §4 has the arithmetic
+and a one-run falsification test, which would also be the **first quantified point on the Mach
+axis** — and it needs no chart read, which is the reason §7 has been declining that bound since
+session 12.
+
+**Eighth, the B787 gate opened the same day it was set.** Yoshimura's own `fs.f90` carries the
+complete derivative set; the four numbers needed to turn it into a registry entry are now held,
+and **three of them are confirmed by inverting their own `Z_a`** to a physical `C_Lα` = 4.847
+rather than being taken on a spec sheet's word. The fourth, `I_yy`, is DECLARED and **provably
+cannot matter** — it and `C_mα` enter only as their product `M_α`, verified invariant by
+round-trip across a 4× range. *The unsourceable number turned out to be the unobservable one.*
+
 **What this session did NOT do**, so the next one does not look for it: it did not fit `W/S` to
 Fig. 6, it did not "correct" the trace's 0.951 g cruise datum, it did not move §4's headline
-denominator off 2.70 g, and it did not re-run the LES with a better-matched aircraft **because
-no such aircraft exists in the registry yet** — all four are recorded in §4 as deliberate.
+denominator off 2.70 g, it did not re-run the LES (no matched registry entry exists **yet** —
+but every input for one is now held), and **it did not run the `C_Lα` falsification test**,
+which is the cheapest high-value thing left and should be first.
 
 ### Session 26 — four papers arrive, and one of them says the project was flying the wrong vortex
 

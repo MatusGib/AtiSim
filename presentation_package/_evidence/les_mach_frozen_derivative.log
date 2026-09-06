@@ -1,0 +1,17 @@
+                     CRUISE (linearised here)   LES CONDITION
+  altitude                12192 m                  3000 m
+  airspeed                235.9 m/s               133.5 m/s
+  Mach                   0.7995                  0.4063
+  dynamic pressure         8392 Pa                 8101 Pa   ratio 0.965x
+
+KEY: the q-bar axis is nearly matched (1.07x) -- it is the MACH axis that moves,
+and the Mach axis is the one ASSUMPTIONS C3 leaves UNBOUNDED.
+
+  Prandtl-Glauert 1/sqrt(1-M^2)   at M 0.800: 1.6649
+                                  at M 0.406: 1.0944
+  -> a lift-curve slope tabulated at M 0.80 is 1.521x too large at M 0.406
+  CL_alpha carried, frozen: 4.9441 /rad
+  PG-consistent value at the LES condition: 3.2499 /rad
+
+  Gust load goes as CL_alpha, so this alone predicts AtiSim/Yoshimura ~ 1.52x
+  MEASURED in the runs on disk: D01 1.068, D02 1.827, D03 1.427, D04 1.420
