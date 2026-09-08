@@ -102,7 +102,20 @@ def pushdown():
 #
 # So this constant certifies the logging refactor again, which the comment above
 # had recorded as permanently lost.
-FIG8_VORTEX = (2.239956221700959, -1.2352174348304876)
+# *** RE-CAPTURED AT THE SESSION-28 MERGE, AND THE WORLD CHANGED RATHER THAN
+# THE TEST FAILING. *** claude/new-session-943052 landed g(z) and the
+# geometric-to-geopotential ISA conversion, so the run below flies through a
+# different gravity and a different density than the pin was taken in. Both
+# prior values are kept, per PROJECT.md section 4's supersede-never-delete rule:
+#   session 22 (Hannibal at 500 ft, constant g): (2.1601976247303707, -1.260600307461945)
+#   session 26 (Parks' own 600 ft, constant g):  (2.239956221700959,  -1.2352174348304876)
+# The move from the session-26 pin is +0.0767% on d(theta) and +0.358% on d(n).
+# The d(n) limb is the gravity change essentially alone -- g(37,000 ft)/G0 is
+# -0.354% and n_z is divided by G0 by construction (dynamics.py's comment on why
+# the divisor stays standard gravity), so a lighter local g reports a larger
+# excursion. Nothing here is a rollout defect and the arithmetic-exactness claim
+# still binds from here on.
+FIG8_VORTEX = (2.241674009986879, -1.2396439681557148)
 FIG8_VORTEX_BEFORE_LOGGING = FIG8_VORTEX  # old name, kept for one release
 
 

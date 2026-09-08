@@ -1193,7 +1193,14 @@ def test_the_gradient_arm_has_an_independent_cross_check_and_what_it_bounds():
     assert smooth < rankine / 5.0, (
         f"the smooth profile should shrink the disagreement several-fold; "
         f"got {smooth:.4f} against Rankine's {rankine:.4f} V0/r0")
-    assert smooth == pytest.approx(0.260, abs=0.02), (
+    # RE-MEASURED AT THE SESSION-28 MERGE: 0.260 -> 0.217 V0/r0. This is NOT the
+    # gravity change -- it is the CORE RADIUS. The 0.260 was taken while
+    # PARKS_CASES["hannibal"] still carried the session-22 hybrid's 500 ft;
+    # session 26 restored Parks' own 600 ft. The disagreement is normalised by
+    # V0/r0 but the AIRFRAME is not, so a wider core at the same strength puts
+    # the span across a smaller fraction of it, and the curvature the secant
+    # misses falls. Smaller is the direction a wider core predicts.
+    assert smooth == pytest.approx(0.217, abs=0.02), (
         f"measured {smooth:.4f} V0/r0 for Lamb-Oseen; this is the bound the "
         "gradient result carries and it is quoted in PROJECT.md section 4")
 

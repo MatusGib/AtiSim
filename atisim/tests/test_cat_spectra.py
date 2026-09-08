@@ -77,8 +77,17 @@ def test_the_short_period_is_the_frequency_the_prediction_was_sealed_against():
     x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
     wn, zeta = validation.longitudinal_modes(
         ac, float(x[0]), float(x[1]), float(x[2]), V, H)[-1]
-    assert float(wn) / (2.0 * np.pi) == pytest.approx(0.16404, rel=1e-3)
-    assert float(zeta) == pytest.approx(0.36455, rel=1e-3)
+    # RE-MEASURED AT THE SESSION-28 MERGE: 0.16404 -> 0.16433 Hz, +0.18%, because
+    # g(z) and the geopotential ISA conversion both reach this altitude. The
+    # SEALED PREDICTION IS UNTOUCHED AND UNAFFECTED: its band is [0.131, 0.197]
+    # Hz and its settled outcome 0.1400/0.1700 Hz, so a 0.18% move changes no
+    # verdict. What this line is, is the regression pin the docstring above
+    # describes -- it exists so the number cannot drift SILENTLY underneath the
+    # settled prediction, and it has just done its job. The tolerance is NOT
+    # widened; the value is re-taken and the reason recorded here.
+    assert float(wn) / (2.0 * np.pi) == pytest.approx(0.16433, rel=1e-3)
+    # Same re-measurement, same cause: 0.36455 -> 0.36503, +0.13%.
+    assert float(zeta) == pytest.approx(0.36503, rel=1e-3)
 
 
 def test_the_mehta_response_follows_the_airframe_and_not_the_forcing(condition):
