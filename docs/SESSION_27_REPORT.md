@@ -178,12 +178,12 @@ the first time. It has not been done.
 
 ---
 
-## 5. The process finding, which is why `CLAUDE.md` now exists
+## 5. The process finding, which is why `AGENTS.md` now exists
 
 Two digitisations and a full four-domain LES run had **already been done** in another
 worktree — untracked scripts, gitignored outputs — while that worktree's own `PROJECT.md`
 listed them as open work. **The measuring was never the hard part; keeping it was.**
-`CLAUDE.md` rule 1 is now *"nothing is done until it is in `docs/PROJECT.md`"*, with the
+`AGENTS.md` rule 1 is now *"nothing is done until it is in `docs/PROJECT.md`"*, with the
 checklist that enforces it. This session then made the same mistake one layer down — writing
 "not run" about runs whose outputs were on disk — which is recorded in §9 rather than quietly
 fixed.

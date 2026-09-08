@@ -26,15 +26,15 @@ session normally edits only the volatile ones.
 | complete or re-order planned work | §7 plan |
 | discover something that changes the approach | §8 open questions |
 
-> **`CLAUDE.md` at the repository root is the enforcing document, and rule 1 there is the
+> **`AGENTS.md` at the repository root is the enforcing document, and rule 1 there is the
 > one this file depends on: NOTHING IS DONE UNTIL IT IS IN THIS FILE.** Session 27 found
 > two completed digitisations stranded in another worktree — untracked scripts, gitignored
 > outputs — while that worktree's copy of this document still listed both as open work. A
 > measurement that is not written down here will be paid for twice. Before ending a session,
 > add the §9 entry, `git add` the scripts you wrote, and record what you deliberately did
-> *not* do. Until session 27 that `CLAUDE.md` did not exist, though this line referenced it.
+> *not* do. Until session 27 that `AGENTS.md` did not exist, though this line referenced it.
 
-Rules carried from `CLAUDE.md` and enforced throughout the code:
+Rules carried from `AGENTS.md` and enforced throughout the code:
 
 - **Check that the tree you are testing is the tree you edited.** Every worktree shares the
   main checkout's `.venv`, whose editable install maps `atisim` to the **main checkout**
@@ -3632,7 +3632,7 @@ work of digitising TM-102186 Fig. 6 and MIL-F-8785C Fig. 7 **had already been do
 `scripts/digitise_mil_f_8785c_fig7.py`, complete with three independent checks apiece. Both
 scripts were **untracked**, their outputs were gitignored PNGs, and that worktree's
 `PROJECT.md` still listed both figures as *open acquisitions*. **The measurement was not the
-hard part; keeping it was.** `CLAUDE.md` now carries the rule that closes this, and
+hard part; keeping it was.** `AGENTS.md` now carries the rule that closes this, and
 §"How to update this document" points at it.
 
 **Five scripts were rescued into this tree. Two were re-run and are in §4; three were not,
