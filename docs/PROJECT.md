@@ -68,7 +68,15 @@ Rules carried from `CLAUDE.md` and enforced throughout the code:
 > Suite status is `not run` on every row below unless stated: nothing here was checked out
 > and tested this session.
 
-### The one that matters
+### ~~The one that matters~~ MERGED, session 28 — kept as the record of how it was found
+
+> **`claude/new-session-943052` was rebased onto `main` and merged on 8 September 2026**, at
+> `50b78a1` plus `993fa91`. The suite went red first (3 failed) and green after three pins
+> were re-captured — §4's "The compressibility branch, rebased and merged" has what moved and
+> why. **The row below is left as written**, because how a fully-built implementation sat
+> unmerged for thirteen days while three sessions worked around it is the thing rule 1b
+> exists to prevent, and deleting the row would delete the lesson.
+
 
 | | |
 |---|---|
@@ -537,6 +545,68 @@ against its own input data. The 20–40% figures are the project's **first** com
 measured atmosphere, they are six days old, and the largest single identified contributor to
 them is one named assumption: **the derivatives are frozen at M 0.80 and the model is being
 flown at M 0.41.**
+
+### The compressibility branch, rebased and merged — what it moved — session 28
+
+**`claude/new-session-943052` was one commit ahead of `main` and 27 behind, dated 26 August
+2026, and carried more of §7's plan than the plan knew about.** §0 records how it was found.
+It is now rebased onto `main` and merged. **The suite is the gate and it was run twice: red
+first, green after three pins were re-captured.**
+
+**What landed, and what it does NOT do yet.**
+
+| | |
+|---|---|
+| `dynamics.gravity(z) = g₀(R/(R+z))²` | **LIVE.** g(12,192 m) = **9.76922** against 9.80665. Reverses session 12's decision, not its measurement |
+| geometric → geopotential ISA conversion | **LIVE.** `atmosphere.geopotential(12,192)` = **12,168.66 m**. §5 called this an assumption; the branch calls it a defect, and it is right — the module used geopotential formulas while every caller passed geometric altitude |
+| Prandtl–Glauert on the lift-slope family | **PRESENT AND INERT.** `Aircraft.pg_mach_ref` defaults to **−1.0**, and the code reads negative as "undeclared → factor exactly 1". **No registry entry declares one**, so PG changes nothing today. The infrastructure is in; the opt-in is not taken |
+| Mach-scheduled `Cmde` and `Clda` | **PRESENT AND INERT** by the same mechanism — empty tables |
+| `PG_MACH_MAX = 0.90` with a floor | the M → 1 singularity cannot reach the integrator. A guard, not a modelling claim |
+
+**So the merge is a gravity-and-atmosphere change, not yet a compressibility change.** Anyone
+reading "Prandtl–Glauert merged" and expecting §4's LES ratio to move will find it has not.
+**What it buys is that the Mach axis is now one field-assignment away instead of one
+implementation away** — and §4's CR-2144 row says printed p. 220 carries the sourced curve to
+assign from.
+
+**What moved, measured on the merged tree.** 747 at CR-2144 FC9, against Table IX-5:
+
+| mode | before | after | error before | error after | |
+|---|---|---|---|---|---|
+| phugoid ω_n | 0.055319 | **0.055099** | −17.80% | −18.13% | **worse** |
+| phugoid ζ | 0.055956 | **0.055336** | +14.43% | **+13.16%** | better |
+| short period ω_n | 0.950773 | **0.952723** | −1.37% | **−1.17%** | better |
+| short period ζ | 0.342526 | **0.343058** | −11.49% | **−11.35%** | better |
+
+**Three of four improve and nothing was aimed at Table IX-5**, which is the only reason the
+fourth is quotable: the phugoid ω_n moves **−0.398%** against g's **−0.3817%**, which is
+Lanchester's `ω_n = √2·g/u₀` at 1:1 to three figures. It is the *right* answer moving
+*away* from the reference, and §5 already says why — the phugoid gap is `M_u`, a term this
+model has no form for, so improving gravity cannot help it and does not.
+
+**Three pins were re-captured, and each records why at the change.** None is a widened
+tolerance; all three are numbers taken at a physics combination the tree no longer has.
+
+| pin | before | after | why it moved |
+|---|---|---|---|
+| `test_vortex_viz.FIG8_VORTEX` | (2.239956221700959, −1.2352174348304876) | **(2.241674009986879, −1.2396439681557148)** | +0.0767% on Δθ, **+0.358% on Δn** — the Δn limb is the gravity change essentially alone, since `n_z` is divided by **standard** gravity by construction, so a lighter local g reports a larger excursion |
+| `test_cat_spectra` short period | 0.16404 Hz | **0.16433 Hz** | +0.18%, g(z) and the ISA conversion both reaching the Mehta altitude |
+| `test_wind` Lamb–Oseen gradient bound | 0.260 `V₀/r₀` | **0.217 `V₀/r₀`** | **not gravity — the CORE RADIUS.** 0.260 was taken at the session-22 hybrid's 500 ft; session 26 restored Parks' own 600 ft. The bound is normalised by `V₀/r₀` but the airframe is not, so a wider core puts the span across less of it and the curvature the secant misses falls |
+
+> **The short-period pin is the one to read carefully, because it sits next to the sealed
+> register.** `predictions.py`'s settled `the_dryden_response_peaks_at_the_short_period`
+> carries a band of **[0.131, 0.197] Hz** and an outcome of 0.1400/0.1700 Hz. **0.16433 is
+> comfortably inside it and no verdict changes.** The line that failed is the regression pin
+> whose own docstring says it exists "so it cannot drift underneath a settled prediction" —
+> it did exactly that job. **The sealed entry was not touched, and `rel=1e-3` was not
+> widened.**
+
+**One process note, recorded because it cost real time and is the project's own named
+hazard.** The first mode measurement taken after the rebase read *unchanged*, and it was
+wrong: `python scripts/checkpoint.py` from the worktree puts `scripts/` on `sys.path` and not
+the cwd, so it imported `atisim` from the **main checkout** — §10's table says so in the row
+that has been there since session 17. The numbers above were re-taken with the cwd on the
+path and the tree printed. **The hazard is not theoretical and it caught this session mid-merge.**
 
 ### C3's Mach axis is not unbounded — the curves are in CR-2144 and have been all along — session 28
 
@@ -4375,6 +4445,21 @@ from the 68% shortfall. Kept, used sparingly, never quoted as a lateral load.
 
 **Sixth, asked whether an SVD would help, three hypotheses were formed before running and one died.** `scripts/svd_probe.py`. The §5 absurd-trim defect is **not** a rank problem — the absurd roots are *better* conditioned than the healthy one (1.97e+01 and 2.26e+01 against 9.51e+01), because Newton found a genuine well-conditioned root of a function with several roots. `is_physical` stays. What does hold: `ASSUMPTIONS.md` F7's zero-authority channel gives **sigma_min = 0 exactly at the initial guess**, where the solver's own output is NaN and says nothing; and the identifiability of (`Cma`, `Cmq`, `Iyy`) against the short period has its unseen direction **0.1936 deg** from the (1,1,1)/sqrt(3) combination that `M_alpha` and `M_q` predict — i.e. session 27's B787 `I_yy` finding, derived rather than discovered by sweeping. The project has now met that same class of problem three times (the 737 and 747 `Cmq`/`Cmadot` splits at fit conditions 1.9e8 and 2.7e9, and the B787 `I_yy`) and solved it three ad-hoc ways. **An SVD does not finish the LES limb**, which is not compute-bound: all four domains are on disk, only a subvolume is ever loaded, the domain files carry one time step so there is nothing to decompose in time, and what blocked the comparison was the aeroplane.
 
+**Seventh, and it changed what the session was.** Asked to check whether the recommendations
+had already been done on another branch, the answer was **yes, and the biggest one had.**
+`claude/new-session-943052` — one commit, 26 August, never merged — carried a working
+Prandtl–Glauert implementation, `g(z)`, the geopotential fix and Mach-scheduled control
+derivatives. **It is now rebased and merged**, at 821 passed / 1 skipped, after three pins
+were re-captured against the new gravity and atmosphere. §4 has what moved; §0 exists because
+of it, and `CLAUDE.md` gained rule 1b. **The repo audit also cut 39 branches to 19** — 20 were
+fully merged and carried nothing — and rescued uncommitted work from five worktrees, the
+largest a tail-arm gate refactor with tests.
+
+**A correction to this entry's own opening.** It said "no code was changed". **That was true
+when it was written and is no longer true**: the merge changes `aero.py`, `aircraft.py`,
+`atmosphere.py`, `dynamics.py`, `trim.py`, `wind.py` and three pinned tests. The audit half of
+the session changed nothing; the merge half changed the model. Read the two halves separately.
+
 **What this session did NOT do**, so the next one does not go looking: it did not change any
 code, coefficient, tolerance or datum; it did not re-run the LES limb or the JSBSim
 generators; it did not fix §1's 67%-versus-68.1% mismatch (`known_issues.md` §12 owns it); and
@@ -5934,7 +6019,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 
 | Command | What it does |
 |---|---|
-| `.venv/Scripts/python.exe -m pytest -q` | **812 passed, 1 skipped, 12m41s** (measured session 28; 811 at session 26; 807 at session 25; it was 788 at session 24 and **758 measured session 23b**; the 626 this row claimed was stale by five sessions, and the 322 before that by several more — this row has now been wrong twice, so re-measure it rather than trusting it). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. |
+| `.venv/Scripts/python.exe -m pytest -q` | **821 passed, 1 skipped, 34m37s** (measured session 28 after the compressibility merge; 812 before it, same session; 811 at session 26; 807 at session 25; it was 788 at session 24 and **758 measured session 23b**; the 626 this row claimed was stale by five sessions, and the 322 before that by several more — this row has now been wrong twice, so re-measure it rather than trusting it). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. |
 | `.venv/Scripts/python.exe scripts/sanity.py` | **The ladder, for a reader who does not yet trust the model.** Twelve cases from degenerate inputs upward — zero the wind, zero a coefficient so a motion becomes impossible, then signs, then hand-computable numbers, then structural properties. Every expected value is derived by hand in the source and printed beside the model's answer, so it is read rather than trusted. Ends with the item 08 convention probe, which is a measurement rather than a pass/fail. |
 | `.venv/Scripts/python.exe -m pytest --nbval-lax notebooks/ -q` | **The second gate.** Executes `notebooks/solver-validation.ipynb` so it cannot rot. Needs the `dev` extra (`jupyter`, `nbval`). Deliberately *not* in `testpaths` and `--nbval-lax` is deliberately *not* in `addopts`: that would make every `pytest` run fail with "unrecognized arguments" wherever nbval is absent. **Run it from a worktree with an ABSOLUTE `PYTHONPATH`** — nbval starts the kernel with its cwd in `notebooks/`, so a relative `PYTHONPATH=.` resolves to the wrong directory and `atisim` silently loads from the main checkout. |
 | `.venv/Scripts/python.exe scripts/checkpoint.py` | 747 only, no flags. Trim residuals, 60 s fixed-control hold, longitudinal modes against CR-2144 Table IX-5. |
