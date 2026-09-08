@@ -143,6 +143,44 @@ def test_the_strip_model_refuses_an_aircraft_that_fails_the_tail_arm_gate():
             loads.strip_model(lambda p: p * 0.0, ac)
 
 
+def test_the_strip_model_refuses_in_the_same_words_as_the_station_builder():
+    """One gate, two doors, one explanation.
+
+    `strip_model` has to check even when the stations are handed to it, so the
+    guard genuinely exists at two call sites -- but a caller must not get two
+    different accounts of the same refusal depending on which door they came
+    through. The 737 is the case that used to diverge: `airframe.stations` names
+    the missing CLq, while `strip_model` reported "tail arm inf chords is
+    outside (2.0, 6.0)", which sends someone hunting for a bad number when the
+    number does not exist at all.
+    """
+    from atisim import airframe
+    from atisim.aircraft import REGISTRY
+
+    for name in sorted(REGISTRY):
+        ac = REGISTRY[name]
+        if airframe.tail_arm_is_plausible(ac):
+            continue
+        with pytest.raises(ValueError) as from_stations:
+            airframe.stations(ac)
+        with pytest.raises(ValueError) as from_strip:
+            loads.strip_model(lambda p: p * 0.0, ac)
+        assert str(from_strip.value) == str(from_stations.value), (
+            f"{name} is refused in two different ways"
+        )
+
+
+def test_the_strip_model_still_gates_when_the_stations_are_handed_to_it():
+    """The reason the check cannot simply be delegated to `airframe.stations`:
+    that call is skipped entirely when a caller supplies its own station set."""
+    from atisim import airframe
+    from atisim.aircraft import REGISTRY
+
+    st = airframe.stations(REGISTRY["boeing747"])
+    with pytest.raises(ValueError, match="defines no CLq"):
+        loads.strip_model(lambda p: p * 0.0, REGISTRY["boeing737"], stations=st)
+
+
 def test_the_strip_model_accepts_both_747_configurations():
     from atisim.aircraft import REGISTRY
 

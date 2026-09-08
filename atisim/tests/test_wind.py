@@ -650,6 +650,25 @@ def test_the_sampled_wind_model_matches_the_contract():
     assert np.array_equal(np.asarray(out_key), np.asarray(key))
 
 
+def test_the_sampled_wind_model_cannot_be_built_for_an_undefined_tail_arm():
+    """The end-to-end shape of the bug, asserted where it was actually seen.
+
+    `sampled_field_model(field, airframe.stations(ac))` for any aircraft whose
+    source defines no CLq used to return a model whose q and r gust rates were
+    NaN, because the station set ran to -inf. Nothing raised: the NaN propagated
+    through the rollout to a NaN rms. The refusal now happens while the stations
+    are being built, i.e. before a run starts rather than after it has finished
+    producing nothing.
+    """
+    from atisim import airframe
+    from atisim.aircraft import REGISTRY
+
+    with pytest.raises(ValueError, match="tail arm"):
+        wind.sampled_field_model(
+            lambda p: p * 0.0, airframe.stations(REGISTRY["boeing737"])
+        )
+
+
 def _pitch_rates_at(frac_of_r0, array, stations):
     """(tangent, secant) pitch gust rate at a station along the track, in core radii."""
     from atisim import airframe  # noqa: F401  -- stations already built

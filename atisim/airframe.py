@@ -62,6 +62,47 @@ def tail_arm_is_plausible(ac: Aircraft) -> bool:
     return bool(low <= float(effective_tail_arm(ac)) <= high)
 
 
+def require_plausible_tail_arm(ac: Aircraft) -> None:
+    """Raise unless this aircraft's derived tail arm can be trusted.
+
+    The gate has to be enforced at two places, not one: `stations` builds the
+    sample set and is the chokepoint for everything that samples, but
+    `loads.strip_model` also accepts a station set built elsewhere and so skips
+    that call entirely. Two call sites, one function -- so a caller cannot get
+    two different accounts of the same refusal depending on which door they came
+    through, which is what used to happen to the 737.
+    """
+    if not tail_arm_is_plausible(ac):
+        raise ValueError(_refusal(ac))
+
+
+def _refusal(ac: Aircraft) -> str:
+    """Why this aircraft was refused. The two causes are not the same problem.
+
+    A missing CLq means the arm does not EXIST -- the ratio is a division by
+    zero and no better estimator can recover it, so the sampled and strip paths
+    are structurally unavailable for that airframe. A finite arm outside the
+    band means both derivatives exist and disagree about what aircraft they
+    describe, which may be the source data or may be that the tail-dominated
+    reading behind l_eff does not transfer. Blurring the two would send someone
+    looking for a fix where there is nothing to fix.
+    """
+    if float(ac.CLq) == 0.0:
+        return (
+            "tail arm is undefined: this aircraft's source defines no CLq, so "
+            "l_eff/c = -Cmq/CLq is a division by zero. Nothing can be recovered "
+            "from the derivatives held -- the input does not exist -- so the "
+            "sampled and strip paths are unavailable for it. Use the point "
+            "model (wind.field_model) instead."
+        )
+    return (
+        f"tail arm {float(effective_tail_arm(ac)):.4f} chords is outside "
+        f"{TAIL_ARM_BAND} -- this aircraft's CLq and Cmq disagree about what "
+        f"airframe they describe, so the sampled and strip paths must not be "
+        f"used for it. Use the point model (wind.field_model) instead."
+    )
+
+
 # Sample counts. DECLARED -- see provenance.LEDGER["strip.n_stations"]. Odd, so
 # a station sits exactly on the centreline and the symmetric pair cancels
 # exactly rather than to round-off.
@@ -89,7 +130,19 @@ def stations(ac: Aircraft, n_span: int = N_SPAN, n_lon: int = N_LON) -> Stations
     Lateral extent is the span, which is SOURCED. Longitudinal extent is the
     derived tail arm, running aft from the CG -- negative x, since body x is
     positive forward.
+
+    REFUSES an aircraft that fails `tail_arm_is_plausible`, via
+    `require_plausible_tail_arm`. This is the only place a `Stations` is built,
+    so it is the one point at which the aircraft is still in hand and the gate
+    can cover every consumer that does not supply its own stations --
+    `wind.sampled_rates` and `wind.sampled_field_model` alike. It used not to
+    check, and the cost was silent: for the three registry entries whose source
+    defines no CLq the arm is -Cmq/0 = inf, the linspace ran to -inf, and every
+    fitted gradient came back NaN with nothing raised anywhere. A rollout would
+    complete and report a NaN rms. Failing here means failing before the run
+    starts instead of after it has produced nothing.
     """
+    require_plausible_tail_arm(ac)
     half_span = ac.b / 2.0
     arm = effective_tail_arm(ac) * ac.c
     return Stations(
