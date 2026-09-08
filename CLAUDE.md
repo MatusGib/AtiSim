@@ -34,6 +34,47 @@ stranded the same way. The measuring was never the hard part.
 
 **If a session produces no durable record, it produced nothing.**
 
+### 1b. UNFINISHED WORK GOES IN `docs/PROJECT.md` §0, WITH ITS ADDRESS
+
+Rule 1 covers work that is *done*. **Work that is not done is the larger hole**, because a
+branch nobody merged is indistinguishable from a branch nobody wrote — and this project has
+now paid for that twice over.
+
+**Session 28's repo audit found `claude/new-session-943052`, one commit ahead of `main` and
+never merged, already carrying a full Prandtl–Glauert implementation — a `pg_mach_ref` field,
+the factor applied across the whole longitudinal lift-slope family, Mach-scheduled `Cmde` and
+`Clda`, `g(z)`, and the geopotential-altitude conversion. It is dated 26 August 2026.
+Sessions 25, 26 and 27 all wrote as though none of it existed, and session 27 spent its
+headline effort pricing the Mach axis with a hand-rolled Prandtl–Glauert factor that was
+already in the repository.** Two large WGS-84 rotating-Earth branches, 68 and 65 commits
+ahead, were stranded the same way, and five worktrees held uncommitted work.
+
+**So: every session that leaves anything unfinished adds or updates a row in `PROJECT.md`
+§0 — "Work in progress and where it lives".** One row per piece of work, carrying:
+
+1. **What it is**, in one line, and what it would close in §4/§5/§7 if finished.
+2. **WHERE IT IS** — the exact **branch name**, and the worktree directory if it has one.
+   A row without an address is not a row. Worktree directory names do **not** match branch
+   names in this repo (`turbulence-research-sources-39f87e` holds
+   `claude/zen-maxwell-1ad0a4`), so write both.
+3. **Its state**: how many commits ahead of `main`, whether the suite passes on it, and
+   whether anything is uncommitted.
+4. **What is blocking it**, or "nothing — just unmerged", which is the answer that should
+   embarrass someone into merging it.
+
+**A row is deleted only when the work is merged or abandoned**, and abandoning is a §9 entry
+saying why, not a silent removal.
+
+**Before ending a session, run the two-line check and act on it:**
+
+```
+git for-each-ref --format='%(refname:short)' refs/heads/ |
+  while read b; do n=$(git rev-list --count main..$b); [ "$n" != 0 ] && echo "$n $b"; done
+git worktree list
+```
+
+Anything that prints and is not in §0 is about to be lost. **Put it in §0 or merge it.**
+
 ## 2. Flag, never invent
 
 Every number carries the table it came from. A parameter a source does not supply is named

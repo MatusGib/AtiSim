@@ -4,7 +4,9 @@ A 6-DOF fixed-wing flight-dynamics core in JAX, built as a foundation for turbul
 modelling. This document is the standing record: what exists, what is validated, what is
 known-broken, and what happens next.
 
-**Last updated:** session 27 (the recorded trace digitised, and it says the *wind* is 12% light; a second sealed prediction settled RIGHT; the DC-10 wing loading found unpinnable, withdrawing session 26's sign; the LES comparison audited, refused, then re-run with Yoshimura's OWN aeroplane rebuilt from their source code -- 1.427 to 1.202, with the residual now attributable to neither aircraft nor Mach).
+**Last updated:** session 28 (an audit, no code changed: the "the agreement got worse" hypothesis tested and **falsified** — every early number re-measured and unchanged, no tolerance ever loosened, and the growth traced to a change of *reference class* dated to commit `c6b5342`, 1 Sep 2026, with ASSUMPTIONS C3's frozen derivatives the largest identified physical cause; the strip-load path judged: off the published path, +22.9% on one unvalidated channel, and worth keeping for its negative result).
+
+Session 27 (the recorded trace digitised, and it says the *wind* is 12% light; a second sealed prediction settled RIGHT; the DC-10 wing loading found unpinnable, withdrawing session 26's sign; the LES comparison audited, refused, then re-run with Yoshimura's OWN aeroplane rebuilt from their source code -- 1.427 to 1.202, with the residual now attributable to neither aircraft nor Mach).
 
 **To run any of it, see §10.**
 
@@ -17,6 +19,7 @@ session normally edits only the volatile ones.
 
 | When you… | Edit |
 |---|---|
+| **leave anything unfinished** | **§0 work in progress — one row, with the BRANCH NAME and the worktree. `CLAUDE.md` rule 1b** |
 | finish any session | §9 session log — add an entry at the top |
 | land a new module or change a public API | §2 architecture **and** §10 running it |
 | add or change a script, flag or key binding | §10 running it |
@@ -49,6 +52,95 @@ Rules carried from `CLAUDE.md` and enforced throughout the code:
   off-limits to feature work; if one moves, something real broke.
 
 ---
+
+## 0. Work in progress, and where it lives
+
+> **Required by `CLAUDE.md` rule 1b.** Rule 1 covers work that is done. This section covers
+> work that is **not**, because an unmerged branch is indistinguishable from a branch nobody
+> wrote. **A row without a branch name is not a row.** Worktree directory names do NOT match
+> branch names in this repo — `turbulence-research-sources-39f87e` holds
+> `claude/zen-maxwell-1ad0a4` — so both are given. Delete a row only when the work is merged
+> or abandoned, and abandoning is a §9 entry saying why.
+>
+> **Established session 28 by auditing all 39 branches and 15 worktrees**, after this
+> conversation asked whether the session-28 recommendations had already been done elsewhere.
+> **Three of the five had been, in whole or in part, and nothing in this document said so.**
+> Suite status is `not run` on every row below unless stated: nothing here was checked out
+> and tested this session.
+
+### The one that matters
+
+| | |
+|---|---|
+| **Branch** | **`claude/new-session-943052`** |
+| **Worktree** | `.claude/worktrees/new-session-943052` |
+| **State** | **1 commit ahead of `main`, 27 behind.** Single commit `c6dba3c`, 26 August 2026. Suite not run |
+| **What it is** | **A Prandtl–Glauert implementation, already built.** A `pg_mach_ref` field on `Aircraft`; the factor applied to the **whole longitudinal lift-slope family** rather than `C_Lα` alone, with `PG_MACH_MAX = 0.90` and a floor so the M → 1 singularity cannot reach the integrator; Mach-scheduled `Cmde` and `Clda` tables; **`g(z) = g₀(R/(R+z))²`**; and the **geopotential-altitude conversion** at the atmosphere boundary |
+| **What it closes** | `ASSUMPTIONS.md` **C3's Mach axis** — the assumption §4 calls the dominant identified contributor to the LES discrepancy. Also **A2** (constant g, reversing session 12's decision but not its measurement) and **A3** (geometric-vs-geopotential, which that commit message calls "not an assumption, a defect": density at a nominal 30,000 ft goes from 0.159% out to **0.000479%** against JSBSim) |
+| **Blocking** | **Nothing. It is unmerged.** It is 27 commits behind `main`, so it needs rebasing and a full re-measure of every altitude-dependent row in §4 — which its own commit message says it already did once, on the tree as it stood in August |
+| **Read this beside it** | Its commit message reports an unforced dividend: phugoid ζ against Table IX-5 improved **14.4% → 13.2%** with nothing aimed at IX-5. And it records what it did *not* do: the **latitude** variation of gravity, 0.53%, larger than the altitude term, is still absent |
+
+**Session 27 priced the Mach axis with a hand-rolled Prandtl–Glauert factor while this was
+sitting in the repository.** §4's session-28 entry on CR-2144's `CL_α(M)` figures should be
+read against it: the branch supplies the *theoretical* correction, printed p. 220 supplies
+the *sourced* curve, and the two are a check on each other rather than alternatives.
+
+### Large, stranded, and a decision rather than a merge
+
+| Branch | Worktree | State | What it is |
+|---|---|---|---|
+| `claude/atisim-wgs84-earth-rotation-32fbdd` | `atisim-wgs84-earth-rotation-b7b3bc` | **68 ahead, 27 behind** | A **rotating WGS-84 Earth**: `earth.py` and `earth_ref.py`, an ECEF state, every test migrated, a latent autopilot sign bug found and fixed, and **`ASSUMPTIONS.md` A1 and A2 retired**. Carries its own §9 entry ("Record session 23 in the project log") |
+| `claude/wgs84-earth-rotation-tasks-5dbdc3` | `sleepy-moore-7186bb` | **65 ahead, 27 behind** | **Sibling of the above, sharing commits** (`01d7502`, `84a8e53`, …). Adds "Measure what FLAT costs against the pre-Earth model, and find it is not round-off" and "Linearise about the equilibrium, and close the three red tests". **Which of the two is the trunk is not recorded anywhere and must be established before either is merged** |
+
+**These two are not cleanup.** Merging 65–68 commits that replace the inertial frame changes
+every number in §4 and retires two assumptions the validation claim rests on. That is a
+session's work with a full re-baseline, and §7 has never listed it.
+
+### Small, unmerged, and cheap to resolve
+
+| Branch | Worktree | State | What it is |
+|---|---|---|---|
+| `claude/linearisation-verification-bounds-b73868` | — (worktree dir of that name holds `cat-flight-model-dossier-04adb9`) | 3 ahead, 60 behind | "Bound the linearisation, and find roll counted twice"; "a third `Ixz`"; "Say what kind of model this is, and who owns which effect" |
+| `claude/flight-dynamics-solver-oscillation-17139b` | same name | 2 ahead, 62 behind | "Carry altitude in the longitudinal reduction, and keep every published comparison 4-state"; "Reduce FD2e's own state sets, and discover the zero columns instead of assuming them" |
+| `claude/priceless-cori-688ee5` | — | 2 ahead, 60 behind | The geopotential ISA read, plus the AtiSim rename. **Probably subsumed by `new-session-943052`** — check before merging either |
+| `claude/flightsim-sweep-ui-graphs-d4d036` | same name | 1 ahead, 65 behind | "Give every panel header its own measured band, and let the load panel read against time" |
+| `claude/weekly-summary-analysis-7520db` | same name | 1 ahead, 7 behind | The LES runs and the two digitisations. **Session 27 harvested the scripts from here; the `runs/cat/` outputs are still only here** and are what §4's session-28 POD row reads |
+| `session-27-validation` | `cv-entry-project-e44ed6` | 2 ahead, **0 behind** | Renames `CLAUDE.md` to `AGENTS.md`. **On `origin`.** A naming decision this document has not taken — `CLAUDE.md` is what rules 1–6 live in and what this file references throughout |
+
+### Rescued from worktrees at the session-28 audit, and unreviewed
+
+**Five worktrees held uncommitted work.** All five were committed on their own branches to
+stop them being lost. **None was reviewed and none is endorsed** — the commit messages say so.
+
+| Branch | Worktree | What was rescued |
+|---|---|---|
+| `claude/zen-maxwell-1ad0a4` | `turbulence-research-sources-39f87e` | **The most substantial: a tail-arm gate refactor with tests.** `airframe.require_plausible_tail_arm`, and a `_refusal` that separates a **missing `CLq`** (the arm does not exist — division by zero, nothing recoverable) from a **finite arm outside the band** (both derivatives exist and disagree). `loads.strip_model` routed through it so the two entry points cannot give different accounts. Five files, 160 insertions |
+| `claude/cat-flight-model-dossier-04adb9` | `linearisation-verification-bounds-b73868` | `docs/superpowers/plans/2026-08-31-close-the-dossier-limitations.md` — a plan on this conversation's own subject |
+| `claude/project-md-restructure-95b7b8` | same name | Local `PROJECT.md` edits |
+| `claude/flight-dynamics-cat-prompt-ec9839` | `jsbsim-737-validation-eeb6a9` | A CAT-sources search prompt |
+| `claude/project-readme-mockup-0ef89a` | `quasi-steady-aero-model-d5cf37` | A README mockup |
+
+### Superseded, kept only until someone confirms
+
+`claude/flight-dynamics-email-3601f2` (1 ahead, **111 behind**) and
+`claude/flight-dynamics-validation-67fa59` (1 ahead, **137 behind**) are both `WIP:` commits,
+and the second says of itself "superseded on master by 099bd33". **These are the two safe
+deletions on the list**, and they are recorded here rather than deleted so the deletion is a
+decision someone takes rather than one this audit took for them.
+
+### What `main` itself is doing
+
+`main` is **7 ahead of and 1 behind `origin/main`** — the two have diverged and neither is a
+superset. There are two remotes: `origin` (MatusGib/Atisim) and `old-origin`
+(MatusGib/Flight_sim), the pre-rename repository. **Nothing in this document says which is
+authoritative or whether `old-origin` still needs to exist.**
+
+**Twenty-three of the thirty-nine branches carry no unique commits at all** and are merged
+into `main`. They are deletable, but seven of them have worktrees attached and one of those
+seven — `claude/zen-maxwell-1ad0a4` — held the tail-arm work above until this session
+committed it. **Deleting a merged branch is safe; deleting its worktree is not, until the
+worktree is checked for uncommitted files.**
+
 
 ## 1. What this is
 
@@ -324,6 +416,380 @@ spacing from a free parameter into a cited one.
 ## 4. Evidence ledger
 
 Every figure below is measured, with the tolerance the test asserts.
+
+### Why the agreement "got worse": the reference class changed, not the model — session 28
+
+**The question this answers, asked while preparing the presentation:** *the project used to
+agree with the papers to a couple of per cent and now reports 20–40% errors — what broke?*
+**Nothing broke.** Every early number was re-measured this session and is unchanged to the
+digit. What changed is **what the model is being marked against**, and the change is dated.
+
+**Re-measured, this tree, this session.** `.venv/Scripts/python.exe -m pytest -q` from the
+worktree root — the one invocation §10's table calls safe — gives **812 passed, 1 skipped,
+761.79 s**. §10 recorded 811 at session 26; the extra test is session 27's
+`boeing787_yoshimura` assertion. Then, one script per tier:
+
+| Re-run | Result | Against §4's recorded value |
+|---|---|---|
+| `scripts/checkpoint.py` | phugoid ω_n **0.0553** / ζ **0.0560**; short period ω_n **0.9508** / ζ **0.3425**; trim residual **1.93e-20**; 60 s hold drift **0.0000 m / 0.0000 m/s** | **identical to every digit** |
+| `scripts/cat_validation.py` | `n_z` **−0.398 to +1.441 g**; gust −86.8 to +59.1 ft/s; σ_n 0.6394 g; six-aircraft ordering and mechanism unchanged | **identical** |
+| `scripts/lateral.py` | point 0.000° bank / line 12.508° / line+strip **15.376°**; `n_z` max 1.6019 / 1.6375 / 1.6344 | **identical** |
+
+**And the tolerances were not moved to get there**, which is the other half of the claim and
+is checked in git rather than asserted. The five "validated baseline" files carry **three
+commits between them** in the project's whole history. Two are the package rename (imports
+only — `git show e06914a` on `test_cr2144_modes.py` is 6 changed lines) and the audit repair,
+whose entire diff on those files is a **comment** corrected from `~5.7e-14` to the measured
+`5.6958e-13` and `is_physical(x)` gaining its `ac` argument. **No threshold in
+`test_conservation.py`, `test_cr2144_modes.py`, `test_drag_polar.py`, `test_navion.py` or
+`test_trim.py` has ever been loosened.**
+
+> **Provenance of the three re-runs.** `checkpoint.py` and `lateral.py` were run from the
+> worktree root; `cat_validation.py` printed `atisim imported from: …\Claude_Flight_Sim\atisim`
+> — the **main checkout**, because `python scripts/…` puts `scripts/` on `sys.path` and not the
+> cwd, exactly as §10's table warns. It is admitted here only because the two trees were then
+> hashed and are **byte-identical**: sha256 over every `.py` under `atisim/` is
+> `e9d7e7826e2fc183` in both. Had they differed, the row would have been withdrawn.
+
+#### The four tiers, and the date the project changed tiers
+
+Every comparison this project has ever made falls into one of four classes, and **the class
+sets the error, not the code**:
+
+| Tier | What the model is marked against | Typical disagreement | Sessions | Dates |
+|---|---|---|---|---|
+| **0 · verification** | closed-form mathematics — RK4 order, torque-free rigid body, Newton residual | **1e-13 … 5e-3 %** | 1–12 | 6–11 Aug |
+| **1–2 · self-consistency** | **the same document the derivatives were read from** (CR-2144's own mode table) | **0.4 – 3.4 %** | 1–12 | 6–11 Aug |
+| **3 · cross-code** | another executing engine **fed identical coefficients** (JSBSim) | **0.02 – 0.08 %** on modes; 3–7% on the phugoid | 17–20 | 20–25 Aug |
+| **4 · reality** | a **flight-data recorder** or a **published LES** — measured atmosphere | **20 – 42 %** | 23–27 | 1–6 Sep |
+
+**The inflection is a single commit: `c6b5342`, "Fly Mehta's identified field", 1 September
+2026.** Before it, the project had never once compared itself to a measured atmosphere. Every
+error above 10% in this ledger post-dates it, and every "couple of per cent" figure predates
+it and still stands.
+
+**Why tier 1–2 could never have been anything but small, and why that matters for the talk.**
+Tier 2 asks *"was CR-2144 transcribed and unprimed correctly?"* — the model is being marked
+against its own input. `ASSUMPTIONS.md` closes on this in its own words: every tier-2
+comparison is closed-loop against a document's own arithmetic, *"which is exactly why the age
+of that document is not a threat, and equally why the result says nothing about the real
+aeroplane."* **A 0.4% Dutch roll and a 32% load shortfall are not the same measurement getting
+worse. They are two different measurements, and the project only started making the second
+one six days before this session.**
+
+#### Four mechanisms move the *published* numbers the wrong way, and none is a regression
+
+**(1) The model was flown further from where its data was linearised. This is the largest
+identified physical cause, and it is `ASSUMPTIONS.md` C3 — "derivatives frozen, Mach axis
+UNBOUNDED" — collecting on a debt it has carried since session 12.** Confirmed in the code
+this session: `aero.py` carries Mach into **`wave_drag` and nothing else** (plus the thrust
+ram term); there is no Prandtl–Glauert factor on `C_Lα`, `C_mα` or any other coefficient.
+The cost is measurable and it grows with the excursion:
+
+| Excursion from the M 0.80 / 40 kft linearisation | Frozen-derivative error | Same run with derivatives tabulated at the condition |
+|---|---|---|
+| **none** (FC9 itself) | short period ω_n **1.4%** | — |
+| **altitude only**, M 0.8 / 6,096 m (Yoshimura Table A2/A5) | ω_n **+23.46%** | **−0.60%** |
+| **Mach**, ΔM = −0.393 (the LES at M 0.406) | load rms ratio **1.427 / 1.420** on the two resolved domains | matched `boeing787_yoshimura`: **1.202** |
+
+**The middle row is the cleanest statement the project owns about its own biggest limitation:
+same code, same solver, same aeroplane, one condition apart — 23.46% against 0.60%, a factor
+of 39, entirely from freezing.** Nothing about turbulence enters it.
+
+**(2) The record got more honest, three times, and each time a number got worse on purpose.**
+
+- **Session 16.** The 747 mode table grew from **two** of CR-2144 Table IX-5's four published
+  longitudinal factors to **all four**, adding rows at **+14.4%** and **−1.4%**. The pass added
+  two *rows*, not two derivatives: 42 of 44 scalars were bit-identical across it, compared as
+  hex representations against the tree extracted at the preceding commit.
+- **Session 18.** The JSBSim short period read **0.04% → 3.95% → 1.30% → 0.04%**, and only the
+  last is honest — the first was two errors cancelling, an α̇-contaminated `C_mα` of −1.0637
+  standing in for a coupling the model did not have. Same number, opposite meaning.
+- **Session 18, again.** Five fidelity improvements made the JSBSim phugoid **worse**, 3.33% →
+  6.58%, and layer 4's doublet divergence 0.483 → 0.558 m/s. Session 19 then localised **96%
+  of the phugoid frequency error to one entry of the 4×4**, `M_u`, which a constant-coefficient
+  model structurally cannot carry.
+
+**(3) A source correction moved the headline load the uncomfortable way.** Session 26 obtained
+Parks et al. 1985 and found `PARKS_CASES["hannibal"]` had been a **hybrid** — Wingrove Fig. 4's
+500 ft radius with Parks' 85 ft/s and 3500 ft. Parks' own triple is 600 ft / 85 / 3500, and
+`dw/dx = V₀/r₀`, so a larger core at fixed strength is a **gentler** gradient. Cost:
+**−4.26% of the headline peak-to-peak, 70.3% → 67.3% of the record.** A correction that makes
+your own result worse is the one kind that cannot have been chosen for convenience.
+
+**(4) Seven different percentages exist for one comparison and they are not interchangeable.**
+`presentation_package/_evidence/load_percentage_disambiguation.log` lists them: 68.1% (headline),
+67.1% (translational-only, deliberately handicapped for JSBSim parity), 76.0%, 74.1%, 74.6%
+(JSBSim), 72.7%, 70.1%. **A reader comparing 74.1% from one session against 67.3% from another
+sees a regression that is really two different runs.** §1 still carries 67% where the headline
+is 68.1% — known, recorded at `known_issues.md` §12, and it is the like-for-like figure attached
+to the wrong run.
+
+**And one thing genuinely improved in the direction nobody claims credit for:** the LES ratio
+went **1.427 → 1.202** in session 27 when Yoshimura's own aeroplane was rebuilt from their
+`fs.f90` and flown in place of the 747.
+
+#### The one-sentence version
+
+**The errors did not grow; the questions did.** Every couple-of-per-cent figure is still a
+couple of per cent — re-measured above — and it was small because the model was being marked
+against its own input data. The 20–40% figures are the project's **first** comparisons against
+measured atmosphere, they are six days old, and the largest single identified contributor to
+them is one named assumption: **the derivatives are frozen at M 0.80 and the model is being
+flown at M 0.41.**
+
+### C3's Mach axis is not unbounded — the curves are in CR-2144 and have been all along — session 28
+
+**`ASSUMPTIONS.md` C3 has called the Mach axis UNBOUNDED since session 12, §7 declined the
+bound repeatedly because it "needed chart reads off a poor scan", and session 27 priced it
+with Prandtl–Glauert — a DECLARED theoretical form — while a SOURCED Mach dependence sat in
+a document this project has held since session 1.**
+
+Found by reading `refs/NASA-CR-2144.pdf`'s own text layer, not by digitising anything. Three
+consecutive figure pages, printed pp. 220–222 (PDF indices 225–227), all captioned
+**`B-747 / 636600 lb / .25 c̄ / Flexible`** and all drawn against a **Mach axis running 0 to
+1.0**, with three altitude curves apiece — **SL, 20,000 ft and 40,000 ft**:
+
+| printed page | curves the text layer names |
+|---|---|
+| **220** | **`CL_α(M)`** and `CD_α(M)`, rad⁻¹ |
+| **221** | **`Cm_α(M)`**, and `Cm_α̇(M)` with `Cm_q(M)` |
+| **222** | **`CL_M`, `CD_M`, `Cm_M`** — the Mach derivatives themselves |
+
+**What this settles.**
+
+1. **The axis spans the excursion.** The LES condition is **M 0.406**; the figures start at
+   M 0. The 40,000 ft curve is the one `_boeing_747` was linearised on, so the *same* curve
+   gives both the value in use and the value at the LES condition. Session 27's
+   Prandtl–Glauert ratio of **1.521** becomes a *checkable prediction* against a source
+   rather than the only estimate available.
+2. **The altitude axis comes free.** Three curves, so the altitude dependence C3 also carries
+   is on the same sheets — and §4's one altitude point (ω_n **+23.46%** frozen against
+   **−0.60%** local, at M 0.8 / 6,096 m) gets a second, independent check.
+3. **`CL_M`, `CD_M` and `Cm_M` are the missing speed-derivative content by name.** §5 says
+   what is excluded from the phugoid is "the **Mach content** of those derivatives (CXu, CZu,
+   from CL_M and CD_M)". Printed p. 222 is that content, plotted.
+4. **The reading pipeline exists and is validated twice over.** Session 21 digitised
+   `CL_MAX(M)` off CR-114494 at a stated ±0.02; session 26 re-read the same curve with an
+   independent tracer and reproduced it to **RMS 0.0052**, four times inside that
+   uncertainty. Session 21 also read `CL_α(M)` off **Figure IX-5 itself** and cross-checked
+   it at M 0.80: **4.892 from the figure against Table IX-4's 4.9441, agreeing to 1.05%.**
+
+**And that last reading is gone, which is why this row exists.** Session 21's entry says in
+its own words that "the working patch is kept out of the tree". The single M 0.80 cross-check
+survives in §4's prose; **the curve does not.** This is precisely the failure `CLAUDE.md`
+rule 1 was written for, occurring six sessions before that rule existed, and it cost the
+project the bound it then spent sessions 22–27 saying it could not have.
+
+**What is NOT claimed here.** No curve has been read this session. The evidence is the PDF's
+own text layer naming the axes and the altitude legends; the scan quality, the gridline
+separation and the achievable uncertainty are unmeasured, and session 21's "poor scan"
+warning stands until someone re-reads it. **What has changed is the status, not the number:
+C3's Mach axis moves from UNBOUNDED-and-source-gated to UNBOUNDED-and-one-digitisation-away,
+on a sheet whose neighbour this project has already digitised successfully.**
+
+**Why it is the highest-value item on the list.** §4 records the frozen slope as the
+**dominant identified contributor** to the LES discrepancy — 47–68% of it — and §1's envelope
+is a Mach band asserted from the fit range rather than from any measurement of what happens
+outside it. One digitisation of printed p. 220 turns both into sourced numbers. It needs no
+acquisition, no correspondence, and no new method.
+
+### The LES ensemble POD, run — and it does not separate the drift — session 28
+
+`scripts/les_ensemble_svd.py`, on the 16 × 5000 `n_z` arrays `les_flight.py` wrote for all
+four domains. §4 lists **condition drift** as candidate 1 for the ~20% that survives the
+matched-aeroplane LES comparison, and an SVD of the (flights × time) matrix is the obvious
+instrument: the drift is common to every flight, so it should fall out as one dominant mode.
+
+**It does not, on the two domains that matter, and the reason is that there is no dominant
+mode to remove.** The `(iv)` row below reproduces `les-comparison.csv` **exactly** —
+0.09049 and 0.15728 — which is what licenses the other three rows.
+
+| domain | mode 1 share | **mode 1 below 0.05 Hz** | loading uniformity | (ii) ens-mean | (iii) rank-1 | **(iv) high-pass** |
+|---|---|---|---|---|---|---|
+| D01, 500 m | 66.0% | 98.6% | 0.011 | 0.02359 | 0.02231 | **0.00747** |
+| D02, 250 m | 55.2% | 97.7% | 0.025 | 0.07861 | 0.05961 | **0.01820** |
+| **D03, 70 m** | **25.1%** | **53.3%** | 0.900 | 0.10086 | 0.09623 | **0.09049** |
+| **D04, 35 m** | **18.3%** | **71.9%** | 0.300 | 0.17585 | 0.16585 | **0.15728** |
+
+**Three readings, and all three say no.**
+
+1. **On D03/D04 the ensemble is not low-rank.** Mode 1 carries 25.1% and 18.3%, and the
+   spectrum is flat behind it — 25/16/13/10/8 on D03. That is broadband turbulence. There is
+   no drift mode standing above the rest to subtract.
+2. **Mode 1 is not the drift.** Only **53.3%** and **71.9%** of it sits below 0.05 Hz, so it
+   is a *mixture*; removing it discards genuine in-band gust response. Its correlation with
+   time is −0.241 and +0.180, i.e. not a monotone trend either.
+3. **Rank-1 removal is strictly worse than the shipped high-pass**, leaving **1.064×** and
+   **1.055×** its rms — it removes *less* low-frequency content while additionally destroying
+   in-band signal. It beats subtracting the ensemble mean (0.954×, 0.943×), which is the only
+   comparison it wins, and that one is a single line of numpy.
+
+**D01 and D02 flip, and it changes nothing.** There mode 1 does carry 55–66% and is 98%
+sub-0.05 Hz — those ensembles genuinely are drift-dominated and low-rank. But §4 already
+records that 500 m and 250 m LES **cannot drive an aircraft-load calculation**, so the one
+regime where the decomposition works is the one regime whose numbers are not used.
+
+**The question was then asked with the right instrument instead, and that is inconclusive
+too — which is the more useful result.** A 0.05 Hz high-pass removes a secular drift outright,
+so the drift cannot be an *additive* term in the published rms; it is already gone from both
+sides. What a high-pass cannot remove is the drift's real effect — load goes as `q̄`, so an
+aeroplane that has lost 30% of its airspeed responds to the same gust with a smaller
+excursion, which is an amplitude **modulation** and shows as early-half against late-half rms:
+
+| domain | early | late | late/early | flights weaker late |
+|---|---|---|---|---|
+| D01 | 0.00535 g | 0.00898 g | **1.680** | 1/16 |
+| D02 | 0.01891 g | 0.01624 g | 0.859 | 10/16 |
+| D03 | 0.07970 g | 0.09755 g | **1.224** | 4/16 |
+| D04 | 0.17847 g | 0.11919 g | **0.668** | 11/16 |
+
+**The ratios go both ways.** A monotone `q̄` decay cannot make the late half 68% *stronger*
+on one domain and 33% weaker on another. What dominates is that the aeroplane flies through
+**different turbulence** in the second half: the field is not statistically homogeneous along
+the track, and that swamps the `q̄` term.
+
+> **THE CONCLUSION, AND IT APPLIES BEYOND THE SVD.** Drift and along-track field
+> inhomogeneity are confounded in **every statistic computable from these arrays**, because
+> they are confounded in the **run**. No post-processing separates them — not a POD, not a
+> harder high-pass, not a split. §4's own wording is the only route left and it is an
+> experiment, not a filter: *"hold the condition ... and re-read"* — fly it again with `q̄`
+> maintained and difference the two runs. **The "or high-pass harder" half of that sentence
+> is now measured and should be struck.**
+
+**Caveat carried, per the input audit.** These are the `boeing747` runs §4 refuses for load
+level — 5.4% away in short period, 2.63 band widths outside its envelope. Nothing here is
+evidence about load. It does not affect this question: the drift is a property of flying
+fixed-control with real drag, which that entry does, and the confounders §4 names are
+constant multipliers that can neither create nor remove a secular trend.
+
+### What an SVD can and cannot see in this model — session 28
+
+`scripts/svd_probe.py`. Asked whether the singular value decomposition is worth applying
+here, three hypotheses were formed **before** running anything. **One is falsified, one
+holds cleanly, and the third holds only for the mode the CAT work depends on.** Nothing in
+the model changed: the script imports `trim` and `validation` and measures matrices they
+already build.
+
+**(a) FALSIFIED — the §5 absurd-trim defect is NOT a rank problem, and no decomposition of
+the Jacobian will find it.** The hypothesis was that `cond(J)` would separate a healthy trim
+from the converged-but-absurd roots §5 records, where the residual cannot. It does not, and
+it fails in the *opposite* direction to the one predicted. `boeing747_approach`, 85 m/s,
+sea level:
+
+| case | α | residual norm | **cond(J)** |
+|---|---|---|---|
+| healthy, as shipped | 5.590° | 1.11e-16 | **9.51e+01** |
+| degenerate `CLa` = 0.1 | −272.695° | 2.33e-15 | **1.97e+01** |
+| degenerate `CLa` = 1e-4 | −632.136° | 5.72e-15 | **2.26e+01** |
+
+**The two absurd roots are BETTER conditioned than the real one**, and the whole spread is a
+factor of 4.8 against the residual's 51.6. The reason is clear once measured and should have
+been clear before: at the absurd root the Jacobian is a perfectly good matrix — Newton found
+a genuine, well-conditioned root of a function that **has several roots**. Multiple roots of
+a nonlinear system is not rank deficiency. **`trim.is_physical` stays exactly as it is, and
+this row exists so nobody proposes replacing it with a conditioning gate.**
+
+**(b) HOLDS — `ASSUMPTIONS.md` F7 is a rank problem, and σ_min sees it before the solve
+does.** Zero `CLde` and `Cmde`, so the elevator has no authority, and `trim.trim` returns
+`[nan nan nan]` with a `nan` residual — F7's "in silence". The Jacobian at the **initial
+guess**, before the first Newton step, has singular values `5.149e+01, 3.015e+00,
+0.000e+00`. **σ_min is exactly zero at a point where every other instrument in the project
+returns NaN and therefore says nothing.** This is the one place an SVD earns its keep in the
+solver, and it matters exactly when F7 predicts: the first solve that carries a control the
+airframe cannot exercise — F7 names a steady-turn solve with rudder as the candidate.
+
+**(c) HOLDS FOR THE SHORT PERIOD — identifiability, derived instead of discovered.** Session
+27 found `I_yy` unobservable on the B787 entry by sweeping it 1.0e7 → 4.0e7 and noticing
+`M_α` came back identical every time. The same fact is available from a decomposition
+without knowing to look for it. Sensitivity of the longitudinal modes to
+(`Cma`, `Cmq`, `Iyy`), central differences in **log** parameter space so the singular
+vectors read as power laws, `boeing747` at its own cruise:
+
+| observables | σ | unseen direction (log space) | vs equal scaling |
+|---|---|---|---|
+| all four mode scalars | 0.797 / 0.528 / **0.192** | `Cma` +0.5397, `Cmq` +0.6080, `Iyy` +0.5822 | ratio only 4.15 — **soft, not null** |
+| **short period only** | 0.769 / 0.513 | `Cma` +0.5776, `Cmq` +0.5748, `Iyy` +0.5796 | **0.1936° from (1,1,1)/√3** |
+
+**Read the second row correctly.** Two observables against three parameters is a 2×3 matrix,
+so a null direction exists **by shape** and is not itself evidence. What is evidence is where
+it points: within a fifth of a degree of the equal-scaling combination that
+`M_α = C_mα·q̄Sc̄/I_yy` and `M_q = C_mq·q̄Sc̄²/(2V·I_yy)` predict analytically. **The SVD was
+not told that and recovers it.**
+
+**And the first row is a finding in its own right.** Scaling all three by 1.5 at once moves
+the short period by **+6.6e-4 and +7.5e-4** — nothing — and the phugoid by **−10.9%**. The
+invariance is exact for the short period and broken for the phugoid, because scaling `Cma`
+and `Cmq` without `Cm0` and `Cmde` destroys the moment balance at the frozen trim point, so
+`C_m` is no longer zero there and an `M_u` appears. **That is §4's own localisation arriving
+from a different direction** — the phugoid is the mode speed derivatives dominate, which is
+why it is the mode that notices.
+
+**Where this generalises, and it is the reason to keep the script.**
+`gen_jsbsim_reference.recover_pitch_axis` already calls `np.linalg.lstsq` — which *is* an SVD
+— and already records `np.linalg.cond(design)` = **1.9e8** (737) and **2.7e9** (747). §4
+resolves both by hand: *"their SUM is exact and their SPLIT is conditioned"*, and
+`aircraft.py`'s 747 comment says *"their SUM is −25.000000 and is the well-determined
+quantity"*. **Those are statements about a singular vector, arrived at by inspection.** The
+project has now hit the same class of problem three times — the 737 `Cmq`/`Cmadot` split, the
+747 one, and the B787 `I_yy` — and solved it three different ad-hoc ways. The decomposition
+answers all three in one call and does not need to be told which combination to try.
+
+**What an SVD does NOT do here, stated so it is not proposed again.** It does not finish the
+LES limb: those runs are **not compute-bound** — all four domains × two aircraft are already
+on disk, `les_flight.py` loads only a subvolume around the flight path, and what blocked the
+comparison was the *aeroplane*, which session 27 fixed by building
+`boeing787_yoshimura`. A POD of the field would also have nothing to decompose in time —
+the domain files carry **one time step**. And it is not an instrument for the scale content
+of a gust along a track, which is what `response.py` and `wind.dryden_spectrum` already do
+properly with a Fourier estimate.
+
+### The strip-load path, judged — session 28
+
+**Asked directly: is it helpful, and is it even being used?** Measured rather than recalled.
+
+**It is not used on any path that produces a published number.** `integrate.step` defaults to
+`load_model=None`; the shipped gust treatment is `field_model` — point sample plus analytic
+tangent gradient. The strip path is opt-in at three call sites only (`scripts/vortex.py
+--strip`, `scripts/cat_bounds.py`, `scripts/lateral.py`), and a test deliberately asserts that
+the strip and tangent estimators **disagree** at the vortex core edge, which is what proves the
+default has not been quietly switched — §4's frozen baselines sit downstream of the tangent.
+
+**It has moved a reported number exactly once in fourteen sessions**, and re-measured this
+session it still does:
+
+| Mehta's five-vortex field, 747 at 37,000 ft | \|φ\| | \|β\| | `n_z` max | up-increment |
+|---|---|---|---|---|
+| point (`vortex_wind`) — the published path | **0.000°** | **0.000°** | 1.6019 | 0.6019 g |
+| line (`line_vortex_wind`) | 12.508° | 3.106° | 1.6375 | 0.6375 g (**+5.92%**) |
+| line + **strip loads** | **15.376°** (**+22.9%**) | 3.533° | 1.6344 | 0.6344 g (**+5.40%**) |
+
+**So the strip increment's own contribution, isolated, is +22.9% of peak bank and −0.5% of the
+longitudinal load increment.** Everything the project claims is longitudinal.
+
+**Three things have to be said together about that +22.9%, and only the first is favourable.**
+
+1. **The kernel is well verified.** `wind.strip_roll_moment` agrees with the tabulated `Clp`
+   for a rigid roll rate (rel 1e-3), with Stengel eq. 3.4-40's closed form for a rectangular
+   wing (1e-6), with the elliptic identity `∫y²c dy = c₀b³π/64` (1e-5), and with the
+   equivalent-rate treatment for a linear gradient (1e-6). It is **roll only**, deliberately:
+   there is no validated pitch or yaw integral and those channels are held at exact zero.
+2. **The quadrature that computes it is 17% off its own calibration.** `ASSUMPTIONS.md` **F5**:
+   at the shipped `N_SPAN = 9` the strip integral returns **82.6%** of the `Clp` it is
+   calibrated against, converging at order **1.50**, needing ~56 stations for 1%. The one
+   number the strip path moves is computed by that quadrature, on a **DECLARED** loading shape
+   carrying a 2.6% spread across defensible shapes.
+3. **The channel it moves is not validated against anything.** §5 and `ASSUMPTIONS.md` E10:
+   **no source held by this project records a lateral CAT response.** Wingrove & Bach 1994 says
+   so in as many words. Every bank angle in this table is a capability demonstration.
+
+**The verdict, and it is not "wasted work".** The strip path's value to date is a **negative
+result, and a load-bearing one**: it is the measurement that says the point-gust approximation
+is adequate for everything §1 claims. `ASSUMPTIONS.md` E2 rests on it — point-vs-strip on the
+headline field is **0.000000 m**, so the 68% shortfall cannot be blamed on gust resolution
+across the span. Without the strip path that would be an argument; with it, it is a number.
+**What it must not be used for is a lateral load claim**, and quoting the 15.376° without F5's
+17% and E10's "unvalidated" beside it would be exactly that.
 
 ### The LES comparison is NOT like-for-like — input audit, session 27
 
@@ -3850,6 +4316,72 @@ source exactly. A smoother interpolant would agree with the source less.
 
 ## 9. Session log
 
+### Session 28 — the errors did not grow, the questions did
+
+**An audit session, prompted by two questions from outside the record**: *is the engine valid,
+and what is left unresolved?* — and *the project used to agree with the papers to a couple of
+per cent and now reports 20–40%; what broke?* **No code was changed and no data was added.**
+Everything below is either a re-measurement of something already in §4 or a reading of the
+tree. §4 carries two new subsections.
+
+**First, the regression hypothesis was tested and is false.** The suite runs **812 passed,
+1 skipped, 761.79 s** from the worktree root (811 at session 26; the extra is session 27's
+`boeing787_yoshimura` assertion). `checkpoint.py`, `cat_validation.py` and `lateral.py` were
+re-run and every headline number reproduces to the digit — the 747's four modes, the
+−0.398/+1.441 g Hannibal response, the 0.000/12.508/15.376° strip comparison. **And the
+tolerances were checked in git rather than trusted:** the five validated-baseline files carry
+three commits between them in the whole project history, and the only edits are the package
+rename's imports and one *comment* corrected to a measured value. Nothing was ever loosened.
+
+**Second, the real answer is a change of reference class, and it has a date.** Every
+comparison the project has made is tier 0 (closed-form maths), tier 1–2 (the same document the
+derivatives came from), tier 3 (another engine fed identical coefficients) or tier 4 (a
+flight-data recorder or a published LES). Tiers 0–3 ran from 6–25 August and produce 1e-13% to
+3.4%. Tier 4 begins at commit `c6b5342`, **1 September 2026**, and produces 20–42%. **Every
+error above 10% in the ledger post-dates that commit; every couple-of-per-cent figure predates
+it and still stands.** A 0.4% Dutch roll is the answer to "was CR-2144 transcribed correctly";
+a 32% load shortfall is the answer to "does a rigid 747 reproduce a DC-10's recorder trace".
+They were never the same measurement.
+
+**Third, the largest identified physical cause of the tier-4 errors is one assumption, and it
+is the oldest one in the register.** `ASSUMPTIONS.md` C3 — derivatives frozen, **Mach axis
+UNBOUNDED**. Verified in the code this session: `aero.py` carries Mach into `wave_drag` and the
+thrust ram term and **nowhere else**; there is no Prandtl–Glauert correction on any
+coefficient. The project already holds two points that price it, and §4 now puts them in one
+table: at M 0.8 / 6,096 m the short period is **+23.46%** with FC9's frozen derivatives and
+**−0.60%** with derivatives tabulated at that condition — *a factor of 39, same code, same
+solver, no turbulence involved* — and at the LES's M 0.406 the frozen `C_Lα` is 1.521× too
+large by Prandtl–Glauert against a measured load ratio of 1.427.
+
+**Fourth, three cases where the record got worse on purpose, which no reader can distinguish
+from a regression without being told.** The session-16 mode table grew from two of CR-2144's
+four published factors to all four (adding +14.4% and −1.4%) with 42 of 44 scalars
+bit-identical across the pass; session 18's JSBSim short period read 0.04% → 3.95% → 1.30% →
+0.04% where only the last is honest; and session 18's five fidelity improvements made the
+phugoid **worse**, 3.33% → 6.58%, before session 19 localised 96% of it to a single derivative
+the model structurally cannot carry. Add session 26's source correction, which cost 4.26% of
+the headline load **downward**, and the trend in the published numbers is fully accounted for
+without a single defect.
+
+**Fifth, the strip-load path was judged rather than described.** It is **not on any published
+path** — `integrate.step` defaults to `load_model=None` and a test asserts the strip and
+tangent estimators disagree at the core edge precisely so the default cannot be switched
+silently. Re-measured, it moves peak bank **+22.9%** and the longitudinal load increment
+**−0.5%**, and that single non-zero effect sits on a quadrature that F5 records as returning
+**82.6%** of its own calibration at the shipped nine stations, in a channel E10 records as
+validated against **nothing**. **Its real value is a negative result**: point-vs-strip on the
+headline field is 0.000000 m, which is what lets §5 exclude gust resolution across the span
+from the 68% shortfall. Kept, used sparingly, never quoted as a lateral load.
+
+**Sixth, asked whether an SVD would help, three hypotheses were formed before running and one died.** `scripts/svd_probe.py`. The §5 absurd-trim defect is **not** a rank problem — the absurd roots are *better* conditioned than the healthy one (1.97e+01 and 2.26e+01 against 9.51e+01), because Newton found a genuine well-conditioned root of a function with several roots. `is_physical` stays. What does hold: `ASSUMPTIONS.md` F7's zero-authority channel gives **sigma_min = 0 exactly at the initial guess**, where the solver's own output is NaN and says nothing; and the identifiability of (`Cma`, `Cmq`, `Iyy`) against the short period has its unseen direction **0.1936 deg** from the (1,1,1)/sqrt(3) combination that `M_alpha` and `M_q` predict — i.e. session 27's B787 `I_yy` finding, derived rather than discovered by sweeping. The project has now met that same class of problem three times (the 737 and 747 `Cmq`/`Cmadot` splits at fit conditions 1.9e8 and 2.7e9, and the B787 `I_yy`) and solved it three ad-hoc ways. **An SVD does not finish the LES limb**, which is not compute-bound: all four domains are on disk, only a subvolume is ever loaded, the domain files carry one time step so there is nothing to decompose in time, and what blocked the comparison was the aeroplane.
+
+**What this session did NOT do**, so the next one does not go looking: it did not change any
+code, coefficient, tolerance or datum; it did not re-run the LES limb or the JSBSim
+generators; it did not fix §1's 67%-versus-68.1% mismatch (`known_issues.md` §12 owns it); and
+it did not extend the Mach-axis bound beyond the two points already held. **The cheapest
+remaining high-value item is unchanged from session 27** — a Prandtl–Glauert sweep across Mach
+would turn C3's two points into a curve, and it needs no acquisition and no chart read.
+
 ### Session 27 — the recorded trace is read at last, and it moves the blame back to the wind
 
 **The session began as presentation preparation and turned into three measurements**, because
@@ -5402,7 +5934,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 
 | Command | What it does |
 |---|---|
-| `.venv/Scripts/python.exe -m pytest -q` | **811 passed, 1 skipped, 12m05s** (measured session 26; 807 at session 25; it was 788 at session 24 and **758 measured session 23b**; the 626 this row claimed was stale by five sessions, and the 322 before that by several more — this row has now been wrong twice, so re-measure it rather than trusting it). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. |
+| `.venv/Scripts/python.exe -m pytest -q` | **812 passed, 1 skipped, 12m41s** (measured session 28; 811 at session 26; 807 at session 25; it was 788 at session 24 and **758 measured session 23b**; the 626 this row claimed was stale by five sessions, and the 322 before that by several more — this row has now been wrong twice, so re-measure it rather than trusting it). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. |
 | `.venv/Scripts/python.exe scripts/sanity.py` | **The ladder, for a reader who does not yet trust the model.** Twelve cases from degenerate inputs upward — zero the wind, zero a coefficient so a motion becomes impossible, then signs, then hand-computable numbers, then structural properties. Every expected value is derived by hand in the source and printed beside the model's answer, so it is read rather than trusted. Ends with the item 08 convention probe, which is a measurement rather than a pass/fail. |
 | `.venv/Scripts/python.exe -m pytest --nbval-lax notebooks/ -q` | **The second gate.** Executes `notebooks/solver-validation.ipynb` so it cannot rot. Needs the `dev` extra (`jupyter`, `nbval`). Deliberately *not* in `testpaths` and `--nbval-lax` is deliberately *not* in `addopts`: that would make every `pytest` run fail with "unrecognized arguments" wherever nbval is absent. **Run it from a worktree with an ABSOLUTE `PYTHONPATH`** — nbval starts the kernel with its cwd in `notebooks/`, so a relative `PYTHONPATH=.` resolves to the wrong directory and `atisim` silently loads from the main checkout. |
 | `.venv/Scripts/python.exe scripts/checkpoint.py` | 747 only, no flags. Trim residuals, 60 s fixed-control hold, longitudinal modes against CR-2144 Table IX-5. |
@@ -5419,6 +5951,8 @@ several sessions, which is the drift §4's rules exist to prevent.
 | `C:/Users/mateusz/AppData/Local/Programs/Python/Python310/python.exe` `scripts/gen_jsbsim_747.py` | **Recovers the `boeing747_jsbsim` entry from the running B747.** Needs jsbsim, so it runs under the reference interpreter above, NOT the project venv. Writes `atisim/tests/data/jsbsim_747_reference.xml`. Run only when the recovery condition changes; drift shows up in `git diff`. |
 | `C:/Users/mateusz/AppData/Local/Programs/Python/Python310/python.exe` `scripts/gen_jsbsim_vortex_reference.py` | **Freezes JSBSim's answer to the three vortex cases.** Same interpreter, same reason. Writes `atisim/tests/data/jsbsim_vortex_reference.xml`. |
 | `.venv/Scripts/python.exe scripts/vortex_compare.py --png runs/vc.png` | **The cross-code vortex comparison.** Flies atisim through the identical field the frozen reference was generated from and reports where the two engines part, against Wingrove & Bach's own g-loads. Imports no jsbsim. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/les_ensemble_svd.py --runs <dir>` | **The LES ensemble POD (session 28).** Asks whether an SVD of the 16 x 5000 `n_z` arrays separates condition drift from gust response better than the shipped 0.05 Hz high-pass. **It does not** — on D03/D04 mode 1 carries 25% and 18% and is only half sub-0.05 Hz. Then asks the drift question directly, early half against late, and finds it confounded with along-track field inhomogeneity. `--runs` is required: the arrays are gitignored and live in whichever worktree flew them. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/svd_probe.py` | **What a singular value decomposition can and cannot see (session 28).** Four sections: cond(J) at the healthy trim against §5's two absurd roots (it does NOT separate them, and that is the point); F7's zero-authority channel, where sigma_min is exactly 0 at the initial guess; and the identifiability of (`Cma`, `Cmq`, `Iyy`) against the longitudinal modes, which recovers session 27's B787 `I_yy` result to 0.19 deg without being told it. Changes nothing — it imports `trim` and `validation` and measures matrices they already build. §4 has what it found. |
 | `.venv/Scripts/python.exe scripts/vortex_diagnose.py` | **Why the comparison's two large errors are large.** Three experiments: the same start state flown in still air, atisim flown from its own trim, and a one-lever-at-a-time sweep against the DFDR. Imports no jsbsim. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/digitise_tm102186_fig6.py --outdir runs/cat` | **The recorded g trace (session 27).** Reads TM-102186 Fig. 6's G LOAD panel out of `Reference_papers/19890016606.pdf` at 600 dpi, column by column, as the top and bottom of the ink — nothing fitted, nothing smoothed. Prints the three checks (the paper's own band, a **negative control** on the vertical-wind panel, and the gust spacing) and writes `10-tm102186-fig6.png` plus `tm102186-fig6-gload.csv`. §4 has what it found. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/digitise_mil_f_8785c_fig7.py --outdir runs/cat --pdf refs/MIL-F-8785C.pdf` | **The severe-turbulence σ_w chart (session 27).** Digitises all nine curves of Fig. 7 from printed p. 49, flagging where two share **one stroke of ink** rather than reading a number out of a merge. Settles `mil_f_8785c_sigma_w_exceeds_the_mehta_ceiling`. Writes `11-mil-f-8785c-fig7.png` and `mil-f-8785c-fig7-lines.csv`. **`--pdf` is required from a worktree** — `refs/` is gitignored and lives only in the main checkout. |
@@ -5429,6 +5963,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_uncertainty.py --outdir runs/cat` | **The Hannibal comparison with error bars (session 23c).** Measures the gust SPACING against TM-102186's "about 5 sec apart" -- the one channel the identification did not set -- converts Mehta's own Eq. (A3) cost into an RMS wind residual and decomposes it against Lester's reconstruction error, then flies the propagated `V0` and `r0` band and a gust-strength sweep to show the peak load is saturated. Writes `06-uncertainty.png`. Same `PYTHONPATH` rule. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_validation.py --outdir runs/cat` | **The CAT source pass (session 23).** Flies Mehta 1987's five-vortex Hannibal field, reproduces TM-102186 Fig. 8's three-aircraft ordering and tests its stated mechanism across the whole registry, compares the 747's short period at a third CR-2144 flight condition, and grades every run on Misaka's `σ_n`. Prints every number and writes four figures. **`PYTHONPATH` is mandatory** — `python scripts/…` resolves `atisim` to the main checkout, which this script detects and prints on its first line. |
 | `docs/summary/jsbsim-atisim-vortex-report.html` | **The written comparison** — the numbers above with the reasoning, the figure, and what the result does and does not establish. Not generated; edit it when the numbers move. |
+| `presentation_package/engine_validity_audit.html` | **The session-28 audit, as a page to present from.** The four reference classes on one log axis, the four mechanisms behind the apparent error growth, the strip-load verdict, and the unresolved-pathway inventory with a status on each. Every figure traces to §4 or to this session's re-runs. Not generated; edit it when §4 moves. |
 
 ### The documents, and which question each answers
 
