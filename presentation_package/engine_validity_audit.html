@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AtiSim Validity Dossier</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+
+<style>
+:root{
+  --paper:#F3F6F6;
+  --surface:#FFFFFF;
+  --sunk:#E8EDED;
+  --ink:#151F26;
+  --ink-2:#48585F;
+  --ink-3:#71838B;
+  --rule:#D2DBDB;
+  --rule-strong:#B4C1C1;
+  --accent:#0D6360;
+  --accent-soft:#CFE2E0;
+  --caution:#A8681A;
+  --caution-soft:#F0E1CA;
+  --flag:#96382C;
+  --flag-soft:#F0D8D3;
+  --shadow:0 1px 2px rgba(21,31,38,.06),0 8px 24px -16px rgba(21,31,38,.35);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#0E1418;
+    --surface:#161E23;
+    --sunk:#1C262C;
+    --ink:#DEE7E9;
+    --ink-2:#A2B2B7;
+    --ink-3:#7C8D93;
+    --rule:#2A363C;
+    --rule-strong:#3C4B52;
+    --accent:#4FAFA8;
+    --accent-soft:#173733;
+    --caution:#D79E4E;
+    --caution-soft:#38290F;
+    --flag:#D07866;
+    --flag-soft:#3A1F19;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -18px rgba(0,0,0,.9);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0E1418;
+  --surface:#161E23;
+  --sunk:#1C262C;
+  --ink:#DEE7E9;
+  --ink-2:#A2B2B7;
+  --ink-3:#7C8D93;
+  --rule:#2A363C;
+  --rule-strong:#3C4B52;
+  --accent:#4FAFA8;
+  --accent-soft:#173733;
+  --caution:#D79E4E;
+  --caution-soft:#38290F;
+  --flag:#D07866;
+  --flag-soft:#3A1F19;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -18px rgba(0,0,0,.9);
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:"Source Serif 4",Georgia,"Times New Roman",serif;
+  font-size:17px;
+  line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1000px;margin:0 auto;padding:0 28px 96px}
+.col{max-width:68ch}
+
+/* ---------- masthead ---------- */
+.mast{
+  border-bottom:2px solid var(--ink);
+  padding:44px 0 22px;
+  margin-bottom:8px;
+}
+.stamp{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:11.5px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--ink-3);
+  display:flex;flex-wrap:wrap;gap:6px 20px;margin-bottom:20px;
+}
+h1{
+  font-family:"IBM Plex Sans",system-ui,sans-serif;
+  font-weight:700;font-size:clamp(34px,5.2vw,52px);
+  line-height:1.03;letter-spacing:-.022em;margin:0 0 14px;
+  text-wrap:balance;
+}
+.dek{
+  font-size:20px;line-height:1.5;color:var(--ink-2);
+  max-width:62ch;margin:0 0 6px;
+}
+.dek b{color:var(--ink);font-weight:600}
+
+/* ---------- verdict strip ---------- */
+.verdict{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+  gap:1px;background:var(--rule);
+  border:1px solid var(--rule);
+  margin:30px 0 8px;
+}
+.verdict > div{background:var(--surface);padding:16px 18px 18px}
+.verdict dt{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--ink-3);margin-bottom:8px;
+}
+.verdict dd{margin:0;font-size:15.5px;line-height:1.45;color:var(--ink-2)}
+.verdict dd b{
+  display:block;font-family:"IBM Plex Sans",system-ui,sans-serif;
+  font-weight:600;font-size:19px;color:var(--ink);margin-bottom:3px;letter-spacing:-.01em;
+}
+.verdict dd b.ok{color:var(--accent)}
+.verdict dd b.no{color:var(--flag)}
+
+/* ---------- sections ---------- */
+section{padding-top:52px}
+h2{
+  font-family:"IBM Plex Sans",system-ui,sans-serif;
+  font-weight:600;font-size:27px;letter-spacing:-.016em;
+  margin:0 0 4px;line-height:1.18;text-wrap:balance;
+}
+h2 .num{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:13px;font-weight:500;color:var(--accent);
+  letter-spacing:.06em;display:block;margin-bottom:9px;
+}
+h3{
+  font-family:"IBM Plex Sans",system-ui,sans-serif;
+  font-weight:600;font-size:17px;letter-spacing:-.005em;
+  margin:34px 0 6px;
+}
+p{margin:0 0 15px}
+.lede{font-size:18.5px;color:var(--ink-2);margin-bottom:22px;max-width:64ch}
+strong{font-weight:600}
+code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.87em}
+code{background:var(--sunk);padding:1px 5px;border-radius:2px;color:var(--ink)}
+a{color:var(--accent);text-decoration-thickness:1px;text-underline-offset:2px}
+
+/* ---------- data tables ---------- */
+.scroll{overflow-x:auto;margin:22px 0 26px;border:1px solid var(--rule);background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:560px}
+caption{
+  caption-side:top;text-align:left;padding:13px 16px 12px;
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);
+  border-bottom:1px solid var(--rule);background:var(--sunk);
+}
+th,td{
+  padding:10px 16px;text-align:left;vertical-align:top;
+  border-bottom:1px solid var(--rule);
+  font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:14.5px;line-height:1.42;
+}
+th{
+  font-weight:600;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--ink-3);border-bottom:1px solid var(--rule-strong);
+}
+tbody tr:last-child td{border-bottom:none}
+td.n{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;white-space:nowrap;font-size:13.5px}
+td em{font-style:normal;color:var(--ink-3)}
+
+/* ---------- chips ---------- */
+.chip{
+  display:inline-block;font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;font-weight:500;
+  padding:2.5px 7px;border-radius:2px;white-space:nowrap;
+}
+.chip.bounded{background:var(--accent-soft);color:var(--accent)}
+.chip.unbounded{background:var(--caution-soft);color:var(--caution)}
+.chip.blocked{background:var(--flag-soft);color:var(--flag)}
+.chip.cap{background:var(--sunk);color:var(--ink-2)}
+
+/* ---------- pull ---------- */
+.pull{
+  border-left:3px solid var(--accent);
+  background:var(--surface);
+  padding:20px 24px;margin:26px 0;
+  box-shadow:var(--shadow);
+}
+.pull p{margin:0;font-size:18.5px;line-height:1.5}
+.pull p + p{margin-top:12px}
+.pull.warn{border-left-color:var(--flag)}
+
+/* ---------- chart ---------- */
+figure{margin:26px 0 30px}
+figure svg{display:block;width:100%;height:auto}
+figcaption{
+  font-family:"IBM Plex Sans",system-ui,sans-serif;
+  font-size:13.5px;color:var(--ink-3);margin-top:12px;line-height:1.5;max-width:70ch;
+}
+.chartbox{border:1px solid var(--rule);background:var(--surface);padding:20px 18px 12px;overflow-x:auto}
+
+/* ---------- mechanism list ---------- */
+ol.mech{list-style:none;padding:0;margin:22px 0;counter-reset:m}
+ol.mech > li{
+  counter-increment:m;
+  display:grid;grid-template-columns:34px 1fr;gap:0 16px;
+  padding:18px 0;border-top:1px solid var(--rule);
+}
+ol.mech > li:last-child{border-bottom:1px solid var(--rule)}
+ol.mech > li::before{
+  content:counter(m);
+  grid-column:1;grid-row:1;
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:13px;color:var(--accent);font-weight:600;padding-top:2px;
+}
+ol.mech > li > h4,ol.mech > li > p{grid-column:2}
+ol.mech h4{
+  font-family:"IBM Plex Sans",system-ui,sans-serif;
+  font-size:16px;font-weight:600;margin:0 0 5px;letter-spacing:-.005em;
+}
+ol.mech p{margin:0;font-size:15.5px;color:var(--ink-2)}
+ol.mech p + p{margin-top:8px}
+
+.foot{
+  margin-top:64px;padding-top:22px;border-top:1px solid var(--rule);
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:12px;line-height:1.7;color:var(--ink-3);
+}
+.foot b{color:var(--ink-2);font-weight:500}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media (max-width:640px){
+  body{font-size:16px}
+  .wrap{padding:0 18px 72px}
+  ol.mech > li{grid-template-columns:24px 1fr;gap:0 10px}
+}
+</style>
+</head>
+<body style="margin:0">
+<div class="wrap">
+
+<header class="mast">
+  <div class="stamp">
+    <span>AtiSim · 6-DOF flight dynamics in JAX</span>
+    <span>Audit · session 28</span>
+    <span>Suite 812 passed / 1 skipped / 12m41s</span>
+  </div>
+  <h1>The errors did not grow.<br>The questions did.</h1>
+  <p class="dek">A pre-presentation audit of the turbulence engine: what it is validated for, why its published disagreements went from <b>a couple of per cent</b> to <b>20–40%</b> in six days, and what is still unresolved in the physics.</p>
+</header>
+
+<dl class="verdict">
+  <div>
+    <dt>The standing claim</dt>
+    <dd><b class="ok">Comparative &amp; mechanistic</b>Reproduces published response orderings and the mechanisms behind them, for the longitudinal gust response of a rigid transport at cruise.</dd>
+  </div>
+  <div>
+    <dt>What it is not</dt>
+    <dd><b class="no">Not an absolute-load predictor</b>No statement of the form “the load will be X g”. Ruled structurally out of reach in session 7; nothing since has changed it.</dd>
+  </div>
+  <div>
+    <dt>Did anything regress?</dt>
+    <dd><b class="ok">No — tested, not assumed</b>Every early figure re-measured this session and unchanged to the digit. No tolerance in the five baseline files has ever been loosened.</dd>
+  </div>
+</dl>
+
+<!-- ==================== 1 ==================== -->
+<section class="col">
+  <h2><span class="num">§ 1 — THE ANSWER</span>What actually changed</h2>
+  <p class="lede">The model is being marked against a different kind of thing than it used to be, and the switch has a date: commit <code>c6b5342</code>, 1 September 2026 — “Fly Mehta’s identified field”.</p>
+
+  <p>Before that commit the project had never once compared itself to a measured atmosphere. It compared itself to closed-form mathematics, to the same NASA document its own derivatives were read out of, and to a second flight-dynamics code fed identical coefficients. Those comparisons return small numbers <em>because of what they ask</em>.</p>
+
+  <p>A 0.4% Dutch roll frequency is the answer to <em>“was CR-2144 transcribed and unprimed correctly?”</em> A 32% load shortfall is the answer to <em>“does a rigid 747 reproduce a DC-10’s flight-data-recorder trace?”</em> They were never the same measurement, and only the second one is about aeroplanes.</p>
+</section>
+
+<section>
+<figure>
+  <div class="chartbox">
+  <svg viewBox="0 0 760 330" role="img" aria-label="Measured disagreement by reference class on a logarithmic scale. Tier 0 verification: 2.2e-16 to 4.5e-5. Tier 1 to 2 self-consistency: 0.4 to 3.4 percent. Tier 3 cross-code: 0.02 to 6.6 percent. Tier 4 reality: 20 to 42 percent.">
+    <g stroke="var(--rule)" stroke-width="1">
+      <line x1="200" y1="58" x2="200" y2="278"/>
+      <line x1="290" y1="58" x2="290" y2="278"/>
+      <line x1="380" y1="58" x2="380" y2="278"/>
+      <line x1="470" y1="58" x2="470" y2="278"/>
+      <line x1="560" y1="58" x2="560" y2="278"/>
+      <line x1="650" y1="58" x2="650" y2="278"/>
+      <line x1="740" y1="58" x2="740" y2="278"/>
+    </g>
+    <line x1="200" y1="278" x2="740" y2="278" stroke="var(--rule-strong)" stroke-width="1"/>
+
+    <g font-family="IBM Plex Mono, monospace" font-size="11" fill="var(--ink-3)" text-anchor="middle">
+      <text x="200" y="296">0.0001%</text>
+      <text x="290" y="296">0.001%</text>
+      <text x="380" y="296">0.01%</text>
+      <text x="470" y="296">0.1%</text>
+      <text x="560" y="296">1%</text>
+      <text x="650" y="296">10%</text>
+      <text x="740" y="296">100%</text>
+    </g>
+    <text x="470" y="318" font-family="IBM Plex Sans, sans-serif" font-size="12" fill="var(--ink-3)" text-anchor="middle">measured disagreement · logarithmic</text>
+
+    <text x="16" y="26" font-family="IBM Plex Sans, sans-serif" font-size="14" font-weight="600" fill="var(--ink)">Every comparison the project has made, by what it was marked against</text>
+    <text x="16" y="44" font-family="IBM Plex Sans, sans-serif" font-size="12" fill="var(--ink-3)">Tiers 0–3 check the model against maths, against its own data, or against a code fed that same data. Only tier 4 checks it against the sky.</text>
+
+    <text x="172" y="83" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)" text-anchor="end">0 · Verification</text>
+    <text x="172" y="98" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ink-3)" text-anchor="end">closed-form maths</text>
+    <line x1="186" y1="79" x2="200" y2="79" stroke="var(--accent)" stroke-width="2" stroke-dasharray="3 3"/>
+    <rect x="200" y="72" width="149" height="14" fill="var(--accent)" opacity="0.9"/>
+    <text x="200" y="102" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ink-3)">quaternion norm 2.2e-16, off scale left · RK4 order error 4.5e-5</text>
+
+    <text x="172" y="135" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)" text-anchor="end">1–2 · Self-consistency</text>
+    <text x="172" y="150" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ink-3)" text-anchor="end">its own source document</text>
+    <rect x="524" y="124" width="84" height="14" fill="var(--accent)" opacity="0.9"/>
+    <text x="524" y="154" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ink-3)">0.4% Dutch roll → 3.4% damping</text>
+
+    <text x="172" y="187" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--ink)" text-anchor="end">3 · Cross-code</text>
+    <text x="172" y="202" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ink-3)" text-anchor="end">JSBSim, same data</text>
+    <rect x="407" y="176" width="227" height="14" fill="var(--accent)" opacity="0.9"/>
+    <text x="407" y="206" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ink-3)">0.02% short period → 6.6% phugoid</text>
+
+    <text x="172" y="239" font-family="IBM Plex Sans, sans-serif" font-size="13" font-weight="600" fill="var(--flag)" text-anchor="end">4 · Reality</text>
+    <text x="172" y="254" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--ink-3)" text-anchor="end">recorder trace · LES</text>
+    <rect x="677" y="228" width="29" height="14" fill="var(--flag)"/>
+    <text x="706" y="258" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="var(--flag)" text-anchor="end">20% LES level → 42% load level</text>
+  </svg>
+  </div>
+  <figcaption><strong>The gap between tier 3 and tier 4 is the whole story.</strong> Tiers 0–3 ran 6–25 August; tier 4 began on 1 September. Every disagreement above 10% in the evidence ledger post-dates that day, and every couple-of-per-cent figure predates it and still stands.</figcaption>
+</figure>
+</section>
+
+<!-- ==================== 2 ==================== -->
+<section class="col">
+  <h2><span class="num">§ 2 — EVIDENCE</span>The regression hypothesis, tested</h2>
+  <p class="lede">“Nothing broke” is a claim, so it was checked two ways rather than asserted.</p>
+</section>
+
+<div class="scroll">
+  <table>
+    <caption>Re-measured this session, against the values the record has carried since session 5</caption>
+    <thead><tr><th>Re-run</th><th>Result</th><th>vs the record</th></tr></thead>
+    <tbody>
+      <tr><td class="n">scripts/checkpoint.py</td><td class="n">phugoid ω<sub>n</sub> 0.0553 / ζ 0.0560 · short period ω<sub>n</sub> 0.9508 / ζ 0.3425 · trim residual 1.93e-20</td><td><span class="chip bounded">identical</span></td></tr>
+      <tr><td class="n">scripts/cat_validation.py</td><td class="n">n<sub>z</sub> −0.398 … +1.441 g · gust −86.8 … +59.1 ft/s · σ<sub>n</sub> 0.6394 g</td><td><span class="chip bounded">identical</span></td></tr>
+      <tr><td class="n">scripts/lateral.py</td><td class="n">bank 0.000° point / 12.508° line / 15.376° line + strip</td><td><span class="chip bounded">identical</span></td></tr>
+      <tr><td class="n">pytest -q</td><td class="n">812 passed, 1 skipped, 761.79 s <em>(811 at session 26; +1 is session 27’s B787 entry)</em></td><td><span class="chip bounded">green</span></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<section class="col">
+  <p>The second check is the one that matters, because a suite can be made green by editing it. The five files the project marks off-limits — <code>test_conservation</code>, <code>test_cr2144_modes</code>, <code>test_drag_polar</code>, <code>test_navion</code>, <code>test_trim</code> — carry <strong>three commits between them</strong> in the entire project history. Two are the package rename (imports only: six changed lines in the modes test). The third is the audit repair, whose complete diff on those files is a <em>comment</em> corrected from <code>~5.7e-14</code> to the measured <code>5.6958e-13</code>, and <code>is_physical(x)</code> gaining an argument. <strong>No threshold has ever been loosened.</strong></p>
+</section>
+
+<!-- ==================== 3 ==================== -->
+<section class="col">
+  <h2><span class="num">§ 3 — MECHANISM</span>Four reasons the published numbers drifted the wrong way</h2>
+  <p class="lede">None of them is a defect. Three are the record getting more honest; one is real physics, and it is the oldest assumption in the register.</p>
+
+  <ol class="mech">
+    <li>
+      <h4>The model was flown away from where its data was linearised</h4>
+      <p>This is the largest identified <em>physical</em> cause. <code>aero.py</code> carries Mach into <code>wave_drag</code> and the thrust ram term and <strong>nowhere else</strong> — there is no Prandtl–Glauert factor on <code>C_Lα</code>, <code>C_mα</code> or anything else. The derivatives are frozen at M 0.80 / 40,000 ft, and the project started flying elsewhere.</p>
+      <p>The price is measured at two points and they agree about the shape of the problem.</p>
+    </li>
+    <li>
+      <h4>The record started reporting the rows it had been omitting</h4>
+      <p>Session 16 grew the 747 mode table from two of CR-2144’s four published longitudinal factors to all four, adding rows at <strong>+14.4%</strong> and <strong>−1.4%</strong>. No derivative moved: 42 of 44 scalars were bit-identical across the pass, compared as hex representations against the tree extracted at the preceding commit. The table’s worst case grew because two rows had been missing.</p>
+    </li>
+    <li>
+      <h4>Two errors that had been cancelling were separated</h4>
+      <p>The JSBSim short period read <strong>0.04% → 3.95% → 1.30% → 0.04%</strong> across session 18. Only the last is honest — the first was an α̇-contaminated <code>C_mα</code> of −1.0637 standing in for a coupling the model did not have. Same number, opposite meaning. In the same pass five fidelity improvements made the phugoid <em>worse</em>, 3.33% → 6.58%, before session 19 localised 96% of that to a single entry of the 4×4 — <code>M_u</code>, a Mach-tuck term a constant-coefficient model structurally cannot carry.</p>
+    </li>
+    <li>
+      <h4>A source correction moved the headline load downward</h4>
+      <p>Session 26 obtained Parks et al. 1985 and found the project had been flying a <strong>hybrid vortex</strong>: one paper’s 500 ft core radius with another’s 85 ft/s strength. Parks’ own triple is 600 ft / 85 ft/s / 3500 ft, and <code>dw/dx = V₀/r₀</code>, so a wider core at fixed strength is a gentler gradient. Cost: <strong>−4.26% of the headline peak-to-peak</strong>, taking the comparison from 70.3% to 67.3% of the record. A correction that makes your own result worse is the one kind that cannot have been chosen for convenience.</p>
+    </li>
+  </ol>
+</section>
+
+<div class="scroll">
+  <table>
+    <caption>Mechanism 1, priced — the frozen-derivative cost against distance from the linearisation point</caption>
+    <thead><tr><th>Excursion from M 0.80 / 40 kft</th><th>Frozen derivatives</th><th>Derivatives tabulated at the condition</th></tr></thead>
+    <tbody>
+      <tr><td>none — CR-2144 FC9 itself</td><td class="n">short period ω<sub>n</sub> <strong>1.4%</strong></td><td class="n"><em>—</em></td></tr>
+      <tr><td>altitude only, M 0.8 / 6,096 m <em>(Yoshimura Table A2/A5)</em></td><td class="n">ω<sub>n</sub> <strong>+23.46%</strong></td><td class="n"><strong>−0.60%</strong></td></tr>
+      <tr><td>Mach, ΔM = −0.393 — the LES at M 0.406</td><td class="n">load rms ratio <strong>1.427 / 1.420</strong></td><td class="n">matched B787 entry: <strong>1.202</strong></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<section class="col">
+  <div class="pull">
+    <p><strong>The middle row is the cleanest thing the project owns about its own biggest limitation.</strong> Same code, same solver, same aeroplane, one flight condition apart: <strong>23.46% against 0.60%</strong> — a factor of 39, entirely from freezing the derivatives. No turbulence enters it at all.</p>
+  </div>
+  <p>Prandtl–Glauert puts the M 0.80 lift slope <strong>1.521× too large</strong> at M 0.406, and gust load goes linearly as <code>C_Lα</code>. The measured LES ratio on the two domains that resolve the turbulence is 1.427 and 1.420. Session 27 ran the falsification test and it cut the claim in half rather than confirming it: correcting the slope closes <strong>47–68%</strong> of the excess, not all of it — and correcting compressibility <em>more</em> completely makes agreement <em>worse</em>, because the airframe’s resonance moves down into more energetic turbulence.</p>
+</section>
+
+<!-- ==================== 4 ==================== -->
+<section class="col">
+  <h2><span class="num">§ 4 — DIRECT ANSWER</span>Strip loading: used, helpful, or neither?</h2>
+  <p class="lede">Measured rather than recalled. It is not on any path that produces a published number, it has moved a reported figure once in fourteen sessions, and it is still worth keeping.</p>
+
+  <p><code>integrate.step</code> defaults to <code>load_model=None</code>; the shipped gust treatment is a point sample plus an analytic tangent gradient. The strip path is opt-in at three call sites only — <code>vortex.py --strip</code>, <code>cat_bounds.py</code>, <code>lateral.py</code> — and a test deliberately asserts that the strip and tangent estimators <em>disagree</em> at the vortex core edge, which is what proves the default has not been quietly switched.</p>
+</section>
+
+<div class="scroll">
+  <table>
+    <caption>Mehta’s five-vortex Hannibal field · 747 at 37,000 ft · re-measured this session</caption>
+    <thead><tr><th>Gust / load path</th><th>peak |φ|</th><th>peak |β|</th><th>n<sub>z</sub> max</th><th>up-increment</th></tr></thead>
+    <tbody>
+      <tr><td>point <code>vortex_wind</code> — <em>the published path</em></td><td class="n">0.000°</td><td class="n">0.000°</td><td class="n">1.6019</td><td class="n">0.6019 g</td></tr>
+      <tr><td>line <code>line_vortex_wind</code></td><td class="n">12.508°</td><td class="n">3.106°</td><td class="n">1.6375</td><td class="n">0.6375 g <em>(+5.92%)</em></td></tr>
+      <tr><td>line + <strong>strip loads</strong></td><td class="n"><strong>15.376°</strong> <em>(+22.9%)</em></td><td class="n">3.533°</td><td class="n">1.6344</td><td class="n">0.6344 g <em>(+5.40%)</em></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<section class="col">
+  <p>So the strip increment’s isolated contribution is <strong>+22.9% of peak bank</strong> and <strong>−0.5% of the longitudinal load increment</strong>. Everything the project claims is longitudinal. Three things must be said together about that 22.9%, and only the first is favourable:</p>
+
+  <h3>Its kernel is genuinely well verified</h3>
+  <p><code>wind.strip_roll_moment</code> agrees with the tabulated <code>Clp</code> for a rigid roll rate to 1e-3, with Stengel eq. 3.4-40’s closed form for a rectangular wing to 1e-6, with the elliptic identity ∫y²c dy = c₀b³π/64 to 1e-5, and with the equivalent-rate treatment for a linear gradient to 1e-6. It is <strong>roll only</strong>, deliberately — there is no validated pitch or yaw integral, and those channels are held at exact zero rather than filled with something plausible.</p>
+
+  <h3>The quadrature computing it is 17% off its own calibration</h3>
+  <p>At the shipped nine stations the strip integral returns <strong>82.6%</strong> of the <code>Clp</code> it is calibrated against, converging at order 1.50 — about 56 stations would be needed for 1%. The loading shape underneath is a <em>declared</em> modelling choice carrying a 2.6% spread across defensible shapes.</p>
+
+  <h3>The channel it moves is validated against nothing</h3>
+  <p>No source held by the project records a lateral CAT response; Wingrove &amp; Bach 1994 says so in as many words. Every bank angle above is a capability demonstration.</p>
+
+  <div class="pull">
+    <p><strong>Verdict: keep it, and quote it for the negative result rather than the positive one.</strong> Point-versus-strip on the headline field is <code>0.000000 m</code> — which is precisely what lets the record exclude “gust resolution across the span” from the 32% load shortfall. Without the strip path that exclusion would be an argument; with it, it is a number. What it must never be used for is a lateral load claim.</p>
+  </div>
+</section>
+
+<!-- ==================== 5 ==================== -->
+<section class="col">
+  <h2><span class="num">§ 5 — INVENTORY</span>Unresolved pathways in the physics</h2>
+  <p class="lede">Everything the engine assumes that is not yet closed, with the size of it where a size exists. <span class="chip bounded">bounded</span> the cost is measured · <span class="chip unbounded">unbounded</span> known, size unknown · <span class="chip blocked">blocked</span> needs a source not held · <span class="chip cap">capability</span> built, unvalidated.</p>
+</section>
+
+<div class="scroll">
+  <table>
+    <caption>Aerodynamics and airframe</caption>
+    <thead><tr><th>Pathway</th><th>Status</th><th>What is known about its size</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Derivatives frozen across the envelope</strong> <em>(C3)</em><br>No Prandtl–Glauert, no compressibility correction on any coefficient</td>
+        <td><span class="chip unbounded">unbounded</span></td>
+        <td>The single highest-value open item. Two points priced: <strong>+23.46%</strong> vs <strong>−0.60%</strong> on the short period one condition apart; <strong>1.521×</strong> PG error on <code>C_Lα</code> at the LES condition, worth 47–68% of that discrepancy. <em>A Mach sweep would turn two points into a curve and needs no acquisition.</em></td>
+      </tr>
+      <tr>
+        <td><strong>No stall, no buffet nonlinearity</strong><br><code>CL = CL0 + CLα·α</code> is exactly odd-symmetric in Δα</td>
+        <td><span class="chip blocked">blocked</span></td>
+        <td>Makes the recorded ±g asymmetry unreachable by construction. CR-114494 draws <code>CL_BASIC</code> as straight lines annotated “extrapolate linearly to higher α if required”. The buffet <em>boundary</em> is held and gives a ceiling; the falling lift curve is published nowhere reachable.</td>
+      </tr>
+      <tr>
+        <td><strong>Rigid solver, flexible derivative set</strong> <em>(B1)</em><br>CR-2144 §IX’s plots are labelled “Flexible”</td>
+        <td><span class="chip blocked">blocked</span></td>
+        <td>A genuine model/data mismatch. Bounded only as a ceiling: at constant Mach across a 2.48× change in dynamic pressure, <code>C_mα</code> moves −60.9% and <code>C_Zα</code> −16.6%, every one less stiff at higher q̄ — the direction aeroelastic relief predicts. CG is not excluded from that, so it is not a measurement of flexibility.</td>
+      </tr>
+      <tr>
+        <td><strong>Missing speed and α̇ derivatives</strong><br>The Mach content of <code>Xu/Zu</code>, and <code>Zẇ/Mẇ</code> entirely</td>
+        <td><span class="chip bounded">bounded</span></td>
+        <td>Condition-dependent, which is the tell: phugoid ω<sub>n</sub> is <strong>17.8%</strong> off at M 0.80 / 40 kft and <strong>0.4%</strong> at M 0.25 / sea level, same code. Restoring both families in an analysis-only linear model closes all four modes to ≤1%.</td>
+      </tr>
+      <tr>
+        <td><strong>Quasi-steady aerodynamics</strong> <em>(C2)</em> · no actuator lag <em>(C6)</em> · no engine spool <em>(C5)</em></td>
+        <td><span class="chip unbounded">unbounded</span></td>
+        <td>Thrust moment newly bounded at 0.38° of equivalent elevator, 1.5% of pitch authority. Spool is required before any powered-recovery result and does not exist.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="scroll">
+  <table>
+    <caption>Wind and turbulence</caption>
+    <thead><tr><th>Pathway</th><th>Status</th><th>What is known about its size</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>The model has no channel for strain</strong><br><code>gust_rates</code> reads the three skew components of the velocity-gradient tensor</td>
+        <td><span class="chip unbounded">unbounded</span></td>
+        <td>Inside a Rankine core the tensor is skew and three numbers capture the field exactly — the q-pair diagnostic reads <strong>+1.0000</strong>. <em>Outside</em> it reads <strong>−1.0000</strong>: the tensor is symmetric, pure strain, zero vorticity, and the model has no way to represent it. A strip <em>pitch</em> integral would not address this — it fixes curvature in w(x) and never reads ∂u/∂z.</td>
+      </tr>
+      <tr>
+        <td><strong>The model’s wind is weaker than the recorded wind</strong> <em>(new, session 27)</em></td>
+        <td><span class="chip bounded">bounded</span></td>
+        <td>The digitised DFDR trace reaches <strong>+64.8 / −98.3 ft/s</strong>; the fitted five-vortex field gives the model <strong>+59.1 / −86.8</strong> — <strong>11.7% weaker on the down gust</strong>. Load goes with gust in the linear range, so this is a previously-unattributed piece of the 32% shortfall, and it points back at the wind.</td>
+      </tr>
+      <tr>
+        <td><strong>Point-sampled gust, first-order gradient</strong> <em>(E2)</em><br>The Parks core is only 2.3–3.1 wingspans</td>
+        <td><span class="chip bounded">bounded</span></td>
+        <td>Fitting rates across the airframe instead of taking the tangent moves the load <strong>−1.67% up, +4.40% down</strong>. Strip-integrated loads move it by <strong>exactly zero</strong>. So the model’s own gust approximations bound at ~4.4% of a 32% shortfall.</td>
+      </tr>
+      <tr>
+        <td><strong>Wind held across all four RK4 stages</strong> <em>(E4)</em></td>
+        <td><span class="chip bounded">bounded</span></td>
+        <td>The scheme is <strong>first order</strong> in a spatially varying field — measured order 1.05 against 3.99 in still air. Costs <strong>0.82%</strong> of the in-core Δθ at the published step, which is why 2.240° is good to three figures and not four.</td>
+      </tr>
+      <tr>
+        <td><strong>The lee wave carries no horizontal perturbation</strong></td>
+        <td><span class="chip blocked">blocked</span></td>
+        <td>Half the F-factor is missing, so every lee-wave F is quoted as a lower bound. Worse: reproducing Lester’s recorded 300 m altitude gain needs w₀ ≈ 4 m/s and his recorded ±g needs w₀ ≈ 113 m/s — amplitudes <strong>28× apart</strong>, so a single smooth wave cannot produce both. What is missing is wave <em>breakdown</em>, not the quadrature term.</td>
+      </tr>
+      <tr>
+        <td><strong>Four papers disagree on the Hannibal core</strong> <em>(E12)</em></td>
+        <td><span class="chip cap">carried</span></td>
+        <td>Parks’ 600 ft / 85 ft/s / 3500 ft against TM-102186’s 1000 ft diameter / 87 / 3400. Both coherent, both whole; the project flies each set intact and never crosses them. Worth 4.26% of the headline load.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="scroll">
+  <table>
+    <caption>Lateral axis, and what closes the load question</caption>
+    <thead><tr><th>Pathway</th><th>Status</th><th>What is known about its size</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Every lateral number is a capability demonstration</strong> <em>(E10)</em></td>
+        <td><span class="chip cap">capability</span></td>
+        <td>The rolling gust, the sideslip channel and the strip path all exist since session 24. <strong>No source held records a lateral CAT response.</strong> The Dutch roll agrees to 0.4% <em>as an eigenvalue</em> — a statement about the linearisation, not about what the aircraft does when a gust rolls it.</td>
+      </tr>
+      <tr>
+        <td><strong>Strip quadrature at nine stations</strong> <em>(F5)</em></td>
+        <td><span class="chip bounded">bounded</span></td>
+        <td>Returns <strong>82.6%</strong> of its own calibration, order 1.50, ~56 stations for 1%. Costs nothing quoted, because the published fields have no spanwise variation.</td>
+      </tr>
+      <tr>
+        <td><strong>Absolute load agreement with the recorded encounters</strong></td>
+        <td><span class="chip blocked">blocked</span></td>
+        <td>The record is a DC-10; the model flies a 747. Every other candidate has been excluded by measurement — numerics 0.14%, the point gust ≤4.4%, the strip path 0.00%, the parameter band ≤72.7% at its most favourable corner, and gust amplitude at <em>any</em> strength inside the linear range. The DC-10 wing-loading ratio is <strong>0.58–1.32×</strong> and straddles 1.0, because the variant and the encounter weight are recorded in nothing held. <em>What would settle it is the flight record, not another specification sheet.</em></td>
+      </tr>
+      <tr>
+        <td><strong>The frequency-domain comparison is half open</strong></td>
+        <td><span class="chip blocked">blocked</span></td>
+        <td>Spectra and exceedance curves exist and are internally consistent — the response carries 3× more energy at the short period than at 0.05 Hz where the <em>input</em> carries more. There is no published transport-cruise exceedance curve held to overlay, and Yoshimura’s own recorded traces are withheld under confidentiality.</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ==================== 6 ==================== -->
+<section class="col">
+  <h2><span class="num">§ 6 — FOR THE TALK</span>What to claim, and what not to</h2>
+
+  <p><strong>Lead with the tier ladder, not with a percentage.</strong> An audience that hears “0.4%” and then “32%” in the same talk will conclude something broke. An audience that is shown the four reference classes first will hear the 32% as the project’s first honest engagement with measured atmosphere — which is what it is.</p>
+
+  <p><strong>Quote 68% for the headline, and say which run it is.</strong> Seven different percentages exist for that one comparison — 68.1% headline, 67.1% translational-only for JSBSim parity, 74.1% full configuration, 74.6% JSBSim, 72.7%, 70.1%, 76.0% — and they differ because the <em>runs</em> differ, not because the answer moved. Quoting two of them from different slides manufactures a regression that does not exist.</p>
+
+  <p><strong>The strongest single result is not the percentage.</strong> Neither engine reaches the record: JSBSim gets 74.6% and AtiSim 67.1% on the same field, the same aeroplane and the same starting state. That excludes the solver as the explanation by measurement rather than by inference. Alongside it, the two codes agree on the LES <em>resolution scaling</em> to <strong>0.5%</strong> while their absolute levels differ by 42% — comparative-not-absolute, demonstrated against an independent code on a field that was not identified from the accelerations it is asked to predict.</p>
+
+  <div class="pull warn">
+    <p><strong>Three claims a listener could reasonably infer and should not.</strong></p>
+    <p><strong>Structural fidelity.</strong> The derivatives are a flexible airframe’s; the solver integrates a rigid body. Never assert it.<br>
+    <strong>Behaviour away from trim.</strong> Derivatives are frozen and the Mach axis is unbounded. Quote the excursion with every result.<br>
+    <strong>Lateral behaviour from the lateral modes.</strong> A 0.4% Dutch roll is an eigenvalue, not a gust response.</p>
+  </div>
+
+  <p><strong>If one line has to carry it:</strong> the engine is validated as a comparative and mechanistic tool for the longitudinal gust response of a rigid transport at cruise — it answers <em>which encounter is worse, how the load scales with airspeed, and why</em> — and the 20–40% figures are the honest cost of having started to ask a harder question six days ago.</p>
+</section>
+
+<footer class="foot col">
+  <p><b>Provenance.</b> Every figure on this page is either re-measured in the audit session or carried from <code>docs/PROJECT.md</code> §4 with its source. Suite: <code>.venv/Scripts/python.exe -m pytest -q</code> from the worktree root — 812 passed, 1 skipped, 761.79 s. The worktree and main checkout were hashed and are byte-identical over every <code>.py</code> under <code>atisim/</code> (sha256 prefix <code>e9d7e7826e2fc183</code>), which is what admits the one re-run that resolved its import to the main tree.</p>
+  <p><b>Sources named above.</b> NASA CR-2144 (747 derivatives, FC9) · NASA TM-102186 (Hannibal DFDR, Fig. 6 and Fig. 8) · Mehta 1987 (five-vortex refit) · Parks et al. 1985, J. Aircraft 22(2) · Wingrove &amp; Bach 1994 · Doyle et al. 2011 · Lester, Sen &amp; Bach 1989 · Misaka et al. 2008 · Yoshimura et al. 2022/2023 · MIL-F-8785C Fig. 7 · NASA CR-114494 · JSBSim 1.3.1 build 1837.</p>
+  <p><b>No code, coefficient, tolerance or datum was changed in producing this audit.</b></p>
+</footer>
+
+</div>
+
+</body>
+</html>
