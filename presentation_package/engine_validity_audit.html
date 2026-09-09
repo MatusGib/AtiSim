@@ -176,6 +176,7 @@ td em{font-style:normal;color:var(--ink-3)}
 .chip.unbounded{background:var(--caution-soft);color:var(--caution)}
 .chip.blocked{background:var(--flag-soft);color:var(--flag)}
 .chip.cap{background:var(--sunk);color:var(--ink-2)}
+.chip.armed{background:var(--accent);color:var(--paper)}
 
 /* ---------- pull ---------- */
 .pull{
@@ -241,7 +242,7 @@ ol.mech p + p{margin-top:8px}
   <div class="stamp">
     <span>AtiSim · 6-DOF flight dynamics in JAX</span>
     <span>Audit · session 28</span>
-    <span>Suite 812 passed / 1 skipped / 12m41s</span>
+    <span>Suite 821 passed / 1 skipped / 34m37s</span>
   </div>
   <h1>The errors did not grow.<br>The questions did.</h1>
   <p class="dek">A pre-presentation audit of the turbulence engine: what it is validated for, why its published disagreements went from <b>a couple of per cent</b> to <b>20–40%</b> in six days, and what is still unresolved in the physics.</p>
@@ -338,7 +339,7 @@ ol.mech p + p{margin-top:8px}
     <caption>Re-measured this session, against the values the record has carried since session 5</caption>
     <thead><tr><th>Re-run</th><th>Result</th><th>vs the record</th></tr></thead>
     <tbody>
-      <tr><td class="n">scripts/checkpoint.py</td><td class="n">phugoid ω<sub>n</sub> 0.0553 / ζ 0.0560 · short period ω<sub>n</sub> 0.9508 / ζ 0.3425 · trim residual 1.93e-20</td><td><span class="chip bounded">identical</span></td></tr>
+      <tr><td class="n">scripts/checkpoint.py</td><td class="n">phugoid ω<sub>n</sub> 0.055319 / ζ 0.055956 · short period ω<sub>n</sub> 0.950773 / ζ 0.342526 · trim residual 1.93e-20</td><td><span class="chip bounded">identical</span></td></tr>
       <tr><td class="n">scripts/cat_validation.py</td><td class="n">n<sub>z</sub> −0.398 … +1.441 g · gust −86.8 … +59.1 ft/s · σ<sub>n</sub> 0.6394 g</td><td><span class="chip bounded">identical</span></td></tr>
       <tr><td class="n">scripts/lateral.py</td><td class="n">bank 0.000° point / 12.508° line / 15.376° line + strip</td><td><span class="chip bounded">identical</span></td></tr>
       <tr><td class="n">pytest -q</td><td class="n">812 passed, 1 skipped, 761.79 s <em>(811 at session 26; +1 is session 27’s B787 entry)</em></td><td><span class="chip bounded">green</span></td></tr>
@@ -347,6 +348,9 @@ ol.mech p + p{margin-top:8px}
 </div>
 
 <section class="col">
+  <div class="pull">
+    <p><strong>Read that table as the audit, not as the current tree.</strong> Those four numbers are what the regression test found — unchanged since session 5, which is the point. <strong>Later the same session they moved deliberately</strong>, when a stranded branch carrying <code>g(z)</code> and the geopotential-altitude fix was merged: phugoid ω<sub>n</sub> <strong>0.055099</strong>, ζ <strong>0.055336</strong>, short period ω<sub>n</sub> <strong>0.952723</strong>, ζ <strong>0.343058</strong>, and the suite <strong>821 passed, 1 skipped</strong>. A regression is a number moving with nobody deciding it should. This was decided, measured and recorded — see §5.</p>
+  </div>
   <p>The second check is the one that matters, because a suite can be made green by editing it. The five files the project marks off-limits — <code>test_conservation</code>, <code>test_cr2144_modes</code>, <code>test_drag_polar</code>, <code>test_navion</code>, <code>test_trim</code> — carry <strong>three commits between them</strong> in the entire project history. Two are the package rename (imports only: six changed lines in the modes test). The third is the audit repair, whose complete diff on those files is a <em>comment</em> corrected from <code>~5.7e-14</code> to the measured <code>5.6958e-13</code>, and <code>is_physical(x)</code> gaining an argument. <strong>No threshold has ever been loosened.</strong></p>
 </section>
 
@@ -359,7 +363,7 @@ ol.mech p + p{margin-top:8px}
     <li>
       <h4>The model was flown away from where its data was linearised</h4>
       <p>This is the largest identified <em>physical</em> cause. <code>aero.py</code> carries Mach into <code>wave_drag</code> and the thrust ram term and <strong>nowhere else</strong> — there is no Prandtl–Glauert factor on <code>C_Lα</code>, <code>C_mα</code> or anything else. The derivatives are frozen at M 0.80 / 40,000 ft, and the project started flying elsewhere.</p>
-      <p>The price is measured at two points and they agree about the shape of the problem.</p>
+      <p>The price is measured at two points and they agree about the shape of the problem. <strong>Both halves of the fix turned out to be already in hand</strong> — see the callout below the table.</p>
     </li>
     <li>
       <h4>The record started reporting the rows it had been omitting</h4>
@@ -392,6 +396,17 @@ ol.mech p + p{margin-top:8px}
   <div class="pull">
     <p><strong>The middle row is the cleanest thing the project owns about its own biggest limitation.</strong> Same code, same solver, same aeroplane, one flight condition apart: <strong>23.46% against 0.60%</strong> — a factor of 39, entirely from freezing the derivatives. No turbulence enters it at all.</p>
   </div>
+  <h3>Both halves of the fix were already in the building</h3>
+
+  <p><strong>The sourced curve.</strong> <code>ASSUMPTIONS.md</code> C3 has called the Mach axis <em>unbounded</em> since session 12, and the plan declined the bound repeatedly because it “needed chart reads off a poor scan”. Reading <code>refs/NASA-CR-2144.pdf</code>’s own text layer this session: printed pages <strong>220–222</strong> carry <code>CL_α(M)</code>, <code>CD_α(M)</code>, <code>Cm_α(M)</code>, <code>Cm_α̇(M)</code>, <code>Cm_q(M)</code> and <code>CL_M / CD_M / Cm_M</code> — all captioned <em>B-747 / 636600 lb / .25 c̄ / Flexible</em>, all against a <strong>Mach axis running 0 to 1.0</strong>, with SL / 20,000 ft / 40,000 ft curves each. The LES condition is M 0.406; the axis starts at M 0. The 40,000 ft curve is the one the model was linearised on, so <strong>one sheet gives both the value in use and the value at the excursion</strong>. Page 222 is, by name, the “Mach content of the speed derivatives” the record says is missing from the phugoid.</p>
+
+  <p><strong>The implementation.</strong> A branch one commit ahead of <code>main</code> and never merged — dated <strong>26 August</strong> — already carried a Prandtl–Glauert factor across the whole longitudinal lift-slope family, <code>g(z)</code>, the geopotential-altitude conversion and Mach-scheduled control derivatives. Three later sessions wrote as though it did not exist, and one of them spent its headline effort pricing the Mach axis with a hand-rolled PG factor that was already in the repository. <strong>It is now rebased and merged</strong>, at 821 passed / 1 skipped, after three pins were re-captured against the new gravity and atmosphere.</p>
+
+  <div class="pull warn">
+    <p><strong>Do not over-claim this on the day.</strong> The merge is a <em>gravity-and-atmosphere</em> change, not yet a compressibility one. <code>pg_mach_ref</code> defaults negative and no registry entry declares one, so <strong>Prandtl–Glauert is present and inert and the LES ratio has not moved.</strong> What changed is that the Mach axis went from <em>source-gated</em> to <em>one field-assignment away</em>, with the curve to assign from sitting on a page the project has held since session 1.</p>
+    <p>What the merge <em>did</em> move: three of the four 747 modes improved against CR-2144 Table IX-5 with nothing aimed at it. The fourth, phugoid ω<sub>n</sub>, moved <strong>−0.398%</strong> against gravity’s <strong>−0.3817%</strong> — Lanchester’s 1:1 — which is the right answer moving <em>away</em> from a reference the model has no form for.</p>
+  </div>
+
   <p>Prandtl–Glauert puts the M 0.80 lift slope <strong>1.521× too large</strong> at M 0.406, and gust load goes linearly as <code>C_Lα</code>. The measured LES ratio on the two domains that resolve the turbulence is 1.427 and 1.420. Session 27 ran the falsification test and it cut the claim in half rather than confirming it: correcting the slope closes <strong>47–68%</strong> of the excess, not all of it — and correcting compressibility <em>more</em> completely makes agreement <em>worse</em>, because the airframe’s resonance moves down into more energetic turbulence.</p>
 </section>
 
@@ -435,7 +450,7 @@ ol.mech p + p{margin-top:8px}
 <!-- ==================== 5 ==================== -->
 <section class="col">
   <h2><span class="num">§ 5 — INVENTORY</span>Unresolved pathways in the physics</h2>
-  <p class="lede">Everything the engine assumes that is not yet closed, with the size of it where a size exists. <span class="chip bounded">bounded</span> the cost is measured · <span class="chip unbounded">unbounded</span> known, size unknown · <span class="chip blocked">blocked</span> needs a source not held · <span class="chip cap">capability</span> built, unvalidated.</p>
+  <p class="lede">Everything the engine assumes that is not yet closed, with the size of it where a size exists. <span class="chip bounded">bounded</span> the cost is measured · <span class="chip unbounded">unbounded</span> known, size unknown · <span class="chip blocked">blocked</span> needs a source not held · <span class="chip cap">capability</span> built, unvalidated · <span class="chip armed">built, not switched on</span> merged and live, but no aircraft opts in yet.</p>
 </section>
 
 <div class="scroll">
@@ -445,8 +460,8 @@ ol.mech p + p{margin-top:8px}
     <tbody>
       <tr>
         <td><strong>Derivatives frozen across the envelope</strong> <em>(C3)</em><br>No Prandtl–Glauert, no compressibility correction on any coefficient</td>
-        <td><span class="chip unbounded">unbounded</span></td>
-        <td>The single highest-value open item. Two points priced: <strong>+23.46%</strong> vs <strong>−0.60%</strong> on the short period one condition apart; <strong>1.521×</strong> PG error on <code>C_Lα</code> at the LES condition, worth 47–68% of that discrepancy. <em>A Mach sweep would turn two points into a curve and needs no acquisition.</em></td>
+        <td><span class="chip armed">built, not switched on</span></td>
+        <td>Two points priced: <strong>+23.46%</strong> vs <strong>−0.60%</strong> on the short period one condition apart; <strong>1.521×</strong> PG error on <code>C_Lα</code> at the LES condition, worth 47–68% of that discrepancy. <strong>No longer the open item it was.</strong> A Prandtl–Glauert factor across the lift-slope family is now merged and live in <code>aero.py</code> — but <code>pg_mach_ref</code> defaults negative and <strong>no registry entry declares one</strong>, so it changes nothing until an aircraft opts in. And the sourced curve to opt in <em>with</em> is held: <strong>CR-2144 printed p. 220</strong>.</td>
       </tr>
       <tr>
         <td><strong>No stall, no buffet nonlinearity</strong><br><code>CL = CL0 + CLα·α</code> is exactly odd-symmetric in Δα</td>
@@ -557,11 +572,13 @@ ol.mech p + p{margin-top:8px}
     <strong>Lateral behaviour from the lateral modes.</strong> A 0.4% Dutch roll is an eigenvalue, not a gust response.</p>
   </div>
 
+  <p><strong>If they ask “so what would you do next?”</strong> — one digitisation of CR-2144 printed p. 220, and assign the result to <code>pg_mach_ref</code>. It needs no acquisition, no correspondence and no new method: the reading pipeline has already been run on the neighbouring sheet twice, reproducing itself to RMS 0.0052. That closes the model’s largest named assumption with a <em>sourced</em> curve rather than a textbook factor.</p>
+
   <p><strong>If one line has to carry it:</strong> the engine is validated as a comparative and mechanistic tool for the longitudinal gust response of a rigid transport at cruise — it answers <em>which encounter is worse, how the load scales with airspeed, and why</em> — and the 20–40% figures are the honest cost of having started to ask a harder question six days ago.</p>
 </section>
 
 <footer class="foot col">
-  <p><b>Provenance.</b> Every figure on this page is either re-measured in the audit session or carried from <code>docs/PROJECT.md</code> §4 with its source. Suite: <code>.venv/Scripts/python.exe -m pytest -q</code> from the worktree root — 812 passed, 1 skipped, 761.79 s. The worktree and main checkout were hashed and are byte-identical over every <code>.py</code> under <code>atisim/</code> (sha256 prefix <code>e9d7e7826e2fc183</code>), which is what admits the one re-run that resolved its import to the main tree.</p>
+  <p><b>Provenance.</b> Every figure on this page is either re-measured in the audit session or carried from <code>docs/PROJECT.md</code> §4 with its source. Suite: <code>.venv/Scripts/python.exe -m pytest -q</code> from the worktree root — <strong>821 passed, 1 skipped, 34m37s</strong> on the merged tree; 812 passed, 761.79 s on the tree the audit measured. The worktree and main checkout were hashed and are byte-identical over every <code>.py</code> under <code>atisim/</code> (sha256 prefix <code>e9d7e7826e2fc183</code>), which is what admits the one re-run that resolved its import to the main tree.</p>
   <p><b>Sources named above.</b> NASA CR-2144 (747 derivatives, FC9) · NASA TM-102186 (Hannibal DFDR, Fig. 6 and Fig. 8) · Mehta 1987 (five-vortex refit) · Parks et al. 1985, J. Aircraft 22(2) · Wingrove &amp; Bach 1994 · Doyle et al. 2011 · Lester, Sen &amp; Bach 1989 · Misaka et al. 2008 · Yoshimura et al. 2022/2023 · MIL-F-8785C Fig. 7 · NASA CR-114494 · JSBSim 1.3.1 build 1837.</p>
   <p><b>No code, coefficient, tolerance or datum was changed in producing this audit.</b></p>
 </footer>
