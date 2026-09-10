@@ -4,7 +4,7 @@ A 6-DOF fixed-wing flight-dynamics core in JAX, built as a foundation for turbul
 modelling. This document is the standing record: what exists, what is validated, what is
 known-broken, and what happens next.
 
-**Last updated:** session 29 (a design session, **no code changed and no number measured**: the sensitivity study scoped and designed — three quantities of interest, two factor tiers, AD screen → OAT confirm → banded propagation — and three AD dead ends found in the tree while writing it: the Newton trim, `np.linalg.eigvals` in the mode chain, and `vortex_viz._measure`'s NumPy return. §0 carries the branch, §7 the phases, §9 the entry).
+**Last updated:** session 29 (the sensitivity study designed, then **phases S0 and S1 built and run**: `atisim/sensitivity.py` with 24 tests, the S1 machinery gate PASSED at **5.2e-10** against 1e-6, session 11's four slopes reproduced to five decimals, and the tangent-vs-fit gap shown to be curvature. **`aero.py` repaired**: the Prandtl–Glauert sentinel made the model non-differentiable in its own coefficients for the whole registry — no quoted result was ever wrong, and the fix is proved value-identical. §6(f) has it, with a second open instance in `airframe.py`. C3 is still UNBOUNDED and §1's headline is still a bare 68%)
 
 Session 28 (an audit, no code changed: the "the agreement got worse" hypothesis tested and **falsified** — every early number re-measured and unchanged, no tolerance ever loosened, and the growth traced to a change of *reference class* dated to commit `c6b5342`, 1 Sep 2026, with ASSUMPTIONS C3's frozen derivatives the largest identified physical cause; the strip-load path judged: off the published path, +22.9% on one unvalidated channel, and worth keeping for its negative result).
 
@@ -136,17 +136,21 @@ stop them being lost. **None was reviewed and none is endorsed** — the commit 
 |---|---|
 | **Branch** | **`claude/model-sensitivity-analysis-t18v3v`** |
 | **Worktree** | none — a remote container on the main checkout, no `.venv` (`jax` installed fresh on Linux; §10's Windows table does not apply) |
-| **State** | **1 commit ahead of `main`, 0 behind.** A design document only. **No code, no measurement**, so nothing in the tree moved that a suite run could detect |
+| **State** | **2 commits ahead of `main`, 0 behind. Phases S0 and S1 are DONE and the code is committed**; S2–S6 are not started. Suite on this container: **2 failed, 776 passed, 3 skipped in 811 s BEFORE this work and 2 failed, 801 passed, 3 skipped in 858 s AFTER it** — same two failures, which are the platform bit-pins §4 describes and predate this work; the +25 are this session's |
 | **What it is** | `docs/superpowers/specs/2026-09-10-model-sensitivity-analysis-design.md` — a sensitivity study over three quantities of interest (headline CAT load, cruise modes, Dryden ensemble statistics) and two factor tiers (aerodynamic derivatives, `ASSUMPTIONS.md` modelling choices), by a tiered method: AD screen → OAT confirm → banded propagation |
 | **What it closes** | **`ASSUMPTIONS.md` C3's UNBOUNDED row** would get its first bound at cruise (S4); §1's bare "68%" would gain a band or an explicit statement that the shortfall survives every sourced band (S6); and phase 3's remaining DC-10 acquisition would finally have a **price** |
-| **Blocking** | **Nothing. The design is written and no phase has been run.** Phase S0 is a module and a test; S1 is a falsification against session 11's four published slopes and gates everything after it |
+| **Blocking** | **Nothing. S1 passed its gate at 5.2e-10 against a 1e-6 requirement, so S2 is unblocked.** The next phase needs a differentiable load QoI, and §6(f) records the second `sqrt(0)` instance in `airframe.py` that the tier-B loading-shape row will hit |
 
-**The three obstacles the design exists to solve, recorded here because they are properties of
-the tree and not of the plan:** `trim` is a Newton solve (needs the implicit function theorem,
-not differentiation through the loop); `validation.modes_from_matrix` calls
-**`np.linalg.eigvals`**, so the mode chain breaks at NumPy and needs first-order eigenvalue
-perturbation; and **`vortex_viz._measure` returns NumPy**, so the entire `Encounter` path is an
-AD dead end and the load QoI needs a parallel jnp path with an equality test guarding it.
+**The three obstacles the design named are now two solved and one still ahead.** `trim`'s Newton
+solve is handled by the implicit function theorem (`implicit_trim_jacobian`, checked against a
+difference on the real solver and against an exact-zero negative control); the
+`np.linalg.eigvals` break is closed by first-order eigenvalue perturbation. **`vortex_viz._measure`
+returning NumPy is still an AD dead end** and is S2's first task.
+
+**A fourth obstacle was not in the design and was found by running it:** `aero.py`'s
+Prandtl–Glauert sentinel made the model non-differentiable in its own coefficients for every
+aircraft in the registry. Fixed, proved value-identical, recorded in **§6(f)** — with a second,
+open instance in `airframe.py` named there.
 
 ### Superseded, kept only until someone confirms
 
@@ -276,6 +280,7 @@ changed that.
 | **`apps/`** | `sweep.py` — the Dash analysis UI | **the only package that imports Dash, and it computes nothing.** It never runs the simulator either: `n_steps` is a `static_argname`, so every distinct dt pays a fresh 0.6–0.9 s compile and a panel whose contents depend on machine warmth is not a check |
 | `vortex_viz.py` | encounter analysis and the Fig. 8 figure | air-relative throughout; deliberately separate from `viz.py`. `fly` for a wind field with fixed controls, `manoeuvre` for an elevator schedule at zero wind; both go through `_measure`, so the three Fig. 8 points cannot drift apart |
 | **`response.py`** | **tier 3 — RUN statistics**: `spectrum`, `peak_frequency`, `exceedance` | added session 25 (phase 2). A run as a SPECTRUM and as a RATE, rather than as a peak. Numpy, takes a sampled history, same standing as `checks.py` — nothing here is jitted or differentiated. Note the name collision worth keeping straight: `wind.dryden_spectrum` is an INPUT spectrum, this is the RESPONSE. Every unit check in `test_response.py` is against a signal whose answer is closed-form |
+| **`sensitivity.py`** | **the derivative of a RESULT with respect to a COEFFICIENT**: `implicit_trim_jacobian`, `longitudinal_matrix_jnp`/`lateral_matrix_jnp`, `plant_matrix_sensitivity`, `eigenvalue_sensitivity`, `eigenvalue_separation`, `mode_sensitivity`, `elasticity` | added session 29 (phases S0/S1). Everything else here measures the model against a SOURCE; this measures it against ITSELF. Reports **elasticity** `(∂Q/∂p)(p/Q)`, never a raw gradient, because a per-radian derivative and a mass are not otherwise rankable. Carries `INDEPENDENT_FIELDS` and `COUPLED_FIELDS`: **`Aircraft` is NOT a set of independent parameters** — `inertia_inv` is the inverse of `inertia` and `AR` is b²/S — so a naive `jacfwd` over the whole tuple is wrong, and those five fields are refused rather than screened. `mode_sensitivity` returns roots UNSORTED, because sorting is what makes a swept mode discontinuous where two cross |
 
 ### The two interfaces turbulence depends on
 
@@ -444,6 +449,119 @@ spacing from a free parameter into a cited one.
 ## 4. Evidence ledger
 
 Every figure below is measured, with the tolerance the test asserts.
+
+### The model, differentiated in its own coefficients — session 29 (phases S0, S1)
+
+**The first sensitivity machinery this project has had, and the first time any quantity here
+has been differentiated with respect to a COEFFICIENT rather than with respect to a state.**
+`atisim/sensitivity.py`, `scripts/sensitivity_screen.py`, 24 tests in `test_sensitivity.py`.
+Design: `docs/superpowers/specs/2026-09-10-model-sensitivity-analysis-design.md`.
+
+**Measured on Linux with JAX 0.10.2 / NumPy 2.4.6, not on §10's Windows `.venv`.** The
+mode path reproduces exactly there (row B below); two bit-exact rollout pins do not, and
+that is measured rather than assumed — see "What does not reproduce on another platform".
+
+#### A. The machinery, against a central difference at the same point — THE GATE
+
+| relation | AD tangent | central difference | relative |
+|---|---|---|---|
+| `CD0` → ζ_phugoid | 0.76556 | 0.76556 | **5.21e-10** |
+| `Cmα` → ω_n,sp² | −0.41049 | −0.41049 | **2.02e-10** |
+| \|`Clp`\| → 1/τ_roll | 1.98196 | 1.98196 | **1.03e-10** |
+| `Cnβ` → ω_n,dr² | 2.07539 | 2.07539 | **6.51e-11** |
+
+**Gate was 1e-6; worst is 5.21e-10, four orders inside it.** The difference is taken through
+`validation`'s own shipped functions, not through the jnp twins the AD path uses — a
+difference on the same code would check the arithmetic and not the model.
+
+#### B. Session 11's four slopes, re-run on this platform
+
+| relation | slope here | published | intercept here | published | worst residual |
+|---|---|---|---|---|---|
+| `CD0` → ζ_phugoid | **0.76994** | 0.76994 | −0.01621 | −0.0162 | 0.31% / 0.31% |
+| `Cmα` → ω_n,sp² | **−0.42251** | −0.42251 | +0.27366 | +0.27366 | 1.68% / 1.68% |
+| \|`Clp`\| → 1/τ_roll | **2.06872** | 2.06872 | +0.30240 | +0.30240 | 1.73% / 1.73% |
+| `Cnβ` → ω_n,dr² | **2.10545** | 2.10545 | +0.26626 | +0.26626 | 0.56% / 0.56% |
+
+**All four reproduce to five decimal places**, seventeen sessions and a platform change later.
+
+#### C. The AD tangent and the fitted slope are DIFFERENT OBJECTS, and the gap is curvature
+
+The tangent at session 11's base point sits **0.6–4.2% off** the fitted slope. That is not an
+error and the distinction matters, because it is the whole content of the study's tier 2:
+
+| relation | tangent at base | tangent at range centroid | fitted slope | base/fit | **centroid/fit** |
+|---|---|---|---|---|---|
+| `CD0` → ζ_phugoid | 0.76556 | 0.76927 | 0.76994 | 0.9943 | **0.9991** |
+| `Cmα` → ω_n,sp² | −0.41049 | −0.41552 | −0.42251 | 0.9715 | **0.9835** |
+| \|`Clp`\| → 1/τ_roll | 1.98196 | 2.09866 | 2.06872 | 0.9581 | **1.0145** |
+| `Cnβ` → ω_n,dr² | 2.07539 | 2.10051 | 2.10545 | 0.9857 | **0.9977** |
+
+**Moving the tangent point to the centre of each swept range closes the gap to about the
+fit's own worst residual, in all four cases.** So session 11's ranges are affine to the
+residual it reported, the base point sits at one END of each of them, and **an elasticity
+must be quoted with the excursion it was taken at.** A ranked table taken at the base point
+is a ranking *at the base point*.
+
+#### D. The screen: which coefficients the 747's modes actually rest on
+
+Elasticity `(∂Q/∂p)(p/Q)` — per cent of the answer per per cent of the input. Top rows only;
+`scripts/sensitivity_screen.py --json` writes all of them. **One-at-a-time: no interaction
+term is measured, and none may be inferred.**
+
+| mode | cruise (M 0.80, 40,000 ft) | power approach (Caughey) |
+|---|---|---|
+| phugoid ω_n | `Cmq` −0.059, `Cmα` +0.059, `c` −0.057 | `Cmα` +0.178, `Cmq` −0.167, `CLα` −0.163 |
+| phugoid ζ | **`mass` +1.728**, `e` −0.410, `CD0` +0.327 | **`c` +6.891**, `Cmq` +3.034, `CD0` +2.241 |
+| short period ω_n | `c` +0.557, `Cmα` +0.441 | `c` +0.646, `Cmα` +0.322 |
+| short period ζ | `c` +0.473, `Cmq` +0.457, `Cmα` −0.443, `CLα` +0.422 | `CLα` +0.400, `mass` −0.396 |
+| dutch roll ω_n | `Cnβ` +0.350, `Clβ` +0.126 | `Cnβ` +0.268, `Clβ` +0.187 |
+| dutch roll ζ | `Clβ` −1.743, `Clp` +1.730, `Cnr` +1.240 | `Clp` +1.311, `Clβ` −0.892, `Cnr` +0.794 |
+| roll τ | `Clp` −0.626, `Clβ` −0.146 | `Clp` −0.734, `Clβ` −0.083 |
+| spiral τ | **`Cnr` −4.253, `Clβ` −3.800, `Cnβ` +3.794, `Clr` +2.922** | `Cnr` −1.568, `Clβ` −1.062, `Cnβ` +1.037 |
+
+**Three things this says that no comparison against a source could have.**
+
+1. **The mean aerodynamic chord `c` outranks `Cmα` for the short-period frequency at both
+   conditions** (+0.557 against +0.441 at cruise). `c` is geometry, read once off CR-2144;
+   `Cmα` is the derivative every discussion of pitch stiffness is about.
+2. **The spiral mode is the fragile one, and it is fragile at cruise specifically** — four
+   coefficients above 2.9 in elasticity, against a worst of 1.57 at the approach. A 1% error
+   in `Cnr` moves the cruise spiral time constant by 4.3%.
+3. **The phugoid damping is a `mass` result at cruise (+1.728) and a `c` result at the
+   approach (+6.891).** The dominant coefficient is not a property of the mode; it is a
+   property of the mode *at a condition*.
+
+**Nine fields are STRUCTURALLY INERT at both conditions** — elasticity exactly 0.000000,
+which means *not used*, not *unimportant*: `CYp`, `CYr`, `CYdr`, `Clda`, `Cldr`, `Cnda`,
+`Cndr`, `max_thrust`, `thrust_lapse`. The control derivatives are inert because the linear
+modes are taken about a fixed-control trim; the two thrust fields because thrust acts along
+body x through the CG with no moment (`ASSUMPTIONS.md` C5). **A zero in an elasticity table
+means one of these two things and never "small", so the screen prints them separately.**
+
+**And a fourth finding, from the trim path rather than the modes.** `CLα` has **exactly
+zero** effect on `boeing747_jsbsim`, `boeing737` and `boeing737_approach`: those entries
+carry a `CL_table_alpha`, and `aero.py` takes the table *instead of* `CL0 + CLα·α`. **Their
+`CLa` field is dead data.** No test asserts this and nothing else in the record says it.
+
+#### What does not reproduce on another platform, measured
+
+The suite runs **2 failed, 776 passed, 3 skipped in 811 s** here, and **2 failed, 801 passed,
+3 skipped in 858 s** once this session's 25 tests are in it. Both failures are the two
+tests that assert **exact bit equality**, and both differ in the 13th significant digit:
+
+| pin | this platform | recorded | relative | ulps |
+|---|---|---|---|---|
+| `FIG8_VORTEX[0]` (Δθ) | 2.24167400998675 | 2.241674009986879 | 5.77e-14 | ~260 |
+| `FIG8_VORTEX[1]` (Δn) | −1.2396439681557032 | −1.2396439681557148 | 9.31e-15 | ~42 |
+| `PRE_REFACTOR_VEL_HASH` | (sha256 differs) | — | — | — |
+
+**Neither tolerance was touched and neither should be** — `CLAUDE.md` rule 3, and these are
+doing precisely their job: they detect that the arithmetic environment changed. The reading
+is that **a rollout of 10⁴–10⁵ steps is bit-reproducible only within one platform**, while
+the linearisation path is stable across platforms to five decimals (row B). The test count
+is 781 rather than session 28's 813 because `pyarrow`/`plotly`/`dash` are absent here, so
+`test_artifact.py` and `test_figures.py` do not collect.
 
 ### Why the agreement "got worse": the reference class changed, not the model — session 28
 
@@ -4049,6 +4167,46 @@ entire job is to report whether the model stayed in range. Two tests now pin it:
 by magnitude, and the needle position, because fixing `state()` alone would have left the
 needle still lying.
 
+### (f) The model was not differentiable in its own coefficients — FIXED session 29
+
+**`aero.py`'s Prandtl–Glauert factor made every `jvp` and `jacfwd` through
+`aero.coefficients` return NaN, for every aircraft that declares no reference Mach — which
+is all of them but the compressibility entries.** No result this project has ever quoted was
+wrong, and that is exactly why it survived: the NaN was in a *tangent*, never in a value.
+
+```python
+pg = jnp.where(ac.pg_mach_ref < 0.0, 1.0,
+               jnp.sqrt(jnp.maximum(1.0 - jnp.minimum(ac.pg_mach_ref, PG_MACH_MAX)**2, 0.0)) / ...)
+```
+
+`jnp.where` evaluates **both** branches. `pg_mach_ref = -1.0` is the "undeclared" sentinel,
+so the unselected branch computes `sqrt(1 - min(-1, 0.90)²) = sqrt(0)`. The forward-mode
+tangent of `sqrt` is `du / (2·sqrt(u))`, which at `u = 0` is **0/0 — NaN for ANY tangent,
+including a zero one.** The select discards the value; nothing discards the NaN.
+
+**How it was found, and it is the argument for the NaN guard rather than for a review.**
+`atisim/sensitivity.py`'s first directional derivative through `trim.residual` tripped
+`conftest.py`'s `jax_debug_nans`, which has been on for the whole suite since session 5. The
+probe scripts written the same hour did **not** trip it — they ran outside pytest, produced
+finite elasticities, and agreed with central differences to 1e-10. **A NaN that is always
+discarded is invisible to every check except the one that looks for NaNs specifically.**
+
+**The repair is the standard double-`where`**: clamp the *unselected* branch's input to 0.0
+before the `sqrt`. It is value-identical by construction — a declared reference Mach is ≥ 0
+and passes through untouched, and the sentinel branch's value was thrown away either way —
+and it was **proved** so rather than argued, two ways: the SHA-256 of `[trim, v̇_body, ω̇]`
+is unchanged for all seven registry aircraft with a cruise condition, and the two frozen
+bit-exact pins that fail on this platform fail with **byte-identical values before and after
+the patch**. `test_aero.py::test_the_undeclared_prandtl_glauert_sentinel_has_a_FINITE_derivative`
+is the negative control.
+
+**A second instance is OPEN and is not fixed here.** `airframe.py:162` —
+`c0 * jnp.sqrt(jnp.maximum(1.0 - normalised**2, 0.0))`, the elliptic spanwise loading shape
+— is the same construction and goes to `sqrt(0)` **at the wingtip**, where `normalised = ±1`.
+It is not reached by anything phase S0 or S1 touches, because the mode QoIs never enter the
+strip path. **It will block the loading-shape row of the study's tier B**, and whoever runs
+that phase should expect to repair it the same way first.
+
 ### What made (a) and (b) invisible
 
 A still-air test suite cannot catch an air-relative/inertial confusion, because in still
@@ -4126,8 +4284,8 @@ re-measuring them.
 
 | Phase | Work | Gate | Status |
 |---|---|---|---|
-| **S0** | `atisim/sensitivity.py` + `test_sensitivity.py` | the differentiable load QoI matches `vortex_viz._measure`'s `n_z` to **1e-12**, sample-for-sample | **not started** |
-| **S1** | AD screen on the cruise modes | **reproduces session 11's four sweep slopes to <2%** — the falsification step, and it gates every phase after it | **not started** |
+| **S0** | `atisim/sensitivity.py` + `test_sensitivity.py` | the differentiable load QoI matches `vortex_viz._measure`'s `n_z` to **1e-12**, sample-for-sample | **DONE for the MODE path, session 29** — 24 tests. The load QoI and its 1e-12 gate move to S2, because §6(f) had to be fixed first before anything could be differentiated at all |
+| **S1** | AD screen on the cruise modes | ~~reproduces session 11's four sweep slopes to <2%~~ **the gate as written was the wrong test and is corrected here**: an AD tangent and a least-squares slope over a 3–8× range are different objects, so the machinery gate is AD against a **central difference at the same point** | **DONE, session 29. PASSED at 5.2e-10 against a 1e-6 gate.** §4 has all four sections, including the proof that the 0.6–4.2% tangent-vs-fit gap is curvature |
 | **S2** | AD screen on the headline CAT load, all of tier A | AD elasticity vs ±1% central difference agree to **<1%**, or the failure is explained before anything is ranked | **not started** |
 | **S3** | OAT confirm on the top factors at ±1/5/10/25% | a ranked table carrying the excursion it was ranked at, and the affine-slope-to-elasticity ratio as a nonlinearity measure | **not started** |
 | **S4** | Tier B — the `ASSUMPTIONS.md` modelling choices, on the same axis | **C3 gets its first BOUND at cruise**, where session 27 gave it one point at M 0.406 | **not started** |
@@ -4435,46 +4593,73 @@ source exactly. A smoother interpolant would agree with the source less.
 
 ## 9. Session log
 
-### Session 29 — a plan for measuring the model against itself, and three dead ends found in the tree
+### Session 29 — the model is differentiated in its own coefficients, and it could not be
 
-**A design session. No measurement was made and no model code was changed.** The
-conversation asked for a plan for a sensitivity analysis and asked to settle the scope
-first, so the scope was settled by question and the design written against the tree rather
-than against a general recipe.
+**Two halves. The design was written first and the scope settled by question; then phases S0
+and S1 were built and run.** `atisim/sensitivity.py` (new), `atisim/tests/test_sensitivity.py`
+(new, 24 tests), `scripts/sensitivity_screen.py` (new), one repair to `aero.py`, one new test
+in `test_aero.py`. §4 carries the four measured sections and §6 carries the bug.
 
-**What was decided, and it narrows the study in two directions.** Three quantities of
-interest — the headline CAT gust load, the cruise linear modes, and the Dryden ensemble
-statistics. Two factor tiers — the aerodynamic derivatives, and the `ASSUMPTIONS.md`
-modelling choices. **The wind and scenario inputs were deliberately left out**, because
-`scripts/cat_bounds.py` and `scripts/cat_uncertainty.py` already price `V₀`, `r₀`, spacing
-and `σ_w`, and §4 and §8 already carry the numbers; the budget will cite them. **The LES
-residual was also left out**: it is a comparison against one external code at one condition,
-and §7 already names the work that closes it.
+**The scope, settled before anything was written.** Three quantities of interest — the
+headline CAT gust load, the cruise linear modes, the Dryden ensemble statistics. Two factor
+tiers — the aerodynamic derivatives, and the `ASSUMPTIONS.md` modelling choices. **The wind
+and scenario inputs were deliberately excluded**, because `scripts/cat_bounds.py` and
+`scripts/cat_uncertainty.py` already price `V₀`, `r₀`, spacing and `σ_w`; the budget will
+cite them. The LES residual was excluded too: it is a comparison against one external code at
+one condition, and §7 already names the work that closes it. Global variance-based methods
+were considered and **declined** — the input distributions they need are not sourced — and the
+consequence, that the ranking is one-at-a-time and measures **no interaction term**, is stated
+with every table rather than left to be inferred.
 
-**The useful part of the session is not the plan but what reading the tree for it found.**
-Three obstacles sit between `jax.jacfwd` and the three QoIs, none of them recorded anywhere
-before now, and each one is a property of this codebase rather than of sensitivity analysis:
+**Then the first `jvp` returned NaN, and the reason is §6(f).** `aero.py`'s Prandtl–Glauert
+factor is a `jnp.where` whose unselected branch, at the undeclared sentinel
+`pg_mach_ref = -1.0`, computes `sqrt(0)` — whose forward-mode tangent is 0/0, **NaN for any
+tangent including a zero one.** The select discards the value, so **no result this project has
+ever quoted was wrong**; what was impossible was differentiating the model with respect to its
+own coefficients, for every aircraft in the registry. It was found by `conftest.py`'s
+`jax_debug_nans`, on since session 5 — the probe scripts written the same hour ran outside
+pytest, produced finite elasticities and agreed with central differences to 1e-10. **A NaN
+that is always discarded is invisible to everything except a check that looks for NaNs.**
+Repaired with the standard double-`where`, and **proved value-identical rather than argued**:
+the SHA-256 of `[trim, v̇_body, ω̇]` is unchanged for all seven registry aircraft, and the two
+frozen bit-pins that fail on this platform fail with byte-identical values before and after.
 
-1. **`trim` is a Newton solve.** Differentiating through the unrolled loop is wasteful and is
-   wrong if the loop has not converged. The study will use the implicit function theorem —
-   `dx*/dp = −(∂r/∂x)⁻¹(∂r/∂p)`, both blocks already available from `jacfwd(trim.residual)`.
-2. **`validation.modes_from_matrix` calls `np.linalg.eigvals`.** `longitudinal_matrix` is
-   *itself* a `jacfwd` of the real dynamics, so `A(p)` differentiates cleanly — and then the
-   chain stops dead at NumPy. First-order eigenvalue perturbation closes it without writing a
-   new eig, and fails predictably at coalescing eigenvalues, so separation must be asserted.
-3. **`vortex_viz._measure` returns NumPy** — `np.asarray(jax.vmap(analyse)(...))` — so the
-   whole `Encounter` path is an AD dead end. The load QoI therefore needs a **parallel
-   jnp-only path**, which is precisely the "two paths that could drift apart" hazard this repo
-   warns about elsewhere; the guard is a 1e-12 equality test against `_measure`, not a comment.
+**S1 passed, and its gate as designed was the wrong test.** The plan said "reproduce session
+11's four sweep slopes to <2%". Two of the four came in at 2.9% and 4.2%, and the reason is
+not machinery: **an AD tangent at a point and a least-squares slope over a 3–8× range are
+different objects.** The machinery gate is AD against a **central difference at the same
+point**, and it passes at **5.2e-10 against 1e-6**. Then session 11's four slopes were re-run
+and reproduce **to five decimal places**, and moving the tangent to each swept range's
+centroid closes the 0.6–4.2% gap to about the fit's own residual — so the gap is **curvature**,
+measured. §7's phase table carries the corrected gate, at the change, per `CLAUDE.md` rule 3.
 
-**Session 11 is the gate, not the precedent.** It swept four derivatives against four modes at
-the **power approach** and found every relation affine with a non-zero intercept. Those four
-slopes are the only independent answer this project holds for any sensitivity, so phase S1
-reproduces them before phase S2 is allowed to run.
+**What the screen says, and no source comparison could have said it.** The mean aerodynamic
+chord `c` outranks `Cmα` for short-period frequency at both conditions. The **spiral mode is
+the fragile one and only at cruise** — four coefficients above 2.9 in elasticity against a
+worst of 1.57 at the approach. Phugoid damping is a `mass` result at cruise and a `c` result
+at the approach, so **the dominant coefficient is a property of the mode AT A CONDITION**, not
+of the mode. Nine fields are **structurally inert** — exactly 0.000000, meaning *not used*
+rather than *unimportant* — and the screen prints them separately for that reason. And
+`CLα` is **dead data** on `boeing747_jsbsim`, `boeing737` and `boeing737_approach`: those
+entries carry a `CL_table_alpha` and `aero.py` takes the table instead. Nothing said so before.
 
-**What was NOT done, so nobody goes looking:** no `atisim/sensitivity.py` exists, no
-elasticity has been computed, no number in §4 moved, and `ASSUMPTIONS.md` is untouched — C3 is
-still UNBOUNDED and §1's headline is still a bare 68%. The §0 row carries the branch.
+**The platform is not §10's, and that was measured rather than assumed.** Linux, JAX 0.10.2,
+NumPy 2.4.6, no `.venv`. The suite ran **2 failed, 776 passed, 3 skipped in 811 s** before this
+session's work and **2 failed, 801 passed, 3 skipped in 858 s** after it — the same two
+failures throughout, and the 25 new tests are this session's. Both
+failures are the two **exact bit-equality** pins, differing in the 13th significant digit
+(~260 and ~42 ulps). **Neither tolerance was touched.** They are doing their job: a
+10⁴–10⁵-step rollout is bit-reproducible only within one platform, while the linearisation
+path is stable across platforms to five decimals. The count is 781 rather than session 28's
+813 because `pyarrow`/`plotly`/`dash` are absent, so two test files do not collect.
+
+**What was NOT done, so nobody goes looking.** No load QoI exists — `vortex_viz._measure`
+returns NumPy and is still an AD dead end, which is S2's first task. No tier-B modelling
+choice has been priced, so **`ASSUMPTIONS.md` C3 is still UNBOUNDED and that file is
+untouched**. §1's headline is still a bare 68%. No interaction term has been measured
+anywhere. And `airframe.py:162` carries a **second, unrepaired instance** of the same
+`sqrt(0)` construction, at the wingtip of the elliptic loading shape — not reached by S0 or
+S1, and it will block tier B's loading-shape row.
 
 ### Session 28 — the errors did not grow, the questions did
 
@@ -6128,6 +6313,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 | `.venv/Scripts/python.exe scripts/vortex_compare.py --png runs/vc.png` | **The cross-code vortex comparison.** Flies atisim through the identical field the frozen reference was generated from and reports where the two engines part, against Wingrove & Bach's own g-loads. Imports no jsbsim. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/les_ensemble_svd.py --runs <dir>` | **The LES ensemble POD (session 28).** Asks whether an SVD of the 16 x 5000 `n_z` arrays separates condition drift from gust response better than the shipped 0.05 Hz high-pass. **It does not** — on D03/D04 mode 1 carries 25% and 18% and is only half sub-0.05 Hz. Then asks the drift question directly, early half against late, and finds it confounded with along-track field inhomogeneity. `--runs` is required: the arrays are gitignored and live in whichever worktree flew them. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/svd_probe.py` | **What a singular value decomposition can and cannot see (session 28).** Four sections: cond(J) at the healthy trim against §5's two absurd roots (it does NOT separate them, and that is the point); F7's zero-authority channel, where sigma_min is exactly 0 at the initial guess; and the identifiability of (`Cma`, `Cmq`, `Iyy`) against the longitudinal modes, which recovers session 27's B787 `I_yy` result to 0.19 deg without being told it. Changes nothing — it imports `trim` and `validation` and measures matrices they already build. §4 has what it found. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/sensitivity_screen.py` | **The sensitivity screen (session 29, phases S0/S1).** Four sections: the AD machinery against a central difference at the same point (the S1 gate, worst 5.2e-10); session 11's four fitted slopes re-run; the tangent moved to each swept range's centroid, which is what shows the AD-vs-fit gap is **curvature**; then the screen proper — every independent coefficient against every mode, at the Caughey approach and at cruise, with the **structurally inert** fields listed separately because a zero there means *not used*, not *unimportant*. `--json` writes every number. Imports nothing new. |
 | `.venv/Scripts/python.exe scripts/vortex_diagnose.py` | **Why the comparison's two large errors are large.** Three experiments: the same start state flown in still air, atisim flown from its own trim, and a one-lever-at-a-time sweep against the DFDR. Imports no jsbsim. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/digitise_tm102186_fig6.py --outdir runs/cat` | **The recorded g trace (session 27).** Reads TM-102186 Fig. 6's G LOAD panel out of `Reference_papers/19890016606.pdf` at 600 dpi, column by column, as the top and bottom of the ink — nothing fitted, nothing smoothed. Prints the three checks (the paper's own band, a **negative control** on the vertical-wind panel, and the gust spacing) and writes `10-tm102186-fig6.png` plus `tm102186-fig6-gload.csv`. §4 has what it found. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/digitise_mil_f_8785c_fig7.py --outdir runs/cat --pdf refs/MIL-F-8785C.pdf` | **The severe-turbulence σ_w chart (session 27).** Digitises all nine curves of Fig. 7 from printed p. 49, flagging where two share **one stroke of ink** rather than reading a number out of a merge. Settles `mil_f_8785c_sigma_w_exceeds_the_mehta_ceiling`. Writes `11-mil-f-8785c-fig7.png` and `mil-f-8785c-fig7-lines.csv`. **`--pdf` is required from a worktree** — `refs/` is gitignored and lives only in the main checkout. |
