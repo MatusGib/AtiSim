@@ -21,6 +21,7 @@ the wrong thing.
 Design: docs/superpowers/specs/2026-09-10-model-sensitivity-analysis-design.md.
 """
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -341,3 +342,168 @@ def test_the_ad_screen_matches_a_central_difference_on_the_same_quantity(
     ad = sign * extract_ad(modes[field])
     fd = sign * fd
     assert ad == pytest.approx(fd, rel=1e-6), f"{name}: AD {ad}, central difference {fd}"
+
+
+# --------------------------------------------------------------------------
+# S2: the differentiable load path, and the trim primitive under it
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def mehta():
+    """The headline run's configuration, short enough to be a test.
+
+    2 s rather than the headline's 47 s: this file asserts that the two paths
+    AGREE, which a short run tests exactly as well as a long one and 24x faster.
+    `scripts/sensitivity_load.py` flies the real thing.
+    """
+    from atisim import wind
+    from atisim.aircraft import CRUISE
+
+    ac = REGISTRY["boeing747"]
+    V = CRUISE["boeing747"]["airspeed"]
+    H = wind.MEHTA_HANNIBAL_ALTITUDE
+    array = wind.mehta_hannibal_array(H)
+
+    def field(p):
+        return wind.vortex_wind(p, array)
+
+    r0 = float(array.r0)
+    start = float(array.north.min()) - 12.0 * r0
+    return dict(ac=ac, V=V, H=H, field=field, model=wind.field_model(field),
+                start_north=start, dt=0.01, n_steps=200)
+
+
+def test_the_differentiable_load_is_bit_identical_to_measure(mehta):
+    """The S0 gate for the load path. Exact equality, not a tolerance.
+
+    `vortex_viz._measure` ends in `np.asarray(jax.vmap(analyse)(...))`, so the
+    Encounter path cannot be differentiated and `load_history` is a SECOND path
+    to the same channel. If the two ever part, every elasticity taken through it
+    is about a load this project does not report. A tolerance here would admit
+    exactly that, so the claim is bit-identity.
+    """
+    from atisim import vortex_viz
+
+    seconds = mehta["n_steps"] * mehta["dt"]
+    enc = vortex_viz.fly_in_moving_air(
+        mehta["ac"], mehta["field"], mehta["V"], mehta["H"], label="gate",
+        start_north=mehta["start_north"], seconds=seconds, dt=mehta["dt"],
+        window=(-1e12, 1e12), window_name="whole run")
+
+    n_z, north = sensitivity.load_history(
+        mehta["ac"], mehta["model"], mehta["V"], mehta["H"],
+        start_north=mehta["start_north"], n_steps=mehta["n_steps"],
+        dt=mehta["dt"])
+
+    assert np.array_equal(np.asarray(n_z), enc.n_z), (
+        f"worst |diff| {np.abs(np.asarray(n_z) - enc.n_z).max():.3e}")
+    assert np.array_equal(np.asarray(north), enc.north)
+
+
+def test_the_trim_primitive_agrees_with_differentiating_through_the_solver(mehta):
+    """The implicit JVP against the unrolled Newton loop -- the design's own check.
+
+    `solved_trim` attaches the implicit-function-theorem derivative by hand.
+    Differentiating straight through `trim.trim`'s 40 unrolled Newton steps is
+    the independent answer: it is what the naive thing would have done, it is
+    correct once converged, and it costs 40 linear solves per tangent instead of
+    one. They must agree.
+    """
+    ac, V, H = mehta["ac"], jnp.array(mehta["V"]), jnp.array(mehta["H"])
+    zeros = jax.tree.map(jnp.zeros_like, ac)
+
+    for field in ("CLa", "Cma", "CD0", "mass"):
+        seed = zeros._replace(**{field: jnp.ones_like(getattr(ac, field))})
+        _, implicit = jax.jvp(lambda a: sensitivity.solved_trim(V, H, a),
+                              (ac,), (seed,))
+        _, unrolled = jax.jvp(lambda a: trim.trim(V, H, a)[0], (ac,), (seed,))
+        np.testing.assert_allclose(np.asarray(implicit), np.asarray(unrolled),
+                                   rtol=1e-9, atol=1e-14,
+                                   err_msg=f"{field}: implicit vs unrolled trim")
+
+
+def test_the_trim_primitive_matches_the_jacobian_table(mehta):
+    """`solved_trim`'s JVP and `implicit_trim_jacobian` are the same derivative.
+
+    One is a differentiable function and the other is a table; they are built
+    from the same two blocks and a divergence would mean one of them has the
+    sign or the solve the wrong way round.
+    """
+    ac, V, H = mehta["ac"], jnp.array(mehta["V"]), jnp.array(mehta["H"])
+    table = sensitivity.implicit_trim_jacobian(ac, mehta["V"], mehta["H"],
+                                              fields=("CLa", "Cma"))
+    zeros = jax.tree.map(jnp.zeros_like, ac)
+    for field in ("CLa", "Cma"):
+        seed = zeros._replace(**{field: jnp.ones_like(getattr(ac, field))})
+        _, jvp = jax.jvp(lambda a: sensitivity.solved_trim(V, H, a), (ac,), (seed,))
+        np.testing.assert_allclose(np.asarray(jvp), table[field],
+                                   rtol=1e-12, atol=1e-15)
+
+
+def test_a_lateral_derivative_cannot_reach_the_vortex_load(mehta):
+    """EXACT zero, and it is a MEASUREMENT of ASSUMPTIONS E10 rather than a check.
+
+    Mehta's array is a function of along-track distance alone, so no wing strip
+    sees a different gust and no lateral coefficient can reach `n_z`. The screen
+    reports these as exactly 0.000000 and the distinction from "small" is the
+    whole point: a zero here means NOT USED, and the register's E10 row is the
+    reason.
+    """
+    Q, grad, elas, _ = sensitivity.load_elasticities(
+        mehta["ac"], mehta["model"], mehta["V"], mehta["H"],
+        start_north=mehta["start_north"], n_steps=mehta["n_steps"],
+        dt=mehta["dt"], window=(-1e12, 1e12),
+        fields=sensitivity.LATERAL_FIELDS)
+    worst = max(abs(v) for v in grad.values())
+    assert worst == 0.0, f"a lateral derivative moved the vortex load by {worst:.3e}"
+
+
+def test_the_load_elasticity_matches_a_central_difference(mehta):
+    """S2's gate: the AD screen against a difference on the same quantity.
+
+    Taken on a short run so the extremes cannot wander between the two
+    evaluations -- `max - min` is differentiable almost everywhere, and this test
+    is about the machinery, not about that caveat.
+    `scripts/sensitivity_load.py` section C is where the caveat is measured.
+    """
+    window = (-1e12, 1e12)
+    Q, grad, elas, extra = sensitivity.load_elasticities(
+        mehta["ac"], mehta["model"], mehta["V"], mehta["H"],
+        start_north=mehta["start_north"], n_steps=mehta["n_steps"],
+        dt=mehta["dt"], window=window, fields=("CLa", "mass"))
+
+    for field in ("CLa", "mass"):
+        p0 = float(getattr(mehta["ac"], field))
+        h = abs(p0) * 1e-6
+        vals = []
+        for s in (+1.0, -1.0):
+            swept = mehta["ac"]._replace(**{field: jnp.array(p0 + s * h)})
+            n_z, _ = sensitivity.load_history(
+                swept, mehta["model"], mehta["V"], mehta["H"],
+                start_north=mehta["start_north"], n_steps=mehta["n_steps"],
+                dt=mehta["dt"])
+            vals.append(float(sensitivity.peak_to_peak(
+                n_z, jnp.asarray(extra["mask"]))))
+        fd = (vals[0] - vals[1]) / (2.0 * h)
+        assert grad[field] == pytest.approx(fd, rel=1e-5), (
+            f"{field}: AD {grad[field]}, central difference {fd}")
+
+
+def test_the_field_vector_round_trips():
+    """`with_field_vector(ac, f, field_vector(ac, f))` must be the same aircraft."""
+    ac = REGISTRY["boeing747"]
+    fields = ("CLa", "Cma", "mass", "CD0")
+    back = sensitivity.with_field_vector(ac, fields,
+                                        sensitivity.field_vector(ac, fields))
+    for f in fields:
+        assert float(getattr(back, f)) == float(getattr(ac, f))
+
+
+def test_peak_to_peak_respects_its_mask():
+    """A sample outside the mask must not be able to set either extreme."""
+    n_z = jnp.array([0.0, 5.0, 1.0, -3.0, 0.5])
+    mask = jnp.array([False, False, True, False, True])
+    assert float(sensitivity.peak_to_peak(n_z, mask)) == pytest.approx(0.5)
+    allm = jnp.ones_like(mask, dtype=bool)
+    assert float(sensitivity.peak_to_peak(n_z, allm)) == pytest.approx(8.0)

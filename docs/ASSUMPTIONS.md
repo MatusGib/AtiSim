@@ -467,6 +467,50 @@ is why §5 caps analysis windows at the linear range.
 > ratio collapses toward 1, **this is the first quantified point on the Mach axis**, obtained
 > without the chart read §7 has been declining since session 12.
 
+> ### SESSION 29: THE MACH AXIS IS BOUNDED AT CRUISE, ON THE HEADLINE RUN
+>
+> **`scripts/sensitivity_assumptions.py`.** The bound above was wanted since session 12 and
+> declined each time because it "needs a chart read". It does not. The Prandtl–Glauert factor
+> already in `aero.py` (the compressibility branch, merged session 28) supplies the *theory*;
+> declaring `pg_mach_ref` at the derivative set's own tabulation Mach turns the frozen
+> derivatives into Mach-scheduled ones, and the difference is the assumption's cost.
+>
+> **The excursion, measured rather than assumed.** The Mach `aero.py` sees is
+> `|vel_rel|/a_sound` — **air-relative**, so the gust moves it as well as the aircraft's own
+> speed, and Mehta's array carries 26.5 m/s of vertical wind. Over the headline run:
+>
+> | | Mach |
+> |---|---|
+> | trim | 0.7995 |
+> | minimum reached | **0.7187** |
+> | maximum reached | **0.8257** |
+> | **span** | **0.1070** — 3.5× the lee wave's ΔM = 0.031, and 0.27 of session 27's LES ΔM |
+>
+> **The cost, on the headline peak-to-peak load:**
+>
+> | Variant | load, g | vs frozen |
+> |---|---|---|
+> | frozen derivatives (shipped) | 1.841396 | — |
+> | Prandtl–Glauert on, ref M = 0.7995 | 1.748571 | **−5.041%** |
+> | ref M = 0.75 | 1.897357 | +3.039% |
+> | ref M = 0.85 | 1.549600 | **−15.846%** |
+>
+> **So C3's Mach axis is worth −5.04% of the headline load at cruise**, and that is now a
+> number rather than a warning. It is the first bound on this axis taken **at a condition the
+> project actually claims**, where session 27's point was taken 13× further out.
+>
+> **And the second and third rows are the larger finding.** They are NOT an error band —
+> §4 records that this 747 flies M 0.800, *"which is the Mach its derivative set is tabulated
+> at"*, so the tabulation Mach is sourced and not uncertain. What they measure is how sharply
+> C3 depends on that one number: **a 0.05 error in it would be worth three times the whole
+> rest of §4's error budget.** Nobody has had to defend that number before, because until now
+> nothing depended on it.
+>
+> **What this does NOT bound**: the α axis (still the 10.31° manoeuvring excursion against a
+> 5.7° linearisation, unmeasured), and the *shape* of the real `C_Lα(M)` curve, which
+> Prandtl–Glauert only approximates — CR-2144 p. 220 has the sourced curve and §4's session-28
+> entry says the two are a check on each other rather than alternatives.
+
 **Session 23b: the altitude axis is now GUARDED as well as bounded.** `boeing747` declares
 `valid_altitude = [35,000, 45,000] ft` and `valid_mach = [0.70, 0.90]`, so
 `checks.recovery_band` reports a run outside them instead of letting it look ordinary. The
@@ -1471,7 +1515,7 @@ solver preconditions live rather than a defect repair.
 |---|---|---|---|
 | 1 | **E4** wind held across RK4 stages | **body force CLOSED session 12; ORDER measured session 15; BOUND CORRECTED in the remediation pass** | no spurious body force, to 1e-9 m against a closed form. But the scheme is **first order** in a spatially varying field (1.05 against 3.99 in still air; 4.05 with the hold removed). The old bound, 0.0024 m/s of gust error in the Parks core, measured the wrong quantity by ~80×: hold-vs-per-stage at the published dt costs **0.82%** of the headline in-core Δθ. No conclusion moves, but **2.240° is not good to four figures** |
 | 2 | **B1** rigid airframe vs flexible data | **unquantifiable** | cap claims; do not assert structural fidelity |
-| 3 | **C3** derivatives frozen across the envelope | **unbounded** | state the excursion with every result away from trim |
+| 3 | **C3** derivatives frozen across the envelope | ~~**unbounded**~~ **BOUNDED ON BOTH AXES, session 29** | **Altitude**: 23.5% of `ω_n` per 2.48× of q̄ (session 23). **Mach, at cruise, on the headline run: −5.04% of the peak-to-peak load** over a measured Mach span of 0.7187–0.8257, by declaring `pg_mach_ref` at the tabulation Mach — no chart read needed. Session 27's LES point (ΔM = −0.393, ×0.859 on gust rms) is the far-field companion. **Still unbounded on the α axis.** And the bound is sharply sensitive to the tabulation Mach itself: ±0.05 there is worth +3.0%/−15.8%, three times the rest of the budget. Still state the excursion with every result |
 | 4 | **E2** point-aircraft gusts, vortex at 2.3–3.1 spans | **CLOSED for the linear fit, session 13; strip path flyable and measured, session 14** | correction is exactly 0 inside the core and 2.0·`V₀/r₀` at the boundary, where the gradient is discontinuous. Curvature beyond the linear fit rests on a DECLARED loading shape: 2.6% across defensible shapes, 49.7% including a uniform bracket. Flying the strip path moves the vortex result by **0.000000 m** — the field has no spanwise variation — so the headline number is still the point model's. **Roll only**; a pitch integral is the open work |
 | 5 | **A2** constant g, +0.383% at cruise | ~~CLOSED, session 12~~ **MODELLED, session 23** | `dynamics.gravity(z) = g₀(R/(R+z))²`. Session 12 measured it and chose not to model it; session 23 modelled it anyway, preferring correctness at altitude to a frozen baseline. Moved the 747 phugoid ωn −0.3984% against g's −0.3817% — Lanchester's 1:1. Sea level bit-identical. **Latitude variation (0.53%, larger) is still absent** — see A1 |
 | 5a | **A3** geometric altitude through geopotential formulas | **WAS A DEFECT, NOT AN ASSUMPTION — FIXED session 23** | The register called it "sound" for 22 sessions, quoting the module's own docstring as evidence for the module's own correctness. Worth 0.159% of density at 30,000 ft and 0.368% at 40,000. AtiSim now matches JSBSim at the nominal altitude to 4.8e-6, where it was 0.159% out |
