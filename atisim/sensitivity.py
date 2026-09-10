@@ -55,7 +55,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from atisim import trim
+from atisim import dynamics, integrate, trim, wind
 from atisim.aircraft import Aircraft
 from atisim.dynamics import derivatives
 from atisim.state import Controls, State, euler_to_quat
@@ -414,3 +414,185 @@ def elasticity(dQ_dp: float, p: float, Q: float) -> float:
     if Q == 0.0 or p == 0.0:
         return float("nan")
     return float(dQ_dp * p / Q)
+
+
+# --------------------------------------------------------------------------
+# 6. The trim solve as a differentiable primitive
+# --------------------------------------------------------------------------
+
+
+@jax.custom_jvp
+def solved_trim(V, H, ac: Aircraft):
+    """`trim.trim`'s solution, carrying the implicit derivative as its own JVP.
+
+    `implicit_trim_jacobian` gives dx*/dp as a table, which is what a screen
+    wants. This gives the same thing as a DIFFERENTIABLE FUNCTION, which is what
+    a quantity defined downstream of the trim -- a flown load, say -- needs in
+    order to be differentiated at all.
+
+    Differentiating straight through the 40 unrolled Newton steps also works and
+    is asserted here to agree, but it is the wrong object twice over: it costs 40
+    linear solves per tangent, and it silently returns the derivative of
+    "wherever the loop stopped" rather than of the solution if the loop has not
+    converged.
+    """
+    x, _ = trim.trim(V, H, ac)
+    return x
+
+
+@solved_trim.defjvp
+def _solved_trim_jvp(primals, tangents):
+    """r(x*, V, H, p) = 0 differentiated: (dr/dx) dx + dr|_x = 0."""
+    V, H, ac = primals
+    dV, dH, dac = tangents
+    x = solved_trim(V, H, ac)
+    dr_dx = jax.jacfwd(trim.residual, argnums=0)(x, V, H, ac)
+    _, dr = jax.jvp(trim.residual, (x, V, H, ac),
+                    (jnp.zeros_like(x), dV, dH, dac))
+    return x, -jnp.linalg.solve(dr_dx, dr)
+
+
+# --------------------------------------------------------------------------
+# 7. The flown load, differentiably
+# --------------------------------------------------------------------------
+#
+# `vortex_viz._measure` ends in `np.asarray(jax.vmap(analyse)(...))`, so the
+# whole `Encounter` path is an AD dead end. This is the second path, and the
+# comment on the plant matrices applies here with more force: it must be
+# asserted equal to `_measure`'s `n_z` channel, sample for sample, or every
+# elasticity taken through it is about a load this project does not report.
+#
+# TWO DECLARED CHOICES, both of which change what the derivative MEANS:
+#
+#   1. THE ANALYSIS WINDOW IS HELD FIXED at the base point's trajectory. The
+#      window is defined by north position, so a boolean mask over it is a step
+#      function of every coefficient and has no derivative. Fixing the mask asks
+#      "how does the load inside THIS window move", which is the question the
+#      headline number is an answer to. The window edges sit 2 r0 beyond the
+#      outermost core, so the peak is nowhere near them.
+#
+#   2. PEAK-TO-PEAK IS max - min, WHICH IS DIFFERENTIABLE ALMOST EVERYWHERE AND
+#      NOT EVERYWHERE. Its gradient is the gradient of the two samples that
+#      happen to be the extremes, and it JUMPS when an extreme moves from one
+#      core to another. That is not a flaw to be worked around -- it is a
+#      property of the statistic, and `scripts/sensitivity_load.py` measures how
+#      far the tangent survives by comparing it against a finite excursion.
+
+
+def load_history(ac: Aircraft, wind_model, V, H, *, start_north, n_steps, dt,
+                 moving_air: bool = True, load_model=None, key_seed: int = 0,
+                 stage_sampled: bool = False):
+    """n_z per sample -- the differentiable twin of `vortex_viz._measure`'s n_z.
+
+    Mirrors `fly_in_moving_air` -> `fly_from_state` -> `_measure` exactly,
+    including re-evaluating the wind model at each recorded state rather than
+    reading the logged value: that is what `_measure` does, and it is exact for
+    a deterministic field. `wind_model` is passed already built, because
+    `integrate.rollout` takes it as a STATIC argument and a fresh closure per
+    call would recompile the scan every time.
+    """
+    V, H, dt = jnp.asarray(V), jnp.asarray(H), jnp.asarray(dt)
+    x = solved_trim(V, H, ac)
+    controls = trim.trimmed_controls(x[1], x[2])
+
+    state = trim.trimmed_state(x[0], V, H)
+    state = state._replace(
+        pos_ned=jnp.array([start_north, 0.0, 0.0]) + jnp.array([0.0, 0.0, -H])
+    )
+    if moving_air:
+        # `relative_velocity` is `vel_body - dcm.T @ wind_ned`, so adding the
+        # same term makes the air-relative velocity EXACTLY the still-air trim
+        # value. `fly_in_moving_air`'s docstring has why this is not optional on
+        # Mehta's array: at a 12 r0 lead the superposed far field is 5.28 m/s.
+        from atisim.state import quat_to_dcm
+        wind_ned0, *_ = wind_model(
+            wind.zero_wind_state(), state, jax.random.PRNGKey(key_seed), dt
+        )
+        state = state._replace(
+            vel_body=state.vel_body + quat_to_dcm(state.quat).T @ wind_ned0
+        )
+
+    _, hist = integrate.rollout(
+        integrate.init_sim(state, jax.random.PRNGKey(key_seed)),
+        controls, dt, ac, n_steps, wind_model=wind_model, load_model=load_model,
+        stage_sampled=stage_sampled,
+    )
+
+    def n_z_of(pos_ned, vel_body, quat, omega):
+        s = State(pos_ned=pos_ned, vel_body=vel_body, quat=quat, omega=omega)
+        wind_ned, omega_gust, _, _, _ = wind_model(
+            wind.zero_wind_state(), s, jax.random.PRNGKey(0), dt
+        )
+        increment = None if load_model is None else load_model(s)
+        return dynamics.load_factor(s, controls, ac, wind_ned, omega_gust, increment)
+
+    n_z = jax.vmap(n_z_of)(hist.pos_ned, hist.vel_body, hist.quat, hist.omega)
+    return n_z, hist.pos_ned[:, 0]
+
+
+def peak_to_peak(n_z, mask) -> jnp.ndarray:
+    """max - min of n_z inside a FIXED boolean mask.
+
+    The mask is an argument rather than a window pair on purpose: it is computed
+    once at the base point and reused across every perturbed run, so that what
+    moves is the load and not the definition of where it was measured.
+    """
+    big = jnp.where(mask, n_z, -jnp.inf)
+    small = jnp.where(mask, n_z, jnp.inf)
+    return jnp.max(big) - jnp.min(small)
+
+
+def field_vector(ac: Aircraft, fields) -> jnp.ndarray:
+    """The named scalar fields as one vector, so a whole screen is one jacfwd."""
+    _check_fields(fields)
+    return jnp.array([jnp.asarray(getattr(ac, f)).reshape(()) for f in fields])
+
+
+def with_field_vector(ac: Aircraft, fields, vec) -> Aircraft:
+    """`ac` with the named fields taken from `vec`. The inverse of `field_vector`."""
+    return ac._replace(**{f: vec[i] for i, f in enumerate(fields)})
+
+
+def load_elasticities(ac: Aircraft, wind_model, V, H, *, start_north, n_steps, dt,
+                      window, fields=None, moving_air: bool = True,
+                      load_model=None):
+    """Elasticity of the peak-to-peak load w.r.t. each field, in ONE forward pass.
+
+    Every field is pushed through the same 4,700-step scan as a separate tangent
+    rather than as a separate run, so the whole screen costs one compile and one
+    rollout's worth of forward-mode work.
+
+    Returns (Q, {field: gradient}, {field: elasticity}, extras) where `extras`
+    carries the base mask and the indices of the two extremes -- the second of
+    which is what a caller needs to see, because the gradient of a peak belongs
+    to whichever sample IS the peak.
+    """
+    fields = INDEPENDENT_FIELDS if fields is None else tuple(fields)
+    _check_fields(fields)
+
+    base_n_z, base_north = load_history(
+        ac, wind_model, V, H, start_north=start_north, n_steps=n_steps, dt=dt,
+        moving_air=moving_air, load_model=load_model)
+    mask = (base_north >= window[0]) & (base_north <= window[1])
+
+    def quantity(vec):
+        n_z, _ = load_history(
+            with_field_vector(ac, fields, vec), wind_model, V, H,
+            start_north=start_north, n_steps=n_steps, dt=dt,
+            moving_air=moving_air, load_model=load_model)
+        return peak_to_peak(n_z, mask)
+
+    base = field_vector(ac, fields)
+    Q = float(quantity(base))
+    grad = np.asarray(jax.jacfwd(quantity)(base))
+
+    values = {f: float(getattr(ac, f)) for f in fields}
+    gradients = {f: float(grad[i]) for i, f in enumerate(fields)}
+    elasticities = {f: elasticity(gradients[f], values[f], Q) for f in fields}
+    inside = jnp.where(mask, base_n_z, -jnp.inf)
+    outside = jnp.where(mask, base_n_z, jnp.inf)
+    extras = dict(mask=np.asarray(mask), n_z=np.asarray(base_n_z),
+                  north=np.asarray(base_north),
+                  argmax=int(jnp.argmax(inside)), argmin=int(jnp.argmin(outside)),
+                  values=values)
+    return Q, gradients, elasticities, extras
