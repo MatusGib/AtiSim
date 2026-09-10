@@ -4,7 +4,9 @@ A 6-DOF fixed-wing flight-dynamics core in JAX, built as a foundation for turbul
 modelling. This document is the standing record: what exists, what is validated, what is
 known-broken, and what happens next.
 
-**Last updated:** session 28 (an audit, no code changed: the "the agreement got worse" hypothesis tested and **falsified** — every early number re-measured and unchanged, no tolerance ever loosened, and the growth traced to a change of *reference class* dated to commit `c6b5342`, 1 Sep 2026, with ASSUMPTIONS C3's frozen derivatives the largest identified physical cause; the strip-load path judged: off the published path, +22.9% on one unvalidated channel, and worth keeping for its negative result).
+**Last updated:** session 29 (a design session, **no code changed and no number measured**: the sensitivity study scoped and designed — three quantities of interest, two factor tiers, AD screen → OAT confirm → banded propagation — and three AD dead ends found in the tree while writing it: the Newton trim, `np.linalg.eigvals` in the mode chain, and `vortex_viz._measure`'s NumPy return. §0 carries the branch, §7 the phases, §9 the entry).
+
+Session 28 (an audit, no code changed: the "the agreement got worse" hypothesis tested and **falsified** — every early number re-measured and unchanged, no tolerance ever loosened, and the growth traced to a change of *reference class* dated to commit `c6b5342`, 1 Sep 2026, with ASSUMPTIONS C3's frozen derivatives the largest identified physical cause; the strip-load path judged: off the published path, +22.9% on one unvalidated channel, and worth keeping for its negative result).
 
 Session 27 (the recorded trace digitised, and it says the *wind* is 12% light; a second sealed prediction settled RIGHT; the DC-10 wing loading found unpinnable, withdrawing session 26's sign; the LES comparison audited, refused, then re-run with Yoshimura's OWN aeroplane rebuilt from their source code -- 1.427 to 1.202, with the residual now attributable to neither aircraft nor Mach).
 
@@ -127,6 +129,24 @@ stop them being lost. **None was reviewed and none is endorsed** — the commit 
 | `claude/project-md-restructure-95b7b8` | same name | Local `PROJECT.md` edits |
 | `claude/flight-dynamics-cat-prompt-ec9839` | `jsbsim-737-validation-eeb6a9` | A CAT-sources search prompt |
 | `claude/project-readme-mockup-0ef89a` | `quasi-steady-aero-model-d5cf37` | A README mockup |
+
+### Designed but not built — session 29
+
+| | |
+|---|---|
+| **Branch** | **`claude/model-sensitivity-analysis-t18v3v`** |
+| **Worktree** | none — a remote container on the main checkout, no `.venv` (`jax` installed fresh on Linux; §10's Windows table does not apply) |
+| **State** | **1 commit ahead of `main`, 0 behind.** A design document only. **No code, no measurement**, so nothing in the tree moved that a suite run could detect |
+| **What it is** | `docs/superpowers/specs/2026-09-10-model-sensitivity-analysis-design.md` — a sensitivity study over three quantities of interest (headline CAT load, cruise modes, Dryden ensemble statistics) and two factor tiers (aerodynamic derivatives, `ASSUMPTIONS.md` modelling choices), by a tiered method: AD screen → OAT confirm → banded propagation |
+| **What it closes** | **`ASSUMPTIONS.md` C3's UNBOUNDED row** would get its first bound at cruise (S4); §1's bare "68%" would gain a band or an explicit statement that the shortfall survives every sourced band (S6); and phase 3's remaining DC-10 acquisition would finally have a **price** |
+| **Blocking** | **Nothing. The design is written and no phase has been run.** Phase S0 is a module and a test; S1 is a falsification against session 11's four published slopes and gates everything after it |
+
+**The three obstacles the design exists to solve, recorded here because they are properties of
+the tree and not of the plan:** `trim` is a Newton solve (needs the implicit function theorem,
+not differentiation through the loop); `validation.modes_from_matrix` calls
+**`np.linalg.eigvals`**, so the mode chain breaks at NumPy and needs first-order eigenvalue
+perturbation; and **`vortex_viz._measure` returns NumPy**, so the entire `Encounter` path is an
+AD dead end and the load QoI needs a parallel jnp path with an equality test guarding it.
 
 ### Superseded, kept only until someone confirms
 
@@ -4091,6 +4111,35 @@ disk. Session 26 received four more papers and closed items 3, 4 and 5 outright.
 | **test the frozen-`C_Lα` explanation of the LES ratio** | **NEW, session 27, and it is CHEAP.** Rescale the 747's `C_Lα` by the Prandtl–Glauert ratio 1.521 and re-fly D03/D04. If the 1.42× ratio collapses toward 1, the LES discrepancy is this project's frozen derivative and **not** a code disagreement — and it becomes the **first quantified point on the Mach axis** ASSUMPTIONS C3 has left unbounded since session 12, with no chart read needed |
 | ~~run the LES limb~~ | **ALREADY RUN, session 3–4 Sept, and found NOT LIKE-FOR-LIKE in session 27.** All four domains × two aircraft are on disk. §4's input audit says why no number from them is quoted: the aeroplane is 5.4% or 82.9% away in natural frequency, and the entry closest in frequency is 2.63 band widths outside its own envelope. The **field reader is sound** (+0.978/−0.968/−0.935 against their own sampled wind) and reusable; the **load comparison is not yet a comparison.** This remains the project's only route out of the circularity every load row carries |
 
+### The sensitivity study — designed session 29, not yet run
+
+**The question it answers is one §4 has never asked: which of this model's own numbers does
+the answer rest on?** §4 measures the model against sources. It does not measure the model
+against *itself*, so no row in it says whether the headline load is set by `CLa` or by `Cmq`,
+nor whether a modelling choice from `ASSUMPTIONS.md` costs more than a derivative does.
+
+Full design in `docs/superpowers/specs/2026-09-10-model-sensitivity-analysis-design.md`.
+**Scope was agreed before it was written**, and what it excludes is as deliberate as what it
+covers — the wind and scenario inputs are excluded **because `cat_bounds.py` and
+`cat_uncertainty.py` already price them**, and the budget cites those numbers rather than
+re-measuring them.
+
+| Phase | Work | Gate | Status |
+|---|---|---|---|
+| **S0** | `atisim/sensitivity.py` + `test_sensitivity.py` | the differentiable load QoI matches `vortex_viz._measure`'s `n_z` to **1e-12**, sample-for-sample | **not started** |
+| **S1** | AD screen on the cruise modes | **reproduces session 11's four sweep slopes to <2%** — the falsification step, and it gates every phase after it | **not started** |
+| **S2** | AD screen on the headline CAT load, all of tier A | AD elasticity vs ±1% central difference agree to **<1%**, or the failure is explained before anything is ranked | **not started** |
+| **S3** | OAT confirm on the top factors at ±1/5/10/25% | a ranked table carrying the excursion it was ranked at, and the affine-slope-to-elasticity ratio as a nonlinearity measure | **not started** |
+| **S4** | Tier B — the `ASSUMPTIONS.md` modelling choices, on the same axis | **C3 gets its first BOUND at cruise**, where session 27 gave it one point at M 0.406 | **not started** |
+| **S5** | Dryden ensemble `n_z` rms elasticity; peak and rate by sweep, since both are step functions | N stated with the result, E11's condition drift reported beside it | **not started** |
+| **S6** | The banded budget: RSS and linear-sum brackets on the headline | §1 carries a band, **or** states that the shortfall survives every band the sources support | **not started** |
+
+**Two limits the write-up must carry every time it quotes a ranking.** The ranking is
+**one-at-a-time and measures no interaction terms** — global variance-based methods (Sobol,
+Morris) were considered and declined, because the input distributions they need are not
+sourced and a variance decomposition invites a reading this project cannot support. And
+**B1 stays unquantifiable**: varying a rigid-body parameter does not bound a structural one.
+
 ### The original ten-step plan
 
 ```
@@ -4385,6 +4434,47 @@ source exactly. A smoother interpolant would agree with the source less.
   touch the core response.
 
 ## 9. Session log
+
+### Session 29 — a plan for measuring the model against itself, and three dead ends found in the tree
+
+**A design session. No measurement was made and no model code was changed.** The
+conversation asked for a plan for a sensitivity analysis and asked to settle the scope
+first, so the scope was settled by question and the design written against the tree rather
+than against a general recipe.
+
+**What was decided, and it narrows the study in two directions.** Three quantities of
+interest — the headline CAT gust load, the cruise linear modes, and the Dryden ensemble
+statistics. Two factor tiers — the aerodynamic derivatives, and the `ASSUMPTIONS.md`
+modelling choices. **The wind and scenario inputs were deliberately left out**, because
+`scripts/cat_bounds.py` and `scripts/cat_uncertainty.py` already price `V₀`, `r₀`, spacing
+and `σ_w`, and §4 and §8 already carry the numbers; the budget will cite them. **The LES
+residual was also left out**: it is a comparison against one external code at one condition,
+and §7 already names the work that closes it.
+
+**The useful part of the session is not the plan but what reading the tree for it found.**
+Three obstacles sit between `jax.jacfwd` and the three QoIs, none of them recorded anywhere
+before now, and each one is a property of this codebase rather than of sensitivity analysis:
+
+1. **`trim` is a Newton solve.** Differentiating through the unrolled loop is wasteful and is
+   wrong if the loop has not converged. The study will use the implicit function theorem —
+   `dx*/dp = −(∂r/∂x)⁻¹(∂r/∂p)`, both blocks already available from `jacfwd(trim.residual)`.
+2. **`validation.modes_from_matrix` calls `np.linalg.eigvals`.** `longitudinal_matrix` is
+   *itself* a `jacfwd` of the real dynamics, so `A(p)` differentiates cleanly — and then the
+   chain stops dead at NumPy. First-order eigenvalue perturbation closes it without writing a
+   new eig, and fails predictably at coalescing eigenvalues, so separation must be asserted.
+3. **`vortex_viz._measure` returns NumPy** — `np.asarray(jax.vmap(analyse)(...))` — so the
+   whole `Encounter` path is an AD dead end. The load QoI therefore needs a **parallel
+   jnp-only path**, which is precisely the "two paths that could drift apart" hazard this repo
+   warns about elsewhere; the guard is a 1e-12 equality test against `_measure`, not a comment.
+
+**Session 11 is the gate, not the precedent.** It swept four derivatives against four modes at
+the **power approach** and found every relation affine with a non-zero intercept. Those four
+slopes are the only independent answer this project holds for any sensitivity, so phase S1
+reproduces them before phase S2 is allowed to run.
+
+**What was NOT done, so nobody goes looking:** no `atisim/sensitivity.py` exists, no
+elasticity has been computed, no number in §4 moved, and `ASSUMPTIONS.md` is untouched — C3 is
+still UNBOUNDED and §1's headline is still a bare 68%. The §0 row carries the branch.
 
 ### Session 28 — the errors did not grow, the questions did
 
