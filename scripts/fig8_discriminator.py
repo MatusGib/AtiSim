@@ -93,7 +93,26 @@ def peak_alpha_deg(enc) -> float:
     return float(np.abs(enc.alpha_air[enc.window]).max()) * RAD2DEG
 
 
-def fly_grid(ac, V, H, sigmas, seeds, dt):
+def _checkpoint(path, grid):
+    """Write the grid as it is built, after every intensity.
+
+    An earlier run of this script lost 45 minutes of flights to a SIGTERM with
+    nothing on disk, because its output was piped through `tail` and its JSON
+    was written once at the end. Both are fixed: this writes after each
+    intensity, so a kill costs at most one, and the caller redirects rather than
+    pipes. An ensemble that takes longer than the thing that might kill it needs
+    to be restartable, and this one now is.
+    """
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(
+        {str(s): {k: v.tolist() for k, v in g.items()
+                  if isinstance(v, np.ndarray)} for s, g in grid.items()},
+        indent=1, default=float))
+
+
+def fly_grid(ac, V, H, sigmas, seeds, dt, checkpoint=None, clear_every=10):
     """One flight pair per (sigma, seed). Returns nested dicts of arrays.
 
     *** WHY jax.clear_caches() IS IN THE LOOP, AND IT IS NOT A TIDY-UP. ***
@@ -107,9 +126,12 @@ def fly_grid(ac, V, H, sigmas, seeds, dt):
     cleanly. Nothing warns, and the failure looks like a JAX bug rather than a
     caching problem.
 
-    Clearing per seed bounds the retained set at one. It costs nothing measurable
-    here because every seed was recompiling anyway -- the compile is already in
-    the ~6.6 s per pair this loop takes either way.
+    Clearing bounds the retained set. Clearing on EVERY seed was the first fix
+    and it is the wrong one: measured, it takes the pair from 6.6 s to 19 s,
+    because it throws away the trim solve and the analysis vmap along with the
+    rollout and they all recompile too. Clearing every `clear_every` seeds keeps
+    the retained set small and the cost amortised -- the OOM came at roughly 144
+    retained programs, so a dozen or two is far inside it.
 
     The real repair is to stop making a closure per seed: give the field its
     phases as a traced argument so one compilation serves the whole ensemble.
@@ -127,11 +149,14 @@ def fly_grid(ac, V, H, sigmas, seeds, dt):
             rows["vortex"].append(vortex_viz.fig8_point(v))
             rows["updraft"].append(vortex_viz.fig8_point(u))
             rows["alpha"].append((peak_alpha_deg(v), peak_alpha_deg(u)))
-            jax.clear_caches()
+            if clear_every and (seed + 1) % clear_every == 0:
+                jax.clear_caches()
         out[sigma] = {k: np.array(x) for k, x in rows.items()}
         out[sigma]["seconds"] = time.time() - t0
+        _checkpoint(checkpoint, out)
         print(f"    sigma {sigma:5.3f}  {len(seeds)} seeds in "
-              f"{out[sigma]['seconds']:5.1f} s", flush=True)
+              f"{out[sigma]['seconds']:5.1f} s"
+              f"  (peak |alpha| {out[sigma]['alpha'].max():.2f} deg)", flush=True)
     return out
 
 
@@ -265,6 +290,8 @@ def main():
     ap.add_argument("--dt", type=float, default=0.02)
     ap.add_argument("--json", type=Path, default=None)
     ap.add_argument("--sigmas", type=float, nargs="*", default=None)
+    ap.add_argument("--clear-every", type=int, default=10,
+                    help="drop JAX's compilation cache every N seeds; see fly_grid")
     args = ap.parse_args()
 
     print(f"atisim imported from: {atisim.__file__}")
@@ -279,7 +306,9 @@ def main():
     print(f"  {len(sigmas)} intensities x {len(seeds)} seeds x 2 categories = "
           f"{len(sigmas)*len(seeds)*2} flights\n")
 
-    grid = fly_grid(ac, V, H, sigmas, seeds, args.dt)
+    checkpoint = args.json.with_suffix(".grid.json") if args.json else None
+    grid = fly_grid(ac, V, H, sigmas, seeds, args.dt, checkpoint=checkpoint,
+                    clear_every=args.clear_every)
     out = {"tree": atisim.__file__, "seeds": len(seeds), "dt": args.dt,
            "sigmas": sigmas, "sourced": [SOURCED_LO, SOURCED_HI]}
     section_a(grid, sigmas[min(1, len(sigmas) - 1)], seeds, out)
