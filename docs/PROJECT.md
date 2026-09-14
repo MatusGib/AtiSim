@@ -4387,12 +4387,30 @@ bit-exact pins that fail on this platform fail with **byte-identical values befo
 the patch**. `test_aero.py::test_the_undeclared_prandtl_glauert_sentinel_has_a_FINITE_derivative`
 is the negative control.
 
-**A second instance is OPEN and is not fixed here.** `airframe.py:162` —
-`c0 * jnp.sqrt(jnp.maximum(1.0 - normalised**2, 0.0))`, the elliptic spanwise loading shape
-— is the same construction and goes to `sqrt(0)` **at the wingtip**, where `normalised = ±1`.
-It is not reached by anything phase S0 or S1 touches, because the mode QoIs never enter the
-strip path. **It will block the loading-shape row of the study's tier B**, and whoever runs
-that phase should expect to repair it the same way first.
+**A second instance existed and is now CLOSED — same session, after it was flagged.**
+`airframe.elliptic_chord` — `c0 * sqrt(max(1 − (2y/b)², 0))` — is the same construction, and
+`airframe.stations` uses `jnp.linspace(-b/2, b/2, n)`, so a tip station sits **exactly** at
+±b/2 and the argument is exactly 0.0 there. **Confirmed by running it, not by reading it:**
+a `jvp` seeded in `CLa` — a coefficient the chord does not depend on at all — raised
+`invalid value (nan) encountered in mul` under the NaN guard, at every station count and
+every loading shape.
+
+Repaired with the same double-`where`, and value-identity proved the same way: the SHA-256
+of every chord, at every station count (9/17/57) and every shape (elliptic/uniform/tapered),
+for every registry aircraft, is **unchanged**. Two tests guard it —
+`test_the_elliptic_chord_has_a_FINITE_derivative_at_the_wingtip` and
+`test_the_tip_chord_is_still_exactly_zero`, the second being the value-side control that
+would catch a repair returning `sqrt(1.0)` at the tip.
+
+**The tip tangent must be exactly ZERO and not merely finite, and that is physics.** The tip
+chord is zero for every aircraft — `2y/b` stays exactly 1 when `b` moves, and `c0` multiplies
+an exact zero when `S` moves — so the derivative of the tip chord with respect to any
+aircraft parameter is genuinely 0. The test asserts `== 0.0` for that reason: `isfinite`
+alone would pass a repair that made the singularity finite-but-wrong. **What the repair does
+not give correctly is `d(chord)/dy` at the tip**, which is genuinely infinite — that is the
+same sqrt singularity `calibrated_lift_slope` blames for the 82.6% quadrature shortfall.
+Nothing in this project differentiates the chord with respect to spanwise position, and the
+docstring says so.
 
 ### What made (a) and (b) invisible
 
@@ -4864,8 +4882,8 @@ and got **bit-identity**.
 **What was NOT done, so nobody goes looking.** **No interaction term was measured anywhere** —
 every ranking here is one-at-a-time, Sobol and Morris were declined because their input
 distributions are not sourced, and every table says so. C3's **α axis** is still unbounded.
-`airframe.py:162` still carries the same `sqrt(0)` construction at the elliptic loading shape's
-wingtip, unrepaired because nothing in these phases reaches it. The S5 ensemble is **N = 8**
+~~`airframe.py:162` still carries the same `sqrt(0)` construction~~ — **closed later in the
+same session; §6(f) has it, with the confirmation that it really did NaN.** The S5 ensemble is **N = 8**
 and most of its table is not resolved at that N — the per-seed standard deviation is printed
 beside every mean rather than averaged away. And the tabulation-Mach sensitivity (±0.05 worth
 +3.0%/−15.8%) is deliberately **kept out of the budget**: §4 records that this 747 flies the

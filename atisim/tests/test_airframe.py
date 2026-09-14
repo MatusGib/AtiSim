@@ -7,6 +7,7 @@ returns for the 747 falls inside the real aircraft's tail arm -- so that
 check is asserted here rather than described in a comment.
 """
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -314,3 +315,57 @@ def test_the_loading_shape_context_manager_restores_the_previous_shape():
     with pytest.raises(ValueError, match="unknown loading shape"):
         with airframe.loading_shape("parabolic"):
             pass
+
+
+def test_the_elliptic_chord_has_a_FINITE_derivative_at_the_wingtip():
+    """The second instance of PROJECT.md section 6(f)'s sqrt(0), closed.
+
+    `stations` uses `jnp.linspace(-b/2, b/2, n)`, so a tip station sits EXACTLY
+    at +-b/2 and `1 - (2y/b)**2` is exactly 0.0 there. sqrt's forward-mode
+    tangent is du/(2 sqrt(u)), which at u = 0 is 0/0 -- NaN for ANY tangent,
+    including a zero one. Measured before the repair: a `jvp` seeded in `CLa`,
+    which the chord does not depend on at all, raised `invalid value (nan)
+    encountered in mul` under the suite's NaN guard.
+
+    The tangent MUST be zero rather than merely finite, and that is physics
+    rather than convenience: the tip chord is zero for every aircraft, because
+    `2y/b` stays exactly 1 when `b` moves and `c0` multiplies an exact zero when
+    `S` moves. Asserting `== 0.0` rather than `isfinite` is what would catch a
+    repair that made the singularity finite-but-wrong.
+    """
+    ac = REGISTRY["boeing747"]
+    zeros = jax.tree.map(jnp.zeros_like, ac)
+
+    for shape in airframe.LOADING_SHAPES:
+        for n_span in (9, 17, 57):
+            st = airframe.stations(ac, n_span=n_span)
+            for field in ("CLa", "mass", "Clp", "S", "b"):
+                seed = zeros._replace(**{field: jnp.ones_like(getattr(ac, field))})
+                with airframe.loading_shape(shape):
+                    _, tangent = jax.jvp(
+                        lambda a: airframe.chord_distribution(st.span, a),
+                        (ac,), (seed,))
+                tangent = np.asarray(tangent)
+                assert np.all(np.isfinite(tangent)), (
+                    f"{shape}/{n_span}/{field}: {tangent}")
+                if shape == "elliptic":
+                    assert tangent[0] == 0.0 and tangent[-1] == 0.0, (
+                        f"the tip tangent must be exactly zero, got "
+                        f"{tangent[0]}, {tangent[-1]}")
+
+
+def test_the_tip_chord_is_still_exactly_zero():
+    """The repair must not have moved the value it guards.
+
+    A double-`where` that returned `sqrt(1.0)` at the tip instead of 0.0 would
+    pass the derivative test above and silently give the wingtip a full root
+    chord. This is the value-side control for it.
+    """
+    ac = REGISTRY["boeing747"]
+    st = airframe.stations(ac)
+    chord = np.asarray(airframe.chord_distribution(st.span, ac, name="elliptic"))
+    assert chord[0] == 0.0 and chord[-1] == 0.0
+    assert np.all(chord[1:-1] > 0.0)
+    # c0 = 4S/(pi b) is the root chord and the centre station is at y = 0.
+    c0 = 4.0 * float(ac.S) / (np.pi * float(ac.b))
+    assert chord[len(chord) // 2] == pytest.approx(c0, rel=1e-12)
