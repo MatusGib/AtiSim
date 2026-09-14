@@ -15,7 +15,8 @@ import numpy as np
 import pytest
 
 from atisim.response import (
-    PHUGOID_FLOOR_HZ, exceedance, peak_frequency, spectrum,
+    PHUGOID_FLOOR_HZ, exceedance, peak_frequency, separability, spectrum,
+    standardised_difference,
 )
 
 DT = 0.02  # s, the step scripts/cat_ensemble.py flies
@@ -152,3 +153,94 @@ def test_an_exceedance_of_one_sample_is_refused():
         exceedance(np.zeros(1), DT, [0.0])
     with pytest.raises(ValueError, match="1-D"):
         exceedance(np.zeros((4, 4)), DT, [0.0])
+
+
+# ---------------------------------------------------------------------------
+# Separability: the statistics that replaced session 23d's extremes gap
+# ---------------------------------------------------------------------------
+
+
+def test_separability_of_disjoint_samples_is_exactly_one_or_zero():
+    """The two saturating cases, and they are the ones a caller reads as 'clean'."""
+    assert separability([1.0, 2.0, 3.0], [4.0, 5.0, 6.0]) == 1.0
+    assert separability([4.0, 5.0, 6.0], [1.0, 2.0, 3.0]) == 0.0
+
+
+def test_separability_of_identical_samples_is_exactly_one_half():
+    """Every pair is a tie, and a tie counts as a half. The null case.
+
+    Asserted as an EXACT 0.5 rather than approximately, because the tie
+    convention is the one thing a hand-rolled Mann-Whitney gets wrong, and
+    counting ties as zero would give 0.0 here -- which reads as 'perfectly
+    separated the other way' rather than as 'no information'.
+    """
+    x = [1.0, 2.0, 3.0, 4.0]
+    assert separability(x, x) == 0.5
+
+
+def test_separability_is_computed_by_hand_on_an_interleaved_pair():
+    """a = [0, 2], b = [1, 3]. The four pairs are 1>0, 3>0, 1<2, 3>2 -- so 3/4."""
+    assert separability([0.0, 2.0], [1.0, 3.0]) == 0.75
+
+
+def test_separability_is_invariant_under_a_monotone_transform():
+    """The property that makes it a statement about the DISTRIBUTIONS.
+
+    It is a rank statistic, so any strictly increasing map applied to both
+    samples must leave it EXACTLY unchanged -- degrees to radians, g to m/s^2,
+    or anything nonlinear. A mean- or variance-based measure does not have this
+    property, which is why `standardised_difference` is reported beside it
+    rather than instead of it.
+    """
+    rng = np.random.default_rng(20260914)
+    a, b = rng.normal(0.0, 1.0, 37), rng.normal(0.6, 1.4, 41)
+    base = separability(a, b)
+    for transform in (np.exp, lambda x: x ** 3, lambda x: 7.3 * x - 4.1):
+        assert separability(transform(a), transform(b)) == base
+
+
+def test_separability_times_the_pair_count_is_the_mann_whitney_count():
+    """The normalisation, against the raw count it divides."""
+    rng = np.random.default_rng(7)
+    a, b = rng.normal(size=13), rng.normal(0.3, size=11)
+    wins = sum(1 for x in a for y in b if y > x)
+    assert separability(a, b) * (len(a) * len(b)) == pytest.approx(wins)
+
+
+def test_separability_refuses_an_empty_sample():
+    with pytest.raises(ValueError, match="non-empty"):
+        separability([], [1.0, 2.0])
+
+
+def test_the_standardised_difference_is_the_shift_over_the_pooled_sd():
+    """a = [-1, 1] has variance 2 (ddof=1), so sd = sqrt(2). Shift b by delta."""
+    a = np.array([-1.0, 1.0])
+    for delta in (0.0, 1.0, 5.0):
+        assert standardised_difference(a, a + delta) == pytest.approx(
+            delta / np.sqrt(2.0))
+
+
+def test_the_standardised_difference_is_nan_when_both_samples_are_constant():
+    """NaN rather than a large number, so it cannot sort to the top of a ranking.
+
+    The companion-that-must-be-zero for the shift test above: two constant
+    samples have no spread to standardise by, and a division that silently
+    returned inf would make an unmeasurable difference look like the largest
+    effect in the table.
+    """
+    assert np.isnan(standardised_difference([2.0, 2.0], [9.0, 9.0]))
+
+
+def test_the_two_separability_statistics_disagree_where_they_should():
+    """Saturation is the difference between them, and it is why both are reported.
+
+    Two disjoint pairs, one a hair apart and one far apart, give the SAME
+    separability of 1.0 -- it cannot see past the overlap it has already ruled
+    out. The standardised difference keeps counting. A reader given only the
+    first would read the two cases as equally separated.
+    """
+    near_a, near_b = [0.0, 1.0], [1.001, 2.0]
+    far_a, far_b = [0.0, 1.0], [500.0, 501.0]
+    assert separability(near_a, near_b) == separability(far_a, far_b) == 1.0
+    assert standardised_difference(far_a, far_b) > \
+        100.0 * standardised_difference(near_a, near_b)

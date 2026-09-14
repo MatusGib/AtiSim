@@ -49,10 +49,11 @@ import json
 import time
 from pathlib import Path
 
+import jax
 import numpy as np
 
 import atisim  # noqa: F401  -- enables x64
-from atisim import vortex_viz, wind
+from atisim import response, vortex_viz, wind
 from atisim.aircraft import CRUISE, REGISTRY
 from atisim.units import RAD2DEG
 from scripts.cat_ensemble import AIRCRAFT, fly_updraft, fly_vortex
@@ -66,22 +67,12 @@ SOURCED_LO = wind.mehta_unmodelled_wind()
 SOURCED_HI = wind.mehta_residual_ceiling()
 
 
-def auc(a: np.ndarray, b: np.ndarray) -> float:
-    """P(b > a) over all N*M pairs, ties counted as a half.
-
-    The Mann-Whitney U statistic divided by N*M. Computed directly rather than
-    through a rank sum because N is small enough that the N^2 comparison is free
-    and the direct form cannot get the tie convention wrong.
-    """
-    diff = b[None, :] - a[:, None]
-    return float((np.sum(diff > 0) + 0.5 * np.sum(diff == 0)) / diff.size)
-
-
-def cohens_d(a: np.ndarray, b: np.ndarray) -> float:
-    """Standardised mean difference, pooled sd. NaN where both clouds are flat."""
-    na, nb = len(a), len(b)
-    pooled = np.sqrt(((na - 1) * a.var(ddof=1) + (nb - 1) * b.var(ddof=1)) / (na + nb - 2))
-    return float((b.mean() - a.mean()) / pooled) if pooled > 0 else float("nan")
+# Both live in `atisim.response`, beside `exceedance`, because they are run
+# statistics rather than script plumbing and because a second implementation is
+# how two callers start disagreeing. `test_response.py` checks them against
+# closed-form answers.
+auc = response.separability
+cohens_d = response.standardised_difference
 
 
 def extremes_gap(a: np.ndarray, b: np.ndarray) -> float:
@@ -103,7 +94,28 @@ def peak_alpha_deg(enc) -> float:
 
 
 def fly_grid(ac, V, H, sigmas, seeds, dt):
-    """One flight pair per (sigma, seed). Returns nested dicts of arrays."""
+    """One flight pair per (sigma, seed). Returns nested dicts of arrays.
+
+    *** WHY jax.clear_caches() IS IN THE LOOP, AND IT IS NOT A TIDY-UP. ***
+    `integrate.rollout` and `logged_rollout` take `wind_model` as a STATIC
+    argument, and `wind.dryden_vertical_field(sigma, seed)` returns a fresh
+    closure per seed. A closure hashes by identity, so every seed is a cache
+    MISS: JAX traces, compiles and then RETAINS a separate executable for each
+    one. Measured the hard way -- 96 compilations in, at the second intensity,
+    this script died with `LLVM compilation error: Cannot allocate memory` and
+    `Failed to materialize symbols`, having completed the first intensity
+    cleanly. Nothing warns, and the failure looks like a JAX bug rather than a
+    caching problem.
+
+    Clearing per seed bounds the retained set at one. It costs nothing measurable
+    here because every seed was recompiling anyway -- the compile is already in
+    the ~6.6 s per pair this loop takes either way.
+
+    The real repair is to stop making a closure per seed: give the field its
+    phases as a traced argument so one compilation serves the whole ensemble.
+    That is a change to `wind.py`'s field contract and is not this script's to
+    make. Any future ensemble in this repo hits the same wall.
+    """
     out = {}
     for sigma in sigmas:
         rows = {"vortex": [], "updraft": [], "alpha": []}
@@ -115,10 +127,11 @@ def fly_grid(ac, V, H, sigmas, seeds, dt):
             rows["vortex"].append(vortex_viz.fig8_point(v))
             rows["updraft"].append(vortex_viz.fig8_point(u))
             rows["alpha"].append((peak_alpha_deg(v), peak_alpha_deg(u)))
+            jax.clear_caches()
         out[sigma] = {k: np.array(x) for k, x in rows.items()}
         out[sigma]["seconds"] = time.time() - t0
         print(f"    sigma {sigma:5.3f}  {len(seeds)} seeds in "
-              f"{out[sigma]['seconds']:5.1f} s")
+              f"{out[sigma]['seconds']:5.1f} s", flush=True)
     return out
 
 
