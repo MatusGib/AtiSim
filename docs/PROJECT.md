@@ -136,7 +136,7 @@ stop them being lost. **None was reviewed and none is endorsed** — the commit 
 |---|---|
 | **Branch** | **`claude/model-sensitivity-analysis-t18v3v`** |
 | **Worktree** | none — a remote container on the main checkout, no `.venv` (`jax` installed fresh on Linux; §10's Windows table does not apply) |
-| **State** | **3 commits ahead of `main`, 0 behind. ALL SEVEN PHASES S0–S6 ARE DONE** and committed. Suite on this container: **2 failed, 776 passed, 3 skipped in 811 s** before any of this work; §9 carries the after. The two failures are the platform bit-pins §4 describes and predate the work |
+| **State** | **8 commits ahead of `main`, 0 behind. ALL SEVEN PHASES S0–S6 ARE DONE**, plus two follow-ups: `airframe.py`'s `sqrt(0)` closed, and Fig. 8's pitch axis investigated (§4, correcting session 23d). Suite: **776 passed** before any of this work, **808** after S0–S6, **819** after the follow-ups; the same 2 platform bit-pins fail throughout and predate the work |
 | **What it is** | `docs/superpowers/specs/2026-09-10-model-sensitivity-analysis-design.md` — a sensitivity study over three quantities of interest (headline CAT load, cruise modes, Dryden ensemble statistics) and two factor tiers (aerodynamic derivatives, `ASSUMPTIONS.md` modelling choices), by a tiered method: AD screen → OAT confirm → banded propagation |
 | **What it closes** | **CLOSED, all three.** `ASSUMPTIONS.md` **C3's Mach axis is bounded at cruise: −5.04%** of the headline load over a measured Mach span of 0.7187–0.8257. **§1's headline carries a band — 68.2%, 57.1–74.0%** — and states that the shortfall survives it. And phase 3's DC-10 acquisition has a **price**: `CLa` is the top-ranked coefficient on the load at **+0.692**, `mass` second at **−0.649** |
 | **Blocking** | **Nothing, and nothing of the plan is left.** What remains is named rather than pending: `airframe.py`'s second `sqrt(0)` (§6(f)), C3's **α axis** which is still unbounded, and **interaction terms**, which this study measured none of and says so with every table |
@@ -816,8 +816,9 @@ carry a `CL_table_alpha`, and `aero.py` takes the table *instead of* `CL0 + CLα
 
 #### What does not reproduce on another platform, measured
 
-The suite runs **2 failed, 776 passed, 3 skipped in 811 s** here, and **2 failed, 808 passed,
-3 skipped in 898 s** once this session's 32 tests are in it. Both failures are the two
+The suite runs **2 failed, 776 passed, 3 skipped in 811 s** here, **2 failed, 808 passed,
+3 skipped in 898 s** once phases S0–S6's 32 tests are in it, and **2 failed, 819 passed,
+3 skipped in 1,359 s** after the two follow-ups added 11 more. Both failures are the two
 tests that assert **exact bit equality**, and both differ in the 13th significant digit:
 
 | pin | this platform | recorded | relative | ulps |
@@ -5008,8 +5009,18 @@ in 1,024 are misordered. **Inside §1's envelope both axes separate perfectly**,
 standardised terms it is the **load** axis that degrades faster, ×7.28 against pitch's ×3.20.
 What binds is not the statistic but the envelope: peak |α| passes 10° at σ_w = 4.0, so the
 sourced ceiling of 4.459 m/s is already outside it and **23d's upper limb always was**.
-`atisim/response.py` gained `separability` and `standardised_difference` with ten closed-form
-tests, and the 23d entry is edited in place rather than left standing beside this.
+`atisim/response.py` gained `separability` and `standardised_difference` with **nine**
+closed-form tests, and the 23d entry is edited in place rather than left standing beside
+this. *(Their commit message says ten and is wrong by one. The count here is measured —
+12 `def test_` before, 21 after — because a project whose discipline is that numbers carry
+their provenance does not get to round its own test count.)*
+
+**The suite after both follow-ups: 2 failed, 819 passed, 3 skipped in 1,359 s.** The same
+two failures as every run this session — the exact-bit pins, failing with byte-identical
+values, so nothing moved — and the **+11** over the 808 after S0–S6 is those 9 `response`
+tests plus 2 in `test_airframe.py` (14 `def test_` before, 16 after), counted rather than
+assumed. The wall time is longer only because a 384-flight ensemble was competing for the
+same cores.
 
 **And two failures of the RUN rather than of the physics, recorded because the next ensemble
 will hit them.** `integrate.rollout` takes `wind_model` as a **static** argument and
