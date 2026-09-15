@@ -426,10 +426,23 @@ through the transonic region, so ΔM = 0.03 near M 0.80 is not a small excursion
 where those curves bend.
 
 ~~**Bound: none.**~~ **Bound on the ALTITUDE axis, measured session 23. The Mach axis is
-still unbounded.** Producing a Mach bound still means digitising the derivative-vs-Mach
+still unbounded.** ~~Producing a Mach bound still means digitising the derivative-vs-Mach
 plots, which §7 declines for the reason it declines further flight conditions: they are
 chart reads off a poor scan, and a chart read is weaker evidence than the tabulated set
-already in use.
+already in use.~~
+
+**Session 30 did the chart read, and the objection to it does not survive.** All eight curves
+on printed pp. 220–222 were digitised by hand and checked against Table IX-4 at every circled
+flight condition through Appendix A: the smooth curves agree to **0.7–1.5%** and Cm_M to RMS
+**0.006**. A chart read anchored at eight tabulated points is not weaker evidence than the
+table — it is the table, interpolated.
+
+**What that settles, and what it does not.** It settles the **speed derivatives'** Mach
+content (p. 222): sourced, checked, and available through `Aircraft.CL_M/CD_M/Cm_M`, which no
+entry declares. **It does not bound this assumption.** The α-family curves on pp. 220–221 were
+read and used only to check the digitisation; nothing is scheduled on them, so the frozen
+derivatives are still frozen. The unmerged session-29 branch bounds C3 at cruise by a
+different route (PROJECT.md §0).
 
 The **altitude** axis no longer needs a chart read, because a second tabulated condition
 turned up. B1 above has the coefficient table; what matters here is the consequence, which

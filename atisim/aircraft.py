@@ -257,6 +257,41 @@ class Aircraft(NamedTuple):
     # so that form would count it twice.
     pg_mach_ref: Array = jnp.array(-1.0)
 
+    # -- Mach derivatives at constant alpha --------------------------------
+    # CR-2144's C_LM, C_DM and C_mM (Appendix A printed p. A-14, dC/dM; the
+    # 747's are plotted on printed p. 222), applied as a FIRST-ORDER increment
+    # about the Mach they were read at:
+    #
+    #     CL += CL_M (M - M_ref),  CD += CD_M (M - M_ref),  Cm += Cm_M (M - M_ref)
+    #
+    # NEGATIVE `mach_deriv_ref` MEANS NOT DECLARED, and then all three terms
+    # add an exact zero -- the default, so every entry is bit-for-bit unmoved
+    # unless it opts in, exactly as `pg_mach_ref` above.
+    #
+    # This is the "Mach content of Xu, Zu, Mu" that PROJECT.md section 5 names
+    # as missing. Through validation.longitudinal_matrix it reproduces CR-2144
+    # Appendix A's (M/2) C_XM, C_NM and C_mM terms in X_u, Z_u, M_u, X_w, Z_w
+    # and M_w exactly -- asserted in test_cr2144_speed_derivatives, not argued.
+    #
+    # THREE THINGS AN ENTRY DECLARING THESE MUST KNOW.
+    #
+    # 1. CD_M IS ADDITIVE ON TOP OF `aero.wave_drag`, which already carries a
+    #    Mach slope of its own. To represent a SOURCED total drag derivative
+    #    the entry declares the source value MINUS the model's own wave-drag
+    #    slope at the reference condition. Declaring the source value as it
+    #    stands counts the drag rise twice, and on the 747 that is not subtle:
+    #    phugoid damping goes from +13% to +40% against Table IX-5.
+    # 2. CL_M OVERLAPS `pg_mach_ref`. Both give lift a Mach dependence at fixed
+    #    alpha, so declaring both counts compressibility twice.
+    # 3. IT IS A TANGENT. CR-2144's own curves are strongly curved -- the
+    #    747's 40,000 ft Cm_M runs from +0.28 at M 0.72 through zero near
+    #    M 0.82 -- so the increment is faithful only near M_ref, which is the
+    #    same statement every other constant derivative here already makes.
+    mach_deriv_ref: Array = jnp.array(-1.0)
+    CL_M: Array = jnp.array(0.0)
+    CD_M: Array = jnp.array(0.0)
+    Cm_M: Array = jnp.array(0.0)
+
 
 def inertia_tensor(Ixx, Iyy, Izz, Ixz) -> Array:
     """Body-axis inertia tensor.

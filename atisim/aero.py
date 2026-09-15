@@ -239,6 +239,21 @@ def coefficients(
         + ac.CD_alpha * alpha
     )
 
+    # Mach derivatives at constant alpha, a first-order increment about the
+    # Mach the entry's data was read at. See the `mach_deriv_ref` field, which
+    # says why CD_M adds to `wave_drag` rather than replacing it. Undeclared
+    # (negative) makes `d_mach` an exact zero, so each line adds 0.0 and every
+    # entry that has not opted in is bit-for-bit unmoved.
+    #
+    # Applied AFTER the drag build-up on purpose. CR-2144's C_DM is the TOTAL
+    # drag slope, so a Mach increment in lift must not also reach induced drag
+    # through CL**2 -- on the 747 at cruise that path would add 0.010 to a
+    # sourced C_DM of about 0.025.
+    d_mach = jnp.where(ac.mach_deriv_ref < 0.0, 0.0, mach - ac.mach_deriv_ref)
+    CL = CL + ac.CL_M * d_mach
+    CD = CD + ac.CD_M * d_mach
+    Cm = Cm + ac.Cm_M * d_mach
+
     if ac.Clda_table_mach.size:
         Clda = jnp.interp(mach, ac.Clda_table_mach, ac.Clda_table_Clda)
     else:

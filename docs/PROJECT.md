@@ -4,7 +4,13 @@ A 6-DOF fixed-wing flight-dynamics core in JAX, built as a foundation for turbul
 modelling. This document is the standing record: what exists, what is validated, what is
 known-broken, and what happens next.
 
-**Last updated:** session 28 (an audit, no code changed: the "the agreement got worse" hypothesis tested and **falsified** — every early number re-measured and unchanged, no tolerance ever loosened, and the growth traced to a change of *reference class* dated to commit `c6b5342`, 1 Sep 2026, with ASSUMPTIONS C3's frozen derivatives the largest identified physical cause; the strip-load path judged: off the published path, +22.9% on one unvalidated channel, and worth keeping for its negative result).
+**Last updated:** session 30. CR-2144's speed derivatives were digitised, checked against
+Table IX-4 at every circled condition, and flown through a new `Aircraft` seam on a copy of
+the 747. **Phugoid ω_n goes −18.1% → +4.1%**; the residual is the engine's missing thrust line,
+not the reading. **The registry is not changed.** Session 29 exists only on
+`origin/claude/model-sensitivity-analysis-t18v3v` (§0).
+
+Session 28 (an audit, no code changed: the "the agreement got worse" hypothesis tested and **falsified** — every early number re-measured and unchanged, no tolerance ever loosened, and the growth traced to a change of *reference class* dated to commit `c6b5342`, 1 Sep 2026, with ASSUMPTIONS C3's frozen derivatives the largest identified physical cause; the strip-load path judged: off the published path, +22.9% on one unvalidated channel, and worth keeping for its negative result).
 
 Session 27 (the recorded trace digitised, and it says the *wind* is 12% light; a second sealed prediction settled RIGHT; the DC-10 wing loading found unpinnable, withdrawing session 26's sign; the LES comparison audited, refused, then re-run with Yoshimura's OWN aeroplane rebuilt from their source code -- 1.427 to 1.202, with the residual now attributable to neither aircraft nor Mach).
 
@@ -92,6 +98,29 @@ Rules carried from `CLAUDE.md` and enforced throughout the code:
 sitting in the repository.** §4's session-28 entry on CR-2144's `CL_α(M)` figures should be
 read against it: the branch supplies the *theoretical* correction, printed p. 220 supplies
 the *sourced* curve, and the two are a check on each other rather than alternatives.
+
+### Remote only, whole, and invisible to the two-line check — found session 30
+
+| | |
+|---|---|
+| **Branch** | **`origin/claude/model-sensitivity-analysis-t18v3v`** — on `origin` only. **No local branch and no worktree** |
+| **State** | **8 commits ahead of `main`, 0 behind** (`2e93a65` … `76bc502`, 10 September 2026) — a fast-forward. Suite not run here; its own record carries its count |
+| **What it is** | **Session 29, whole.** The sensitivity study designed and run S0–S6 (`docs/superpowers/specs/2026-09-10-model-sensitivity-analysis-design.md`): `atisim/sensitivity.py` and its tests, `scripts/sensitivity_{screen,load,assumptions,ensemble}.py`, `scripts/fig8_discriminator.py`, `response.py`'s separability statistics, and **two `sqrt(0)` repairs** in `aero.py` and `airframe.py` that made the model differentiable in its own coefficients. Its own §4/§9 entries |
+| **What it closes** | Per that branch's record, **none of it re-measured here**: ASSUMPTIONS C3 bounded at cruise (−5.04% of the headline load); §1's headline banded at 68.2% [57.1, 74.0]; the DC-10 acquisition priced (`CLa` +0.692, `mass` −0.649) |
+| **Blocking** | **Nothing — just unmerged.** Its `aero.py` change is inside the Prandtl–Glauert block; session 30's Mach-derivative terms sit after the drag build-up and do not overlap it. `PROJECT.md` will conflict in §0, §4 and §9 |
+| **Why this section missed it** | **`CLAUDE.md` rule 1b's two-line check reads `refs/heads` only.** A branch pushed from another machine or a cloud session and never checked out here prints nothing. Replacing `refs/heads/` with `refs/heads/ refs/remotes/` in that check would have caught it |
+
+### Session 30's own work — unmerged, and waiting on a decision rather than on work
+
+| | |
+|---|---|
+| **Branch** | **`claude/cr-2144-speed-derivative-data-5012ac`** |
+| **Worktree** | `.claude/worktrees/engine-validity-error-check-d8ccdf` — **the directory name does not match the branch**, as everywhere else in this repo |
+| **State** | **1 commit ahead of `main` (`7b71816`), 0 behind.** Suite on it: **843 passed, 1 skipped** |
+| **What it is** | CR-2144 printed pp. 220–222 digitised, checked against Table IX-4 at eight conditions, and flown (§4). `atisim/cr2144_mach.py` and the tracked points; the `mach_deriv_ref / CL_M / CD_M / Cm_M` seam in `aircraft.py` and `aero.py`; `scripts/cr2144_speed_derivatives.py`; 22 tests |
+| **What it closes** | §5's "Mach content of `Xu`, `Zu`" stops being an attribution and becomes SOURCED, verified against Appendix A, and available. **Inert until an entry declares it**, so nothing shipped has moved |
+| **Blocking** | **A decision, not work.** Whether `boeing747` declares the FC9 set: it takes phugoid ω_n from −18.1% to +4.1% and ζ from +13.2% to +4.6%, and moves every Fig. 8 pin and the CAT headline **68.2% → 64.5%** of the record, *away* from it. §4 prices both sides |
+| **Read this beside it** | The eight `.dig` sources are in `C:\Users\mateusz\Downloads\Digitise_plots`, **outside every tree and outside git**. `atisim/data/cr2144_p220_222_digitised.csv` is the only copy in the repository, and `--dig-dir` regenerates it from the originals |
 
 ### Large, stranded, and a decision rather than a merge
 
@@ -233,6 +262,7 @@ changed that.
 |---|---|---|
 | `units.py` | conversion constants only | no logic; factors are never inlined elsewhere |
 | `verification.py` | **tier 0** — `fitted_order`, `oscillator_refinement`, `fixed_control_refinement`, `newton_residual_history`, `torque_free_omega`, `without_aerodynamics`, `free_fall_through_a_swinging_wind` | takes **no aircraft data as a reference**; a failure here is a defect in the core. Every check lives here rather than inside its test, so the notebook runs the same code the suite asserts on |
+| **`cr2144_mach.py`** | **CR-2144's 747 Mach sheets, digitised, and what checks them**: `curves`, `value`, `perturbed`, Tables IX-3/IX-4 at FC3–10, `backsolve` (Appendix A inverted), `mach_increment`, `modes`, `errors_vs_ix5` | added session 30. Reads `atisim/data/cr2144_p220_222_digitised.csv` — the hand-placed points only, never extrapolated. **No model code imports it.** It is the evidence behind `Aircraft.CL_M/CD_M/Cm_M` and the instrument that prices them |
 | `validation.py` | **tiers 1–2** — `longitudinal_matrix`, `to_stability_axes`, `to_imperial_matrix`, `longitudinal_modes`, `lateral_modes`, `Reference`/`REFERENCES`, `CAUGHEY_A`, `sweep`, `affine_fit` | the linearisation lives here, not in `tests/modes.py`, which is now a re-export. Every reference number carries its citation as a `Reference.source` field, enforced by a test |
 | **`docs/ASSUMPTIONS.md`** | not code — the **assumption register**: what the model assumes, why, and a measured bound on each | this document records what has been *measured*; that one records what has been *assumed*. Read it before quoting any result to better than ~0.5%, before flying far from a trim point, and before adding a wind field whose scale approaches a wingspan |
 | **`provenance.py`** | the **ledger**: a constant's category and citation, as data — SOURCED / DERIVED / CALIBRATED / DECLARED | `test_provenance.py` enforces the entries' internal consistency; coverage is enforced separately and only over five modules' module-level constants — see §2's point 4, which corrects what this row used to claim. Answers "which numbers are bulletproof?" as a query rather than a memory |
@@ -424,6 +454,173 @@ spacing from a free parameter into a cited one.
 ## 4. Evidence ledger
 
 Every figure below is measured, with the tolerance the test asserts.
+
+### CR-2144's speed derivatives, digitised and flown — session 30
+
+**The improvement §4 attributed to the speed derivatives in analysis arrives through the
+engine's own linearisation, most of the way. The part that does not arrive is one named term
+the engine has no form for.** CR-2144 printed pp. 220–222 were digitised by hand (Engauge
+Digitizer, eight `.dig` files, **295 placed points**). Every curve was checked against Table
+IX-4 at every circled flight condition. The FC9 set was declared on a **copy** of the 747
+through a new `Aircraft` seam, re-trimmed, linearised by `jacfwd`, and priced for reading
+error. **The registry `boeing747` is unchanged.** Declaring the set there is a decision this
+entry prices and does not take. `scripts/cr2144_speed_derivatives.py` prints every number
+below; `atisim/tests/test_cr2144_speed_derivatives.py` pins them as bands.
+
+**1. The files, and what was wrong with the CSVs that came with them.**
+
+- Engauge stores graph coordinates only for its three axis points. Curve points are screen
+  pixels, mapped here through each file's own affine calibration.
+- **Every CSV column is the curve its header names.** The exports reproduce the placed points
+  to ≤6e-6 at every shared Mach (CL_α 40 kft to 2.2e-3). The order is `SL, 40,000, 20,000`,
+  and `40,000, 20,000` for CD_M.
+- **But the CSVs are not usable as they stand, and are not used.** The headers cannot be
+  parsed as CSV: the thousands separators split `x,SL,40,000,20,000` into six fields over four
+  columns. Worse, **every column is extrapolated past its drawn curve** onto a shared Mach
+  grid: Cm_M 40 kft reaches **105**, CL_M SL **−47.4**, CL_α 20 kft **13.4**, CD_α 40 kft
+  **−4.65**. CD_α is resampled on a regular grid and shares no Mach with its own points.
+- **Two artefacts in the `.dig` files were dropped, and the script reports both.**
+  - **Nine SL points copied verbatim into CL_M's 40,000 ft curve**, at M 0.35–0.62 where no
+    40,000 ft condition flies. That curve now starts at M 0.676.
+  - **Eight exact repeats** in CL_α's SL curve.
+- **Coverage gaps, recorded rather than filled.** Five readings are NaN rather than
+  extrapolated:
+  - CL_M's SL curve ends at M 0.618, short of FC4's 0.650.
+  - Cm_M's and Cm_α's 40,000 ft curves start at M 0.717 and 0.701, just past FC8's 0.700.
+  - Cm_α's 40,000 ft curve ends at 0.898, short of FC10.
+
+**2. The check: the curves against the source's own tables.** CR-2144 Appendix A (printed
+pp. A-16, A-17, body axis) relates the plotted non-dimensional derivatives to Table IX-4's
+dimensional ones, **including** the `W₀/U₀` and `(M/2)·C_M` terms. Each (u, w) pair then
+inverts in closed form. Digitised (linear) minus table, over every circled condition a curve
+spans:
+
+| curve | conditions | worst | RMS |
+|---|---|---|---|
+| Cm_q | 8 | **0.9%** of value | 0.122 |
+| Cm_α | 6 | **0.7%** | 0.0061 |
+| CL_α | 8 | **1.5%** | 0.035 |
+| Cm_α̇ | 8 | **4.3%** | 0.067 |
+| **Cm_M** | 7 | abs **0.0105** | **0.0060** |
+| CL_M | 6 | abs 0.067 (FC10, on the steep limb) | 0.036 |
+| CD_M | 3 | abs 0.0062 | 0.0049 |
+| CD_α | 8 | abs 0.019 | 0.010 |
+
+**The finding the check produced: CR-2144's aerodynamic `C_m` at trim is not zero.**
+
+- **Why it is non-zero.** Table IX-3 gives a thrust moment arm LTH = 10.0 ft and a thrust
+  inclination XI = 2.50° at every condition. The aerodynamic moment at trim therefore balances
+  thrust — C_m = −0.0159 at FC9 — and Appendix A's M_u and M_w both carry it.
+- **What it does to the check.** With the term, the seven Cm_M residuals have RMS **0.0060**.
+  Without it they have RMS **0.0382**, and the FC9 back-solve reads 0.130 against a curve at
+  0.175. **The sign of LTH is fixed by the tables agreeing, not assumed.**
+- **Two inputs the check needs that no table prints.**
+  - **Trim C_D.** SOURCED at 40,000 ft from Figure IX-6 (0.0747 / 0.043 / 0.0427). DECLARED
+    from the FC9 polar at SL and 20,000 ft.
+  - **T_u = 0.** DECLARED: XU, ZU and MU are the table's starred forms, which would carry it.
+- **How much the C_D assumption costs.** ±0.01 of C_D moves the CD_M back-solve by
+  0.022–0.044 and CL_M by 0.001–0.007. That is why CD_M is anchored only where C_D is
+  sourced.
+
+**3. The seam, verified.** `Aircraft.mach_deriv_ref`, `CL_M`, `CD_M` and `Cm_M`: CL, CD and Cm
+each gain `C_M·(M − M_ref)`, applied after the drag build-up. A negative reference adds an
+exact zero. **Verified, not argued.** Declared at the trim Mach, the difference between two
+`jacfwd` plant matrices equals Appendix A's six Mach terms, built independently in
+`cr2144_mach.mach_increment`, to rtol 1e-9, and nothing else moves. `CD_M` adds to
+`aero.wave_drag` rather than replacing it, deliberately — and that is the hazard item 4 finds.
+
+**4. The retest.** The FC9 values read off the 40,000 ft curves at M 0.800 (linear) are
+**CL_M +0.1304, CD_M +0.0251, Cm_M +0.1753**. Table IX-4 implies 0.1474, 0.0276 and 0.1700.
+They were declared on a copy of `boeing747` at M_ref 0.800, re-trimmed, linearised by
+`jacfwd`, and compared against Table IX-5, printed p. 231:
+
+| configuration | phugoid ω_n | phugoid ζ | short-period ω_n | short-period ζ |
+|---|---|---|---|---|
+| shipped | −18.13% | +13.16% | −1.17% | −11.35% |
+| **digitised CL_M and Cm_M; drag Mach slope = digitised total** | **+4.05%** | **+4.55%** | −1.34% | −11.50% |
+| … Korn/Lock slope kept as the drag Mach slope | +4.05% | **+21.32%** | −1.34% | −11.50% |
+| … digitised CD_M added on top of Korn/Lock | +4.05% | **+39.87%** | −1.34% | −11.50% |
+| Table IX-4's own implied set, same seam | +3.86% | +5.26% | −1.34% | −11.49% |
+| DIAGNOSTIC: Cm_M + C_m,trim/(M/2) = 0.1357 | **+0.07%** | **+0.64%** | −1.30% | −11.46% |
+| digitised speed set + α̇ (digitised Cm_α̇ −6.44, IX-4 CL_α̇ −4.97) | +4.05% | +2.54% | −1.06% | **+0.72%** |
+| *`AUDIT.md` §2.3's instrument: IX-4 Xu\*, Zu\*, Mu\* written into the matrix* | *+0.08%* | *+3.11%* | *−0.95%* | *−11.86%* |
+
+- **The improvement arrives.** Phugoid ω_n goes −18.1% → +4.1% and ζ +13.2% → +4.6%. The short
+  period is unmoved, to ≤0.17 points. **It overshoots.**
+- **The overshoot is not the reading.** Table IX-4's own set overshoots the same way, to within
+  0.2 and 0.7 points of the digitised set.
+- **It is the thrust moment.** The engine puts thrust through the CG, so its trim C_m is zero
+  where CR-2144's is −0.0159, and its M_u is short the `(ρScU₀/I_y)·C_m` term. Folding that
+  term into Cm_M takes both phugoid errors under 1%. **The compensated value is a diagnostic,
+  not a declaration**: the sourced fix is a thrust line, which the model does not have.
+- **The drag term is where a partial correction goes wrong.**
+  - The engine already has a drag Mach slope, Korn/Lock's. At FC9 it is **0.0477 per Mach**,
+    against a sourced total of 0.0251 (curve) or 0.0276 (table) — **1.7–1.9× too steep**.
+  - Adding CL_M and Cm_M while leaving that slope in place makes phugoid damping **worse than
+    shipping nothing**: +21.3%.
+  - So CD_M must be declared as the source value minus Korn/Lock's slope, −0.0226 here. It is
+    the same signature §7 recorded for CLa(M) applied alone.
+- **Both families together, all from sources this project holds.** Short-period ζ goes −11.4%
+  → +0.7% and phugoid ζ to +2.5%. Phugoid ω_n stays at +4.1%: that residual is the thrust
+  moment, and the α̇ terms do not touch it.
+- **Why the italic row differs from `test_audit_regression`'s docstrings** (+0.3% / +3.7%):
+  those are pre-merge values. This is the same instrument, re-measured on the post-merge tree.
+
+**5. What the hand reading costs.** Mode errors for the sourced-total configuration, via the
+verified analytic increment:
+
+| source of uncertainty | phugoid ω_n | phugoid ζ |
+|---|---|---|
+| interpolation: linear / PCHIP / natural cubic / Akima | +4.05 … +5.01% | +3.88 … +4.66% |
+| leave one point out, M 0.70–0.90 (PCHIP) | +2.12 … +5.27% | +2.61 … +9.28% |
+| Monte Carlo, 1 px scatter + axis calibration, N 4000, 5–95% | +1.07 … +6.86% | +0.48 … +9.71% |
+| Monte Carlo, 2 px | −2.09 … +8.25% | −3.63 … +15.00% |
+| Monte Carlo, 3 px | −5.73 … +9.53% | −8.38 … +20.82% |
+| the check's residuals at the *other* conditions, ±2 RMS | +2.52 … +5.57% | −4.04 … +13.04% |
+| *shipped, for scale* | *−18.13%* | *+13.16%* |
+
+Per +0.01 of each derivative, one at a time:
+
+- Cm_M moves phugoid ω_n **+0.98 points**.
+- CD_M moves phugoid ζ **+7.41 points**.
+- CL_M moves them +0.20 and −0.35 points.
+- The short period moves under 0.2 points in every case.
+
+What that says:
+
+- **The frequency result is robust.** No reading case brings phugoid ω_n within half of its
+  shipped error — not 3 px of scatter on every point, and not dropping the most influential
+  point (Cm_M at M 0.796, which gives +2.1%).
+- **The damping result is not.** CD_M at FC9 sits at the foot of the drag rise, on a sheet
+  whose value axis is 0.3 over 327 px, and a single point (M 0.8019) decides it: dropping it
+  reads 0.0315 and ζ +9.3%. **Phugoid ζ is known to about ±5 points from this digitisation.**
+  Quoting +4.6% without that band would be the error rule 6 exists to prevent.
+- **Which pixel level is real: 1 px.** Cm_M's check residuals at six other conditions have RMS
+  0.0060, well inside the 1 px Monte Carlo's own ±0.029 (5–95%) at FC9, which sits on a slope
+  of −6.6 per Mach. 2 and 3 px are stress cases.
+
+**6. The headline, if the set were declared — analysis only.** Mehta's Hannibal array at
+37,000 ft, dt 0.01, same window as `cat_validation.py`:
+
+- Peak-to-peak load goes **1.8414 g (68.2%) → 1.7413 g (64.5%)**, −5.44%.
+- Pitch peak-to-peak goes 6.704° → 7.228°, +7.81%.
+- **This is a tangent extrapolated across the encounter's Mach excursion**, which the
+  unmerged session-29 branch measures at M 0.72–0.83 (§0; not re-measured here). Across that
+  span the 40,000 ft Cm_M curve runs from +0.28 to below zero. The number indicates direction
+  and size; it is not a result.
+- **It moves the headline further from the record.** That is part of the price of declaring.
+
+**What this entry does NOT do.**
+
+- It does not declare the set on `boeing747`.
+- It does not model a thrust line, and does not replace or re-fit Korn/Lock.
+- It does not schedule anything on Mach from pp. 220–221's α-family curves; those are used
+  only to check the reading.
+- It does not re-read p. 222 from the PDF independently of the hand digitisation.
+- It does not anchor CD_M or CL_M at SL or 20,000 ft beyond the DECLARED-C_D caveat above.
+- It does not copy the `.dig` files into any tree. They are in
+  `C:\Users\mateusz\Downloads\Digitise_plots`; the tracked CSV is regenerable from them and
+  is the only copy in git.
 
 ### Why the agreement "got worse": the reference class changed, not the model — session 28
 
@@ -650,6 +847,11 @@ its own words that "the working patch is kept out of the tree". The single M 0.8
 survives in §4's prose; **the curve does not.** This is precisely the failure `CLAUDE.md`
 rule 1 was written for, occurring six sessions before that rule existed, and it cost the
 project the bound it then spent sessions 22–27 saying it could not have.
+
+**Superseded in part, session 30: all eight curves on pp. 220–222 have now been read by hand
+and checked against Table IX-4 at every circled condition.** The scan was good enough: the
+smooth curves agree with the tables to 0.7–1.5%, and Cm_M to RMS 0.006. See "CR-2144's speed
+derivatives, digitised and flown". The paragraph below is left as written.
 
 **What is NOT claimed here.** No curve has been read this session. The evidence is the PDF's
 own text layer naming the axes and the altitude legends; the scan quality, the gridline
@@ -2340,6 +2542,12 @@ derivatives. `Aircraft` still carries no speed derivative (`Xu, Zu, Mu`) and no 
 derivative (`Zẇ, Mẇ`), and §5 still declares both families out of scope. Read the row
 labels literally.
 
+**Session 30 changes the first half of that sentence, and not the rows.** `Aircraft` now carries
+the SEAM for the speed derivatives' Mach content: `mach_deriv_ref`, `CL_M`, `CD_M` and `Cm_M`.
+**No registry entry declares it**, so every "as shipped" row above is still the engine's own
+value. The retest on a copy — phugoid ω_n +4.05%, ζ +4.55% with the digitised set — is in "CR-2144's
+speed derivatives, digitised and flown".
+
 That is measured, not asserted. All four are **bit-identical** across the remediation —
 see the whole-model regression row in "The remediation repairs" above, which extracted
 the tree at the preceding commit and compared hex representations. The pass did change
@@ -3643,6 +3851,19 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   M 0.25 / sea level, same code, same omissions. Compressibility is what drives the
   missing terms, and there is none at M 0.25.
 
+  **Session 30: the Mach content is no longer only attributed.** It has been sourced (CR-2144
+  p. 222, digitised and checked against Table IX-4) and made available through
+  `Aircraft.CL_M/CD_M/Cm_M`. **No entry declares it yet.** Declared on a copy, it takes phugoid
+  ω_n from −18.1% to +4.1% and ζ from +13.2% to +4.6% (±5 points from the reading).
+
+  It leaves two named residuals, neither a digitisation error:
+  - **No thrust line.** CR-2144's trim C_m is −0.0159 and the engine's is 0. Compensating for
+    that term closes both phugoid errors to under 1%.
+  - **Korn/Lock's drag Mach slope is 1.7–1.9× CR-2144's at FC9.** Left in place, it makes
+    phugoid damping worse than not declaring at all.
+
+  §4 has the entry.
+
   Żw and Ṁw are now **reconstructed rather than attributed** — restoring Caughey's own
   CLα̇ = 6.7 recovers his published A[1,1] to 0.03% (§4). A second linear model built for
   mode extraction only, restoring all of them, closes both modes to ~1% of the reference.
@@ -4083,6 +4304,7 @@ disk. Session 26 received four more papers and closed items 3, 4 and 5 outright.
 | ~~a **DC-10 wing loading** (`m/S`, to a few per cent)~~ | **ATTEMPTED AND CLOSED AS UNPINNABLE, session 27.** Not for want of a wing area: the variant is unidentified and the encounter weight is recorded nowhere held, so the ratio is a **range 0.58–1.32×** and cannot be narrowed by another specification sheet. §5 carries the table. **What is left is not an acquisition but the flight record** — an NTSB or operator document naming the aircraft and its weight |
 | a **DC-10 cruise derivative set** | acquisition, and **§5's sign no longer argues against it** — session 27 withdrew that sign rather than confirming it |
 | ~~**MIL-F-8785C Fig. 7** at 33–41 kft~~ | **DONE session 27** — `scripts/digitise_mil_f_8785c_fig7.py`; σ_severe(37 kft) = 4.80 ± 0.12 m/s; settles a sealed prediction RIGHT |
+| ~~**CR-2144 printed pp. 220–222**, the 747's derivative-vs-Mach curves~~ | **DONE session 30** — `scripts/cr2144_speed_derivatives.py`, checked against Table IX-4 at eight conditions; §4 has the entry. Session 28 called this the highest-value item on the list. **What is left from it is a DECISION rather than work**: whether `boeing747` declares the FC9 speed set, which moves the shipped phugoid, the Fig. 8 pins and the CAT headline |
 | ~~**TM-102186 Fig. 6**, the recorded g trace~~ | **DONE session 27** — `scripts/digitise_tm102186_fig6.py`; and it moved two numbers, see §4 |
 | ~~747 buffet onset boundary~~ | **DONE session 26** — `aircraft.buffet_cl` |
 | **the Hannibal flight record** (operator, tail, weight) | **NEW, session 27.** The only thing that would pin the wing-loading ratio, and therefore the only thing that would let the aircraft-type explanation be tested rather than argued |
@@ -4385,6 +4607,85 @@ source exactly. A smoother interpolant would agree with the source less.
   touch the core response.
 
 ## 9. Session log
+
+### Session 30 — the speed derivatives are read, and the overshoot is the thrust line
+
+**Session 28 called digitising CR-2144 printed pp. 220–222 the highest-value item on the
+plan, needing "no acquisition, no correspondence, and no new method". It is done.** Eight
+Engauge `.dig` files arrived with this conversation. They were extracted through each sheet's
+own three-point axis calibration (**295 placed points**), checked against Table IX-4 at every
+circled flight condition, declared on a **copy** of the 747 through a new `Aircraft` seam,
+retested against Table IX-5 by the engine's own `jacfwd`, and priced for reading error. §4
+carries the entry. New: `atisim/cr2144_mach.py`, `atisim/data/cr2144_p220_222_digitised.csv`,
+`scripts/cr2144_speed_derivatives.py`, `atisim/tests/test_cr2144_speed_derivatives.py` (22
+tests). Changed: four fields on `Aircraft`, four lines in `aero.coefficients`.
+
+**The suite is 843 passed, 1 skipped**, 897 s from the worktree root with the tree printed —
+against **821 passed, 1 skipped** at session 28. **The arithmetic is exact: 821 + 22 = 843, so
+nothing else moved.** That is the claim the seam has to support, and it was checked twice: the
+197-test slice carrying the Fig. 8 vortex pin, the single-bit RK4 test, `test_cr2144_modes`,
+`test_drag_polar`, `test_trim` and `test_conservation` passed with the seam present and
+declared nowhere, before the full run. **No tolerance was touched.** (The wall clock is not
+comparable with session 28's 34m37s — different machine load, same suite.)
+
+**1. The Engauge CSV exports name their columns correctly and are unusable anyway.** Every
+column reproduces its `.dig` curve at the shared Mach values to ≤6e-6, so the header order —
+`SL, 40,000, 20,000` — is confirmed rather than assumed. But the thousands separators make the
+header unparseable as CSV, and **every column is extrapolated past the end of its own drawn
+curve** onto a shared grid: Cm_M's 40,000 ft column reaches **105**, CL_M's SL column −47.4.
+The placed points are used instead, and two artefacts were dropped and reported: **nine SL
+points copied verbatim into CL_M's 40,000 ft curve**, and eight exact repeats in CL_α's SL
+curve. Five circled conditions fall outside a curve's drawn span and read NaN rather than being
+extrapolated to reach them.
+
+**2. The check found something about the source, not only about the reading.** Appendix A's
+body-axis relations invert in closed form, so Table IX-4 implies a value at every circled
+point. Reading them requires CR-2144's own **thrust trim**: Table IX-3 puts the thrust line
+10 ft from the CG at 2.5° of incidence, so the aerodynamic `C_m` at trim is **not zero** and
+M_u carries it. With that term seven Cm_M residuals have **RMS 0.0060**; without it **0.0382**.
+The digitisation then agrees with the tables to **0.7–1.5%** on the smooth curves. **The
+"poor scan" objection that `ASSUMPTIONS.md` C3 carried since session 12 does not survive
+this**, and C3 is edited in place to say so.
+
+**3. The retest: the improvement arrives, and it overshoots.** Phugoid ω_n **−18.13% →
++4.05%** and ζ **+13.16% → +4.55%**, with the short period unmoved to ≤0.17 points. **The
+overshoot is not the reading** — Table IX-4's own implied set gives +3.86% / +5.26% — **it is
+the thrust line the engine does not have.** Folding CR-2144's trim `C_m` into Cm_M closes both
+to under 1%, and that compensated value is recorded as a diagnostic, not declared as data.
+
+**4. A partial correction is worse than none, again.** The engine already has a drag Mach
+slope — Korn/Lock's — and at FC9 it is **0.0477 per Mach against a sourced 0.0251–0.0276**.
+Declaring CL_M and Cm_M while leaving it in place takes phugoid damping to **+21.3%**, worse
+than shipping nothing; adding the sourced CD_M on top of it gives **+39.9%**. So `CD_M` is
+declared net of the model's own slope, and the field's own comment says why. §7 recorded the
+same signature for `CLα(M)` applied alone.
+
+**5. The reading was priced, not asserted.** Interpolation scheme, leave-one-out, a pixel-level
+Monte Carlo on the sheets' own scales, and the check residuals propagated as an empirical
+error. **The frequency result is robust** — no case, including 3 px of scatter on every point,
+brings phugoid ω_n within half of its shipped error. **The damping result is not**: one CD_M
+point at M 0.8019 decides it, and phugoid ζ is known to about **±5 points** from this
+digitisation. Quoted with that band everywhere it appears.
+
+**6. What this session did NOT do, so the next one does not go looking.**
+
+- **It did not declare the set on `boeing747`.** The seam is inert and a test pins that. §4
+  prices the decision: declaring moves the shipped phugoid, every Fig. 8 pin, and the CAT
+  headline from **68.2% to 64.5%** of the record — *further from it* — through a tangent
+  extrapolated across the encounter's Mach excursion.
+- It did not model a thrust line, refit Korn/Lock, or schedule anything on the α-family curves
+  of pp. 220–221, which are read and used only to check the digitisation.
+- It did not re-read p. 222 independently of the hand digitisation, and did not anchor CD_M or
+  CL_M where trim C_D is only DECLARED (SL and 20,000 ft).
+- It did not copy the `.dig` files into any tree. **They live in
+  `C:\Users\mateusz\Downloads\Digitise_plots` and nowhere else**; the tracked CSV is
+  regenerable from them with `--dig-dir`.
+
+**7. Session 29 is not in this document, and §0 now says where it is.** The sensitivity study
+— design, module, four scripts, the two `sqrt(0)` repairs, C3 bounded at cruise, §1's headline
+banded — is **8 commits ahead of `main` and 0 behind, on `origin` only**. `CLAUDE.md` rule 1b's
+two-line check reads `refs/heads` and cannot see it. **Adding `refs/remotes/` to that check is
+the one-line fix**, and this session did not edit `CLAUDE.md` to make it.
 
 ### Session 28 — the errors did not grow, the questions did
 
@@ -6019,7 +6320,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 
 | Command | What it does |
 |---|---|
-| `.venv/Scripts/python.exe -m pytest -q` | **821 passed, 1 skipped, 34m37s** (measured session 28 after the compressibility merge; 812 before it, same session; 811 at session 26; 807 at session 25; it was 788 at session 24 and **758 measured session 23b**; the 626 this row claimed was stale by five sessions, and the 322 before that by several more — this row has now been wrong twice, so re-measure it rather than trusting it). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. |
+| `.venv/Scripts/python.exe -m pytest -q` | **843 passed, 1 skipped, 897 s** (measured session 30, which added 22 tests in `test_cr2144_speed_derivatives.py` and moved nothing else — 821 + 22 = 843; the wall clock is machine load, not the suite). Previously **821 passed, 1 skipped, 34m37s** at session 28 after the compressibility merge; 812 before it, same session; 811 at session 26; 807 at session 25; it was 788 at session 24 and **758 measured session 23b**; the 626 this row claimed was stale by five sessions, and the 322 before that by several more — this row has now been wrong twice, so re-measure it rather than trusting it). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. |
 | `.venv/Scripts/python.exe scripts/sanity.py` | **The ladder, for a reader who does not yet trust the model.** Twelve cases from degenerate inputs upward — zero the wind, zero a coefficient so a motion becomes impossible, then signs, then hand-computable numbers, then structural properties. Every expected value is derived by hand in the source and printed beside the model's answer, so it is read rather than trusted. Ends with the item 08 convention probe, which is a measurement rather than a pass/fail. |
 | `.venv/Scripts/python.exe -m pytest --nbval-lax notebooks/ -q` | **The second gate.** Executes `notebooks/solver-validation.ipynb` so it cannot rot. Needs the `dev` extra (`jupyter`, `nbval`). Deliberately *not* in `testpaths` and `--nbval-lax` is deliberately *not* in `addopts`: that would make every `pytest` run fail with "unrecognized arguments" wherever nbval is absent. **Run it from a worktree with an ABSOLUTE `PYTHONPATH`** — nbval starts the kernel with its cwd in `notebooks/`, so a relative `PYTHONPATH=.` resolves to the wrong directory and `atisim` silently loads from the main checkout. |
 | `.venv/Scripts/python.exe scripts/checkpoint.py` | 747 only, no flags. Trim residuals, 60 s fixed-control hold, longitudinal modes against CR-2144 Table IX-5. |
@@ -6041,6 +6342,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 | `.venv/Scripts/python.exe scripts/vortex_diagnose.py` | **Why the comparison's two large errors are large.** Three experiments: the same start state flown in still air, atisim flown from its own trim, and a one-lever-at-a-time sweep against the DFDR. Imports no jsbsim. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/digitise_tm102186_fig6.py --outdir runs/cat` | **The recorded g trace (session 27).** Reads TM-102186 Fig. 6's G LOAD panel out of `Reference_papers/19890016606.pdf` at 600 dpi, column by column, as the top and bottom of the ink — nothing fitted, nothing smoothed. Prints the three checks (the paper's own band, a **negative control** on the vertical-wind panel, and the gust spacing) and writes `10-tm102186-fig6.png` plus `tm102186-fig6-gload.csv`. §4 has what it found. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/digitise_mil_f_8785c_fig7.py --outdir runs/cat --pdf refs/MIL-F-8785C.pdf` | **The severe-turbulence σ_w chart (session 27).** Digitises all nine curves of Fig. 7 from printed p. 49, flagging where two share **one stroke of ink** rather than reading a number out of a merge. Settles `mil_f_8785c_sigma_w_exceeds_the_mehta_ceiling`. Writes `11-mil-f-8785c-fig7.png` and `mil-f-8785c-fig7-lines.csv`. **`--pdf` is required from a worktree** — `refs/` is gitignored and lives only in the main checkout. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cr2144_speed_derivatives.py --dig-dir <folder> --csv-dir <folder> [--headline]` | **CR-2144's speed derivatives, digitised (session 30).** What it does, in order: (1) re-extracts the hand-placed points from the eight Engauge `.dig` files and compares them with the tracked CSV (`--write` regenerates it); (2) audits Engauge's own CSV exports; (3) checks every curve against Table IX-4 through Appendix A; (4) declares the FC9 set on a copy of the 747 and retests all four modes against Table IX-5; (5) prices the hand reading — interpolation, leave-one-out, a pixel Monte Carlo and the check residuals. `--headline` also flies Mehta's field with the set declared. Sections 3–5 run without either folder. **The `.dig` files are in no tree**: session 30 read them from `C:\Users\mateusz\Downloads\Digitise_plots`. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_bounds.py --outdir runs/cat` | **The bounding experiments (session 23 follow-up).** What the point-sampled gust, the strip path and the step size cost on the Mehta run; what Dryden intensity would close the residual load gap; and Lester's Greenland 747 against a lee wave, inverted on both the g-load and the altitude gain. Same `PYTHONPATH` rule. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/lateral.py --outdir runs/cat` | **The lateral dimension (session 24, phase 1).** Reconciles `wind.line_vortex_wind` against `wind.vortex_wind` along the flight path, shows where the oblique difference is, then flies Mehta's field three ways -- point, line, and line with strip-integrated loads -- and reports the bank, sideslip and rolling gust rate the project could not previously see. Writes `08-lateral.png`. Same `PYTHONPATH` rule. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_ensemble.py --outdir runs/cat` | **Fig. 8 with error bars (session 23d, section 7 step 6).** Superposes a Dryden layer at the SOURCED sigma_w range from Mehta's residual and reports whether the vortex/updraft/manoeuvre ordering survives, and by how much margin on each of Fig. 8's two axes. Writes `07-ensemble.png`. Same `PYTHONPATH` rule. |
