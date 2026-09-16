@@ -95,6 +95,23 @@ sitting in the repository.** §4's session-28 entry on CR-2144's `CL_α(M)` figu
 read against it: the branch supplies the *theoretical* correction, printed p. 220 supplies
 the *sourced* curve, and the two are a check on each other rather than alternatives.
 
+### Reported done elsewhere, and NOT ON ORIGIN — added 16 September 2026
+
+| | |
+|---|---|
+| **Branch** | **`claude/cr-2144-speed-derivative-data-5012ac`**, commits `6ef5e4f` and `0d84eae` — **as reported to this session; none of the three resolves here** |
+| **Worktree** | unknown — a different Claude Code session, which holds the uploaded page scans |
+| **State** | **NOT VERIFIABLE FROM `origin`.** Checked three ways on 16 Sep 2026 — `git ls-remote --heads origin`, a full `git fetch --all --prune`, and the GitHub API — and `MatusGib/AtiSim` carries exactly two branches, `main` and `claude/model-sensitivity-analysis-t18v3v`. Neither named commit exists |
+| **What it is** | **The CR-2144 pp. 220–222 digitisation** — `CL_α(M)`, `Cm_α(M)`, and the `CL_M`/`CD_M`/`Cm_M` speed derivatives — reported complete, with results said to be in that branch's own §4 |
+| **What it closes, if it lands** | The item §4's "C3's Mach axis is not unbounded" calls **the highest-value item on the list**: it turns session 29's DECLARED Prandtl–Glauert bound into a **SOURCED** curve, gives the altitude axis a second independent check free, and supplies the Mach content §5 names as missing from the phugoid |
+| **Blocking** | **It is not pushed, or not pushed here.** Until it is, this row is the only thing standing between that work and a later session re-doing it — which is precisely what rule 1b exists to prevent, and the reason this row is written from a report rather than from evidence |
+
+> **Read this row as a POINTER, not as a result.** Nothing in it has been verified and no number
+> from it may be quoted. §4's own status for the Mach axis is unchanged: bounded at cruise by
+> session 29's *theoretical* Prandtl–Glauert factor, and still awaiting the *sourced* curve.
+> **Whoever merges that branch should expect conflicts in §0, §4 and §9**, which both branches
+> edit; the `aero.py` changes were reported not to overlap.
+
 ### Large, stranded, and a decision rather than a merge
 
 | Branch | Worktree | State | What it is |
@@ -130,16 +147,23 @@ stop them being lost. **None was reviewed and none is endorsed** — the commit 
 | `claude/flight-dynamics-cat-prompt-ec9839` | `jsbsim-737-validation-eeb6a9` | A CAT-sources search prompt |
 | `claude/project-readme-mockup-0ef89a` | `quasi-steady-aero-model-d5cf37` | A README mockup |
 
-### Designed, built and run — session 29 (all seven phases)
+### ~~Designed, built and run~~ MERGED, session 29 — kept for the two bugs it found
+
+> **Merged into `main` on 16 September 2026** at `105f689`, as a `--no-ff` merge of all eight
+> commits. The merged tree is **byte-identical** to the one the suite last ran on, so the
+> 819-passed result transfers exactly rather than needing a re-run. **The row is kept rather
+> than deleted**, on the same grounds as the compressibility branch above: it carries the two
+> `sqrt(0)` findings and the corrected Fig. 8 statistic, and deleting it would delete why they
+> were found.
 
 | | |
 |---|---|
 | **Branch** | **`claude/model-sensitivity-analysis-t18v3v`** |
 | **Worktree** | none — a remote container on the main checkout, no `.venv` (`jax` installed fresh on Linux; §10's Windows table does not apply) |
-| **State** | **8 commits ahead of `main`, 0 behind. ALL SEVEN PHASES S0–S6 ARE DONE**, plus two follow-ups: `airframe.py`'s `sqrt(0)` closed, and Fig. 8's pitch axis investigated (§4, correcting session 23d). Suite: **776 passed** before any of this work, **808** after S0–S6, **819** after the follow-ups; the same 2 platform bit-pins fail throughout and predate the work |
+| **State** | **MERGED at `105f689`.** All seven phases S0–S6 done, plus two follow-ups: `airframe.py`'s `sqrt(0)` closed, and Fig. 8's pitch axis investigated (§4, correcting session 23d). Suite: **776 passed** before any of this work, **808** after S0–S6, **819** after the follow-ups; the same 2 platform bit-pins fail throughout and predate the work |
 | **What it is** | `docs/superpowers/specs/2026-09-10-model-sensitivity-analysis-design.md` — a sensitivity study over three quantities of interest (headline CAT load, cruise modes, Dryden ensemble statistics) and two factor tiers (aerodynamic derivatives, `ASSUMPTIONS.md` modelling choices), by a tiered method: AD screen → OAT confirm → banded propagation |
 | **What it closes** | **CLOSED, all three.** `ASSUMPTIONS.md` **C3's Mach axis is bounded at cruise: −5.04%** of the headline load over a measured Mach span of 0.7187–0.8257. **§1's headline carries a band — 68.2%, 57.1–74.0%** — and states that the shortfall survives it. And phase 3's DC-10 acquisition has a **price**: `CLa` is the top-ranked coefficient on the load at **+0.692**, `mass` second at **−0.649** |
-| **Blocking** | **Nothing, and nothing of the plan is left.** What remains is named rather than pending: `airframe.py`'s second `sqrt(0)` (§6(f)), C3's **α axis** which is still unbounded, and **interaction terms**, which this study measured none of and says so with every table |
+| **Blocking** | **Nothing — merged.** What remains is named rather than pending: C3's **α axis**, still unbounded; **interaction terms**, which this study measured none of and says so with every table; and the question §8 raises about whether Fig. 8's pitch axis survives past this aeroplane's linear range. ~~`airframe.py`'s second `sqrt(0)`~~ was closed in the same session |
 
 **All three obstacles the design named are solved.** `trim`'s Newton solve is handled by the
 implicit function theorem twice over — `implicit_trim_jacobian` as a table and `solved_trim` as a
