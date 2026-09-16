@@ -331,10 +331,14 @@ def price(d, resid, n_mc: int, seed: int):
     base = err(d["cl_m"], d["cd_m"], d["cm_m"])
     print(f"  central (linear read, analytic Appendix-A increment): {fmt(base)}")
     env = {k: [base[k], base[k]] for k in MODES}
+    # per source, so a figure can show which part of the reading costs what
+    ranges = {}
 
-    def widen(e):
+    def widen(e, source):
+        r = ranges.setdefault(source, {k: [e[k], e[k]] for k in MODES})
         for k in MODES:
             env[k][0], env[k][1] = min(env[k][0], e[k]), max(env[k][1], e[k])
+            r[k][0], r[k][1] = min(r[k][0], e[k]), max(r[k][1], e[k])
 
     print("\n  (a) interpolation scheme through the same points")
     schemes = {"linear": lambda c: np.interp(M_REF, c.mach, c.value),
@@ -344,7 +348,7 @@ def price(d, resid, n_mc: int, seed: int):
     for name, f in schemes.items():
         v = {q: float(f(cm.curves()[(q, "40K")])) for q in SPEED}
         e = err(*(v[q] for q in SPEED))
-        widen(e)
+        widen(e, "interpolation")
         print(f"    {name:14s} " + " ".join(f"{q} {v[q]:+.4f}" for q in SPEED) + f"   {fmt(e)}")
 
     print("\n  (b) leave one point out, within M 0.70-0.90 (pchip)")
@@ -358,7 +362,7 @@ def price(d, resid, n_mc: int, seed: int):
             if not math.isfinite(v[q]):
                 continue
             e = err(v["cl_m"], v["cd_m"], v["cm_m"])
-            widen(e)
+            widen(e, "leave-one-out")
             print(f"    drop {q} point at M {c.mach[i]:.4f}: {q} {v[q]:+.4f}   {fmt(e)}")
 
     print(f"\n  (c) Monte Carlo on the sheets' own pixels, N = {n_mc}, seed {seed}")
@@ -381,6 +385,7 @@ def price(d, resid, n_mc: int, seed: int):
               " ".join(f"{q} [{pv[0,i]:+.4f},{pv[1,i]:+.4f}]" for i, q in enumerate(SPEED)))
         print("        mode error 5/50/95%: " + "  ".join(
             f"{k} [{100*pe[0,j]:+.2f} {100*pe[1,j]:+.2f} {100*pe[2,j]:+.2f}]" for j, k in enumerate(MODES)))
+        ranges[f"monte carlo {sigma:.0f} px"] = {k: [pe[0, j], pe[2, j]] for j, k in enumerate(MODES)}
         if sigma == 3.0:
             for j, k in enumerate(MODES):
                 env[k][0], env[k][1] = min(env[k][0], pe[0, j]), max(env[k][1], pe[2, j])
@@ -394,7 +399,7 @@ def price(d, resid, n_mc: int, seed: int):
             v = dict(d)
             v[q] = d[q] + sign * rms
             e = err(v["cl_m"], v["cd_m"], v["cm_m"])
-            widen(e)
+            widen(e, "check residuals")
             oat.setdefault(q, []).append(e)
         print(f"    {q}: RMS {rms:.4f} over {others.size} conditions -> "
               f"ph_wn {100*oat[q][0]['ph_wn']:+.2f}..{100*oat[q][1]['ph_wn']:+.2f}%  "
@@ -408,7 +413,7 @@ def price(d, resid, n_mc: int, seed: int):
 
     print("\n  ENVELOPE over (a), (b), (c at 3 px, 5-95%) and (d):")
     print("    " + "  ".join(f"{k} [{100*env[k][0]:+.2f}, {100*env[k][1]:+.2f}]%" for k in MODES))
-    return env, mc
+    return env, mc, ranges
 
 
 # ---------------------------------------------------------------------------

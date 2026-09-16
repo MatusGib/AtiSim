@@ -439,6 +439,7 @@ def figure_fl200(cmp_, path: Path):
                       fontsize=10, loc="left", fontweight="bold")
     axes[1].set_title("b  Damping — the residual is the missing $C_{m\\dot\\alpha}$",
                       fontsize=10, loc="left", fontweight="bold")
+    fig.subplots_adjust(top=0.80, wspace=0.28)  # the two-line suptitle overlapped the panel titles
     fig.savefig(path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 

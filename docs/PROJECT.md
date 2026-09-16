@@ -9,6 +9,10 @@ Table IX-4 at every circled condition, and **declared on `boeing747`** through a
 `Aircraft` seam. **Phugoid ω_n goes −18.1% → +4.05%**; the residual is the engine's missing
 thrust line, not the reading. The price is recorded, not hidden: the CAT headline moves
 **68.2% → 64.5%** of the record, and three mechanism claims weaken, all through Cm_M.
+Then TM-102186 Fig. 7's **horizontal wind** was digitised. It **confirms which side of the path
+each core sits on** (1.58 kt RMS as built, against 15.38 flipped). It also shows the headline
+**double-counts the 747's own climb** past cores 3–4: replaying the fitted wind along the
+nominal path reads **75.0%**, and which form is right is open (§8).
 Session 29 exists only on `origin/claude/model-sensitivity-analysis-t18v3v` (§0).
 
 Session 28 (an audit, no code changed: the "the agreement got worse" hypothesis tested and **falsified** — every early number re-measured and unchanged, no tolerance ever loosened, and the growth traced to a change of *reference class* dated to commit `c6b5342`, 1 Sep 2026, with ASSUMPTIONS C3's frozen derivatives the largest identified physical cause; the strip-load path judged: off the published path, +22.9% on one unvalidated channel, and worth keeping for its negative result).
@@ -117,10 +121,10 @@ the *sourced* curve, and the two are a check on each other rather than alternati
 |---|---|
 | **Branch** | **`claude/cr-2144-speed-derivative-data-5012ac`** |
 | **Worktree** | `.claude/worktrees/engine-validity-error-check-d8ccdf` — **the directory name does not match the branch**, as everywhere else in this repo |
-| **State** | **2 commits ahead of `main` (`7b71816`), 0 behind** — the inert seam, then the declaration. Suite on it: **844 passed, 1 skipped** |
-| **What it is** | CR-2144 printed pp. 220–222 digitised, checked against Table IX-4 at eight conditions, and flown (§4). `atisim/cr2144_mach.py` and the tracked points; the `mach_deriv_ref / CL_M / CD_M / Cm_M` seam in `aircraft.py` and `aero.py`; `scripts/cr2144_speed_derivatives.py`; 22 tests |
+| **State** | **3 commits ahead of `main` (`7b71816`), 0 behind**: the inert seam, the declaration, and the Hannibal horizontal wind. Suite on it: **852 passed, 1 skipped**. Nothing uncommitted except the tool folder `.impeccable/` |
+| **What it is** | CR-2144 printed pp. 220–222 digitised, checked against Table IX-4 at eight conditions, and flown (§4). `atisim/cr2144_mach.py` and the tracked points; the `mach_deriv_ref / CL_M / CD_M / Cm_M` seam in `aircraft.py` and `aero.py`; `scripts/cr2144_speed_derivatives.py`; 23 tests. **Then TM-102186 Fig. 7's horizontal wind** (§4): `scripts/digitise_hannibal_horizontal_wind.py`, `scripts/hannibal_along_track_wind.py`, `atisim/data/tm102186_fig7_winds.csv`, 8 tests, and `scripts/cr2144_report_figures.py` for the report figures. The horizontal-wind work changes no model code |
 | **What it closes** | §5's "Mach content of `Xu`, `Zu`" stops being an attribution and becomes SOURCED, verified against Appendix A, and **declared on `boeing747`**: phugoid ω_n +4.05%, ζ +3.45% against Table IX-5. It also weakens three mechanism claims, all through Cm_M, and moves the CAT headline 68.2% → 64.5% — §4, item 7 |
-| **Blocking** | **Nothing — the decision was taken.** `boeing747` **declares** the FC9 set: phugoid ω_n −18.13% → **+4.05%**, ζ +13.16% → **+3.45%** against Table IX-5. What that moved elsewhere — the Fig. 8 pins, the CAT headline — is in §4, re-measured rather than predicted |
+| **Blocking** | **Nothing — the decision was taken.** `boeing747` **declares** the FC9 set: phugoid ω_n −18.13% → **+4.05%**, ζ +13.16% → **+3.45%** against Table IX-5. What that moved elsewhere — the Fig. 8 pins, the CAT headline — is in §4, re-measured rather than predicted. The horizontal-wind work leaves one question open, which path the headline should fly Mehta's cores on (§8). That question does not block a merge, because no shipped code depends on it |
 | **Read this beside it** | The eight `.dig` originals are **tracked, in `atisim/data/cr2144_dig/`** (384 KB, each embedding the page crop it was traced on), beside the `atisim/data/cr2144_p220_222_digitised.csv` that `--dig-dir` regenerates from them |
 
 ### Large, stranded, and a decision rather than a merge
@@ -240,7 +244,10 @@ headline load comparison reaches ~~**68%**~~ **64.5%** of a recorded peak-to-pea
 30 (1.741 g of 2.70) — it was 68.2% until `boeing747` declared CR-2144's speed derivatives,
 which **improved the model's agreement with its own source's modes and moved this figure
 further from the record**, through a first-order tangent extrapolated across the encounter's
-Mach excursion; §4 has both halves. (67.1% is the like-for-like *translational* figure
+Mach excursion; §4 has both halves. **It also carries a ~10-point method choice found later in
+session 30**: the 747 climbs past two cores that Mehta placed relative to the DC-10's own path.
+Replaying the fitted wind along the nominal path reads **75.0%**, and which form is right is
+an open question (§8). (67.1% is the like-for-like *translational* figure
 quoted against JSBSim, and this line once carried it by mistake.) §5 records what is left to
 explain the shortfall. **Session 27 unsettled that
 attribution twice over**, and §5 now says so: the wing-loading sign that made *the
@@ -460,6 +467,128 @@ spacing from a free parameter into a cited one.
 
 Every figure below is measured, with the tolerance the test asserts.
 
+### The Hannibal horizontal wind: which side of the path, and what the headline double-counts — session 30
+
+**TM-102186 Fig. 7's horizontal-wind panel was digitised. It settles the one geometric fact
+about Mehta's field that nothing the project compared could see, and it exposes a method
+choice inside the headline load worth about ten points of the record.** A core the same
+distance above or below the flight path gives the *same* vertical wind; only the horizontal
+perturbation changes sign. So which side of the path each core sits on — `wind.py`'s sign of
+z — was argued from Mehta's prose until now. §7's inventory item 1.
+
+- `scripts/digitise_hannibal_horizontal_wind.py` reads NASA TM-102186 Fig. 7 (printed p. 3-5,
+  PDF page index 6, at the scan's 300 dpi; `--pdf` required) into
+  `atisim/data/tm102186_fig7_winds.csv`: **1,460 points**, both panels, the solid MODEL line
+  column by column and the dotted ACTUAL curve dot by dot.
+- `scripts/hannibal_along_track_wind.py` flies seven fields built from it and draws h1–h7.
+- `atisim/tests/test_hannibal_horizontal_wind.py` pins the reading and the sign test as bands
+  (8 tests).
+
+**1. The reading, and its control.**
+
+- **Calibration**, least squares, never through the frame. y goes through each panel's printed
+  labels (worst residual 0.077 kt and 0.54 ft/s). x goes through the tick marks the DISTANCE
+  labels name: 15.19 px per 1,000 ft, worst residual **0.241 kft**. Glyph centres alone gave
+  0.550, because a minus sign widens a label.
+- **Classification by shape**: the solid line is a few long ink components, the dotted curve
+  many small dots, and the legend is boxed out. `--overlay` writes the result over the scan
+  (`tm102186-fig7-classified.png`), and it was looked at.
+- **THE CONTROL. The digitised vertical MODEL against AtiSim's own vertical wind**, which other
+  tests already pin: **RMS 1.35 ft/s** on a ±100 ft/s axis, 95% of columns within 2.80. The
+  vertical wind is identical with every core flipped (asserted to 1e-9), so the control
+  cannot favour either sign.
+
+**2. The sign test: `wind.py`'s convention is confirmed.** The digitised horizontal MODEL
+against AtiSim's horizontal perturbation plus Mehta's b_xy = 149.8 kt:
+
+| AtiSim field | RMS | mean | 95% \|r\| |
+|---|---|---|---|
+| **z as transcribed in `wind.py`** | **1.58 kt** | +1.40 | 2.54 |
+| every core's z flipped | **15.38 kt** | −3.95 | 29.75 |
+
+- **The three horizontal extremes fall where Mehta drew them.** Digitised against AtiSim: minima
+  at −6.69 and −6.76 kft, and at +3.44 and +3.26 kft; maxima at +12.13 and +12.28 kft. The
+  values agree within 1.6 kt.
+- The residual is +1.06 kt far upstream and +2.35 kt far downstream: a drawn offset of 1–2 kt,
+  not structure.
+
+**3. The field against the record: the fit misses a sustained tailwind rise.** ACTUAL (the
+DC-10's reconstructed wind) minus AtiSim, over 82 horizontal dots, has **RMS 10.14 kt**.
+
+| stretch | dots | horizontal, mean | vertical, mean (64 dots in total) |
+|---|---|---|---|
+| −25 … −5 kft, before the pair | 28 | −3.52 kt | +0.82 ft/s |
+| −5 … +6 kft, through cores 3 and 4 | 16 | **−9.70 kt** | +8.03 ft/s |
+| +6 … +26 kft, after the pair | 38 | **+12.08 kt** | **+19.27 ft/s** |
+
+- **The recorded dip between cores 3 and 4 is deeper than the fit** — 116.5 kt at +3.08 kft,
+  against 123.1 — **and the peak after them higher**: 174.0 kt at +12.80 kft, against 164.1.
+- **The real along-track wind rose through the encounter by roughly 15–20 kt more than the
+  five-vortex fit carries.** A constant bias cannot represent that rise.
+- **Flagged, not resolved.** Both residuals exceed the √J = 4.46 m/s this ledger derives from
+  Mehta's printed cost ("The CAT source pass"): 10.14 kt is 5.22 m/s, and the vertical RMS is
+  23.17 ft/s. The dots are TM-102186's redraw, not the samples Mehta fitted, and §8 already
+  records that J's units and N are unstated. Which of those explains the gap is not measured.
+
+**4. What the along-track wind does to the 747.** Seven fields were flown, each by the bare
+entry (seam shut) and the shipped one. All runs use Mehta's array at 37,000 ft, fixed
+controls, dt 0.01 and `cat_validation.py`'s window. Peak-to-peak `n_z` is given as % of the
+recorded 2.70 g:
+
+| field | bare | shipped | pitch ptp, bare / shipped | airspeed, shipped |
+|---|---|---|---|---|
+| **A** as flown — `wind.vortex_wind` unchanged, the headline | 68.2% | 64.5% | 6.70° / 7.23° | 400.8–473.1 kt |
+| **B** horizontal × cos 31° (the point form puts all of it along the path) | 70.1% | 66.5% | 6.92° / 6.70° | 412.1–471.0 kt |
+| **C** horizontal perturbation removed | **81.8%** | **81.9%** | 8.03° / 8.08° | 454.4–462.4 kt |
+| **D** B plus the recorded miss (item 3) × cos 31° | 78.3% | 79.9% | 7.55° / 7.34° | 413.9–463.8 kt |
+| **E** every core flipped — for scale only | 65.5% | 73.8% | 6.51° / 7.53° | 437.4–481.7 kt |
+| **F** A, evaluated at the NOMINAL altitude | **77.5%** | **75.0%** | 8.35° / 8.22° | 428.7–478.0 kt |
+| **G** D, evaluated at the nominal altitude | 78.3% | 77.2% | 8.74° / 9.13° | 427.0–483.1 kt |
+
+**5. The finding: the headline double-counts the 747's own climb.**
+
+- **Mehta placed cores 3 and 4 94 ft and 254 ft above the path the DC-10 actually flew.**
+  On that path the fit's horizontal perturbation there is −12.0 and −26.5 kt.
+- **The updrafts before them lift the simulated 747 by +512 ft (bare) and +596 ft (shipped).**
+  It passes **+403 and +255 ft above** cores 3 and 4 (shipped: +488 and +310), on the other
+  side from the DC-10, and meets tailwind gusts of **+40.6 and +27.2 kt** there. That is the
+  opposite sign from the fit's value on its own path, and larger.
+- **A tailwind gust cuts airspeed, and with it q̄ and the load.** The shipped 747 drops to
+  401 kt in A. Replaying the fitted wind at the nominal altitude (F) gives the 747 the wind
+  the fit says the DC-10 met, whatever the 747 itself does. F reads **77.5% bare and 75.0%
+  shipped**: +9.3 and +10.5 points.
+- **So the 64.5% headline carries a ~10-point method choice no earlier session saw, and the
+  other choice is closer to the record.** Neither form is a correction by itself.
+  - A is what the project has always flown, and it is consistent physics for a 747 placed in
+    that field.
+  - F is what the identification means, if the DC-10 did not make the same climb.
+  - Which one applies depends on the DC-10's own altitude through the pair. Parks 1985 Fig. 6
+    plots that altitude (§7 item 6), and nobody has read it yet. §8.
+- **The along-track wind was never a Cm_M-only channel.** On the bare entry, with no speed
+  derivative at all, removing it moves the load 68.2% → **81.8%** (C). It acts through q̄ and
+  always has.
+  - What Cm_M adds is sensitivity to *which side*. Flipping the cores moves the bare entry
+    2.7 points and the shipped entry 9.3 (E).
+  - §7's inventory and item 7 of the CR-2144 entry below said otherwise and are edited in
+    place.
+- **Once the double count is removed, the fit's missing wind is worth little to the load.**
+  Projection plus the recorded miss adds +10.1 and +15.4 points on the as-flown path (A → D),
+  but only +0.8 and +2.2 points on the replayed one (F → G).
+
+**6. Caveats, and what this entry does NOT do.**
+
+- TM-102186's ACTUAL is a **reconstruction** from the flight recorder, not a direct
+  measurement. The dots are sparse — 82 horizontal and 64 vertical — and x is read to ±0.24 kft.
+- Every flight holds **fixed controls**. The airframe is a 747, not the DC-10 that met the wind.
+- **The shipped field and the headline are unchanged.** `wind.vortex_wind` still puts the whole
+  horizontal perturbation along the path, at the aircraft's own altitude. B, D, F and G exist
+  only inside the script. Which one the headline should fly is §8's question, not a decision
+  taken here.
+- Mehta's own Figs. 5 and 9 (the same fit, drawn less cleanly) were not digitised, and neither
+  was Parks Fig. 6.
+- `cat_validation.py`, `cat_uncertainty.py` and the other CAT scripts were not re-run on any
+  of B–G.
+
 ### CR-2144's speed derivatives, digitised and flown — session 30
 
 **The improvement §4 attributed to the speed derivatives in analysis arrives through the
@@ -664,8 +793,10 @@ accounted for before a line of test changed:
 | peak line-vortex bank, dt 0.05 | 12.61° | **18.31°** | 17.60° | 13.58° | 12.38° |
 
 - **Why Cm_M.** An oblique line vortex carries an **along-track** gust component, and so does
-  a core met off-centre. Without a speed derivative that component only changes q̄. With Cm_M
-  it changes the pitching moment, so the aircraft pitches into or away from the next core.
+  a core met off-centre. Without a speed derivative that component only changes q̄ — **and
+  "only" understates it**: the horizontal-wind entry above measures q̄ alone as worth 13.6
+  points of the record on the bare entry (68.2% → 81.8% with it removed). With Cm_M it also
+  changes the pitching moment, so the aircraft pitches into or away from the next core.
   **That is the physics this entry added, doing what it should — and it is the channel the
   tangent is least trustworthy in**, because the along-track gust is what drives the Mach
   excursion.
@@ -4452,6 +4583,37 @@ disk. Session 26 received four more papers and closed items 3, 4 and 5 outright.
 | **test the frozen-`C_Lα` explanation of the LES ratio** | **NEW, session 27, and it is CHEAP.** Rescale the 747's `C_Lα` by the Prandtl–Glauert ratio 1.521 and re-fly D03/D04. If the 1.42× ratio collapses toward 1, the LES discrepancy is this project's frozen derivative and **not** a code disagreement — and it becomes the **first quantified point on the Mach axis** ASSUMPTIONS C3 has left unbounded since session 12, with no chart read needed |
 | ~~run the LES limb~~ | **ALREADY RUN, session 3–4 Sept, and found NOT LIKE-FOR-LIKE in session 27.** All four domains × two aircraft are on disk. §4's input audit says why no number from them is quoted: the aeroplane is 5.4% or 82.9% away in natural frequency, and the entry closest in frequency is 2.63 band widths outside its own envelope. The **field reader is sound** (+0.978/−0.968/−0.935 against their own sampled wind) and reusable; the **load comparison is not yet a comparison.** This remains the project's only route out of the circularity every load row carries |
 
+### Hannibal comparisons beyond the peak load — inventory, session 30
+
+**Asked directly: what else do Mehta 1987 and TM-102186 hold that the model could be marked
+against?** Until session 30 the project compared the peak `n_z`, the vertical-wind extremes,
+the 5 s gust spacing and Fig. 8's orderings. Both documents were re-read page by page; this
+is what else they carry, in the order it is worth doing.
+
+| # | Data | Where | What it tests | Status |
+|---|---|---|---|---|
+| 1 | **horizontal (along-track) wind**, data and model | Mehta Figs. 5, 9; TM-102186 Figs. 6–7 top panels | **which side of the path each core sits on** — the vertical wind is identical for a core the same distance above or below, only the horizontal flips, and `wind.py`'s sign of z is argued from Mehta's prose, never checked against his plotted curve; and how much along-track gust the fitted field misses. ~~Newly consequential: `Cm_M` turns along-track gust into pitch~~ **Always consequential, through q̄: 13.6 points of the record on the bare entry. Cm_M adds sensitivity to the side** | **DONE, session 30 — §4 "The Hannibal horizontal wind".** Sign confirmed (1.58 kt against 15.38 flipped). The fit misses a ~15–20 kt tailwind rise. Found: the headline double-counts the 747's climb past cores 3–4 (64.5% → 75.0% replayed) |
+| 2 | vertical wind, full trace | TM-102186 Fig. 6 | an unmodelled-wind residual read straight off the trace, independent of Mehta's unstated `N` (§8) | open; the digitisation pipeline already reads the panel |
+| 3 | `n_z`, full time history | TM-102186 Fig. 6 | peak timing against the cores; the post-encounter ringing, as a band against a Dryden ensemble | open; already digitised, only extremes used |
+| 4 | Mehta's **2-vortex** fit | Mehta p. 29, all parameters printed | how much the headline load depends on the identified field's form | open; one flight |
+| 5 | Fig. 8 full pitch and `n_z` curves | TM-102186 Fig. 8 | where along the vortex each extreme falls, at ordering level | open; six curves to digitise |
+
+**Not in either of those two documents:** pitch angle, pressure altitude, airspeed and
+elevator. TM-102186 Table II says the DC-10's recorder logged all four, but neither paper plots
+them. ~~Parks 1985 has not been checked for them.~~ **Checked, session 30, and it has three of
+them:** Parks et al. 1985 Fig. 6 plots the Hannibal encounter's normal acceleration, **pitch
+angle, true airspeed**, air temperature and **altitude** against time (p. 126). Elevator is
+still unplotted anywhere held. **This is the largest unused source the project has** — it is
+the aircraft's own response, not the wind — and it is item 6 below.
+
+| 6 | **pitch angle, true airspeed, altitude** time histories | Parks et al. 1985 Fig. 6 | the aircraft's RESPONSE channels, beyond load. True airspeed is what an along-track gust acts on. **Since item 1, also the DC-10's own ALTITUDE through cores 3–4**, which decides whether the headline should fly Mehta's field on the 747's path or the nominal one (§8) | open; not yet rendered or digitised. **Now the highest-value item** |
+
+Parks p. 125 also fixes a sign the project had only argued: the DC-10 was **"cruising in an
+easterly direction"** with the jet stream at **240°**, so the ambient wind blew toward about
+060°, **~30° off the path from behind** — consistent with Mehta's ψ = 31°. A positive
+horizontal perturbation is therefore a **tailwind** gust, which is the direction
+`vortex_wind` adds it in.
+
 ### The original ten-step plan
 
 ```
@@ -4663,6 +4825,22 @@ source exactly. A smoother interpolant would agree with the source less.
 
 ## 8. Open questions
 
+- **New, session 30: should the Hannibal headline fly Mehta's cores on the 747's own path,
+  or on the path the fit was made along?** §4's "The Hannibal horizontal wind" measured the
+  difference at **~10 points of the record**: 64.5% as flown, and 75.0% with the fitted wind
+  replayed at the nominal altitude (bare entry 68.2% and 77.5%).
+  - **The mechanism.** Mehta's cores 3 and 4 sit 94 ft and 254 ft above the DC-10's path.
+    The simulated 747 climbs ~500–600 ft before reaching them, so it passes above both. The
+    horizontal wind flips sign across a core, so it meets +40.6 and +27.2 kt tailwind gusts
+    that cut airspeed and load.
+  - **What decides it.** Whether the DC-10 itself climbed that far through the pair:
+    - If it did, Mehta's z already carries the climb, and the as-flown form double-counts
+      nothing the DC-10 did not also do.
+    - If it held altitude, the replayed form is the faithful one.
+  - **What would answer it.** Parks et al. 1985 Fig. 6 plots the DC-10's altitude against
+    time (§7 inventory item 6). **Nothing has been read from it.** Until then, the headline
+    is quoted as flown, and this sensitivity goes with it.
+
 - ~~**Hannibal's core radius: 500 ft or 600 ft?**~~ **CLOSED, session 26 — 600 ft, on the
   paper that identified it.** Parks et al. 1985 is now held: J. Aircraft **22**(2) 124–129,
   DOI 10.2514/3.45095, p. 127 — r₀ = 600 ft, V₀ = 85 ft/s, spacing 3500 ft, and an abstract
@@ -4861,6 +5039,43 @@ was paid in the open.**
 - **The suite on the final declared tree: 844 passed, 1 skipped**, 887 s from the worktree
   root with the tree printed. That is the pre-declaration 843 plus the one test this
   session's file gained when the declaration split its retest. Nothing new is skipped.
+
+**9. Then the horizontal wind, asked for directly: "what else does the Mehta paper have that
+can be compared?"** The inventory is §7's "Hannibal comparisons beyond the peak load". Item 1
+is done, and §4's "The Hannibal horizontal wind" has the numbers.
+
+- **The sign of z in `wind.py` is confirmed, not argued.** TM-102186 Fig. 7's horizontal MODEL
+  line matches AtiSim to **1.58 kt RMS**, against **15.38 kt** with every core flipped. The
+  vertical panel is the calibration control: **1.35 ft/s**, and blind to the sign by
+  construction.
+- **The fit misses a sustained tailwind rise.** The recorded along-track wind sits 9.7 kt below
+  the fit through cores 3–4 and 12.1 kt above it after them.
+- **The finding nobody went looking for: the headline double-counts the 747's own climb.**
+  Mehta put cores 3 and 4 just above the DC-10's path. The simulated 747 climbs ~500–600 ft
+  first and passes *above* them, so it meets tailwind gusts of the opposite sign. Replaying the
+  fitted wind at the nominal altitude moves the load **64.5% → 75.0%** (bare entry 68.2% →
+  77.5%).
+  - **Not adopted.** Which form is right depends on the DC-10's own altitude, which Parks Fig. 6
+    plots and nobody has read (§8; §7 item 6, now the highest-value item).
+  - §1 carries the sensitivity beside the headline.
+- **A claim this session made earlier was corrected in place.** §7's inventory had called the
+  along-track wind "newly consequential" through Cm_M. **On the bare entry, removing it moves
+  the load 13.6 points**, all through q̄. Cm_M only adds sensitivity to which side a core is on.
+- **New:** `scripts/digitise_hannibal_horizontal_wind.py` (`--pdf` required),
+  `scripts/hannibal_along_track_wind.py`, `atisim/data/tm102186_fig7_winds.csv`,
+  `atisim/tests/test_hannibal_horizontal_wind.py` (8 tests), and
+  `scripts/cr2144_report_figures.py`. The last one draws the four figures of the session's
+  plain-language report, reusing the analysis script's own functions. `cat_validation.py`'s
+  figure 03 had its two-line title printed over the panel titles; only the layout was fixed,
+  and figure 03 was redrawn alone from `fl200_comparison()`. **No model code changed.**
+- **Not done.**
+  - B, D, F and G are not options in `wind.py`.
+  - The CAT scripts were not re-run on them.
+  - Mehta's own Figs. 5 and 9 and Parks Fig. 6 were not digitised.
+  - The horizontal flights hold fixed controls.
+- **The suite with the horizontal-wind tests is 852 passed, 1 skipped**: 844 + 8, with nothing
+  else moved. It ran for 1,295 s from the worktree root with the tree printed, on a machine
+  also flying the figure scripts.
 
 ### Session 28 — the errors did not grow, the questions did
 
@@ -6495,7 +6710,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 
 | Command | What it does |
 |---|---|
-| `.venv/Scripts/python.exe -m pytest -q` | **844 passed, 1 skipped, 887 s** (measured session 30 after `boeing747` declared CR-2144's speed derivatives: 23 tests in `test_cr2144_speed_derivatives.py`, and 17 existing tests re-captured, moved onto the undeclared entry, split, or fixed — §4's session-30 entry, item 7, says which. Earlier the same session measured **843** before the declaration, which was 821 + 22 with nothing else moved. The wall clock is machine load, not the suite). Previously **821 passed, 1 skipped, 34m37s** at session 28 after the compressibility merge; 812 before it, same session; 811 at session 26; 807 at session 25; it was 788 at session 24 and **758 measured session 23b**; the 626 this row claimed was stale by five sessions, and the 322 before that by several more — this row has now been wrong twice, so re-measure it rather than trusting it). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. |
+| `.venv/Scripts/python.exe -m pytest -q` | **852 passed, 1 skipped, 1,295 s** (measured at the end of session 30: the 844 below plus the 8 tests in `test_hannibal_horizontal_wind.py`). Before that, **844 passed, 1 skipped, 887 s** (measured session 30 after `boeing747` declared CR-2144's speed derivatives: 23 tests in `test_cr2144_speed_derivatives.py`, and 17 existing tests re-captured, moved onto the undeclared entry, split, or fixed — §4's session-30 entry, item 7, says which. Earlier the same session measured **843** before the declaration, which was 821 + 22 with nothing else moved. The wall clock is machine load, not the suite). Previously **821 passed, 1 skipped, 34m37s** at session 28 after the compressibility merge; 812 before it, same session; 811 at session 26; 807 at session 25; it was 788 at session 24 and **758 measured session 23b**; the 626 this row claimed was stale by five sessions, and the 322 before that by several more — this row has now been wrong twice, so re-measure it rather than trusting it). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. |
 | `.venv/Scripts/python.exe scripts/sanity.py` | **The ladder, for a reader who does not yet trust the model.** Twelve cases from degenerate inputs upward — zero the wind, zero a coefficient so a motion becomes impossible, then signs, then hand-computable numbers, then structural properties. Every expected value is derived by hand in the source and printed beside the model's answer, so it is read rather than trusted. Ends with the item 08 convention probe, which is a measurement rather than a pass/fail. |
 | `.venv/Scripts/python.exe -m pytest --nbval-lax notebooks/ -q` | **The second gate.** Executes `notebooks/solver-validation.ipynb` so it cannot rot. Needs the `dev` extra (`jupyter`, `nbval`). Deliberately *not* in `testpaths` and `--nbval-lax` is deliberately *not* in `addopts`: that would make every `pytest` run fail with "unrecognized arguments" wherever nbval is absent. **Run it from a worktree with an ABSOLUTE `PYTHONPATH`** — nbval starts the kernel with its cwd in `notebooks/`, so a relative `PYTHONPATH=.` resolves to the wrong directory and `atisim` silently loads from the main checkout. |
 | `.venv/Scripts/python.exe scripts/checkpoint.py` | 747 only, no flags. Trim residuals, 60 s fixed-control hold, longitudinal modes against CR-2144 Table IX-5. |
@@ -6518,6 +6733,9 @@ several sessions, which is the drift §4's rules exist to prevent.
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/digitise_tm102186_fig6.py --outdir runs/cat` | **The recorded g trace (session 27).** Reads TM-102186 Fig. 6's G LOAD panel out of `Reference_papers/19890016606.pdf` at 600 dpi, column by column, as the top and bottom of the ink — nothing fitted, nothing smoothed. Prints the three checks (the paper's own band, a **negative control** on the vertical-wind panel, and the gust spacing) and writes `10-tm102186-fig6.png` plus `tm102186-fig6-gload.csv`. §4 has what it found. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/digitise_mil_f_8785c_fig7.py --outdir runs/cat --pdf refs/MIL-F-8785C.pdf` | **The severe-turbulence σ_w chart (session 27).** Digitises all nine curves of Fig. 7 from printed p. 49, flagging where two share **one stroke of ink** rather than reading a number out of a merge. Settles `mil_f_8785c_sigma_w_exceeds_the_mehta_ceiling`. Writes `11-mil-f-8785c-fig7.png` and `mil-f-8785c-fig7-lines.csv`. **`--pdf` is required from a worktree** — `refs/` is gitignored and lives only in the main checkout. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cr2144_speed_derivatives.py --dig-dir <folder> --csv-dir <folder> [--headline]` | **CR-2144's speed derivatives, digitised (session 30).** What it does, in order: (1) re-extracts the hand-placed points from the eight Engauge `.dig` files and compares them with the tracked CSV (`--write` regenerates it); (2) audits Engauge's own CSV exports; (3) checks every curve against Table IX-4 through Appendix A; (4) declares the FC9 set on a copy of the 747 and retests all four modes against Table IX-5; (5) prices the hand reading — interpolation, leave-one-out, a pixel Monte Carlo and the check residuals. `--headline` also flies Mehta's field with the set declared. Sections 3–5 run without either folder. **The eight `.dig` originals are tracked in `atisim/data/cr2144_dig/`**, which is where a bare `--dig-dir` looks. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/digitise_hannibal_horizontal_wind.py --pdf <Reference_papers/19890016606.pdf> --outdir runs/cat [--overlay] [--write]` | **The Hannibal horizontal wind, digitised (session 30).** Reads TM-102186 Fig. 7 (printed p. 3-5) at 300 dpi. It separates the solid MODEL line from the dotted ACTUAL curve by shape and calibrates through the printed labels and tick marks. Then it prints three checks: the vertical-panel calibration control, the sign test (as built against every core flipped), and ACTUAL minus AtiSim by stretch. `--overlay` writes `tm102186-fig7-classified.png`; `--write` regenerates the tracked `atisim/data/tm102186_fig7_winds.csv`. **`--pdf` is required from a worktree.** |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/hannibal_along_track_wind.py --outdir runs/cat` | **What the along-track wind does to the 747 (session 30).** Reads the tracked CSV, so it needs no PDF. It flies seven fields (A as flown … G replayed plus the recorded miss) on the bare and shipped 747, and prints load, pitch, airspeed and each core-passage height. Writes `hannibal-along-track.json` and figures h1–h7. §4 has the table, and the double-counting finding it produced. Several minutes: 14 flights. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cr2144_report_figures.py --outdir runs/cat` | **The session-30 report figures, s1–s4.** Hand-read curves against Table IX-4, modes before and after, the reading uncertainty, and the headline load before and after. It imports `cr2144_speed_derivatives` and `hannibal_along_track_wind` rather than restating them. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_bounds.py --outdir runs/cat` | **The bounding experiments (session 23 follow-up).** What the point-sampled gust, the strip path and the step size cost on the Mehta run; what Dryden intensity would close the residual load gap; and Lester's Greenland 747 against a lee wave, inverted on both the g-load and the altitude gain. Same `PYTHONPATH` rule. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/lateral.py --outdir runs/cat` | **The lateral dimension (session 24, phase 1).** Reconciles `wind.line_vortex_wind` against `wind.vortex_wind` along the flight path, shows where the oblique difference is, then flies Mehta's field three ways -- point, line, and line with strip-integrated loads -- and reports the bank, sideslip and rolling gust rate the project could not previously see. Writes `08-lateral.png`. Same `PYTHONPATH` rule. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_ensemble.py --outdir runs/cat` | **Fig. 8 with error bars (session 23d, section 7 step 6).** Superposes a Dryden layer at the SOURCED sigma_w range from Mehta's residual and reports whether the vortex/updraft/manoeuvre ordering survives, and by how much margin on each of Fig. 8's two axes. Writes `07-ensemble.png`. Same `PYTHONPATH` rule. |
