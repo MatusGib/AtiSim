@@ -4,7 +4,9 @@ A 6-DOF fixed-wing flight-dynamics core in JAX, built as a foundation for turbul
 modelling. This document is the standing record: what exists, what is validated, what is
 known-broken, and what happens next.
 
-**Last updated:** session 28 (an audit, no code changed: the "the agreement got worse" hypothesis tested and **falsified** — every early number re-measured and unchanged, no tolerance ever loosened, and the growth traced to a change of *reference class* dated to commit `c6b5342`, 1 Sep 2026, with ASSUMPTIONS C3's frozen derivatives the largest identified physical cause; the strip-load path judged: off the published path, +22.9% on one unvalidated channel, and worth keeping for its negative result).
+**Last updated:** session 29 (**the sensitivity study, designed and then run end to end, S0–S6**, plus two follow-ups. **ASSUMPTIONS C3's Mach axis is bounded at cruise, −5.04%**; **§1's headline carries a band — 68.2%, 57.1–74.0% — and the shortfall survives all of it**; `CLa` +0.692 and `mass` −0.649 lead the load, with a DECLARED constant third. **Two `sqrt(0)` bugs repaired** — the model was not differentiable in its own coefficients, and no quoted result was ever wrong. And **session 23d's Fig. 8 reading is CORRECTED**: the pitch axis does not stop discriminating, the extremes gap it used shrinks with N, and it is the load axis that degrades faster)
+
+Session 28 (an audit, no code changed: the "the agreement got worse" hypothesis tested and **falsified** — every early number re-measured and unchanged, no tolerance ever loosened, and the growth traced to a change of *reference class* dated to commit `c6b5342`, 1 Sep 2026, with ASSUMPTIONS C3's frozen derivatives the largest identified physical cause; the strip-load path judged: off the published path, +22.9% on one unvalidated channel, and worth keeping for its negative result).
 
 Session 27 (the recorded trace digitised, and it says the *wind* is 12% light; a second sealed prediction settled RIGHT; the DC-10 wing loading found unpinnable, withdrawing session 26's sign; the LES comparison audited, refused, then re-run with Yoshimura's OWN aeroplane rebuilt from their source code -- 1.427 to 1.202, with the residual now attributable to neither aircraft nor Mach).
 
@@ -128,6 +130,29 @@ stop them being lost. **None was reviewed and none is endorsed** — the commit 
 | `claude/flight-dynamics-cat-prompt-ec9839` | `jsbsim-737-validation-eeb6a9` | A CAT-sources search prompt |
 | `claude/project-readme-mockup-0ef89a` | `quasi-steady-aero-model-d5cf37` | A README mockup |
 
+### Designed, built and run — session 29 (all seven phases)
+
+| | |
+|---|---|
+| **Branch** | **`claude/model-sensitivity-analysis-t18v3v`** |
+| **Worktree** | none — a remote container on the main checkout, no `.venv` (`jax` installed fresh on Linux; §10's Windows table does not apply) |
+| **State** | **8 commits ahead of `main`, 0 behind. ALL SEVEN PHASES S0–S6 ARE DONE**, plus two follow-ups: `airframe.py`'s `sqrt(0)` closed, and Fig. 8's pitch axis investigated (§4, correcting session 23d). Suite: **776 passed** before any of this work, **808** after S0–S6, **819** after the follow-ups; the same 2 platform bit-pins fail throughout and predate the work |
+| **What it is** | `docs/superpowers/specs/2026-09-10-model-sensitivity-analysis-design.md` — a sensitivity study over three quantities of interest (headline CAT load, cruise modes, Dryden ensemble statistics) and two factor tiers (aerodynamic derivatives, `ASSUMPTIONS.md` modelling choices), by a tiered method: AD screen → OAT confirm → banded propagation |
+| **What it closes** | **CLOSED, all three.** `ASSUMPTIONS.md` **C3's Mach axis is bounded at cruise: −5.04%** of the headline load over a measured Mach span of 0.7187–0.8257. **§1's headline carries a band — 68.2%, 57.1–74.0%** — and states that the shortfall survives it. And phase 3's DC-10 acquisition has a **price**: `CLa` is the top-ranked coefficient on the load at **+0.692**, `mass` second at **−0.649** |
+| **Blocking** | **Nothing, and nothing of the plan is left.** What remains is named rather than pending: `airframe.py`'s second `sqrt(0)` (§6(f)), C3's **α axis** which is still unbounded, and **interaction terms**, which this study measured none of and says so with every table |
+
+**All three obstacles the design named are solved.** `trim`'s Newton solve is handled by the
+implicit function theorem twice over — `implicit_trim_jacobian` as a table and `solved_trim` as a
+differentiable primitive, checked against each other AND against differentiating through the
+unrolled loop. The `np.linalg.eigvals` break is closed by first-order eigenvalue perturbation.
+And `vortex_viz._measure`'s NumPy return is closed by `load_history`, which is **bit-identical**
+to it across all 4,737 samples of the headline run.
+
+**A fourth obstacle was not in the design and was found by running it:** `aero.py`'s
+Prandtl–Glauert sentinel made the model non-differentiable in its own coefficients for every
+aircraft in the registry. Fixed, proved value-identical, recorded in **§6(f)** — with a second,
+open instance in `airframe.py` named there.
+
 ### Superseded, kept only until someone confirms
 
 `claude/flight-dynamics-email-3601f2` (1 ahead, **111 behind**) and
@@ -206,7 +231,13 @@ tested against the aircraft's own linearised dynamics, not against a recorded sp
 because none is held. §5 says what would change that.
 
 **What it does not buy.** Any statement of the form *"the load will be X g"*. The
-headline load comparison reaches **68%** of a recorded peak-to-peak — 67.1% is the
+headline load comparison reaches **68.2%** of a recorded peak-to-peak — **and, since
+session 29, that number carries a band: 57.1–74.0%**, from moving every priced input to
+its bound (§4, phase S6). **The shortfall survives the whole of it.** The top of the band
+is 74.0% against 100%, so the 32% is *not* input ignorance — which is the question this
+paragraph could not answer for twenty-two sessions. Session 23c established the same thing
+from the wind inputs alone (72.7%); S6 adds the aircraft's own priced errors and moves the
+ceiling by 1.3 points. The old bare **68%** — 67.1% is the
 like-for-like *translational* figure quoted against JSBSim and this line used to carry it
 by mistake — and §5 records what is left to explain it. **Session 27 unsettled that
 attribution twice over**, and §5 now says so: the wing-loading sign that made *the
@@ -256,6 +287,7 @@ changed that.
 | **`apps/`** | `sweep.py` — the Dash analysis UI | **the only package that imports Dash, and it computes nothing.** It never runs the simulator either: `n_steps` is a `static_argname`, so every distinct dt pays a fresh 0.6–0.9 s compile and a panel whose contents depend on machine warmth is not a check |
 | `vortex_viz.py` | encounter analysis and the Fig. 8 figure | air-relative throughout; deliberately separate from `viz.py`. `fly` for a wind field with fixed controls, `manoeuvre` for an elevator schedule at zero wind; both go through `_measure`, so the three Fig. 8 points cannot drift apart |
 | **`response.py`** | **tier 3 — RUN statistics**: `spectrum`, `peak_frequency`, `exceedance` | added session 25 (phase 2). A run as a SPECTRUM and as a RATE, rather than as a peak. Numpy, takes a sampled history, same standing as `checks.py` — nothing here is jitted or differentiated. Note the name collision worth keeping straight: `wind.dryden_spectrum` is an INPUT spectrum, this is the RESPONSE. Every unit check in `test_response.py` is against a signal whose answer is closed-form |
+| **`sensitivity.py`** | **the derivative of a RESULT with respect to a COEFFICIENT**: `implicit_trim_jacobian`, `longitudinal_matrix_jnp`/`lateral_matrix_jnp`, `plant_matrix_sensitivity`, `eigenvalue_sensitivity`, `eigenvalue_separation`, `mode_sensitivity`, `elasticity` | added session 29 (phases S0/S1). Everything else here measures the model against a SOURCE; this measures it against ITSELF. Reports **elasticity** `(∂Q/∂p)(p/Q)`, never a raw gradient, because a per-radian derivative and a mass are not otherwise rankable. Carries `INDEPENDENT_FIELDS` and `COUPLED_FIELDS`: **`Aircraft` is NOT a set of independent parameters** — `inertia_inv` is the inverse of `inertia` and `AR` is b²/S — so a naive `jacfwd` over the whole tuple is wrong, and those five fields are refused rather than screened. `mode_sensitivity` returns roots UNSORTED, because sorting is what makes a swept mode discontinuous where two cross |
 
 ### The two interfaces turbulence depends on
 
@@ -424,6 +456,383 @@ spacing from a free parameter into a cited one.
 ## 4. Evidence ledger
 
 Every figure below is measured, with the tolerance the test asserts.
+
+### The headline load, differentiated and then swept — session 29 (phases S2–S6)
+
+**The study's own deliverable: `PROJECT.md` §1's headline is no longer a bare point.**
+`scripts/sensitivity_load.py`, `scripts/sensitivity_assumptions.py`,
+`scripts/sensitivity_ensemble.py`. The run is unchanged — `boeing747` through Mehta's
+five-core Hannibal array at 37,000 ft, moving-air start at a 12 r₀ lead, measured over the
+array ±2 r₀, dt 0.01, 4,737 steps — the configuration `cat_validation.py:fly_mehta` flies.
+
+**Base: 1.841396 g peak-to-peak = 68.20% of TM-102186's recorded 2.70 g.**
+
+#### The gate: the differentiable path is BIT-IDENTICAL to `vortex_viz._measure`
+
+`_measure` ends in `np.asarray`, so the `Encounter` path cannot be differentiated and
+`sensitivity.load_history` is a **second path** to the same channel. Requirement was 1e-12;
+measured **0.000e+00** — `np.array_equal` on all 4,737 samples, and the window mask identical.
+A tolerance would have admitted a second path that had become a different model.
+
+#### S2 — which of the 747's own numbers the headline load rests on
+
+31 tangents through one 4,737-step scan, 42 s. Elasticity `(∂Q/∂p)(p/Q)`.
+
+| rank | field | elasticity | what it is |
+|---|---|---|---|
+| 1 | **`CLa`** | **+0.69242** | SOURCED, CR-2144 |
+| 2 | **`mass`** | **−0.64869** | SOURCED |
+| 3 | **`kappa_airfoil`** | **−0.33850** | **DECLARED — the Korn technology factor, "~0.87 conventional"** |
+| 4 | `Cma` | +0.19233 | SOURCED |
+| 5 | `c` | +0.12242 | SOURCED |
+| 6 | `sweep` | −0.07100 | SOURCED |
+| 7 | `t_over_c` | +0.04414 | SOURCED |
+| 8 | `Cmq` | −0.03845 | SOURCED |
+| | `CL0`, `e`, `CD0`, `CLq`, `thrust_lapse`, `Cm0`, `CLde`, `Cmde` | \|E\| < 0.02 | |
+
+**`CLa` at the top is session 27's LES result arriving from the other direction** — that run
+found the frozen lift slope the dominant identified contributor to the load discrepancy, and
+this says the same thing about the load itself, at a different condition, by a different
+method.
+
+**The third entry is the one that should not be third.** `kappa_airfoil` is **DECLARED**, not
+sourced — a Korn technology factor taken as "~0.87 conventional" — and it outranks `Cmα`, `c`
+and every drag coefficient. With `sweep` and `t_over_c` it makes the **wave-drag trio worth
+0.454 of summed \|elasticity\| against `CD0`'s 0.0087**: on this run **compressible drag
+matters ~52× more than parasite drag**, and the largest single contributor to it is a
+declared constant.
+
+**Thirteen fields are EXACTLY 0.000000**, and that is a measurement, not a rounding: `CYb`,
+`CYdr`, `Clb`, `Clda`, `Cldr`, `Clp`, `Clr`, `Cnb`, `Cnda`, `Cndr`, `Cnp`, `Cnr`, `max_thrust`.
+**Every lateral derivative is there.** Mehta's array is a function of along-track distance
+alone, so no lateral coefficient can reach `n_z` — `ASSUMPTIONS.md` E10, stated as a
+capability gap since session 24 and now measured as an exact zero.
+
+#### S3 — how far the tangent survives, and where it breaks
+
+A peak-to-peak is `max − min`: differentiable **almost** everywhere, and its gradient belongs
+to whichever samples ARE the extremes. `actual/tangent` is 1.000 where the local gradient is
+the whole answer.
+
+| field | ±1% | ±5% | ±10% | ±25% | verdict |
+|---|---|---|---|---|---|
+| `CLa` | 0.997 / 1.002 | 0.986 / 1.014 | 1.013 / 1.029 | 0.952 / 1.086 | **the tangent holds to ±25%** |
+| `mass` | 0.992 / 1.007 | 0.964 / 1.121 | 0.930 / 1.205 | 0.876 / 1.358 | usable to ±5%, asymmetric beyond |
+| `kappa_airfoil` | 0.861 / 1.151 | **0.060** / 0.886 | **0.035** / 1.240 | **0.014** / 2.119 | **SATURATES upward** |
+| `Cma` | 0.988 / 0.995 | 1.247 / 0.623 | 1.563 / 0.158 | 1.502 / **−0.136** | **loses its SIGN by −25%** |
+| `c` | 0.971 / 1.014 | 0.882 / 1.111 | 1.281 / 1.236 | 1.007 / 1.376 | usable to ±5% |
+| `sweep` | 0.973 / 1.027 | 0.866 / 1.133 | **−0.182** / 0.602 | 0.054 / 0.649 | **saturates upward** |
+
+**Three of the six top fields lose the tangent's magnitude or its sign by ±10%.** Two
+mechanisms, both physical:
+
+1. **Wave-drag saturation.** Raising `kappa_airfoil` raises M_crit until the wave-drag term is
+   identically zero at this Mach, after which more does nothing: Q is **1.83923 at both +10%
+   and +25%, to six figures**. Its rank-3 elasticity is real and **one-sided**. `sweep` does
+   the same thing for the same reason.
+2. **The extreme changes core.** At −25% of `Cmα` the maximum jumps from sample 2699 to 2819,
+   and at +25% to 3188 — a **different vortex** in the five-core array. That is where the sign
+   inverts. The extremes moved at *almost every* excursion including ±1%, but by one or two
+   samples; only the jumps of hundreds break the tangent.
+
+**So the S2 ranking is a ranking at ±1–5%, and the table says so.** Nothing here supports a
+statement about a coefficient being wrong by 25%.
+
+#### S4 — every modelling choice on the SAME axis as the coefficients
+
+`ASSUMPTIONS.md`'s rows each carry a cost in their own units — m/s of gust, per cent of
+density, per cent of an in-core Δθ, a fraction of a quadrature calibration — and none is
+comparable with any other or with a derivative. Here they are all per cent of the headline load.
+
+| register | variant | load, g | vs base |
+|---|---|---|---|
+| **C3** | **Prandtl–Glauert on, ref M = 0.7995** | **1.748571** | **−5.041%** |
+| C3 | ref M = 0.75 *(sensitivity, not a band)* | 1.897357 | +3.039% |
+| C3 | ref M = 0.85 *(sensitivity, not a band)* | 1.549600 | **−15.846%** |
+| E4 | wind sampled per RK4 stage, not held | 1.840416 | −0.053% |
+| F1 | dt = 0.02 | 1.846017 | +0.251% |
+| F1 | dt = 0.005 | 1.845656 | +0.231% |
+| F1 | dt = 0.0025 | 1.845401 | +0.217% |
+| E2/E10 | strip loads, 9 stations | 1.841396 | **+0.000%** |
+| F5 | strip loads, 17 / 57 stations | 1.841396 | **+0.000%** |
+| E2 | strip loads, uniform / tapered shape | 1.841396 | **+0.000%** |
+
+**C3's Mach axis is bounded at cruise for the first time: −5.04%.** The excursion is measured,
+not assumed — Mach **0.7187 to 0.8257, span 0.1070**, because `aero.py` builds Mach from
+`vel_rel` and the gust moves it. That is 3.5× the lee wave's ΔM and 0.27 of session 27's LES
+point. `ASSUMPTIONS.md` C3 now carries it.
+
+**The dt rows are NOT an integration-order result and must not be read as one.** dt = 0.02,
+0.005 and 0.0025 agree with each other to 0.034% and all sit **+0.22% above the shipped
+dt = 0.01**. A convergent integration error would be monotone in dt; this is not. It is
+**sample placement**: a peak-to-peak of a sampled signal depends on where the samples fall
+relative to the extremum, and the shipped dt happens to straddle it. **The headline load is
+therefore ~0.22% low for a reason that has nothing to do with RK4.**
+
+**The five 0.000% rows were PROVEN to be physics rather than plumbing**, because a
+0.000% from "roll only" is indistinguishable from a 0.000% from "the load model never ran".
+The discriminator is the roll rate: peak \|p\| is **exactly 0** on the point path and
+**2.12e-17 rad/s** on the strip path. The path ran; `n_z` genuinely cannot see a rolling
+moment; and the round-off-level magnitude is itself E10's statement that the field has no
+spanwise variation.
+
+#### S5 — the same screen against an rms, to see whether the ranking is the AEROPLANE or the PEAK
+
+Session 25's protocol unchanged: `wind.dryden_field` at the two ends of the sourced σ range,
+100 s flights, first 20 s discarded, moving-air start. **8 seeds**, dt 0.02, and the standard
+deviation across seeds is reported beside every mean because most of the table is **not
+resolved at that N**.
+
+| field | peak elasticity (S2) | rms, σ = 2.108 | rms, σ = 4.459 | |
+|---|---|---|---|---|
+| `mass` | −0.649 | **−0.726** ± 0.124 | **−0.839** ± 0.191 | rank 1–2 either way |
+| `CLa` | +0.692 | **+0.704** ± 0.115 | **+0.811** ± 0.154 | rank 1–2 either way |
+| `Clb` | **0.000000** | +0.084 ± 0.063 | **+0.264** ± 0.125 | **zero on the vortex, third here** |
+| `c` | **+0.122** | **−0.080** ± 0.057 | **−0.151** ± 0.072 | **SIGN REVERSES** |
+| `Cma` | **+0.192** | −0.031 ± 0.051 | **−0.075** ± 0.071 | **SIGN REVERSES** |
+| `kappa_airfoil` | −0.339 | +0.129 ± 0.200 | +0.160 ± 0.261 | **not resolved at N = 8** |
+| `Cnb` | 0.000000 | −0.009 ± 0.116 | −0.020 ± 0.251 | **not resolved at N = 8** |
+
+`n_z` rms: **0.07676 g** [0.07313, 0.08116] at σ = 2.108; **0.17141 g** [0.16352, 0.18058] at
+σ = 4.459.
+
+**The answer is: partly the aeroplane, partly the peak.** `CLa` and `mass` are the top two
+under *both* statistics, at both intensities, with the same signs and magnitudes within 20% —
+that pair is a property of the airframe. **`c` and `Cmα` reverse sign**, which no ranking taken
+from one statistic could have revealed, and **`Clb` goes from an exact zero to third place**,
+because `dryden_field`'s v component is a real lateral input (sideslip, not a rolling gust) where
+the vortex array has none. **A sensitivity ranking is a property of the statistic as well as of
+the model**, and this project now has the measurement that says so.
+
+#### S6 — the budget, and §1's headline gains a band
+
+A row enters only where a source states a band or the register states a measured cost.
+Everything else is DECLARED fixed and named so.
+
+| source of error | low % | high % | kind | provenance |
+|---|---|---|---|---|
+| C3 Mach, derivatives frozen | −5.041 | 0 | measured | session 29 |
+| E12 Hannibal core radius | −4.260 | 0 | measured | session 26 |
+| `V₀` ±8.45% | −4.280 | +2.560 | **SOURCED** | session 23c |
+| `r₀` ±15% | −2.700 | +5.240 | **DECLARED** | session 23c |
+| F1 step size | 0 | +0.250 | measured | session 29 |
+| E4 wind held across RK4 stages | −0.053 | 0 | measured | session 29 |
+| A2 constant g vs g(z) | 0 | +0.383 | measured | sessions 12, 23 |
+
+| | band | headline |
+|---|---|---|
+| **linear sum** (needs no independence claim) | **−16.33% / +8.43%** | **57.06% … 73.95%** |
+| RSS (needs independence, which is NOT established) | −8.32% / +5.85% | 62.53% … 72.19% |
+
+**`68.20%` becomes `68.2%, and 57.1–74.0% once every priced input is moved to its bound`.**
+
+**The shortfall survives the entire band.** The top of the linear sum is **73.95%** against
+100%. Session 23c reached the same conclusion from the **wind** inputs alone and topped out at
+**72.7%**; adding the **aircraft's** own priced errors moves that to 74.0% and changes nothing.
+**The 32% is not input ignorance.** That was the question §1 could not answer and now can.
+
+**The tabulation-Mach rows are deliberately NOT in the budget.** §4 records that this 747 flies
+M 0.800, *"which is the Mach its derivative set is tabulated at"* — the number is sourced, so
+±0.05 on it is a sensitivity and not an uncertainty, and summing it would inflate the bracket
+with an error the source does not have. It is reported because **a 0.05 error there would be
+worth three times the whole rest of this budget**, and nothing before now depended on it.
+
+### Fig. 8's pitch axis does NOT stop discriminating — session 29, and it corrects session 23d
+
+**`scripts/fig8_discriminator.py`, 6 intensities × 32 seeds × 2 categories = 384 flights.**
+Session 23d found the vortex–updraft **pitch gap** collapsing from 0.886° to 0.060° across the
+sourced σ_w range while the **load gap** survived at 0.343 g, and read that as *"at the top of
+the sourced turbulence range they separate on load alone, and a pitch-only reading of the chart
+would stop working."* **That inference does not survive a statistic that does not move with N.**
+
+#### Why the old statistic could not answer the question
+
+23d reported the **gap between the extremes** of two clouds. The extremes of a distribution
+spread as more samples are drawn, so that gap falls towards zero with effort whatever the truth
+is. Measured directly, at fixed σ_w = 2.108 m/s, by subsampling **one** grid so nothing but N
+changes:
+
+| N | extremes gap | separability (AUC) | Cohen's d |
+|---|---|---|---|
+| 8 | **1.5690°** | 1.0000 | 6.435 |
+| 16 | **0.7211°** | 1.0000 | 4.672 |
+| 32 | **0.6567°** | 1.0000 | 5.222 |
+
+**The gap more than halves between N = 8 and N = 32 while the separability does not move at
+all.** Gathering more evidence made 23d's statistic say the clouds were *closer*. That is the
+wrong way round, and it is why `atisim/response.py` now carries `separability` (Mann–Whitney
+AUC, unpaired) and `standardised_difference` beside `exceedance`.
+
+#### The sweep
+
+`separability` = P(updraft > vortex) for one independent draw from each; 1.0 is perfect
+separation, 0.5 is none. **1,024 independent pairs per intensity.**
+
+| σ_w | AUC pitch | AUC load | d pitch | d load | overlapping pairs, pitch | load | peak \|α\| | |
+|---|---|---|---|---|---|---|---|---|
+| 1.000 | **1.0000** | **1.0000** | 10.264 | 23.500 | **0 / 1024** | **0 / 1024** | 8.75° | *below the sourced range* |
+| **2.108** | **1.0000** | **1.0000** | 5.222 | 10.830 | **0 / 1024** | **0 / 1024** | 9.35° | sourced lower bound |
+| **3.000** | **1.0000** | **1.0000** | 3.925 | 7.399 | **0 / 1024** | **0 / 1024** | 9.82° | |
+| 4.000 | 0.9961 | 1.0000 | 3.405 | 5.012 | 4 / 1024 | 0 / 1024 | **10.40°** | **outside the envelope** |
+| 4.459 | 0.9971 | 1.0000 | 3.315 | 4.323 | 3 / 1024 | 0 / 1024 | **10.65°** | sourced ceiling, **outside** |
+| 5.500 | 1.0000 | 0.9893 | 3.205 | 3.229 | 0 / 1024 | 11 / 1024 | **11.21°** | **outside**, extrapolated |
+
+**Three results, and the first is the one that corrects the record.**
+
+1. **Inside §1's envelope the discriminator is perfect on BOTH axes.** At σ_w = 1.0, 2.108 and
+   3.0: **zero overlapping pairs out of 1,024, on pitch and on load.** The pitch axis does not
+   stop working, does not come close to stopping working, and "all but touching" was a property
+   of the extremes gap rather than of the clouds.
+
+2. **The extremes gap goes NEGATIVE while the separability stays above 0.996.** At σ_w = 4.0 the
+   pitch gap is **−0.2995°** — 23d's statistic reads that as *overlapping* — and yet only
+   **4 pairs in 1,024** are misordered. That single row is the whole argument for the change of
+   statistic, and it is a measurement rather than an argument.
+
+3. **In standardised terms it is the LOAD axis that degrades faster, not the pitch axis** —
+   the reverse of 23d's reading. Across the sweep `d` falls **×7.28 on load** (23.500 → 3.229)
+   against **×3.20 on pitch** (10.264 → 3.205), and by σ_w = 5.5 the two axes are equally
+   informative (3.205 against 3.229) rather than one carrying the other.
+
+#### What actually binds, and it is not the statistic
+
+**The envelope closes before the discriminator does.** Peak \|α\| reaches **10.40° at
+σ_w = 4.0**, past §1's 10° linear-aero ceiling, so the in-envelope window is only
+**σ_w ≤ ~3.0** — and the **sourced ceiling of 4.459 m/s sits outside it at 10.65°.**
+So: within the range this model may be asked about, the pitch axis never fails; beyond it, the
+model cannot be believed, and the question of where the axis *would* fail **cannot be answered
+by this aeroplane**. `AUC pitch falls through 0.95` is *not crossed* anywhere in the sweep.
+
+**Session 23d's upper limb was therefore already outside the envelope**, at |α| 10.65° in this
+configuration, and nothing in its entry said so — `ASSUMPTIONS.md` E11 records the drift for the
+*100 s Dryden* ensemble, which is a different run. That is recorded here rather than in a
+correction to the number, because the 16/16 ordering 23d reported still holds.
+
+**One number does not reproduce and the cause is named, not resolved.** 23d reports the pitch
+gap at σ_w = 2.108, N = 16 as **+0.886°**; the same configuration here gives **+0.7211°**, 19%
+lower. The most likely cause is the session-28 compressibility merge, which moved the Fig. 8
+vortex point (Δn −1.261 → −1.265) and every altitude-dependent number with it. **Not chased**,
+because the conclusion drawn from that number is the one being corrected anyway.
+
+**What this does NOT establish.** The manoeuvre limb is still flown at zero wind by definition,
+so only the vortex-versus-updraft separation is tested on equal terms. N = 32 bounds the
+overlap at roughly 1 pair in 1,024, not at zero. And this is one aeroplane at one condition
+against one pair of field models — it says what Fig. 8 does for *this* 747 through *these*
+fields, not what it does for the DC-10-class records the chart was drawn from.
+
+### The model, differentiated in its own coefficients — session 29 (phases S0, S1)
+
+**The first sensitivity machinery this project has had, and the first time any quantity here
+has been differentiated with respect to a COEFFICIENT rather than with respect to a state.**
+`atisim/sensitivity.py`, `scripts/sensitivity_screen.py`, 24 tests in `test_sensitivity.py`.
+Design: `docs/superpowers/specs/2026-09-10-model-sensitivity-analysis-design.md`.
+
+**Measured on Linux with JAX 0.10.2 / NumPy 2.4.6, not on §10's Windows `.venv`.** The
+mode path reproduces exactly there (row B below); two bit-exact rollout pins do not, and
+that is measured rather than assumed — see "What does not reproduce on another platform".
+
+#### A. The machinery, against a central difference at the same point — THE GATE
+
+| relation | AD tangent | central difference | relative |
+|---|---|---|---|
+| `CD0` → ζ_phugoid | 0.76556 | 0.76556 | **5.21e-10** |
+| `Cmα` → ω_n,sp² | −0.41049 | −0.41049 | **2.02e-10** |
+| \|`Clp`\| → 1/τ_roll | 1.98196 | 1.98196 | **1.03e-10** |
+| `Cnβ` → ω_n,dr² | 2.07539 | 2.07539 | **6.51e-11** |
+
+**Gate was 1e-6; worst is 5.21e-10, four orders inside it.** The difference is taken through
+`validation`'s own shipped functions, not through the jnp twins the AD path uses — a
+difference on the same code would check the arithmetic and not the model.
+
+#### B. Session 11's four slopes, re-run on this platform
+
+| relation | slope here | published | intercept here | published | worst residual |
+|---|---|---|---|---|---|
+| `CD0` → ζ_phugoid | **0.76994** | 0.76994 | −0.01621 | −0.0162 | 0.31% / 0.31% |
+| `Cmα` → ω_n,sp² | **−0.42251** | −0.42251 | +0.27366 | +0.27366 | 1.68% / 1.68% |
+| \|`Clp`\| → 1/τ_roll | **2.06872** | 2.06872 | +0.30240 | +0.30240 | 1.73% / 1.73% |
+| `Cnβ` → ω_n,dr² | **2.10545** | 2.10545 | +0.26626 | +0.26626 | 0.56% / 0.56% |
+
+**All four reproduce to five decimal places**, seventeen sessions and a platform change later.
+
+#### C. The AD tangent and the fitted slope are DIFFERENT OBJECTS, and the gap is curvature
+
+The tangent at session 11's base point sits **0.6–4.2% off** the fitted slope. That is not an
+error and the distinction matters, because it is the whole content of the study's tier 2:
+
+| relation | tangent at base | tangent at range centroid | fitted slope | base/fit | **centroid/fit** |
+|---|---|---|---|---|---|
+| `CD0` → ζ_phugoid | 0.76556 | 0.76927 | 0.76994 | 0.9943 | **0.9991** |
+| `Cmα` → ω_n,sp² | −0.41049 | −0.41552 | −0.42251 | 0.9715 | **0.9835** |
+| \|`Clp`\| → 1/τ_roll | 1.98196 | 2.09866 | 2.06872 | 0.9581 | **1.0145** |
+| `Cnβ` → ω_n,dr² | 2.07539 | 2.10051 | 2.10545 | 0.9857 | **0.9977** |
+
+**Moving the tangent point to the centre of each swept range closes the gap to about the
+fit's own worst residual, in all four cases.** So session 11's ranges are affine to the
+residual it reported, the base point sits at one END of each of them, and **an elasticity
+must be quoted with the excursion it was taken at.** A ranked table taken at the base point
+is a ranking *at the base point*.
+
+#### D. The screen: which coefficients the 747's modes actually rest on
+
+Elasticity `(∂Q/∂p)(p/Q)` — per cent of the answer per per cent of the input. Top rows only;
+`scripts/sensitivity_screen.py --json` writes all of them. **One-at-a-time: no interaction
+term is measured, and none may be inferred.**
+
+| mode | cruise (M 0.80, 40,000 ft) | power approach (Caughey) |
+|---|---|---|
+| phugoid ω_n | `Cmq` −0.059, `Cmα` +0.059, `c` −0.057 | `Cmα` +0.178, `Cmq` −0.167, `CLα` −0.163 |
+| phugoid ζ | **`mass` +1.728**, `e` −0.410, `CD0` +0.327 | **`c` +6.891**, `Cmq` +3.034, `CD0` +2.241 |
+| short period ω_n | `c` +0.557, `Cmα` +0.441 | `c` +0.646, `Cmα` +0.322 |
+| short period ζ | `c` +0.473, `Cmq` +0.457, `Cmα` −0.443, `CLα` +0.422 | `CLα` +0.400, `mass` −0.396 |
+| dutch roll ω_n | `Cnβ` +0.350, `Clβ` +0.126 | `Cnβ` +0.268, `Clβ` +0.187 |
+| dutch roll ζ | `Clβ` −1.743, `Clp` +1.730, `Cnr` +1.240 | `Clp` +1.311, `Clβ` −0.892, `Cnr` +0.794 |
+| roll τ | `Clp` −0.626, `Clβ` −0.146 | `Clp` −0.734, `Clβ` −0.083 |
+| spiral τ | **`Cnr` −4.253, `Clβ` −3.800, `Cnβ` +3.794, `Clr` +2.922** | `Cnr` −1.568, `Clβ` −1.062, `Cnβ` +1.037 |
+
+**Three things this says that no comparison against a source could have.**
+
+1. **The mean aerodynamic chord `c` outranks `Cmα` for the short-period frequency at both
+   conditions** (+0.557 against +0.441 at cruise). `c` is geometry, read once off CR-2144;
+   `Cmα` is the derivative every discussion of pitch stiffness is about.
+2. **The spiral mode is the fragile one, and it is fragile at cruise specifically** — four
+   coefficients above 2.9 in elasticity, against a worst of 1.57 at the approach. A 1% error
+   in `Cnr` moves the cruise spiral time constant by 4.3%.
+3. **The phugoid damping is a `mass` result at cruise (+1.728) and a `c` result at the
+   approach (+6.891).** The dominant coefficient is not a property of the mode; it is a
+   property of the mode *at a condition*.
+
+**Nine fields are STRUCTURALLY INERT at both conditions** — elasticity exactly 0.000000,
+which means *not used*, not *unimportant*: `CYp`, `CYr`, `CYdr`, `Clda`, `Cldr`, `Cnda`,
+`Cndr`, `max_thrust`, `thrust_lapse`. The control derivatives are inert because the linear
+modes are taken about a fixed-control trim; the two thrust fields because thrust acts along
+body x through the CG with no moment (`ASSUMPTIONS.md` C5). **A zero in an elasticity table
+means one of these two things and never "small", so the screen prints them separately.**
+
+**And a fourth finding, from the trim path rather than the modes.** `CLα` has **exactly
+zero** effect on `boeing747_jsbsim`, `boeing737` and `boeing737_approach`: those entries
+carry a `CL_table_alpha`, and `aero.py` takes the table *instead of* `CL0 + CLα·α`. **Their
+`CLa` field is dead data.** No test asserts this and nothing else in the record says it.
+
+#### What does not reproduce on another platform, measured
+
+The suite runs **2 failed, 776 passed, 3 skipped in 811 s** here, **2 failed, 808 passed,
+3 skipped in 898 s** once phases S0–S6's 32 tests are in it, and **2 failed, 819 passed,
+3 skipped in 1,359 s** after the two follow-ups added 11 more. Both failures are the two
+tests that assert **exact bit equality**, and both differ in the 13th significant digit:
+
+| pin | this platform | recorded | relative | ulps |
+|---|---|---|---|---|
+| `FIG8_VORTEX[0]` (Δθ) | 2.24167400998675 | 2.241674009986879 | 5.77e-14 | ~260 |
+| `FIG8_VORTEX[1]` (Δn) | −1.2396439681557032 | −1.2396439681557148 | 9.31e-15 | ~42 |
+| `PRE_REFACTOR_VEL_HASH` | (sha256 differs) | — | — | — |
+
+**Neither tolerance was touched and neither should be** — `CLAUDE.md` rule 3, and these are
+doing precisely their job: they detect that the arithmetic environment changed. The reading
+is that **a rollout of 10⁴–10⁵ steps is bit-reproducible only within one platform**, while
+the linearisation path is stable across platforms to five decimals (row B). The test count
+is 781 rather than session 28's 813 because `pyarrow`/`plotly`/`dash` are absent here, so
+`test_artifact.py` and `test_figures.py` do not collect.
 
 ### Why the agreement "got worse": the reference class changed, not the model — session 28
 
@@ -1708,6 +2117,28 @@ to 0.060° — they are all but touching. The **load** gap survives at 0.343 g. 
 is a two-dimensional discriminator, so the categories still separate; but at the
 top of the sourced turbulence range they separate on **load alone**, and a pitch-only
 reading of the chart would stop working.
+
+> ### ~~they are all but touching~~ ~~a pitch-only reading would stop working~~ — **BOTH WITHDRAWN, session 29**
+>
+> **The gap between two clouds' extremes is not a measure of whether they overlap**, and this
+> paragraph's conclusion rests entirely on reading it as one. §4's "Fig. 8's pitch axis does NOT
+> stop discriminating" has the measurement; the three findings that bear on these two sentences:
+>
+> - **The gap shrinks with N at FIXED σ_w.** Subsampling one grid at σ_w = 2.108: 1.5690° at
+>   N = 8, 0.7211° at N = 16, 0.6567° at N = 32, while the separability stays at exactly 1.0000
+>   throughout. Collecting more evidence made this statistic say the clouds were *closer*.
+> - **Inside §1's envelope the pitch axis separates PERFECTLY** — 0 overlapping pairs out of
+>   1,024 at σ_w = 1.0, 2.108 and 3.0. At σ_w = 4.0 the gap is **−0.2995°**, which reads as
+>   overlapping, while only **4 pairs in 1,024** are actually misordered.
+> - **It is the LOAD axis that degrades faster**, not the pitch axis: across the sweep Cohen's
+>   `d` falls ×7.28 on load against ×3.20 on pitch, the reverse of what this paragraph says.
+>
+> **What survives unchanged is the criterion**: 16/16 on the ordering, at both intensities. And
+> one caveat this entry should have carried — **the upper limb is outside §1's envelope**, at
+> peak |α| 10.65° in this configuration, so the σ_w = 4.459 row was never a run the model may be
+> asked about. §4 also records that the +0.886° above does not reproduce (0.7211° now), most
+> likely through the session-28 compressibility merge, and that it was not chased because the
+> conclusion drawn from it is withdrawn regardless.
 
 **Two things this does not establish.** The manoeuvre limb is flown at zero wind —
 that is the category's definition, not an oversight — so the three-way ordering is
@@ -4029,6 +4460,64 @@ entire job is to report whether the model stayed in range. Two tests now pin it:
 by magnitude, and the needle position, because fixing `state()` alone would have left the
 needle still lying.
 
+### (f) The model was not differentiable in its own coefficients — FIXED session 29
+
+**`aero.py`'s Prandtl–Glauert factor made every `jvp` and `jacfwd` through
+`aero.coefficients` return NaN, for every aircraft that declares no reference Mach — which
+is all of them but the compressibility entries.** No result this project has ever quoted was
+wrong, and that is exactly why it survived: the NaN was in a *tangent*, never in a value.
+
+```python
+pg = jnp.where(ac.pg_mach_ref < 0.0, 1.0,
+               jnp.sqrt(jnp.maximum(1.0 - jnp.minimum(ac.pg_mach_ref, PG_MACH_MAX)**2, 0.0)) / ...)
+```
+
+`jnp.where` evaluates **both** branches. `pg_mach_ref = -1.0` is the "undeclared" sentinel,
+so the unselected branch computes `sqrt(1 - min(-1, 0.90)²) = sqrt(0)`. The forward-mode
+tangent of `sqrt` is `du / (2·sqrt(u))`, which at `u = 0` is **0/0 — NaN for ANY tangent,
+including a zero one.** The select discards the value; nothing discards the NaN.
+
+**How it was found, and it is the argument for the NaN guard rather than for a review.**
+`atisim/sensitivity.py`'s first directional derivative through `trim.residual` tripped
+`conftest.py`'s `jax_debug_nans`, which has been on for the whole suite since session 5. The
+probe scripts written the same hour did **not** trip it — they ran outside pytest, produced
+finite elasticities, and agreed with central differences to 1e-10. **A NaN that is always
+discarded is invisible to every check except the one that looks for NaNs specifically.**
+
+**The repair is the standard double-`where`**: clamp the *unselected* branch's input to 0.0
+before the `sqrt`. It is value-identical by construction — a declared reference Mach is ≥ 0
+and passes through untouched, and the sentinel branch's value was thrown away either way —
+and it was **proved** so rather than argued, two ways: the SHA-256 of `[trim, v̇_body, ω̇]`
+is unchanged for all seven registry aircraft with a cruise condition, and the two frozen
+bit-exact pins that fail on this platform fail with **byte-identical values before and after
+the patch**. `test_aero.py::test_the_undeclared_prandtl_glauert_sentinel_has_a_FINITE_derivative`
+is the negative control.
+
+**A second instance existed and is now CLOSED — same session, after it was flagged.**
+`airframe.elliptic_chord` — `c0 * sqrt(max(1 − (2y/b)², 0))` — is the same construction, and
+`airframe.stations` uses `jnp.linspace(-b/2, b/2, n)`, so a tip station sits **exactly** at
+±b/2 and the argument is exactly 0.0 there. **Confirmed by running it, not by reading it:**
+a `jvp` seeded in `CLa` — a coefficient the chord does not depend on at all — raised
+`invalid value (nan) encountered in mul` under the NaN guard, at every station count and
+every loading shape.
+
+Repaired with the same double-`where`, and value-identity proved the same way: the SHA-256
+of every chord, at every station count (9/17/57) and every shape (elliptic/uniform/tapered),
+for every registry aircraft, is **unchanged**. Two tests guard it —
+`test_the_elliptic_chord_has_a_FINITE_derivative_at_the_wingtip` and
+`test_the_tip_chord_is_still_exactly_zero`, the second being the value-side control that
+would catch a repair returning `sqrt(1.0)` at the tip.
+
+**The tip tangent must be exactly ZERO and not merely finite, and that is physics.** The tip
+chord is zero for every aircraft — `2y/b` stays exactly 1 when `b` moves, and `c0` multiplies
+an exact zero when `S` moves — so the derivative of the tip chord with respect to any
+aircraft parameter is genuinely 0. The test asserts `== 0.0` for that reason: `isfinite`
+alone would pass a repair that made the singularity finite-but-wrong. **What the repair does
+not give correctly is `d(chord)/dy` at the tip**, which is genuinely infinite — that is the
+same sqrt singularity `calibrated_lift_slope` blames for the 82.6% quadrature shortfall.
+Nothing in this project differentiates the chord with respect to spanwise position, and the
+docstring says so.
+
 ### What made (a) and (b) invisible
 
 A still-air test suite cannot catch an air-relative/inertial confusion, because in still
@@ -4090,6 +4579,39 @@ disk. Session 26 received four more papers and closed items 3, 4 and 5 outright.
 | **build the `boeing787_yoshimura` registry entry, then re-fly the LES** | **NEW, session 27, and it is the top of the list.** All inputs are in hand. Give it a `valid_mach`/`valid_altitude` band around its own condition. Carry the known difference that AtiSim has no `M_α̇` where Yoshimura has −0.137 |
 | **test the frozen-`C_Lα` explanation of the LES ratio** | **NEW, session 27, and it is CHEAP.** Rescale the 747's `C_Lα` by the Prandtl–Glauert ratio 1.521 and re-fly D03/D04. If the 1.42× ratio collapses toward 1, the LES discrepancy is this project's frozen derivative and **not** a code disagreement — and it becomes the **first quantified point on the Mach axis** ASSUMPTIONS C3 has left unbounded since session 12, with no chart read needed |
 | ~~run the LES limb~~ | **ALREADY RUN, session 3–4 Sept, and found NOT LIKE-FOR-LIKE in session 27.** All four domains × two aircraft are on disk. §4's input audit says why no number from them is quoted: the aeroplane is 5.4% or 82.9% away in natural frequency, and the entry closest in frequency is 2.63 band widths outside its own envelope. The **field reader is sound** (+0.978/−0.968/−0.935 against their own sampled wind) and reusable; the **load comparison is not yet a comparison.** This remains the project's only route out of the circularity every load row carries |
+
+### The sensitivity study — designed session 29, not yet run
+
+> **ALL SEVEN PHASES RAN IN SESSION 29.** The table below is kept as written, with each
+> row's outcome recorded in place. §4 has two measured entries covering all of it;
+> `ASSUMPTIONS.md` C3 is no longer unbounded; §1's headline carries a band.
+
+**The question it answers is one §4 has never asked: which of this model's own numbers does
+the answer rest on?** §4 measures the model against sources. It does not measure the model
+against *itself*, so no row in it says whether the headline load is set by `CLa` or by `Cmq`,
+nor whether a modelling choice from `ASSUMPTIONS.md` costs more than a derivative does.
+
+Full design in `docs/superpowers/specs/2026-09-10-model-sensitivity-analysis-design.md`.
+**Scope was agreed before it was written**, and what it excludes is as deliberate as what it
+covers — the wind and scenario inputs are excluded **because `cat_bounds.py` and
+`cat_uncertainty.py` already price them**, and the budget cites those numbers rather than
+re-measuring them.
+
+| Phase | Work | Gate | Status |
+|---|---|---|---|
+| **S0** | `atisim/sensitivity.py` + `test_sensitivity.py` | the differentiable load QoI matches `vortex_viz._measure`'s `n_z` to **1e-12**, sample-for-sample | **DONE for the MODE path, session 29** — 24 tests. The load QoI and its 1e-12 gate move to S2, because §6(f) had to be fixed first before anything could be differentiated at all |
+| **S1** | AD screen on the cruise modes | ~~reproduces session 11's four sweep slopes to <2%~~ **the gate as written was the wrong test and is corrected here**: an AD tangent and a least-squares slope over a 3–8× range are different objects, so the machinery gate is AD against a **central difference at the same point** | **DONE, session 29. PASSED at 5.2e-10 against a 1e-6 gate.** §4 has all four sections, including the proof that the 0.6–4.2% tangent-vs-fit gap is curvature |
+| **S2** | AD screen on the headline CAT load, all of tier A | AD elasticity vs ±1% central difference agree to **<1%** | **DONE, session 29.** Gate passed; the load path is **bit-identical** to `_measure`, better than the 1e-12 asked. `CLa` +0.692, `mass` −0.649, **`kappa_airfoil` −0.339 — a DECLARED constant in third place** |
+| **S3** | OAT confirm on the top factors at ±1/5/10/25% | a ranked table carrying the excursion it was ranked at | **DONE, session 29.** **Three of the six top fields lose the tangent's sign or magnitude by ±10%** — wave-drag saturation, and the extreme jumping to a different core. The ranking is valid at ±1–5% and the table says so |
+| **S4** | Tier B — the `ASSUMPTIONS.md` modelling choices, on the same axis | **C3 gets its first BOUND at cruise** | **DONE, session 29. C3's Mach axis: −5.04%** over a measured Mach span of 0.7187–0.8257. `ASSUMPTIONS.md`'s C3 row and summary table both updated. dt found worth +0.22% by **sample placement, not integration order** |
+| **S5** | Dryden ensemble `n_z` rms elasticity | N stated with the result | **DONE, session 29, N = 8 with the per-seed spread beside every mean.** `CLa`/`mass` survive the change of statistic; **`c` and `Cmα` REVERSE SIGN** and `Clb` goes from an exact zero to third. A ranking is a property of the statistic too |
+| **S6** | The banded budget: RSS and linear-sum brackets on the headline | §1 carries a band, **or** states that the shortfall survives every band | **DONE, session 29 — and it is BOTH.** §1 now carries **68.2%, band 57.1–74.0%**, and states that the shortfall survives all of it. The 32% is not input ignorance |
+
+**Two limits the write-up must carry every time it quotes a ranking.** The ranking is
+**one-at-a-time and measures no interaction terms** — global variance-based methods (Sobol,
+Morris) were considered and declined, because the input distributions they need are not
+sourced and a variance decomposition invites a reading this project cannot support. And
+**B1 stays unquantifiable**: varying a rigid-body parameter does not bound a structural one.
 
 ### The original ten-step plan
 
@@ -4327,6 +4849,20 @@ source exactly. A smoother interpolant would agree with the source less.
   which is the direction that argues it was not chosen for convenience.
 
 
+- **New, session 29: where WOULD Fig. 8's pitch axis fail, and can any aeroplane in this
+  project answer?** §4 records that inside §1's envelope both axes separate perfectly — 0
+  overlapping pairs in 1,024 — and that peak |α| passes the 10° linear-aero ceiling at
+  σ_w = 4.0, *below* the sourced ceiling of 4.459 m/s. So the axis never fails anywhere the
+  model may be believed, and `AUC pitch falls through 0.95` is not crossed in the sweep.
+
+  **The question is whether that is a fact about Fig. 8 or a fact about this aeroplane's
+  linear aero.** The envelope closes because `CL = CL0 + CLa·α` has no stall, which §5 already
+  blames for the ±g asymmetry being unreachable — the same ceiling from a third side. An
+  aircraft with a nonlinear lift curve would reach higher σ_w before leaving its own linear
+  range, and `refs/NASA-CR-114494.pdf` holds the 747's buffet boundary but not the nonlinear
+  curve. **Nothing held here settles it**, and the honest form of §4's result is therefore
+  "the pitch axis does not fail inside the envelope", never "the pitch axis does not fail".
+
 - **New, session 23d: why do the two engines choose different cores on the array?**
   On a single Parks core AtiSim and JSBSim put their load extremes within two metres of
   each other. On Mehta's five-core array they land on different cores — AtiSim's peak is
@@ -4385,6 +4921,136 @@ source exactly. A smoother interpolant would agree with the source less.
   touch the core response.
 
 ## 9. Session log
+
+### Session 29 — the sensitivity study, designed and then run end to end
+
+**The scope was settled by question, the design written before any number was measured, and
+then all seven phases S0–S6 ran.** New: `atisim/sensitivity.py`, `test_sensitivity.py` (31
+tests), `scripts/sensitivity_screen.py`, `scripts/sensitivity_load.py`,
+`scripts/sensitivity_assumptions.py`, `scripts/sensitivity_ensemble.py`. Changed: one repair
+to `aero.py` with a test beside it. §4 has two measured entries covering every phase;
+`ASSUMPTIONS.md` C3 and §1's headline both moved.
+
+**Three things this session establishes that the project did not have.**
+
+**1. `ASSUMPTIONS.md` C3's Mach axis is bounded at cruise: −5.04% of the headline load.**
+Wanted since session 12, declined every time as "needs a chart read off a poor scan". It
+needed no chart read at all — the Prandtl–Glauert factor merged in session 28 supplies the
+theory, and declaring `pg_mach_ref` at the derivative set's own tabulation Mach turns frozen
+derivatives into Mach-scheduled ones. The excursion is **measured**: Mach **0.7187 to 0.8257,
+span 0.1070**, because `aero.py` builds Mach from `vel_rel` and Mehta's array carries 26.5 m/s
+of vertical gust. That is 3.5× the lee wave's ΔM and 0.27 of session 27's LES point, and it is
+the first bound on this axis taken **at a condition the project actually claims**.
+
+**2. §1's headline is no longer a bare point: 68.2%, band 57.1–74.0%, and the shortfall
+survives all of it.** Every priced input moved to its bound — C3's Mach, E12's core radius,
+`V₀` ±8.45% sourced, `r₀` ±15% declared, dt, E4, A2 — sums linearly to −16.33%/+8.43%. The
+**top** of that band is 73.95% against a record of 100%. Session 23c reached the same
+conclusion from the wind inputs alone and topped out at 72.7%; adding the **aircraft's** own
+priced errors moves the ceiling by 1.3 points and changes nothing. **The 32% is not input
+ignorance.** That is the question §1 has been unable to answer since session 7.
+
+**3. The model could not be differentiated in its own coefficients at all, and §6(f) is why.**
+`aero.py`'s Prandtl–Glauert factor is a `jnp.where` whose unselected branch, at the undeclared
+sentinel `pg_mach_ref = -1.0`, computes `sqrt(0)` — whose forward-mode tangent is 0/0, **NaN
+for any tangent, a zero one included**. The select discards the value, so no result this
+project has ever quoted was wrong. It was found by `conftest.py`'s `jax_debug_nans`, on since
+session 5; the probe scripts written the same hour ran outside pytest and produced finite
+elasticities agreeing with central differences to 1e-10. **A NaN that is always discarded is
+invisible to everything except a check that looks for NaNs.** Repaired with the standard
+double-`where` and **proved** value-identical: the sha256 of `[trim, v̇_body, ω̇]` unchanged for
+all seven registry aircraft, and the two frozen bit-pins failing with byte-identical values
+before and after.
+
+**What the screens found, and none of it is a comparison against a source.**
+
+- **`CLa` +0.692 and `mass` −0.649 lead the headline load**, and `CLa` at the top is session
+  27's LES result arriving from the other direction, at a different condition by a different
+  method.
+- **A DECLARED constant is third.** `kappa_airfoil` — the Korn technology factor, "~0.87
+  conventional" — scores −0.339 and outranks `Cmα`, `c` and every drag coefficient. With
+  `sweep` and `t_over_c` the wave-drag trio sums to 0.454 against `CD0`'s 0.0087: on this run
+  **compressible drag matters ~52× more than parasite drag**.
+- **The mean aerodynamic chord `c` outranks `Cmα` for short-period frequency** at both
+  conditions, and the **spiral mode is fragile only at cruise** — four coefficients above 2.9
+  in elasticity against a worst of 1.57 at the approach.
+- **Three of the six top load fields lose the tangent's sign or magnitude by ±10%**, for two
+  physical reasons: wave drag **saturates** (Q is 1.83923 at both +10% and +25% of
+  `kappa_airfoil`, to six figures) and the load extreme **jumps to a different core** (sample
+  2699 → 2819 at −25% of `Cmα`, where the sign inverts). The ranking is valid at ±1–5%.
+- **A ranking is a property of the STATISTIC as well as of the model.** Re-run against the
+  Dryden ensemble rms, `CLa` and `mass` stay the top two — but **`c` and `Cmα` reverse sign**
+  and `Clb` goes from an exact 0.000000 on the vortex to third place, because
+  `dryden_field`'s v component is a real sideslip input where the vortex array has none.
+- **Thirteen fields are exactly 0.000000 on the vortex load, every lateral derivative among
+  them** — E10 measured rather than asserted. And the five 0.000% strip rows were **proved to
+  be physics rather than plumbing**: peak |p| is exactly 0 on the point path and 2.12e-17 on
+  the strip path, so the path ran and `n_z` genuinely cannot see a rolling moment.
+- **The shipped dt = 0.01 under-reads the headline load by ~0.22%, and it is NOT integration
+  error.** dt 0.02, 0.005 and 0.0025 agree with each other to 0.034% and all sit above dt 0.01.
+  A convergent integration error is monotone in dt; this is not. It is **sample placement** —
+  a peak-to-peak of a sampled signal depends on where the samples fall relative to the extremum.
+
+**Two follow-ups after the study closed, both asked for directly.**
+
+**`airframe.py`'s `sqrt(0)` is closed** — the second instance §6(f) flagged from reading the
+code. It was checked by running it first and the flag was right: a `jvp` seeded in `CLa`, a
+coefficient the chord does not depend on, raised `invalid value (nan) encountered in mul` at
+every station count and every loading shape. Repaired the same way, value-identity proved the
+same way, and the tip tangent asserted as an **exact zero** rather than merely finite, because
+that is what the physics says and `isfinite` alone would pass a wrong repair.
+
+**Fig. 8's pitch axis was investigated, and it corrects session 23d.** §4 has the entry. The
+short form: 23d's "all but touching" and "a pitch-only reading of the chart would stop working"
+are **both withdrawn**, because the gap between two clouds' extremes is not a measure of whether
+they overlap — it shrinks with N at fixed σ_w (1.5690° → 0.6567° from N = 8 to 32 while the
+separability never moves off 1.0000), and at σ_w = 4.0 it reads **−0.2995°** while only 4 pairs
+in 1,024 are misordered. **Inside §1's envelope both axes separate perfectly**, and in
+standardised terms it is the **load** axis that degrades faster, ×7.28 against pitch's ×3.20.
+What binds is not the statistic but the envelope: peak |α| passes 10° at σ_w = 4.0, so the
+sourced ceiling of 4.459 m/s is already outside it and **23d's upper limb always was**.
+`atisim/response.py` gained `separability` and `standardised_difference` with **nine**
+closed-form tests, and the 23d entry is edited in place rather than left standing beside
+this. *(Their commit message says ten and is wrong by one. The count here is measured —
+12 `def test_` before, 21 after — because a project whose discipline is that numbers carry
+their provenance does not get to round its own test count.)*
+
+**The suite after both follow-ups: 2 failed, 819 passed, 3 skipped in 1,359 s.** The same
+two failures as every run this session — the exact-bit pins, failing with byte-identical
+values, so nothing moved — and the **+11** over the 808 after S0–S6 is those 9 `response`
+tests plus 2 in `test_airframe.py` (14 `def test_` before, 16 after), counted rather than
+assumed. The wall time is longer only because a 384-flight ensemble was competing for the
+same cores.
+
+**And two failures of the RUN rather than of the physics, recorded because the next ensemble
+will hit them.** `integrate.rollout` takes `wind_model` as a **static** argument and
+`wind.dryden_vertical_field(σ, seed)` returns a fresh closure per seed, so every seed is a cache
+miss and JAX **retains** an executable for each: the first grid died at roughly 144 of them with
+`LLVM compilation error: Cannot allocate memory`. Clearing on every seed bounds it but costs
+3× — 6.6 s per flight pair becomes 19 s, because the trim solve and the analysis vmap recompile
+too — so it now clears every tenth seed. And a second grid lost **45 minutes with nothing on
+disk** to a SIGTERM, because its output was piped through `tail` (which buffers until exit) and
+its JSON was written once at the end. It now checkpoints after every intensity. **The real
+repair is to give the Dryden field its phases as a traced argument** so one compilation serves
+the ensemble; that is a change to `wind.py`'s field contract and is not a script's to make.
+
+**Two design gates were wrong as written and are corrected at the change, per rule 3.** S1's
+gate asked for session 11's fitted slopes to be reproduced to 2%; two came in at 2.9% and 4.2%,
+and the reason is that an AD tangent and a least-squares slope over a 3–8× range are different
+objects. The machinery gate is AD against a **central difference at the same point** — passed
+at **5.2e-10** against 1e-6 — and moving the tangent to each swept range's centroid closes the
+gap to the fit's own residual, so it is **curvature**, measured. S0's load gate asked for 1e-12
+and got **bit-identity**.
+
+**What was NOT done, so nobody goes looking.** **No interaction term was measured anywhere** —
+every ranking here is one-at-a-time, Sobol and Morris were declined because their input
+distributions are not sourced, and every table says so. C3's **α axis** is still unbounded.
+~~`airframe.py:162` still carries the same `sqrt(0)` construction~~ — **closed later in the
+same session; §6(f) has it, with the confirmation that it really did NaN.** The S5 ensemble is **N = 8**
+and most of its table is not resolved at that N — the per-seed standard deviation is printed
+beside every mean rather than averaged away. And the tabulation-Mach sensitivity (±0.05 worth
++3.0%/−15.8%) is deliberately **kept out of the budget**: §4 records that this 747 flies the
+Mach its derivatives are tabulated at, so that is a sensitivity and not an uncertainty.
 
 ### Session 28 — the errors did not grow, the questions did
 
@@ -6038,6 +6704,11 @@ several sessions, which is the drift §4's rules exist to prevent.
 | `.venv/Scripts/python.exe scripts/vortex_compare.py --png runs/vc.png` | **The cross-code vortex comparison.** Flies atisim through the identical field the frozen reference was generated from and reports where the two engines part, against Wingrove & Bach's own g-loads. Imports no jsbsim. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/les_ensemble_svd.py --runs <dir>` | **The LES ensemble POD (session 28).** Asks whether an SVD of the 16 x 5000 `n_z` arrays separates condition drift from gust response better than the shipped 0.05 Hz high-pass. **It does not** — on D03/D04 mode 1 carries 25% and 18% and is only half sub-0.05 Hz. Then asks the drift question directly, early half against late, and finds it confounded with along-track field inhomogeneity. `--runs` is required: the arrays are gitignored and live in whichever worktree flew them. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/svd_probe.py` | **What a singular value decomposition can and cannot see (session 28).** Four sections: cond(J) at the healthy trim against §5's two absurd roots (it does NOT separate them, and that is the point); F7's zero-authority channel, where sigma_min is exactly 0 at the initial guess; and the identifiability of (`Cma`, `Cmq`, `Iyy`) against the longitudinal modes, which recovers session 27's B787 `I_yy` result to 0.19 deg without being told it. Changes nothing — it imports `trim` and `validation` and measures matrices they already build. §4 has what it found. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/fig8_discriminator.py` | **Does Fig. 8's pitch axis stop discriminating? (session 29).** Replaces session 23d's extremes-gap statistic with `response.separability` and `response.standardised_difference`, whose expectation does not move with N. Section A shows the old statistic shrinking with N at fixed σ_w while the new one does not; section B sweeps intensity on both axes, marking every row that is outside the SOURCED σ range or past §1's 10° envelope; section C looks for the crossing and reports that there isn't one. **Checkpoints after every intensity** and prints with flush — redirect it, never pipe it through `tail`, and see `fly_grid` for why. `--seeds`, `--sigmas`, `--clear-every`. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/sensitivity_load.py` | **The headline load, differentiated and swept (session 29, S2/S3).** Section A is the gate — the differentiable path against `vortex_viz._measure`, and the claim is bit-identity. Section B ranks every independent coefficient by elasticity in ONE 4,737-step forward pass. Section C sweeps the top six at ±1/5/10/25% and prints, for each, whether the tangent survived and whether an **extreme changed sample**, which is what a peak-to-peak derivative actually turns on. `--top` widens section C. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/sensitivity_assumptions.py` | **What each MODELLING CHOICE costs the headline load (session 29, S4).** Puts `ASSUMPTIONS.md`'s rows on the same axis as the coefficients — C3's Mach axis, E4's RK4 wind hold, F1's step size, E2/E10's strip path, F5's station count, the declared loading shape. Prints C3's Mach excursion first, per §1's rule that an excursion accompanies every frozen-derivative claim, and ends with a **liveness check on the strip path**, because a 0.000% from "roll only" and a 0.000% from "it never ran" look identical. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/sensitivity_ensemble.py` | **The same screen against an ensemble rms, and the budget (session 29, S5/S6).** Re-runs the ranking on session 25's Dryden protocol to ask whether it is a property of the aeroplane or of the peak — the per-seed standard deviation is printed beside every mean, because most of the table is not resolved at N = 8. Then combines every priced input into linear-sum and RSS brackets on the headline. `--seeds` and `--dt` control the cost. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/sensitivity_screen.py` | **The sensitivity screen (session 29, phases S0/S1).** Four sections: the AD machinery against a central difference at the same point (the S1 gate, worst 5.2e-10); session 11's four fitted slopes re-run; the tangent moved to each swept range's centroid, which is what shows the AD-vs-fit gap is **curvature**; then the screen proper — every independent coefficient against every mode, at the Caughey approach and at cruise, with the **structurally inert** fields listed separately because a zero there means *not used*, not *unimportant*. `--json` writes every number. Imports nothing new. |
 | `.venv/Scripts/python.exe scripts/vortex_diagnose.py` | **Why the comparison's two large errors are large.** Three experiments: the same start state flown in still air, atisim flown from its own trim, and a one-lever-at-a-time sweep against the DFDR. Imports no jsbsim. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/digitise_tm102186_fig6.py --outdir runs/cat` | **The recorded g trace (session 27).** Reads TM-102186 Fig. 6's G LOAD panel out of `Reference_papers/19890016606.pdf` at 600 dpi, column by column, as the top and bottom of the ink — nothing fitted, nothing smoothed. Prints the three checks (the paper's own band, a **negative control** on the vertical-wind panel, and the gust spacing) and writes `10-tm102186-fig6.png` plus `tm102186-fig6-gload.csv`. §4 has what it found. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/digitise_mil_f_8785c_fig7.py --outdir runs/cat --pdf refs/MIL-F-8785C.pdf` | **The severe-turbulence σ_w chart (session 27).** Digitises all nine curves of Fig. 7 from printed p. 49, flagging where two share **one stroke of ink** rather than reading a number out of a merge. Settles `mil_f_8785c_sigma_w_exceeds_the_mehta_ceiling`. Writes `11-mil-f-8785c-fig7.png` and `mil-f-8785c-fig7-lines.csv`. **`--pdf` is required from a worktree** — `refs/` is gitignored and lives only in the main checkout. |

@@ -1,3 +1,4 @@
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -341,3 +342,43 @@ def test_the_prandtl_glauert_seam_is_exercised_and_is_exactly_neutral_when_undec
     assert CL_at(at_ref, V * 0.4) != pytest.approx(off, rel=1e-6), (
         "declaring a reference Mach should change the lift away from it; if it "
         "does not, the seam has been disconnected")
+
+
+def test_the_undeclared_prandtl_glauert_sentinel_has_a_FINITE_derivative():
+    """The model must be differentiable in its own coefficients. It was not.
+
+    `jnp.where` evaluates both branches. At the undeclared sentinel
+    `pg_mach_ref = -1.0` the unselected branch's numerator was
+    `sqrt(1 - min(-1, 0.90)**2) = sqrt(0)`, and sqrt's forward-mode tangent is
+    `du / (2 sqrt(u))`, which at u = 0 is 0/0 -- NaN for ANY tangent, including
+    a zero one. The select discarded the VALUE, so nothing this project ever
+    quoted was wrong; what it made impossible was every `jvp` and `jacfwd`
+    through `aero.coefficients` for every aircraft that declares no reference
+    Mach, which is all of them but the compressibility entries.
+
+    Found by atisim/sensitivity.py, whose first directional derivative through
+    `trim.residual` tripped the suite's own NaN guard. PROJECT.md section 6
+    carries it. This test is the negative control: seed a tangent in a
+    coefficient that has nothing to do with compressibility and require the
+    result to be finite.
+    """
+    ac = REGISTRY["boeing747"]
+    assert float(ac.pg_mach_ref) < 0.0, "this test needs the undeclared sentinel"
+
+    controls = Controls(elevator=jnp.array(0.0), aileron=jnp.array(0.0),
+                        rudder=jnp.array(0.0), throttle=jnp.array(0.5))
+    vel = jnp.array([230.0, 0.0, 8.0])
+    a_sound = speed_of_sound(jnp.array(12192.0))
+
+    zeros = jax.tree.map(jnp.zeros_like, ac)
+    for field in ("CLa", "Cma", "CD0", "mass"):
+        seed = zeros._replace(**{field: jnp.ones_like(getattr(ac, field))})
+        _, tangent = jax.jvp(
+            lambda a: jnp.asarray(
+                aero.coefficients(vel, jnp.zeros(3), controls, a, a_sound)
+            ),
+            (ac,), (seed,),
+        )
+        assert jnp.all(jnp.isfinite(tangent)), (
+            f"d(coefficients)/d({field}) is not finite: {tangent}"
+        )
