@@ -11,7 +11,9 @@ scripts/checkpoint.py and test_trim.py. This module adds:
   * Table IX-4's speed derivatives (Xu, Zu, Mu) and alpha-dot derivatives
     (Zwdot, Mwdot), which atisim's alpha/q/de-only aero form deliberately
     excludes, added back into a second, standalone linear model used only
-    here for mode extraction -- never into the sim itself.
+    here for mode extraction -- never into the sim itself. (Session 30: the
+    SPEED family's Mach content now is in the sim for `boeing747`, sourced from
+    CR-2144 printed p. 222; the alpha-dot pair is still only here.)
 """
 
 import jax.numpy as jnp
@@ -131,8 +133,15 @@ def test_the_sims_own_unaugmented_longitudinal_modes_are_the_documented_gap():
     short-period zeta 0.338 (13% low vs CR-2144's 0.387). See the augmented
     comparison above for why: this is attributed, not a bug.
     """
-    alpha, elevator, throttle = _trim()
-    phugoid, short_period = longitudinal_modes(AC, alpha, elevator, throttle, V, H)
+    # SESSION 30: THE WORLD CHANGED, NOT THE TOLERANCE. `boeing747` now declares
+    # CR-2144's speed derivatives (PROJECT.md section 4), so the shipped entry is
+    # no longer the alpha/q/de-only form this test documents: its phugoid is +4%
+    # against Table IX-5, not -18%. The figures below are that form's, measured
+    # on the same entry with the Mach seam shut, and every band is as it was.
+    bare = AC._replace(mach_deriv_ref=jnp.array(-1.0))
+    x, _ = trim.trim(jnp.array(V), jnp.array(H), bare)
+    alpha, elevator, throttle = (float(v) for v in x)
+    phugoid, short_period = longitudinal_modes(bare, alpha, elevator, throttle, V, H)
 
     assert phugoid[0] == pytest.approx(0.0554, rel=0.05)
     assert phugoid[1] == pytest.approx(0.0559, rel=0.1)

@@ -64,7 +64,11 @@ from atisim.aircraft import CRUISE, REGISTRY
 #
 #   sessions 1-22: bbc0323e77183d73bd03817a98a530d0d563b56b4962520705aaee589f276aa4
 #   session 23   : 4d471e97887a9d91d4d584d574f569a36f38fea1e718da9b4111bdc1c5d53106
-PRE_REFACTOR_VEL_HASH = "6d9e740e9d33b2698262d1dc4a85ccaa8016dfa0488e1438a233b789c5e734d4"
+#   session 28   : 6d9e740e9d33b2698262d1dc4a85ccaa8016dfa0488e1438a233b789c5e734d4
+#   session 30   : `boeing747` declares CR-2144's speed derivatives -- a
+#                  deliberate model change, so the rollout moves and the hash
+#                  is re-taken rather than the claim relaxed.
+PRE_REFACTOR_VEL_HASH = "1da576a33d2341803e22b01548331a2287aa14046df0fbeae23b12a633dd1282"
 
 
 def _fixed_control_rollout(dt, n_steps, d_elevator=0.02):

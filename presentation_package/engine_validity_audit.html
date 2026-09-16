@@ -431,6 +431,7 @@ ol.mech p + p{margin-top:8px}
 </div>
 
 <section class="col">
+  <p><strong>Session 30 update:</strong> the table above is the 747 <em>before</em> CR-2144’s speed derivatives were declared on it. On the declared entry the same three runs read <strong>18.42° / 21.58°</strong> of peak bank (strip still <strong>+17.2%</strong>) — and the longitudinal increment now moves <strong>+15.9% / +16.3%</strong> with the missing dimension rather than +5.9% / +5.4%, because a pitching-moment speed derivative turns the line vortex’s along-track gust into pitch. PROJECT.md §4 carries the attribution.</p>
   <p>So the strip increment’s isolated contribution is <strong>+22.9% of peak bank</strong> and <strong>−0.5% of the longitudinal load increment</strong>. Everything the project claims is longitudinal. Three things must be said together about that 22.9%, and only the first is favourable:</p>
 
   <h3>Its kernel is genuinely well verified</h3>
@@ -475,8 +476,8 @@ ol.mech p + p{margin-top:8px}
       </tr>
       <tr>
         <td><strong>Missing speed and α̇ derivatives</strong><br>The Mach content of <code>Xu/Zu</code>, and <code>Zẇ/Mẇ</code> entirely</td>
-        <td><span class="chip armed">built, not switched on</span></td>
-        <td>Condition-dependent, which is the tell: phugoid ω<sub>n</sub> is <strong>17.8%</strong> off at M 0.80 / 40 kft and <strong>0.4%</strong> at M 0.25 / sea level, same code. Restoring both families in an analysis-only linear model closes all four modes to ≤1%. <strong>Session 30 sourced the speed half</strong>: CR-2144 p. 222 digitised and checked against Table IX-4 at eight conditions, carried by <code>Aircraft.CL_M/CD_M/Cm_M</code>. Declared on a <em>copy</em> of the 747 it takes phugoid ω<sub>n</sub> to <strong>+4.1%</strong> and ζ to <strong>+4.6%</strong> (±5 points from the hand reading); the residual is the engine's <strong>missing thrust line</strong>, not the data. <strong>No registry entry declares it</strong>, so nothing above has moved.</td>
+        <td><span class="chip bounded">bounded</span></td>
+        <td>Condition-dependent, which is the tell: phugoid ω<sub>n</sub> is <strong>17.8%</strong> off at M 0.80 / 40 kft and <strong>0.4%</strong> at M 0.25 / sea level, same code. Restoring both families in an analysis-only linear model closes all four modes to ≤1%. <strong>Session 30 sourced the speed half</strong>: CR-2144 p. 222 digitised and checked against Table IX-4 at eight conditions, carried by <code>Aircraft.CL_M/CD_M/Cm_M</code>. <strong>Declared on <code>boeing747</code></strong>, it takes phugoid ω<sub>n</sub> to <strong>+4.05%</strong> and ζ to <strong>+3.45%</strong> (±5 points from the hand reading); the residual is the engine's <strong>missing thrust line</strong>, not the data. The price: the Hannibal headline moves <strong>68.2% → 64.5%</strong>, and three mechanism claims weaken through <code>Cm_M</code> (PROJECT.md §4). The α̇ half is still omitted.</td>
       </tr>
       <tr>
         <td><strong>Quasi-steady aerodynamics</strong> <em>(C2)</em> · no actuator lag <em>(C6)</em> · no engine spool <em>(C5)</em></td>

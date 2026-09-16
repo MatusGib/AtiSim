@@ -411,6 +411,14 @@ any speed, altitude and angle of attack the sim reaches.
 **Why:** CR-2144 tabulates derivatives at discrete flight conditions. The project
 transcribed one per aircraft, two for the 747.
 
+**Session 30 — `boeing747` only, and this heading is no longer entirely true of it.** That
+entry declares CR-2144's **speed derivatives** (`CL_M`, `CD_M`, `Cm_M`, about M 0.800, printed
+p. 222), so its lift, drag and pitching-moment coefficients now vary with Mach at fixed alpha.
+It is a **first-order tangent, not a schedule**, and it is only that entry. Everything else
+below stands: every other coefficient is still frozen, the alpha and altitude axes are
+untouched, and every other registry entry is constant in all of them. PROJECT.md §4 has what
+declaring it moved.
+
 **This is the largest unbounded assumption in the model**, and it is the one that most
 deserves attention next. The derivatives are a small-perturbation linearisation about a
 single point, and the sim is nonlinear and flies away from that point:
@@ -1484,7 +1492,7 @@ solver preconditions live rather than a defect repair.
 |---|---|---|---|
 | 1 | **E4** wind held across RK4 stages | **body force CLOSED session 12; ORDER measured session 15; BOUND CORRECTED in the remediation pass** | no spurious body force, to 1e-9 m against a closed form. But the scheme is **first order** in a spatially varying field (1.05 against 3.99 in still air; 4.05 with the hold removed). The old bound, 0.0024 m/s of gust error in the Parks core, measured the wrong quantity by ~80×: hold-vs-per-stage at the published dt costs **0.82%** of the headline in-core Δθ. No conclusion moves, but **2.240° is not good to four figures** |
 | 2 | **B1** rigid airframe vs flexible data | **unquantifiable** | cap claims; do not assert structural fidelity |
-| 3 | **C3** derivatives frozen across the envelope | **unbounded** | state the excursion with every result away from trim |
+| 3 | **C3** derivatives frozen across the envelope | **unbounded** — except the 747's **speed** derivatives, which are Mach-scheduled from CR-2144 p. 222 since session 30 | state the excursion with every result away from trim |
 | 4 | **E2** point-aircraft gusts, vortex at 2.3–3.1 spans | **CLOSED for the linear fit, session 13; strip path flyable and measured, session 14** | correction is exactly 0 inside the core and 2.0·`V₀/r₀` at the boundary, where the gradient is discontinuous. Curvature beyond the linear fit rests on a DECLARED loading shape: 2.6% across defensible shapes, 49.7% including a uniform bracket. Flying the strip path moves the vortex result by **0.000000 m** — the field has no spanwise variation — so the headline number is still the point model's. **Roll only**; a pitch integral is the open work |
 | 5 | **A2** constant g, +0.383% at cruise | ~~CLOSED, session 12~~ **MODELLED, session 23** | `dynamics.gravity(z) = g₀(R/(R+z))²`. Session 12 measured it and chose not to model it; session 23 modelled it anyway, preferring correctness at altitude to a frozen baseline. Moved the 747 phugoid ωn −0.3984% against g's −0.3817% — Lanchester's 1:1. Sea level bit-identical. **Latitude variation (0.53%, larger) is still absent** — see A1 |
 | 5a | **A3** geometric altitude through geopotential formulas | **WAS A DEFECT, NOT AN ASSUMPTION — FIXED session 23** | The register called it "sound" for 22 sessions, quoting the module's own docstring as evidence for the module's own correctness. Worth 0.159% of density at 30,000 ft and 0.368% at 40,000. AtiSim now matches JSBSim at the nominal altitude to 4.8e-6, where it was 0.159% out |

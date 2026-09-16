@@ -55,6 +55,7 @@ from atisim.atmosphere import density, speed_of_sound  # noqa: E402
 from atisim.trim import trim  # noqa: E402
 from atisim.validation import longitudinal_matrix  # noqa: E402
 
+DIG_DIR = Path(atisim.__file__).parent / "data" / "cr2144_dig"
 STEM = {"cl_alpha": "cl_alpha", "cd_alpha": "cd_alpha", "cm_alpha": "cm_alpha",
         "cm_alpha_dot": "cm_alpha_dot", "cm_q": "cm_q", "cl_m": "cl_m", "cd_m": "cd_m",
         "cm_m": "cm_m"}
@@ -226,6 +227,11 @@ def check():
 # ---------------------------------------------------------------------------
 
 AC = REGISTRY["boeing747"]
+# `boeing747` DECLARES the FC9 set since session 30, so the baseline for every
+# "what did declaring do" row is this: the same entry with the seam shut, which
+# is the 747 as it stood before.
+BARE = AC._replace(mach_deriv_ref=jnp.array(-1.0), CL_M=jnp.array(0.0),
+                   CD_M=jnp.array(0.0), Cm_M=jnp.array(0.0))
 V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
 M_REF = cm.IX3[9][1]
 
@@ -241,7 +247,7 @@ def korn_lock_slope(ac, alpha, mach):
     return float(jax.grad(lambda m: aero.wave_drag(m, jnp.array(CL), ac))(jnp.array(mach)))
 
 
-def declare(CL_M, CD_M_total, Cm_M, base=AC, **extra):
+def declare(CL_M, CD_M_total, Cm_M, base=BARE, **extra):
     """The 747 with a SOURCED total drag Mach slope: the field carries the source
     value minus the Korn/Lock slope the model already has (see the field)."""
     _, alpha = engine_modes(base)
@@ -260,21 +266,24 @@ def retest():
     d = {q: cm.value(q, "40K", M_REF) for q in cm.QUANTITIES}
     print("  digitised at M 0.800, 40,000 ft (linear): " +
           "  ".join(f"{q} {d[q]:+.4f}" for q in cm.QUANTITIES))
-    shipped, alpha = engine_modes(AC)
+    bare, alpha = engine_modes(BARE)
     M0 = V / float(speed_of_sound(jnp.array(H)))
-    kl = korn_lock_slope(AC, alpha, M0)
+    kl = korn_lock_slope(BARE, alpha, M0)
     b9 = cm.backsolve(9)
     print(f"  engine trim M {M0:.5f}; Korn/Lock wave-drag slope there {kl:.5f} per Mach "
           f"(sourced total: digitised {d['cd_m']:.4f}, Table IX-4 {b9['cd_m']:.4f})")
-    rows = {"shipped": shipped}
+    print(f"  shipped entry declares CL_M {float(AC.CL_M):.4f}, Cm_M {float(AC.Cm_M):.4f}, "
+          f"CD_M {float(AC.CD_M):+.4f} net (total {float(AC.CD_M) + kl:.4f} at the flown trim)")
+    rows = {"bare entry, seam shut (the 747 before session 30)": bare}
+    rows["SHIPPED boeing747, FC9 set declared"] = engine_modes(AC)[0]
     sourced = declare(d["cl_m"], d["cd_m"], d["cm_m"])
-    rows["speed derivatives, sourced total CD_M"] = engine_modes(sourced)[0]
+    rows["  a copy, CD_M net of Korn/Lock at the flown trim"] = engine_modes(sourced)[0]
     rows["  ...Korn/Lock slope kept as CD_M"] = engine_modes(
-        AC._replace(mach_deriv_ref=jnp.array(M_REF), CL_M=jnp.array(d["cl_m"]),
-                    Cm_M=jnp.array(d["cm_m"])))[0]
+        BARE._replace(mach_deriv_ref=jnp.array(M_REF), CL_M=jnp.array(d["cl_m"]),
+                      Cm_M=jnp.array(d["cm_m"])))[0]
     rows["  ...digitised CD_M ADDED to Korn/Lock"] = engine_modes(
-        AC._replace(mach_deriv_ref=jnp.array(M_REF), CL_M=jnp.array(d["cl_m"]),
-                    CD_M=jnp.array(d["cd_m"]), Cm_M=jnp.array(d["cm_m"])))[0]
+        BARE._replace(mach_deriv_ref=jnp.array(M_REF), CL_M=jnp.array(d["cl_m"]),
+                      CD_M=jnp.array(d["cd_m"]), Cm_M=jnp.array(d["cm_m"])))[0]
     cm_eff = d["cm_m"] + b9["Cm_trim"] / (M_REF / 2.0)
     rows[f"  ...DIAGNOSTIC Cm_M + C_m,trim/(M/2) = {cm_eff:.4f}"] = engine_modes(
         declare(d["cl_m"], d["cd_m"], cm_eff))[0]
@@ -291,13 +300,13 @@ def retest():
     # Xu, Zu, Mu written straight into the engine's imperial plant matrix.
     from atisim.validation import to_imperial_matrix
 
-    x, _ = trim(jnp.array(V), jnp.array(H), AC)
-    A = to_imperial_matrix(longitudinal_matrix(AC, *(float(v) for v in x), V, H))
+    x, _ = trim(jnp.array(V), jnp.array(H), BARE)
+    A = to_imperial_matrix(longitudinal_matrix(BARE, *(float(v) for v in x), V, H))
     A[0, 0], A[1, 0], A[2, 0] = cm.IX4[9][0], cm.IX4[9][1], cm.IX4[9][2]
     rows["(AUDIT 2.3: IX-4 Xu*, Zu*, Mu* substituted into the matrix)"] = cm.modes(A)
     for label, m in rows.items():
         print(f"  {label:58s} {fmt(cm.errors_vs_ix5(m))}")
-    return d, shipped, rows
+    return d, bare, rows
 
 
 # ---------------------------------------------------------------------------
@@ -306,11 +315,11 @@ def retest():
 
 def price(d, resid, n_mc: int, seed: int):
     print("\n== 5. PRICE: how much of the retest is the hand reading ==")
-    x, _ = trim(jnp.array(V), jnp.array(H), AC)
+    x, _ = trim(jnp.array(V), jnp.array(H), BARE)
     alpha, de, th = (float(v) for v in x)
-    A0 = longitudinal_matrix(AC, alpha, de, th, V, H)
+    A0 = longitudinal_matrix(BARE, alpha, de, th, V, H)
     a_s = float(speed_of_sound(jnp.array(H)))
-    kl = korn_lock_slope(AC, alpha, V / a_s)
+    kl = korn_lock_slope(BARE, alpha, V / a_s)
     rho = float(density(jnp.array(H)))
     Iyy = float(np.asarray(AC.inertia)[1, 1])
 
@@ -418,7 +427,7 @@ def headline(d, dt: float):
     start = x0 - 12.0 * r0
     seconds = (x1 + 12.0 * r0 - start) / V
     out = {}
-    for label, ac in (("shipped", AC), ("speed derivatives declared", declare(d["cl_m"], d["cd_m"], d["cm_m"]))):
+    for label, ac in (("bare, before session 30", BARE), ("SHIPPED, FC9 set declared", AC)):
         enc = vortex_viz.fly_in_moving_air(ac, field, V, Hm, label=label, start_north=start,
                                            seconds=seconds, dt=dt, window=(x0 - 2 * r0, x1 + 2 * r0),
                                            window_name="array +- 2 r0")
@@ -427,13 +436,14 @@ def headline(d, dt: float):
         out[label] = (float(nz.max()), float(nz.min()), float(nz.max() - nz.min()), float(np.ptp(th)))
         print(f"  {label:28s} n_z {out[label][1]:+.4f} .. {out[label][0]:+.4f}  "
               f"peak-to-peak {out[label][2]:.4f} g  ({out[label][2]/2.70:.1%} of 2.70 g)  pitch ptp {out[label][3]:.3f} deg")
-    a, b = out["shipped"], out["speed derivatives declared"]
+    a, b = out["bare, before session 30"], out["SHIPPED, FC9 set declared"]
     print(f"  change: peak-to-peak {100*(b[2]-a[2])/a[2]:+.2f}%, pitch {100*(b[3]-a[3])/a[3]:+.2f}%")
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--dig-dir", type=Path, help="folder holding the eight Engauge .dig files")
+    p.add_argument("--dig-dir", type=Path, nargs="?", const=DIG_DIR,
+                   help=f"folder holding the eight Engauge .dig files; bare flag uses {DIG_DIR}")
     p.add_argument("--write", action="store_true", help="regenerate the tracked CSV from --dig-dir")
     p.add_argument("--csv-dir", type=Path, help="folder holding Engauge's CSV exports, to audit them")
     p.add_argument("--mc", type=int, default=4000, help="Monte Carlo draws per pixel level")

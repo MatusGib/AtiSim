@@ -85,9 +85,15 @@ def test_the_short_period_is_the_frequency_the_prediction_was_sealed_against():
     # describes -- it exists so the number cannot drift SILENTLY underneath the
     # settled prediction, and it has just done its job. The tolerance is NOT
     # widened; the value is re-taken and the reason recorded here.
-    assert float(wn) / (2.0 * np.pi) == pytest.approx(0.16433, rel=1e-3)
-    # Same re-measurement, same cause: 0.36455 -> 0.36503, +0.13%.
-    assert float(zeta) == pytest.approx(0.36503, rel=1e-3)
+    #
+    # RE-MEASURED AGAIN IN SESSION 30: 0.16433 -> 0.16407 Hz, -0.16%, because
+    # `boeing747` now declares CR-2144's speed derivatives. Same reasoning, same
+    # outcome: still inside the sealed [0.131, 0.197] band, the sealed entry is
+    # untouched, and rel=1e-3 is not widened.
+    assert float(wn) / (2.0 * np.pi) == pytest.approx(0.16407, rel=1e-3)
+    # Same re-measurements, same causes: 0.36455 -> 0.36503 at session 28,
+    # 0.36503 -> 0.36470 at session 30.
+    assert float(zeta) == pytest.approx(0.36470, rel=1e-3)
 
 
 def test_the_mehta_response_follows_the_airframe_and_not_the_forcing(condition):
@@ -177,7 +183,13 @@ def test_the_exceedance_curve_falls_and_the_two_signs_agree(ensemble):
 
     assert np.all(np.diff(up) < 0) and np.all(np.diff(down) < 0)
     assert up == pytest.approx(down, rel=0.25)
-    assert up[0] == pytest.approx(0.948, rel=0.2)
+    # SESSION 30: 0.948 -> 0.755 per second at 1.05 g. `boeing747` now declares
+    # CR-2144's speed derivatives and its gust response is lower (the Mehta
+    # headline fell 5.5%), so fewer crossings; rel=0.2 is unchanged. The symmetry
+    # claim above still holds, and it is no longer EXACT by construction: a
+    # vertical gust changes |V|, hence Mach, at second order, which is even in
+    # the gust. The rel=0.25 up/down agreement is what measures that it is small.
+    assert up[0] == pytest.approx(0.755, rel=0.2)
     # And nothing crosses a level the ensemble never reaches.
     ceiling = max(np.abs(r - 1.0).max() for r in ensemble["records"])
     assert np.all(np.mean([response.exceedance(r, DT, [1.0 + ceiling + 0.01])

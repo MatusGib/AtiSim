@@ -196,10 +196,16 @@ def without_aerodynamics(ac):
     nothing else. Inertia is left alone -- the experiment holds omega at zero for
     its whole run, so it never enters.
     """
+    # The Mach derivatives are on this list since session 30, and were caught
+    # missing by the test this function serves: `boeing747` declares them, so a
+    # "de-aerodynamicised" 747 still made CL_M (M - M_ref) of lift in free fall.
+    # A list of fields to zero goes stale silently every time a coefficient is
+    # added; the free-fall closed form is what notices.
     zeroed = dict(
         CL0=0.0, CLa=0.0, CLq=0.0, CLde=0.0, Cm0=0.0, Cma=0.0, Cmq=0.0, Cmde=0.0,
         CD0=0.0, CYb=0.0, CYp=0.0, CYr=0.0, CYdr=0.0, Clb=0.0, Clp=0.0, Clr=0.0,
         Clda=0.0, Cldr=0.0, Cnb=0.0, Cnp=0.0, Cnr=0.0, Cnda=0.0, Cndr=0.0,
+        CL_M=0.0, CD_M=0.0, Cm_M=0.0,
         max_thrust=0.0,
     )
     return ac._replace(**{k: jnp.array(v) for k, v in zeroed.items()})

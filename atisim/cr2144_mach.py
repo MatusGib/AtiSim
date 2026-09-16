@@ -12,7 +12,10 @@ B-747 sheets captioned "636600 lb / .25 c / Flexible", each carrying SL
 THE DATA is `data/cr2144_p220_222_digitised.csv`: read by hand in Engauge
 Digitizer, one .dig file per quantity, and regenerated from those files by
 `scripts/cr2144_speed_derivatives.py --dig-dir`, which applies each file's own
-three-point axis calibration. ONLY THE HAND-PLACED POINTS ARE KEPT. The Engauge
+three-point axis calibration. **The eight .dig originals are tracked beside it
+in `data/cr2144_dig/`**, each carrying the page crop it was traced on, so the
+placement of every point can be re-read or corrected rather than only its
+result being trusted. That is where `--dig-dir` looks by default. ONLY THE HAND-PLACED POINTS ARE KEPT. The Engauge
 CSV exports that came with them are not used: they put every curve on one
 shared Mach grid and extrapolate each one past its drawn end, which is where a
 40,000 ft Cm_M of 105 and a sea-level CL_M of -47 come from. Two cleaning rules,

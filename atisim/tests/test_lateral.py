@@ -315,8 +315,11 @@ def test_only_an_oblique_array_varies_across_the_span():
 # ---------------------------------------------------------------------------
 
 
-def _fly(field, *, strip=False, dt=0.05):
-    ac = REGISTRY["boeing747"]
+def _fly(field, *, strip=False, dt=0.05, ac=None):
+    # `ac` defaults to the shipped entry; session 30 added it so a claim made
+    # before `boeing747` declared speed derivatives can be asserted on the
+    # entry it was made on.
+    ac = REGISTRY["boeing747"] if ac is None else ac
     V = CRUISE["boeing747"]["airspeed"]
     H = wind.MEHTA_HANNIBAL_ALTITUDE
     r0 = float(wind.MEHTA_HANNIBAL_R0)
@@ -384,6 +387,28 @@ def test_the_line_vortex_rolls_the_aircraft_and_the_strip_path_changes_it():
 
     # 3. And the longitudinal result is essentially untouched, so nothing that
     #    was concluded from it is put at risk by any of the above.
-    for enc in (line, strip):
-        moved = abs(enc.n_z[enc.window].max() - point.n_z[point.window].max())
-        assert moved / abs(point.n_z[point.window].max() - 1.0) < 0.10
+    #
+    #    SESSION 30: TRUE OF THE MODEL IT WAS MEASURED ON, NO LONGER OF THE
+    #    SHIPPED ONE. Asserted on the bare 747 exactly as it was (measured 0.064
+    #    line, 0.070 strip). With CR-2144's speed derivatives declared, the
+    #    missing dimension reaches the longitudinal answer at 0.160 / 0.165 of the
+    #    increment, and the attribution was measured rather than argued: Cm_M
+    #    alone gives 0.129, CL_M alone 0.057, CD_M alone 0.060. The oblique line
+    #    vortex carries an ALONG-TRACK gust component, and a pitching-moment speed
+    #    derivative turns it into pitch -- which a model without one could not
+    #    do. PROJECT.md section 4 records the conclusion as weakened.
+    def moved(p, e):
+        peak = p.n_z[p.window].max()
+        return abs(e.n_z[e.window].max() - peak) / abs(peak - 1.0)
+
+    bare = REGISTRY["boeing747"]._replace(mach_deriv_ref=jnp.array(-1.0))
+    b_point = _fly(lambda p: wind.vortex_wind(p, _oblique()), ac=bare)
+    b_line = _fly(lambda p: wind.line_vortex_wind(p, _oblique()), ac=bare)
+    b_strip = _fly(lambda p: wind.line_vortex_wind(p, _oblique()), strip=True, ac=bare)
+    for enc in (b_line, b_strip):
+        assert moved(b_point, enc) < 0.10
+
+    # The shipped entry. The ordering is the claim -- declaring the speed
+    # derivatives opened this channel -- and the upper band is only a tripwire.
+    for b_enc, enc in ((b_line, line), (b_strip, strip)):
+        assert moved(b_point, b_enc) < moved(point, enc) < 0.25

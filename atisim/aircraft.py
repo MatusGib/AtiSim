@@ -535,6 +535,9 @@ def _boeing_747() -> Aircraft:
     m_crit = m_dd - (0.1 / 80.0) ** (1.0 / 3.0)
     cd_wave = 20.0 * max(mach0 - m_crit, 0.0) ** 4
     dcd_wave_dalpha = 80.0 * max(mach0 - m_crit, 0.0) ** 3 / (10.0 * cos_s**3) * CLa
+    # The model's OWN drag Mach slope at this condition, d/dM of Lock's fourth
+    # power law. Needed below, where CD_M is declared net of it.
+    dcd_wave_dmach = 80.0 * max(mach0 - m_crit, 0.0) ** 3
     e = 2.0 * CL_trim * CLa / (math.pi * AR * (CDa - dcd_wave_dalpha))
     CD0 = CD_trim - CL_trim**2 / (math.pi * e * AR) - cd_wave
 
@@ -610,6 +613,35 @@ def _boeing_747() -> Aircraft:
         # Zero matches the source rather than inventing a value.
         CYp=jnp.array(0.0),
         CYr=jnp.array(0.0),
+        # -- Mach derivatives, CR-2144 printed p. 222, 40,000 ft curves ----
+        # SOURCED, read at M 0.800 (session 30's hand digitisation; PROJECT.md
+        # section 4 carries the check against Table IX-4 at eight flight
+        # conditions and the reading uncertainty). This is the "Mach content of
+        # Xu, Zu, Mu" that section 5 named as missing, and declaring it takes
+        # the phugoid frequency from -18.1% to about +4% against Table IX-5.
+        # See the `mach_deriv_ref` field for what the seam does.
+        #
+        # TWO THINGS HERE ARE NOT THE NUMBERS ON THE SHEET.
+        #
+        # CD_M IS DECLARED NET OF THIS MODEL'S OWN DRAG RISE. `aero.wave_drag`
+        # already carries a Mach slope -- 80 (M - M_crit)^3, about 0.049 per
+        # Mach at this condition -- so the field holds the difference and the
+        # TOTAL slope is the sourced 0.0251. DERIVED, from the sourced value
+        # and this entry's own construction. Declaring the sourced value as it
+        # stands counts the drag rise twice and takes phugoid damping to
+        # +39.9%; declaring nothing here and leaving Korn/Lock alone gives
+        # +21.3%, which is WORSE than declaring no Mach derivatives at all.
+        #
+        # THE PHUGOID STILL OVERSHOOTS BY ABOUT 4%, AND THAT IS NOT THE DATA.
+        # Table IX-4's own implied set overshoots the same way. CR-2144 puts
+        # the thrust line 10 ft from the CG, so its aerodynamic C_m at trim is
+        # -0.0159 and Appendix A's M_u carries that term; this model puts
+        # thrust through the CG and cannot. Section 4 measures it: restoring
+        # that one term alone closes the phugoid to under 1%.
+        mach_deriv_ref=jnp.array(mach0),
+        CL_M=jnp.array(0.1304),
+        CD_M=jnp.array(0.0251 - dcd_wave_dmach),
+        Cm_M=jnp.array(0.1753),
         CYdr=jnp.array(CYdr),
         Clb=jnp.array(nd["beta"][0]),
         Clp=jnp.array(nd["p"][0]),

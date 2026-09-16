@@ -13,10 +13,9 @@ THE DIGITISATION, against the source's own tables. CR-2144 printed pp. 220-222
 were read by hand; Table IX-4 (printed p. 230) independently implies a value at
 every circled flight condition. Asserted as bands.
 
-THE RETEST. The FC9 set declared on a COPY of the 747, re-trimmed and linearised,
-against Table IX-5 (printed p. 231). Asserted as bands and orderings, per
-CLAUDE.md rule 6. The registry entry itself does not declare the set; see the
-last verification test.
+THE RETEST. `boeing747` DECLARES the FC9 set, so the comparisons below are
+against `BARE` -- the same entry with the seam shut, which is the 747 as it was
+before session 30. Bands and orderings, per CLAUDE.md rule 6.
 """
 
 import jax.numpy as jnp
@@ -32,6 +31,11 @@ from atisim.trim import trim
 from atisim.validation import longitudinal_matrix
 
 AC = REGISTRY["boeing747"]
+# The same entry with the seam shut: the 747 as it stood before session 30
+# declared CR-2144's Mach derivatives on it. Every "what did declaring do"
+# comparison here is against THIS, not against a different aeroplane.
+BARE = AC._replace(mach_deriv_ref=jnp.array(-1.0), CL_M=jnp.array(0.0),
+                   CD_M=jnp.array(0.0), Cm_M=jnp.array(0.0))
 V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
 CONTROLS = Controls(elevator=jnp.array(0.01), aileron=jnp.array(0.02),
                     rudder=jnp.array(-0.01), throttle=jnp.array(0.5))
@@ -51,14 +55,13 @@ def _coefficients(ac, vel, a_sound):
 @pytest.mark.parametrize("name", sorted(REGISTRY))
 def test_undeclared_mach_derivatives_add_an_exact_zero(name):
     """A negative reference Mach switches the terms off whatever the
-    coefficients hold. That the SHIPPED path is also unmoved from before the
+    coefficients hold. That the UNDECLARED path is also unmoved from before the
     seam existed is what the frozen bit-pins assert --
     test_vortex_viz.FIG8_VORTEX and test_verification's single-bit test."""
-    ac = REGISTRY[name]
+    ac = REGISTRY[name]._replace(mach_deriv_ref=jnp.array(-1.0))
     a_sound = speed_of_sound(jnp.array(CRUISE[name]["altitude"]))
     vel = jnp.array([CRUISE[name]["airspeed"] * 1.07, 3.0, 9.0])
     loaded = ac._replace(CL_M=jnp.array(0.3), CD_M=jnp.array(0.05), Cm_M=jnp.array(-0.2))
-    assert float(loaded.mach_deriv_ref) < 0.0
     assert np.array_equal(_coefficients(loaded, vel, a_sound), _coefficients(ac, vel, a_sound))
 
 
@@ -68,14 +71,14 @@ def test_a_declared_set_is_an_exact_first_order_increment_in_mach():
     a_sound = speed_of_sound(jnp.array(H))
     vel_ref = jnp.array([V, 0.0, 0.08 * V])
     m_ref = float(jnp.linalg.norm(vel_ref) / a_sound)
-    declared = AC._replace(mach_deriv_ref=jnp.array(m_ref), **SET)
+    declared = BARE._replace(mach_deriv_ref=jnp.array(m_ref), **SET)
 
     assert _coefficients(declared, vel_ref, a_sound) == pytest.approx(
-        _coefficients(AC, vel_ref, a_sound), rel=1e-12)
+        _coefficients(BARE, vel_ref, a_sound), rel=1e-12)
 
     vel = vel_ref * 1.05
     dM = float(jnp.linalg.norm(vel) / a_sound) - m_ref
-    got = _coefficients(declared, vel, a_sound) - _coefficients(AC, vel, a_sound)
+    got = _coefficients(declared, vel, a_sound) - _coefficients(BARE, vel, a_sound)
     CL_M, CD_M, Cm_M = (float(SET[k]) for k in ("CL_M", "CD_M", "Cm_M"))
     # (CL, CD, CY, Cl, Cm, Cn)
     assert got == pytest.approx([CL_M * dM, CD_M * dM, 0.0, 0.0, Cm_M * dM, 0.0], abs=1e-12)
@@ -87,8 +90,8 @@ def test_the_increment_does_not_reach_induced_or_wave_drag():
     sourced 0.025 -- so declaring CL_M alone must leave CD exactly unmoved."""
     a_sound = speed_of_sound(jnp.array(H))
     vel = jnp.array([V * 1.05, 0.0, 0.08 * V * 1.05])
-    lift_only = AC._replace(mach_deriv_ref=jnp.array(0.80), CL_M=SET["CL_M"])
-    assert _coefficients(lift_only, vel, a_sound)[1] == _coefficients(AC, vel, a_sound)[1]
+    lift_only = BARE._replace(mach_deriv_ref=jnp.array(0.80), CL_M=SET["CL_M"])
+    assert _coefficients(lift_only, vel, a_sound)[1] == _coefficients(BARE, vel, a_sound)[1]
 
 
 def test_the_engine_linearisation_carries_appendix_a_mach_terms_exactly():
@@ -97,31 +100,49 @@ def test_the_engine_linearisation_carries_appendix_a_mach_terms_exactly():
     Mach content and nothing else -- and it must equal CR-2144 Appendix A's
     terms, built independently in `cr2144_mach.mach_increment`, in all six
     elements they occupy and zero elsewhere."""
-    x, _ = trim(jnp.array(V), jnp.array(H), AC)
+    x, _ = trim(jnp.array(V), jnp.array(H), BARE)
     alpha, de, th = (float(v) for v in x)
     a_s = float(speed_of_sound(jnp.array(H)))
-    declared = AC._replace(mach_deriv_ref=jnp.array(V / a_s), **SET)
+    declared = BARE._replace(mach_deriv_ref=jnp.array(V / a_s), **SET)
     x2, _ = trim(jnp.array(V), jnp.array(H), declared)
     assert np.allclose(np.asarray(x2), np.asarray(x), rtol=0.0, atol=1e-10)
 
     dA = (longitudinal_matrix(declared, alpha, de, th, V, H)
-          - longitudinal_matrix(AC, alpha, de, th, V, H))
+          - longitudinal_matrix(BARE, alpha, de, th, V, H))
     expected = cm.mach_increment(
-        alpha, V, float(density(jnp.array(H))), a_s, float(AC.mass),
-        float(np.asarray(AC.inertia)[1, 1]), float(AC.S), float(AC.c),
+        alpha, V, float(density(jnp.array(H))), a_s, float(BARE.mass),
+        float(np.asarray(BARE.inertia)[1, 1]), float(BARE.S), float(BARE.c),
         *(float(SET[k]) for k in ("CL_M", "CD_M", "Cm_M")))
     assert np.count_nonzero(expected) == 6
     assert np.allclose(dA, expected, rtol=1e-9, atol=1e-15), (dA, expected)
 
 
-def test_no_registry_entry_declares_mach_derivatives_yet():
-    """A DECISION, pinned so that taking it is visible. Declaring the digitised
-    FC9 set on `boeing747` moves the shipped phugoid, every Fig. 8 pin and the
-    CAT headline, and needs the thrust-moment and drag-rise caveats PROJECT.md
-    section 4 records. If you declare it, re-capture those deliberately, record
-    what moved, and replace this test with one that pins the declared values."""
+def test_the_747_declares_the_digitised_fc9_set_and_nothing_else_does():
+    """THE DECISION, TAKEN. `boeing747` declares the set; every other entry
+    leaves the seam shut.
+
+    Two things are pinned. The reference Mach and the two directly SOURCED
+    values are the digitised ones. And `CD_M` is DERIVED, not sourced: the field
+    is the sourced total minus this model's own Korn/Lock slope, so what must be
+    right is the TOTAL, asserted against the sourced value rather than against
+    the field.
+    """
+    assert float(AC.mach_deriv_ref) == pytest.approx(0.800, abs=1e-12)
+    assert float(AC.CL_M) == pytest.approx(cm.value("cl_m", "40K", 0.800), abs=5e-5)
+    assert float(AC.Cm_M) == pytest.approx(cm.value("cm_m", "40K", 0.800), abs=5e-5)
+
+    # The Korn/Lock slope is lift-dependent, so it is taken at the TRIM CL the
+    # entry was built on, not at alpha = 0 where CL is just CL0.
+    CL_trim = float(AC.mass) * 9.80665 / (
+        0.5 * float(density(jnp.array(H))) * V**2 * float(AC.S))
+    m_crit = float(aero.drag_divergence_mach(jnp.array(CL_trim), AC)) - aero._MDD_OFFSET
+    total = float(AC.CD_M) + 80.0 * max(0.800 - m_crit, 0.0) ** 3
+    assert total == pytest.approx(cm.value("cd_m", "40K", 0.800), abs=2e-3)
+    assert float(AC.CD_M) < 0.0, "the net field is negative: Korn/Lock is the steeper of the two"
+
     for name, ac in REGISTRY.items():
-        assert float(ac.mach_deriv_ref) < 0.0, name
+        if name != "boeing747":
+            assert float(ac.mach_deriv_ref) < 0.0, name
 
 
 # ===========================================================================
@@ -188,7 +209,7 @@ def test_cm_M_agrees_with_table_ix4_only_once_the_thrust_moment_is_trimmed():
 
 
 # ===========================================================================
-# 3. The retest: the FC9 set on a copy of the 747, against Table IX-5
+# 3. The retest: what declaring the set did, against Table IX-5
 # ===========================================================================
 
 def _korn_lock_slope(ac, alpha, mach):
@@ -205,10 +226,13 @@ def _errors(ac):
 
 
 def _declared(CL_M, CD_M_total, Cm_M):
-    x, _ = trim(jnp.array(V), jnp.array(H), AC)
-    slope = _korn_lock_slope(AC, float(x[0]), V / float(speed_of_sound(jnp.array(H))))
-    return AC._replace(mach_deriv_ref=jnp.array(0.800), CL_M=jnp.array(CL_M),
-                       CD_M=jnp.array(CD_M_total - slope), Cm_M=jnp.array(Cm_M))
+    """A copy carrying a sourced TOTAL drag Mach slope, net of Korn/Lock at the
+    bare entry's own trim. The registry entry does the same subtraction from its
+    own construction, so the two differ slightly and the test below says so."""
+    x, _ = trim(jnp.array(V), jnp.array(H), BARE)
+    slope = _korn_lock_slope(BARE, float(x[0]), V / float(speed_of_sound(jnp.array(H))))
+    return BARE._replace(mach_deriv_ref=jnp.array(0.800), CL_M=jnp.array(CL_M),
+                         CD_M=jnp.array(CD_M_total - slope), Cm_M=jnp.array(Cm_M))
 
 
 @pytest.fixture(scope="module")
@@ -216,58 +240,68 @@ def retest():
     d = {q: cm.value(q, "40K", 0.800) for q in ("cl_m", "cd_m", "cm_m")}
     b9 = cm.backsolve(9)
     return dict(
+        bare=_errors(BARE),
         shipped=_errors(AC),
-        sourced=_errors(_declared(d["cl_m"], d["cd_m"], d["cm_m"])),
-        korn_lock_kept=_errors(AC._replace(mach_deriv_ref=jnp.array(0.800),
-                                           CL_M=jnp.array(d["cl_m"]), Cm_M=jnp.array(d["cm_m"]))),
+        copy=_errors(_declared(d["cl_m"], d["cd_m"], d["cm_m"])),
+        korn_lock_kept=_errors(BARE._replace(mach_deriv_ref=jnp.array(0.800),
+                                             CL_M=jnp.array(d["cl_m"]),
+                                             Cm_M=jnp.array(d["cm_m"]))),
         table=_errors(_declared(b9["cl_m"], b9["cd_m"], b9["cm_m"])),
         thrust_compensated=_errors(_declared(d["cl_m"], d["cd_m"],
                                              d["cm_m"] + b9["Cm_trim"] / 0.400)),
     )
 
 
-def test_the_digitised_speed_derivatives_close_most_of_the_phugoid_gap(retest):
-    """THE RETEST. Shipped: phugoid wn -18.1%, zeta +13.2%. With the digitised
-    FC9 CL_M, Cm_M and a sourced TOTAL drag Mach slope: +4.05% and +4.55%,
-    measured session 30. Bands, not values: both errors are now under a
-    third of their shipped size, and the frequency error has changed sign --
-    it overshoots, which the next two tests explain."""
-    s, e = retest["shipped"], retest["sourced"]
-    assert s["ph_wn"] < -0.15 and s["ph_z"] > 0.10
-    assert 0.02 < e["ph_wn"] < 0.07
-    assert 0.01 < e["ph_z"] < 0.08
-    assert abs(e["ph_wn"]) < abs(s["ph_wn"]) / 3.0 and abs(e["ph_z"]) < abs(s["ph_z"]) / 2.0
+def test_declaring_the_set_closed_most_of_the_phugoid_gap(retest):
+    """THE RETEST, on the shipped entry. Bare: phugoid wn -18.1%, zeta +13.2%.
+    Declared: both under a third and a half of that respectively, and the
+    frequency error has changed sign -- it overshoots, which the next tests
+    explain. Bands, not values."""
+    b, s = retest["bare"], retest["shipped"]
+    assert b["ph_wn"] < -0.15 and b["ph_z"] > 0.10
+    assert 0.02 < s["ph_wn"] < 0.07
+    assert 0.01 < s["ph_z"] < 0.09
+    assert abs(s["ph_wn"]) < abs(b["ph_wn"]) / 3.0 and abs(s["ph_z"]) < abs(b["ph_z"]) / 2.0
+
+
+def test_the_shipped_entry_and_the_curve_read_at_trim_agree(retest):
+    """The registry subtracts Korn/Lock's slope at its OWN construction point
+    (M 0.800, CL = W/qS); `_declared` subtracts it at the engine's trim
+    (M 0.7995, CL from CL0 + CLa*alpha). That is a real difference of about 3%
+    of the slope, and it must stay small enough not to matter: under a point of
+    phugoid damping, and nothing on the frequency."""
+    assert retest["shipped"]["ph_wn"] == pytest.approx(retest["copy"]["ph_wn"], abs=0.005)
+    assert retest["shipped"]["ph_z"] == pytest.approx(retest["copy"]["ph_z"], abs=0.02)
 
 
 def test_the_speed_derivatives_leave_the_short_period_alone(retest):
-    """Speed derivatives are a phugoid effect. Measured: -1.17% -> -1.34% and
-    -11.35% -> -11.50%, both under 0.2 points. The short-period damping gap is
-    the alpha-dot family's, as test_audit_regression already attributes."""
+    """Speed derivatives are a phugoid effect. The short-period pair moves by
+    under 0.2 points; its damping gap is the alpha-dot family's, as
+    test_audit_regression already attributes."""
     for k in ("sp_wn", "sp_z"):
-        assert abs(retest["sourced"][k] - retest["shipped"][k]) < 0.005, k
+        assert abs(retest["shipped"][k] - retest["bare"][k]) < 0.005, k
 
 
 def test_the_overshoot_is_not_the_reading_it_is_the_missing_thrust_moment(retest):
-    """Two statements. Table IX-4's OWN implied set overshoots the same way
-    (+3.86% / +5.26% against the digitised +4.05% / +4.55%), so the residual is
-    not digitisation error. And adding back the trim C_m the engine cannot have
-    -- it places thrust through the CG -- takes both to under 1% (+0.07% /
-    +0.64%). DIAGNOSTIC ONLY: the compensated Cm_M is not a sourced number."""
-    e, t, c = retest["sourced"], retest["table"], retest["thrust_compensated"]
-    assert abs(e["ph_wn"] - t["ph_wn"]) < 0.005 and abs(e["ph_z"] - t["ph_z"]) < 0.015
+    """Two statements. Table IX-4's OWN implied set overshoots the same way, so
+    the residual is not digitisation error. And adding back the trim C_m the
+    engine cannot have -- it places thrust through the CG -- takes both phugoid
+    errors under 1%. DIAGNOSTIC ONLY: the compensated Cm_M is not sourced."""
+    s, t, c = retest["shipped"], retest["table"], retest["thrust_compensated"]
+    assert abs(s["ph_wn"] - t["ph_wn"]) < 0.01 and abs(s["ph_z"] - t["ph_z"]) < 0.02
     assert abs(c["ph_wn"]) < 0.01 and abs(c["ph_z"]) < 0.015
 
 
 def test_keeping_the_models_own_drag_rise_makes_phugoid_damping_worse(retest):
     """The partial-correction trap, and why CD_M is declared net of Korn/Lock.
     The engine's wave-drag slope at FC9 is 0.0477 per Mach against a sourced
-    total of 0.025-0.028. Adding CL_M and Cm_M on top of it takes phugoid
-    damping from +13.2% to +21.3% -- worse than shipping nothing."""
-    assert retest["korn_lock_kept"]["ph_z"] > retest["shipped"]["ph_z"]
+    total of 0.025-0.028. Declaring CL_M and Cm_M on top of it takes phugoid
+    damping to about +21% -- worse than declaring nothing at all."""
+    assert retest["korn_lock_kept"]["ph_z"] > retest["bare"]["ph_z"]
     # The drag slope does not touch the frequency. Not to 1e-6 though: the set
     # is declared at the TABLE's M 0.800 and the engine trims at M 0.7995, so a
-    # different CD_M shifts the trim throttle slightly -- measured 1.7e-6.
-    assert retest["korn_lock_kept"]["ph_wn"] == pytest.approx(retest["sourced"]["ph_wn"], abs=1e-4)
+    # different CD_M shifts the trim throttle slightly.
+    assert retest["korn_lock_kept"]["ph_wn"] == pytest.approx(retest["copy"]["ph_wn"], abs=1e-4)
 
 
 def test_the_improvement_survives_the_reading_uncertainty():
@@ -275,13 +309,13 @@ def test_the_improvement_survives_the_reading_uncertainty():
     speed-derivative curves re-read with pixel scatter and an axis-calibration
     error on the sheets' own scales (`cr2144_mach.perturbed`). Session 30's
     N = 4000 run gave phugoid wn 5-95% of [+1.1, +6.9]% at 1 px and
-    [-5.7, +9.5]% at 3 px, against -18.1% shipped. Checked here at N = 400."""
-    x, _ = trim(jnp.array(V), jnp.array(H), AC)
+    [-5.7, +9.5]% at 3 px, against -18.1% bare. Checked here at N = 400."""
+    x, _ = trim(jnp.array(V), jnp.array(H), BARE)
     alpha, de, th = (float(v) for v in x)
-    A0 = longitudinal_matrix(AC, alpha, de, th, V, H)
+    A0 = longitudinal_matrix(BARE, alpha, de, th, V, H)
     a_s = float(speed_of_sound(jnp.array(H)))
-    slope = _korn_lock_slope(AC, alpha, V / a_s)
-    rho, Iyy = float(density(jnp.array(H))), float(np.asarray(AC.inertia)[1, 1])
+    slope = _korn_lock_slope(BARE, alpha, V / a_s)
+    rho, Iyy = float(density(jnp.array(H))), float(np.asarray(BARE.inertia)[1, 1])
     rng = np.random.default_rng(20260915)
     for sigma, lo, hi in ((1.0, -0.01, 0.09), (3.0, -0.12, 0.12)):
         wn = []
@@ -289,8 +323,8 @@ def test_the_improvement_survives_the_reading_uncertainty():
             v = [cm.value(q, "40K", 0.800,
                           curve=cm.perturbed(cm.curves()[(q, "40K")], rng, sigma))
                  for q in ("cl_m", "cd_m", "cm_m")]
-            dA = cm.mach_increment(alpha, V, rho, a_s, float(AC.mass), Iyy, float(AC.S),
-                                   float(AC.c), v[0], v[1] - slope, v[2])
+            dA = cm.mach_increment(alpha, V, rho, a_s, float(BARE.mass), Iyy, float(BARE.S),
+                                   float(BARE.c), v[0], v[1] - slope, v[2])
             wn.append(cm.errors_vs_ix5(cm.modes(A0 + dA))["ph_wn"])
         p5, p95 = np.percentile(wn, [5, 95])
         assert lo < p5 and p95 < hi, (sigma, p5, p95)

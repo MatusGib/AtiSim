@@ -90,6 +90,12 @@ IX5_FC9_DENOM = dict(phugoid_zeta=0.0489, phugoid_wn=0.0673,
 
 B747 = REGISTRY["boeing747"]
 B747PA = REGISTRY["boeing747_approach"]
+# The cruise 747 with its Mach-derivative seam shut: the engine as it stood
+# before session 30 declared CR-2144's speed derivatives on `boeing747`. The
+# attribution tests in section 3 explain THAT engine's gap to Table IX-5 by the
+# two families it omitted, so they run on it; the mode-error pins run on the
+# shipped entry. Both states stay measurable this way.
+B747_BARE = B747._replace(mach_deriv_ref=jnp.array(-1.0))
 G = 32.174  # ft/s^2, the value CR-2144's own arithmetic uses
 
 
@@ -323,10 +329,10 @@ def test_the_appendix_a_W0_omission_stays_within_its_measured_bound(name, expect
 # 3. Mode comparison and its attribution
 # ===========================================================================
 
-def _cruise_modes():
+def _cruise_modes(ac=B747):
     V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
-    x, _ = trim(jnp.array(V), jnp.array(H), B747)
-    A = longitudinal_matrix(B747, float(x[0]), float(x[1]), float(x[2]), V, H)
+    x, _ = trim(jnp.array(V), jnp.array(H), ac)
+    A = longitudinal_matrix(ac, float(x[0]), float(x[1]), float(x[2]), V, H)
     ev = np.linalg.eigvals(A)
     osc = sorted((abs(l), -l.real / abs(l)) for l in ev if l.imag > 1e-9)
     return dict(phugoid_wn=osc[0][0], phugoid_zeta=osc[0][1],
@@ -341,7 +347,15 @@ def _cruise_modes():
 # the model 1.2 points CLOSER to Table IX-5. phugoid_wn is unmoved at this
 # tolerance. Recorded as corroboration that the gravity change is a fidelity
 # gain rather than a lateral move.
-MODE_ERRORS_VS_IX5 = {"phugoid_wn": -0.178, "phugoid_zeta": +0.132,
+#
+# SESSION 30 MOVED THE PHUGOID PAIR, AND THE WORLD CHANGED RATHER THAN THE
+# TOLERANCE. `boeing747` now declares CR-2144's speed derivatives (PROJECT.md
+# section 4): phugoid_wn -0.181 -> +0.0405 and phugoid_zeta +0.132 -> +0.0345,
+# which is the improvement section 3's attribution tests predicted for restoring
+# that family. The short-period pair moves under 0.2 points and keeps its
+# values here. abs=0.01 is unchanged. The pre-session-30 figures are what
+# B747_BARE still returns.
+MODE_ERRORS_VS_IX5 = {"phugoid_wn": +0.0405, "phugoid_zeta": +0.0345,
                       "sp_wn": -0.014, "sp_zeta": -0.115}
 
 
@@ -424,10 +438,13 @@ def _patched_engine_modes(speed, alphadot):
     `d(udot)/dq = -w0` Coriolis term the source's linear model has no row for.
     Patching the engine's own matrix closes that gap.
     """
+    # On the BARE engine: this restores the omitted families to the engine that
+    # omitted them. Run on the shipped entry, whose w-column already carries the
+    # Mach terms, the substitution would count the speed family twice.
     V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
-    x, _ = trim(jnp.array(V), jnp.array(H), B747)
+    x, _ = trim(jnp.array(V), jnp.array(H), B747_BARE)
     A = to_imperial_matrix(longitudinal_matrix(
-        B747, float(x[0]), float(x[1]), float(x[2]), V, H))
+        B747_BARE, float(x[0]), float(x[1]), float(x[2]), V, H))
     if speed:
         A[0, 0], A[1, 0], A[2, 0] = IX4_FC9["Xu"], IX4_FC9["Zu"], IX4_FC9["Mu"]
     if alphadot:
@@ -468,7 +485,7 @@ def test_the_phugoid_frequency_is_the_speed_derivatives_alone():
 def test_the_short_period_damping_is_the_alpha_dot_terms_alone():
     """Alpha-dot terms alone: short-period zeta -11.5% -> +0.6%, while the
     phugoid frequency does not move at all. The other half of the pair."""
-    base = _cruise_modes()
+    base = _cruise_modes(B747_BARE)
     got = _patched_engine_modes(speed=False, alphadot=True)
     assert abs(got["sp_zeta"] - 0.387) / 0.387 < 0.01
     assert got["phugoid_wn"] == pytest.approx(base["phugoid_wn"], rel=1e-6)
@@ -486,7 +503,7 @@ def test_phugoid_damping_needs_BOTH_families_which_is_why_it_looked_unattributab
     had to be done on the engine's matrix rather than on a clean-room rebuild,
     and it is recorded here so the next auditor does not repeat the detour.
     """
-    shipped = _cruise_modes()["phugoid_zeta"]
+    shipped = _cruise_modes(B747_BARE)["phugoid_zeta"]  # the engine before session 30
     only_speed = _patched_engine_modes(True, False)["phugoid_zeta"]
     only_adot = _patched_engine_modes(False, True)["phugoid_zeta"]
     both = _patched_engine_modes(True, True)["phugoid_zeta"]
@@ -1060,8 +1077,13 @@ def test_the_wind_hold_costs_the_headline_figure_more_than_E4_bounds_it():
     per_stage = math.degrees(theta[wp].max() - theta[wp].min())
 
     rel = (per_stage - held) / held
-    assert held == pytest.approx(2.2596, abs=0.005)
-    assert per_stage == pytest.approx(2.2230, abs=0.005)
+    # SESSION 30 re-captured the two pitch values: `boeing747` now declares
+    # CR-2144's speed derivatives, which lifts the in-core d(theta) by ~6% at
+    # both schemes (hold 2.2596 -> 2.3878, per-stage 2.2230 -> 2.3523). The
+    # FINDING did not move: the scheme cost is still ~1.5% at dt = 0.02 (-1.48%
+    # against 1.62%), inside the unchanged abs=0.004 below. abs=0.005 unchanged.
+    assert held == pytest.approx(2.3878, abs=0.005)
+    assert per_stage == pytest.approx(2.3523, abs=0.005)
     assert abs(rel) == pytest.approx(0.0162, abs=0.004)
     assert abs(rel) > 1e-3, (
         "the wind hold now costs less than 0.1% at dt=0.02; ASSUMPTIONS.md E4's "
@@ -1629,7 +1651,13 @@ def test_the_airspeed_floor_no_longer_reaches_dynamic_pressure():
     from atisim.aero import V_MIN
     from atisim.atmosphere import speed_of_sound
 
-    ac = REGISTRY["boeing747"]
+    # With the Mach-derivative seam SHUT. Session 30 declared CR-2144's speed
+    # derivatives on `boeing747`, so its coefficients now vary with M = V/a along
+    # this line and the force is no longer exactly V^2 -- the same cost
+    # `aircraft._boeing_747`'s Prandtl-Glauert comment records for this test.
+    # The claim here is about the FLOOR not reaching dynamic pressure, which is
+    # untouched; shutting the seam restores the premise, and rel=1e-12 stands.
+    ac = REGISTRY["boeing747"]._replace(mach_deriv_ref=jnp.array(-1.0))
     altitude = float(CRUISE["boeing747"]["altitude"])
     rho, a_sound = density(altitude), speed_of_sound(altitude)
     controls = Controls(jnp.array(0.05), jnp.array(0.0), jnp.array(0.0), jnp.array(0.0))

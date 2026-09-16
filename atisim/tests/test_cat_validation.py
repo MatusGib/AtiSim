@@ -860,17 +860,21 @@ def test_the_approach_747s_tabulated_alpha_dot_terms_are_a_trade_not_a_win():
 _MEHTA_LEAD_R0 = 12.0
 
 
-def _mehta_run(*, v0_scale=1.0, r0_scale=1.0, dt=0.02):
+def _mehta_run(*, v0_scale=1.0, r0_scale=1.0, dt=0.02, ac=None):
     """The headline Mehta run with the identified parameters perturbed.
 
     dt 0.02 rather than the script's 0.01: PROJECT.md section 4 measures the
     peak load as converged to 0.14% over an eightfold step range, so the
     coarsest measured step is the right one to pay for in a test suite.
+
+    `ac` defaults to the shipped `boeing747`. Session 30 added it so a claim
+    established before that entry declared CR-2144's speed derivatives can
+    still be asserted on the entry it was established on.
     """
     from atisim import vortex_viz
     from atisim.aircraft import CRUISE
 
-    ac = REGISTRY["boeing747"]
+    ac = REGISTRY["boeing747"] if ac is None else ac
     V = CRUISE["boeing747"]["airspeed"]
     H = wind.MEHTA_HANNIBAL_ALTITUDE
     array = wind.mehta_hannibal_array(H)
@@ -965,17 +969,25 @@ def test_the_flown_gust_spacing_reproduces_the_recorded_five_seconds():
     airspeed appears in no source held here, and 6% between two transports at
     37,000 ft is unremarkable.
     """
-    enc, _ = _mehta_run()
-    w = enc.window
-    times = _gust_times(enc.t[w], enc.w_up[w], 0.40 * wind.MEHTA_HANNIBAL_V0)
-    assert len(times) == 4
+    def readings_for(ac):
+        enc, _ = _mehta_run(ac=ac)
+        w = enc.window
+        times = _gust_times(enc.t[w], enc.w_up[w], 0.40 * wind.MEHTA_HANNIBAL_V0)
+        assert len(times) == 4
+        up1, dn1, up2, dn2 = times
+        return {
+            "peak-to-peak": up2 - up1,
+            "trough-to-trough": dn2 - dn1,
+            "centre-to-centre": (up2 + dn2) / 2 - (up1 + dn1) / 2,
+        }
 
-    up1, dn1, up2, dn2 = times
-    readings = {
-        "peak-to-peak": up2 - up1,
-        "trough-to-trough": dn2 - dn1,
-        "centre-to-centre": (up2 + dn2) / 2 - (up1 + dn1) / 2,
-    }
+    # SESSION 30 SPLIT THIS CLAIM RATHER THAN LOOSENING IT. It was established on
+    # the 747 without Mach derivatives, and is asserted on that entry here with
+    # every threshold as it was. `boeing747` now declares CR-2144's speed
+    # derivatives, pitches further in the cores and meets them off-centre, which
+    # moves WHEN the extrema are met: peak-to-peak 5.28 -> 5.50 s, +10.0% at
+    # dt 0.02 AND at dt 0.01 -- so the path, not the sampling.
+    readings = readings_for(REGISTRY["boeing747"]._replace(mach_deriv_ref=jnp.array(-1.0)))
     # The claim must not depend on which reading of "apart" was taken.
     assert max(readings.values()) - min(readings.values()) < 0.20
 
@@ -987,6 +999,16 @@ def test_the_flown_gust_spacing_reproduces_the_recorded_five_seconds():
     # And the model is SLOW, not fast -- which is the direction a 747 at M 0.80
     # against a faster DC-10 has to be. A fast model would need explaining.
     assert min(readings.values()) > wind.TM102186_HANNIBAL_GUST_PERIOD
+
+    # The shipped entry. The path shift is bounded, the model is still slow, and
+    # the reading PROJECT.md section 4 quotes -- centre-to-centre -- is still
+    # inside 10% (measured +8.0%).
+    shipped = readings_for(REGISTRY["boeing747"])
+    for name in readings:
+        assert abs(shipped[name] - readings[name]) < 0.30, name
+    assert min(shipped.values()) > wind.TM102186_HANNIBAL_GUST_PERIOD
+    assert abs(shipped["centre-to-centre"] - wind.TM102186_HANNIBAL_GUST_PERIOD) \
+        / wind.TM102186_HANNIBAL_GUST_PERIOD < 0.10
 
 
 def test_mehtas_cost_converts_without_n_and_beats_nothing_it_should_not():
@@ -1114,22 +1136,43 @@ def test_no_gust_strength_reaches_the_recorded_peak_inside_the_linear_range():
     def peak_alpha(enc):
         return float(np.abs(enc.alpha_air[enc.window]).max() * RAD2DEG)
 
-    _, (_, hi0) = _mehta_run()
     recorded = wind.TM102186_HANNIBAL_NZ[1]
+    bare = REGISTRY["boeing747"]._replace(mach_deriv_ref=jnp.array(-1.0))
 
+    def elasticity(hi0, hi3):
+        return ((hi3 - 1.0) / (hi0 - 1.0) - 1.0) / 2.0
+
+    # SESSION 30: ONE HALF OF THIS CLAIM WEAKENED AND THE SHARP HALF DID NOT.
+    #
     # Tripling barely moves the peak: a response that tracked the gust would
-    # have elasticity ~1, and this one is under 0.2 and changes sign en route.
-    enc3, (_, hi3) = _mehta_run(v0_scale=3.0)
+    # have elasticity ~1. That was established on the 747 without Mach
+    # derivatives and is asserted there exactly as it was (measured +0.097).
+    # With CR-2144's speed derivatives declared it is +0.305: the shipped model
+    # is LESS saturated, and the pitching-moment term does most of that alone
+    # (Cm_M only +0.266; CL_M only +0.129; CD_M only +0.102). PROJECT.md section
+    # 4 records it as a weakened claim; it is not re-banded here to pass.
+    _, (_, hi0) = _mehta_run(ac=bare)
+    enc3, (_, hi3) = _mehta_run(v0_scale=3.0, ac=bare)
     assert hi3 - 1.0 < 0.85 * (recorded - 1.0)
-    assert abs(((hi3 - 1.0) / (hi0 - 1.0) - 1.0) / 2.0) < 0.20
+    assert abs(elasticity(hi0, hi3)) < 0.20
     assert peak_alpha(enc3) < 10.0
 
-    # The bracket. Below the crossing the model is believable and short; above
-    # it the model reaches and is outside its own validity.
-    enc_lo, (_, hi_lo) = _mehta_run(v0_scale=3.25)
-    enc_hi, (_, hi_hi) = _mehta_run(v0_scale=3.5)
+    # The shipped entry. Tripling still leaves it under the record and inside
+    # the linear range -- by 0.0045 g of the 0.85 bound, which is thin and is
+    # recorded as thin -- and its elasticity is above the bare entry's and still
+    # well short of a response that tracks the gust.
+    _, (_, s_hi0) = _mehta_run()
+    s_enc3, (_, s_hi3) = _mehta_run(v0_scale=3.0)
+    assert s_hi3 - 1.0 < 0.85 * (recorded - 1.0)
+    assert abs(elasticity(hi0, hi3)) < elasticity(s_hi0, s_hi3) < 0.40
 
-    assert hi_lo < recorded and peak_alpha(enc_lo) < 10.0
+    # The bracket -- the sharp form -- and it SURVIVES: both boundaries still
+    # fall in one interval. Below the crossing the model is believable and
+    # short; above it the model reaches and is outside its own validity. For the
+    # shipped entry the interval is x3.0 to x3.25 (1.591 g at 8.94 deg; 1.745 g
+    # at 10.32 deg), where before session 30 it was x3.25 to x3.5.
+    enc_hi, (_, hi_hi) = _mehta_run(v0_scale=3.25)
+    assert s_hi3 < recorded and peak_alpha(s_enc3) < 10.0
     assert hi_hi >= recorded and peak_alpha(enc_hi) > 10.0
 
 
