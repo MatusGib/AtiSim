@@ -313,11 +313,20 @@ def main():
                              ("shipped", C_ATISIM, "747 as shipped")):
         r = runs[f"A/{name}"]
         ax.plot(r["north_kft"], r["alt_dev_ft"], color=color, label=f"{lab}: where it actually flies")
+    # The DC-10's own path: Parks 1985 Fig. 6's inertial altitude estimate, put on
+    # Mehta's axis under both readings of its distance scale (the digitiser's docstring)
+    import digitise_parks_fig6_altitude as parks
+    rec = parks.load()
+    xk = np.linspace(-15.0, 15.0, 301)
+    for (kind, v), ls in zip(reversed(parks.speeds(parks.anchors(rec)["tas_cruise"]).items()), ("-", ":")):
+        ax.plot(xk, parks.dc10_path(rec, v, xk), color=C_MEASURED, ls=ls, lw=2.0 if ls == "-" else 1.6,
+                label="The DC-10's own path (Parks 1985 Fig. 6)" if kind == "ground"
+                else "   the same, on an air-relative distance scale")
     ax.set_xlim(-15, 15)
     ax.set_ylim(-2400, 2500)
     ax.set_xlabel("Distance along the flight path (thousand feet)")
     ax.set_ylabel("Height relative to 37,000 ft (feet)")
-    ax.set_title("The simulated 747 climbs over the two cores the DC-10 passed beneath")
+    ax.set_title("The simulated 747 climbs over the two central cores; the DC-10 stayed beneath them")
     ax.legend(loc="lower left")
     ax.annotate("vortex core, to scale (1,000 ft across)", xy=(-6.669 + r0_ft / 1000.0, 1836),
                 xytext=(6, 0), textcoords="offset points", ha="left", va="center", color=INK2, fontsize=8)
