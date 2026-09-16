@@ -13,10 +13,13 @@ THE DIGITISATION, against the source's own tables. CR-2144 printed pp. 220-222
 were read by hand; Table IX-4 (printed p. 230) independently implies a value at
 every circled flight condition. Asserted as bands.
 
-THE RETEST. `boeing747` DECLARES the FC9 set, so the comparisons below are
-against `BARE` -- the same entry with the seam shut, which is the 747 as it was
-before session 30. Bands and orderings, per CLAUDE.md rule 6.
+THE RETEST. `boeing747` DECLARES the FC9 set and CR-2144's thrust line, so the
+comparisons below are against `BARE` -- the entry without the line and with the
+seam shut, which is the 747 as it was before session 30 -- and the speed set as
+first declared, without the line. Bands and orderings, per CLAUDE.md rule 6.
 """
+
+import math
 
 import jax.numpy as jnp
 import numpy as np
@@ -24,17 +27,18 @@ import pytest
 
 from atisim import aero
 from atisim import cr2144_mach as cm
-from atisim.aircraft import CRUISE, REGISTRY
+from atisim.aircraft import CRUISE, REGISTRY, boeing747_without_thrust_line
 from atisim.atmosphere import density, speed_of_sound
 from atisim.state import Controls
 from atisim.trim import trim
 from atisim.validation import longitudinal_matrix
 
 AC = REGISTRY["boeing747"]
-# The same entry with the seam shut: the 747 as it stood before session 30
-# declared CR-2144's Mach derivatives on it. Every "what did declaring do"
-# comparison here is against THIS, not against a different aeroplane.
-BARE = AC._replace(mach_deriv_ref=jnp.array(-1.0), CL_M=jnp.array(0.0),
+# The entry with the seam shut and no thrust line: the 747 as it stood before
+# session 30 declared CR-2144's Mach derivatives and thrust line on it. Every
+# "what did declaring do" comparison here is against THIS, not against a
+# different aeroplane.
+BARE = boeing747_without_thrust_line()._replace(mach_deriv_ref=jnp.array(-1.0), CL_M=jnp.array(0.0),
                    CD_M=jnp.array(0.0), Cm_M=jnp.array(0.0))
 V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
 CONTROLS = Controls(elevator=jnp.array(0.01), aileron=jnp.array(0.02),
@@ -132,9 +136,14 @@ def test_the_747_declares_the_digitised_fc9_set_and_nothing_else_does():
     assert float(AC.Cm_M) == pytest.approx(cm.value("cm_m", "40K", 0.800), abs=5e-5)
 
     # The Korn/Lock slope is lift-dependent, so it is taken at the TRIM CL the
-    # entry was built on, not at alpha = 0 where CL is just CL0.
-    CL_trim = float(AC.mass) * 9.80665 / (
-        0.5 * float(density(jnp.array(H))) * V**2 * float(AC.S))
+    # entry was built on, not at alpha = 0 where CL is just CL0. Since the thrust
+    # line was declared that is CR-2144's AERODYNAMIC trim lift -- weight less the
+    # thrust line's share -- not W/qS: at W/qS the total reads 0.0284 against the
+    # sourced 0.0251, which is this test being out of date, not the entry.
+    _, _, _, q, adeg = cm.IX3[9]
+    a_xi = math.radians(adeg) + cm.XI_RAD
+    thrust = cm.backsolve(9)["CD"] * q * cm.S_FT2 / math.cos(a_xi)
+    CL_trim = (cm.W_LB - thrust * math.sin(a_xi)) / (q * cm.S_FT2)
     m_crit = float(aero.drag_divergence_mach(jnp.array(CL_trim), AC)) - aero._MDD_OFFSET
     total = float(AC.CD_M) + 80.0 * max(0.800 - m_crit, 0.0) ** 3
     assert total == pytest.approx(cm.value("cd_m", "40K", 0.800), abs=2e-3)
@@ -241,7 +250,10 @@ def retest():
     b9 = cm.backsolve(9)
     return dict(
         bare=_errors(BARE),
+        # the speed set as declared first, thrust through the CG (commit 0d84eae)
+        speed_only=_errors(boeing747_without_thrust_line()),
         shipped=_errors(AC),
+        line_only=_errors(AC._replace(mach_deriv_ref=jnp.array(-1.0))),
         copy=_errors(_declared(d["cl_m"], d["cd_m"], d["cm_m"])),
         korn_lock_kept=_errors(BARE._replace(mach_deriv_ref=jnp.array(0.800),
                                              CL_M=jnp.array(d["cl_m"]),
@@ -253,11 +265,14 @@ def retest():
 
 
 def test_declaring_the_set_closed_most_of_the_phugoid_gap(retest):
-    """THE RETEST, on the shipped entry. Bare: phugoid wn -18.1%, zeta +13.2%.
-    Declared: both under a third and a half of that respectively, and the
-    frequency error has changed sign -- it overshoots, which the next tests
-    explain. Bands, not values."""
-    b, s = retest["bare"], retest["shipped"]
+    """THE RETEST. Bare: phugoid wn -18.1%, zeta +13.2%. Declared: both under a
+    third and a half of that respectively, and the frequency error has changed
+    sign -- it overshoots, which the next tests explain. Bands, not values.
+
+    Runs on the speed set as first declared, thrust through the CG. Since the
+    thrust line was declared too, the SHIPPED entry is the one below that closes
+    the overshoot; this claim is about the speed set, and is kept on it."""
+    b, s = retest["bare"], retest["speed_only"]
     assert b["ph_wn"] < -0.15 and b["ph_z"] > 0.10
     assert 0.02 < s["ph_wn"] < 0.07
     assert 0.01 < s["ph_z"] < 0.09
@@ -270,8 +285,9 @@ def test_the_shipped_entry_and_the_curve_read_at_trim_agree(retest):
     (M 0.7995, CL from CL0 + CLa*alpha). That is a real difference of about 3%
     of the slope, and it must stay small enough not to matter: under a point of
     phugoid damping, and nothing on the frequency."""
-    assert retest["shipped"]["ph_wn"] == pytest.approx(retest["copy"]["ph_wn"], abs=0.005)
-    assert retest["shipped"]["ph_z"] == pytest.approx(retest["copy"]["ph_z"], abs=0.02)
+    # Both without the thrust line: the copy is built on BARE.
+    assert retest["speed_only"]["ph_wn"] == pytest.approx(retest["copy"]["ph_wn"], abs=0.005)
+    assert retest["speed_only"]["ph_z"] == pytest.approx(retest["copy"]["ph_z"], abs=0.02)
 
 
 def test_the_speed_derivatives_leave_the_short_period_alone(retest):
@@ -279,6 +295,7 @@ def test_the_speed_derivatives_leave_the_short_period_alone(retest):
     under 0.2 points; its damping gap is the alpha-dot family's, as
     test_audit_regression already attributes."""
     for k in ("sp_wn", "sp_z"):
+        assert abs(retest["speed_only"][k] - retest["bare"][k]) < 0.005, k
         assert abs(retest["shipped"][k] - retest["bare"][k]) < 0.005, k
 
 
@@ -286,10 +303,32 @@ def test_the_overshoot_is_not_the_reading_it_is_the_missing_thrust_moment(retest
     """Two statements. Table IX-4's OWN implied set overshoots the same way, so
     the residual is not digitisation error. And adding back the trim C_m the
     engine cannot have -- it places thrust through the CG -- takes both phugoid
-    errors under 1%. DIAGNOSTIC ONLY: the compensated Cm_M is not sourced."""
-    s, t, c = retest["shipped"], retest["table"], retest["thrust_compensated"]
+    errors under 1%. DIAGNOSTIC ONLY: the compensated Cm_M is not sourced.
+
+    Kept on the speed-only entry, where it was established; the test below is
+    the sourced version of the diagnostic."""
+    s, t, c = retest["speed_only"], retest["table"], retest["thrust_compensated"]
     assert abs(s["ph_wn"] - t["ph_wn"]) < 0.01 and abs(s["ph_z"] - t["ph_z"]) < 0.02
     assert abs(c["ph_wn"]) < 0.01 and abs(c["ph_z"]) < 0.015
+
+
+def test_the_declared_thrust_line_closes_the_phugoid(retest):
+    """THE SOURCED FIX. `boeing747` declares Table IX-3's thrust line -- LTH
+    10 ft below the CG, XI 2.5 deg -- with its trim referenced to it. Measured:
+    phugoid wn -0.05%, zeta +1.13% against Table IX-5, where the speed set alone
+    read +4.04% / +5.62% and the unsourced diagnostic +0.07% / +0.64%. Short
+    period unmoved."""
+    s, c = retest["shipped"], retest["thrust_compensated"]
+    assert abs(s["ph_wn"]) < 0.01 and abs(s["ph_z"]) < 0.03
+    assert abs(s["ph_wn"]) < abs(retest["speed_only"]["ph_wn"]) / 4.0
+    assert abs(s["ph_wn"] - c["ph_wn"]) < 0.01 and abs(s["ph_z"] - c["ph_z"]) < 0.02
+
+
+def test_the_thrust_line_needs_the_speed_derivatives(retest):
+    """NEITHER HALF WORKS ALONE. The line on the entry with its speed seam shut
+    takes the phugoid frequency from -18.1% to -23.4%: the M_u term it adds is
+    the one CR-2144 pairs with Cm_M, and without Cm_M it pulls the wrong way."""
+    assert retest["line_only"]["ph_wn"] < retest["bare"]["ph_wn"] - 0.02
 
 
 def test_keeping_the_models_own_drag_rise_makes_phugoid_damping_worse(retest):

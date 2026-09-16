@@ -7,12 +7,14 @@ known-broken, and what happens next.
 **Last updated:** session 30. CR-2144's speed derivatives were digitised, checked against
 Table IX-4 at every circled condition, and **declared on `boeing747`** through a new
 `Aircraft` seam. **Phugoid ω_n goes −18.1% → +4.05%**; the residual is the engine's missing
-thrust line, not the reading. The price is recorded, not hidden: the CAT headline moves
-**68.2% → 64.5%** of the record, and three mechanism claims weaken, all through Cm_M.
+thrust line, not the reading — **and then Table IX-3's thrust line was declared too: phugoid
+ω_n −0.05%, ζ +1.13%** against Table IX-5. The price is recorded, not hidden: the CAT headline
+moves **68.2% → 64.5%** of the record (64.4% with the thrust line), and three mechanism claims
+weaken, all through Cm_M.
 Then TM-102186 Fig. 7's **horizontal wind** was digitised. It **confirms which side of the path
 each core sits on** (1.58 kt RMS as built, against 15.38 flipped). It also shows the headline
 **double-counts the 747's own climb** past cores 3–4: replaying the fitted wind along the
-nominal path reads **75.0%**. Parks 1985 Fig. 6's altitude, digitised, then showed the DC-10
+nominal path reads **75.0%** (75.3% with the thrust line). Parks 1985 Fig. 6's altitude, digitised, then showed the DC-10
 **did not climb** through the pair: its inertial estimate was 36,985–36,996 ft at cores 3 and
 4, while the simulated 747 had climbed 500–600 ft. So the replayed form is the right reading.
 The shipped headline is not yet switched (§8).
@@ -124,9 +126,9 @@ the *sourced* curve, and the two are a check on each other rather than alternati
 |---|---|
 | **Branch** | **`claude/cr-2144-speed-derivative-data-5012ac`** |
 | **Worktree** | `.claude/worktrees/engine-validity-error-check-d8ccdf` — **the directory name does not match the branch**, as everywhere else in this repo |
-| **State** | **4 commits ahead of `main` (`7b71816`), 0 behind**: the inert seam, the declaration, the Hannibal horizontal wind, and the DC-10's altitude from Parks Fig. 6. The suite on it is in §9's session-30 entry, point 10. Nothing uncommitted except the tool folder `.impeccable/` |
+| **State** | **5 commits ahead of `main` (`7b71816`), 0 behind**: the inert seam, the declaration, the Hannibal horizontal wind, the DC-10's altitude from Parks Fig. 6, and CR-2144's thrust line declared. The suite on it is in §9's session-30 entry, point 10. Nothing uncommitted except the tool folder `.impeccable/` |
 | **What it is** | CR-2144 printed pp. 220–222 digitised, checked against Table IX-4 at eight conditions, and flown (§4). `atisim/cr2144_mach.py` and the tracked points; the `mach_deriv_ref / CL_M / CD_M / Cm_M` seam in `aircraft.py` and `aero.py`; `scripts/cr2144_speed_derivatives.py`; 23 tests. **Then TM-102186 Fig. 7's horizontal wind** (§4): `scripts/digitise_hannibal_horizontal_wind.py`, `scripts/hannibal_along_track_wind.py`, `atisim/data/tm102186_fig7_winds.csv`, 8 tests, and `scripts/cr2144_report_figures.py` for the report figures. The horizontal-wind work changes no model code |
-| **What it closes** | §5's "Mach content of `Xu`, `Zu`" stops being an attribution and becomes SOURCED, verified against Appendix A, and **declared on `boeing747`**: phugoid ω_n +4.05%, ζ +3.45% against Table IX-5. It also weakens three mechanism claims, all through Cm_M, and moves the CAT headline 68.2% → 64.5% — §4, item 7 |
+| **What it closes** | §5's "Mach content of `Xu`, `Zu`" stops being an attribution and becomes SOURCED, verified against Appendix A, and **declared on `boeing747`**: phugoid ω_n +4.05%, ζ +3.45% against Table IX-5 — and with Table IX-3's thrust line declared as well, **−0.05% and +1.13%**. It also weakens three mechanism claims, all through Cm_M, and moves the CAT headline 68.2% → 64.5% — §4, item 7 |
 | **Blocking** | **Nothing — the decision was taken.** `boeing747` **declares** the FC9 set: phugoid ω_n −18.13% → **+4.05%**, ζ +13.16% → **+3.45%** against Table IX-5. What that moved elsewhere — the Fig. 8 pins, the CAT headline — is in §4, re-measured rather than predicted. ~~The horizontal-wind work leaves one question open, which path the headline should fly Mehta's cores on (§8).~~ Parks Fig. 6 answered it: on the path the fit was made along. **What remains is a decision**, whether to switch the shipped headline flight to that form. It does not block a merge |
 | **Read this beside it** | The eight `.dig` originals are **tracked, in `atisim/data/cr2144_dig/`** (384 KB, each embedding the page crop it was traced on), beside the `atisim/data/cr2144_p220_222_digitised.csv` that `--dig-dir` regenerates from them |
 
@@ -243,13 +245,13 @@ tested against the aircraft's own linearised dynamics, not against a recorded sp
 because none is held. §5 says what would change that.
 
 **What it does not buy.** Any statement of the form *"the load will be X g"*. The
-headline load comparison reaches ~~**68%**~~ **64.5%** of a recorded peak-to-peak since session
-30 (1.741 g of 2.70) — it was 68.2% until `boeing747` declared CR-2144's speed derivatives,
+headline load comparison reaches ~~**68%**~~ ~~**64.5%**~~ **64.4%** of a recorded peak-to-peak since session
+30 (1.740 g of 2.70; 64.5% before CR-2144's thrust line was declared too, which moved it 0.1 point) — it was 68.2% until `boeing747` declared CR-2144's speed derivatives,
 which **improved the model's agreement with its own source's modes and moved this figure
 further from the record**, through a first-order tangent extrapolated across the encounter's
 Mach excursion; §4 has both halves. **It also carries a ~10-point method choice found later in
 session 30**: the 747 climbs past two cores that Mehta placed relative to the DC-10's own path.
-Replaying the fitted wind along the nominal path reads **75.0%**. ~~Which form is right is an
+Replaying the fitted wind along the nominal path reads **75.0%** (**75.3%** with the thrust line). ~~Which form is right is an
 open question (§8).~~ **Parks 1985 Fig. 6 then showed the DC-10 did not climb through the
 pair**, so the replayed 75.0% is the reading of Mehta's field (§4). The shipped headline flight
 has not been switched to it; that is a decision still to take (§8). (67.1% is the like-for-like *translational* figure
@@ -286,12 +288,12 @@ changed that.
 | **`airframe.py`** | where on the airframe the field is sampled: derived tail arm, sample stations, spanwise loading | the tail arm is DERIVED from `Cmq`/`CLq`, never sourced; the loading shape is DECLARED and carries a measured sensitivity |
 | `state.py` | `State`/`Controls`, quaternion utilities | NED inertial, body x-fwd/y-right/z-down; quat is `[w,x,y,z]`, body→NED |
 | `atmosphere.py` | ISA to 20 km | two layers — the 747 cruise sits above the tropopause |
-| `aero.py` | coefficient build-up | **takes `vel_rel`/`omega_rel` only; never sees inertial velocity** |
+| `aero.py` | coefficient build-up; `thrust_force` and `thrust_moment` along the aircraft's thrust line | **takes `vel_rel`/`omega_rel` only; never sees inertial velocity**. The thrust line (`Aircraft.thrust_arm`, `thrust_incidence`) defaults to body x through the CG; `boeing747` declares CR-2144's since session 30 |
 | `dynamics.py` | 6-DOF Newton-Euler, `load_factor`, `f_factor`, `average_f_factor`, `thrust_authority` | wind enters here and nowhere else |
 | `predictions.py` | sealed predictions | the register of claims made BEFORE their answer is available. Not imported by any model code and deliberately not a source of numbers: nothing here may be quoted as evidence FOR the model. `test_predictions.py` enforces the rules |
 | `wind.py` | wind fields and composition | vortex array, updraft column, lee wave, microburst, `superpose`, `field_model`, `along_track_shear` |
 | `integrate.py` | RK4 `step`, `rollout`, batched rollout | wind sampled once per step, held across the four stages |
-| `aircraft.py` | three aircraft + `REGISTRY`/`CRUISE` | every derivative cites its source table; `FlightCondition` + `from_dimensional_*` do the conversions |
+| `aircraft.py` | three aircraft + `REGISTRY`/`CRUISE`; `boeing747_without_thrust_line()` rebuilds the pre-line 747 exactly, for before/after measurement | every derivative cites its source table; `FlightCondition` + `from_dimensional_*` do the conversions |
 | `sensors.py` | `AirData`, `sense(state, wind_ned)` | **the only supported way to ask what the aircraft is doing**; air-relative where a real sensor is |
 | `trim.py` | Newton solve for steady level flight | still-air by construction, and must stay so |
 | `autopilot.py` | cascaded PID | per-aircraft gains; bumpless engage |
@@ -472,6 +474,136 @@ spacing from a free parameter into a cited one.
 
 Every figure below is measured, with the tolerance the test asserts.
 
+### CR-2144's thrust line, declared: the phugoid closes — session 30
+
+**`boeing747` now carries CR-2144 Table IX-3's thrust line**: LTH = 10.0 ft below the CG and
+XI = 2.50° above body x. With the speed derivatives already declared, **the phugoid is −0.05%
+in frequency and +1.13% in damping against Table IX-5**. That residual was the overshoot the
+speed-derivative entry below attributed to "the thrust line the engine does not have". The
+short period is unmoved. The Hannibal load barely notices: **64.5% → 64.4%** as flown.
+
+**1. The seam, verified inert before anything was declared.**
+
+- `Aircraft.thrust_arm` (m, below the CG) and `thrust_incidence` (rad, nose-up from body x)
+  both default to zero.
+- `aero.thrust_force` tilts the vector by the incidence.
+- `aero.thrust_moment` adds magnitude × arm. It recovers the magnitude by projecting onto the
+  line, not with a vector norm, which has no derivative at zero thrust (session 29's `sqrt(0)`
+  lesson).
+- `dynamics.derivatives` *selects* the moment only where an arm is declared, so no −0.0
+  component flips sign.
+- With the seam in and nothing declared, 73 tests passed, including the single-bit RK4 hash,
+  `test_conservation` and `test_trim`.
+
+**2. The declaration, and what it re-derives.**
+
+- **SOURCED:** LTH and XI (Table IX-3, identical at all eight conditions).
+- **DERIVED:** the trim thrust, from the Figure IX-6 drag along the line, T = C_D q̄S /
+  cos(α₀ + XI) ≈ 42,200 lb. From that:
+  - the aerodynamic trim lift, (W − T sin(α₀ + XI))/q̄S = **0.649**, was W/q̄S = 0.654
+  - Cm0 now carries −T·LTH/(q̄S c̄) = **−0.0159**, so trim stays at CR-2144's α₀ with zero
+    elevator
+- The trim C_L feeds the entry's drag derivation: e, CD0, M_crit, and the net CD_M. So the
+  construction is CR-2144's own throughout.
+- **Trim:** α 4.619° (source 4.60°), elevator −0.015°.
+- **`aircraft.boeing747_without_thrust_line()`** rebuilds the pre-line entry. Checked **bit
+  for bit, every field**, against commit `4e97e8c`. Every "bare 747" in the tests and scripts
+  is now built from it, so each earlier claim still runs on the aeroplane it was established
+  on.
+
+**3. Which arm: CR-2144's tables pick 10 ft.** `ASSUMPTIONS.md` C5 had said CR-2144 tabulates
+no arm and quoted NASA CR-114494: 10.00 ft as issued, 5.70 ft revised. Table IX-3 does
+tabulate one. The Table IX-4 back-solve of Cm_M against the hand-read curve, at seven
+conditions, discriminates between them:
+
+| LTH | 0 | 5.70 | 8 | 9 | **10** | 11 | 12 | 15 ft |
+|---|---|---|---|---|---|---|---|---|
+| Cm_M residual RMS | 0.0382 | 0.0167 | 0.0090 | 0.0067 | **0.0063** | 0.0080 | 0.0109 | 0.0215 |
+| mean | +0.035 | +0.014 | +0.006 | +0.002 | **−0.001** | −0.005 | −0.008 | −0.019 |
+
+**CR-2144's derivatives were built on 10 ft**, so that is what the entry declares, and C5 is
+corrected in place. The revised 5.70 ft may describe the real aeroplane better; it does not
+describe this data set.
+
+**4. The retest, against Table IX-5** (`scripts/cr2144_speed_derivatives.py`, section 4):
+
+| configuration | phugoid ω_n | phugoid ζ | short-period ω_n | short-period ζ |
+|---|---|---|---|---|
+| bare — the 747 before session 30 | −18.13% | +13.16% | −1.17% | −11.35% |
+| speed set only, thrust through the CG (commit `0d84eae`) | +4.05% | +3.45% | −1.34% | −11.50% |
+| **SHIPPED: speed set + thrust line** | **−0.05%** | **+1.13%** | **−1.30%** | **−11.46%** |
+| thrust line alone, speed seam shut | **−23.37%** | +10.58% | −1.13% | −11.32% |
+| shipped, CR-114494's revised 5.70 ft arm | +1.69% | +2.83% | −1.32% | −11.48% |
+| shipped, 8 ft / 12 ft arm | +0.76% / −0.87% | +1.92% / +0.34% | −1.31% / −1.29% | −11.47% / −11.45% |
+| *unsourced diagnostic from the entry below: Cm_M + C_m,trim/(M/2)* | *+0.07%* | *+0.64%* | *−1.30%* | *−11.46%* |
+| a copy trimmed by elevator, trim not re-referenced | −0.00% | −1.08% | −1.30% | −11.46% |
+
+- **Why it works, and why `ASSUMPTIONS.md` C5 missed it.** A thrust moment does not scale
+  with dynamic pressure, so the aerodynamic C_m left balancing it at trim is −0.0159, not
+  zero. Since q̄ ∝ u², ∂(q̄Sc̄ C_m)/∂u = ρuSc̄·C_m is an M_u term — exactly the one CR-2144
+  Appendix A carries. C5 bounded the moment by folding it into the *aerodynamic* C_m as a
+  constant offset. That offset trims to zero with the rest, so it could not show the term.
+  C5 measured "≤0.93%"; the phugoid actually moves by points.
+- **Neither half works alone.** The line with the speed seam shut takes the frequency from
+  −18.1% to **−23.4%**. The M_u term is the partner CR-2144 pairs with Cm_M.
+- **The sourced line lands where the unsourced diagnostic did**, within 0.1 and 0.5 points.
+- **The reference choice is worth 2.2 points of damping.** Re-referencing the trim, or
+  letting the elevator absorb the moment (+0.69°), gives +1.13% against −1.08%. That is
+  inside the reading band below. The entry keeps its documented convention: trim at α₀ with
+  zero elevator.
+- **Phugoid frequency moves about 0.43 points per foot of arm.**
+
+**5. What the hand reading now costs**, around the shipped line (section 5, re-based on it):
+
+| source | phugoid ω_n | phugoid ζ |
+|---|---|---|
+| interpolation: linear / PCHIP / natural cubic / Akima | −0.05 … +0.95% | +0.63 … +1.43% |
+| leave one point out, M 0.70–0.90 | −2.06 … +1.22% | −0.67 … +6.25% |
+| Monte Carlo, 1 px, N 4000, 5–95% | −3.15 … +2.87% | −2.87 … +6.66% |
+| Monte Carlo, 3 px | −10.26 … +5.63% | −12.09 … +18.21% |
+| check residuals, ±2 RMS | −1.65 … +1.53% | −8.52 … +11.08% |
+
+**The frequency result now brackets zero at every realistic reading level, and damping is
+still known to about ±5 points.** One CD_M point decides damping, as before.
+
+**6. What it moves outside the modes.**
+
+- **Hannibal, Mehta's field at 37,000 ft**, as-flown (A) and replayed (F) (§4, "The Hannibal
+  horizontal wind"):
+  - A: 64.5% → **64.4%** (1.7407 → 1.7396 g); pitch peak-to-peak 7.23° → 6.82°
+  - F: 75.0% → **75.3%**
+  - The line is a phugoid effect; the encounter is a few seconds of short period.
+- **The Fig. 8 vortex pin:** Δθ 2.3630 → 2.3115° (−2.18%), Δn −1.2488 → −1.2442 g (−0.37%).
+- **The wind-hold pitch values:** 2.3878 → 2.3366 held, 2.3523 → 2.3009 per stage. The
+  scheme cost is 1.53%, inside its unchanged band around 1.62%.
+- **The suite on the declared tree read 9 failed, 850 passed, 1 skipped**, and every failure
+  was accounted for before a test changed:
+  - **3 were claims about the speed set** that ran on "the shipped entry". They now run on the
+    speed-only entry they were established on, with every band kept, and each says so.
+  - **1 recomputed the drag slope at the old trim C_L**, W/q̄S: 0.0284 against the sourced
+    0.0251. It now uses CR-2144's aerodynamic trim lift, as the entry does, and the sourced
+    band holds.
+  - **2 new tests pin the thrust line.** `test_the_declared_thrust_line_closes_the_phugoid`,
+    and `test_the_thrust_line_needs_the_speed_derivatives`.
+  - **5 value pins were re-captured**, each with its reason at the change: the two phugoid
+    mode errors, the wind-hold figure, the RK4 hash and the Fig. 8 pin. **No tolerance was
+    widened, and no validated-baseline file moved**: conservation, CR-2144 modes, drag polar,
+    Navion and trim all passed unchanged.
+  - **The suite on the final tree: 861 passed, 1 skipped**, 1,000 s from the worktree root
+    with the tree printed. That is the previous 859 plus the two new tests.
+
+**What this entry does NOT do.**
+
+- `boeing747_approach` and `boeing747_jsbsim` declare no line. The approach set comes from
+  Table IX-2 at sea level, and Table IX-3's line was not checked against it. JSBSim's 747
+  carries its own engine geometry.
+- The 2° inward engine cant and spool dynamics are still absent (C5).
+- The thrust moment now scales with throttle. That matters for a powered recovery and
+  nothing flown so far, because every encounter holds its throttle fixed.
+- `cat_bounds.py`, `cat_uncertainty.py`, `cat_spectra.py`, `cat_ensemble.py`,
+  `cat_validation.py` and `lateral.py` were not re-run on the declared line. Their tests pass
+  on it.
+
 ### The DC-10's altitude through the vortex pair: it did not climb — session 30
 
 **Parks et al. 1985 Fig. 6's altitude panel was digitised, and it answers §8's question.** The
@@ -640,15 +772,17 @@ entry (seam shut) and the shipped one. All runs use Mehta's array at 37,000 ft, 
 controls, dt 0.01 and `cat_validation.py`'s window. Peak-to-peak `n_z` is given as % of the
 recorded 2.70 g:
 
-| field | bare | shipped | pitch ptp, bare / shipped | airspeed, shipped |
-|---|---|---|---|---|
-| **A** as flown — `wind.vortex_wind` unchanged, the headline | 68.2% | 64.5% | 6.70° / 7.23° | 400.8–473.1 kt |
-| **B** horizontal × cos 31° (the point form puts all of it along the path) | 70.1% | 66.5% | 6.92° / 6.70° | 412.1–471.0 kt |
-| **C** horizontal perturbation removed | **81.8%** | **81.9%** | 8.03° / 8.08° | 454.4–462.4 kt |
-| **D** B plus the recorded miss (item 3) × cos 31° | 78.3% | 79.9% | 7.55° / 7.34° | 413.9–463.8 kt |
-| **E** every core flipped — for scale only | 65.5% | 73.8% | 6.51° / 7.53° | 437.4–481.7 kt |
-| **F** A, evaluated at the NOMINAL altitude | **77.5%** | **75.0%** | 8.35° / 8.22° | 428.7–478.0 kt |
-| **G** D, evaluated at the nominal altitude | 78.3% | 77.2% | 8.74° / 9.13° | 427.0–483.1 kt |
+| field | bare | speed set only (`0d84eae`) | **shipped, + thrust line** | pitch ptp, bare / speed set only | airspeed, speed set only |
+|---|---|---|---|---|---|
+| **A** as flown — `wind.vortex_wind` unchanged, the headline | 68.2% | 64.5% | **64.4%** | 6.70° / 7.23° | 400.8–473.1 kt |
+| **B** horizontal × cos 31° (the point form puts all of it along the path) | 70.1% | 66.5% | 66.7% | 6.92° / 6.70° | 412.1–471.0 kt |
+| **C** horizontal perturbation removed | **81.8%** | **81.9%** | **81.9%** | 8.03° / 8.08° | 454.4–462.4 kt |
+| **D** B plus the recorded miss (item 3) × cos 31° | 78.3% | 79.9% | 79.3% | 7.55° / 7.34° | 413.9–463.8 kt |
+| **E** every core flipped — for scale only | 65.5% | 73.8% | 72.2% | 6.51° / 7.53° | 437.4–481.7 kt |
+| **F** A, evaluated at the NOMINAL altitude | **77.5%** | **75.0%** | **75.3%** | 8.35° / 8.22° | 428.7–478.0 kt |
+| **G** D, evaluated at the nominal altitude | 78.3% | 77.2% | 76.4% | 8.74° / 9.13° | 427.0–483.1 kt |
+
+*The "shipped, + thrust line" column was added later in session 30, when `boeing747` declared CR-2144's thrust line (§4, first entry). It moves no row by more than 1.6 points and no conclusion below; the numbers quoted in items 4–5 are the speed-set-only ones they were measured on.* With the line, A is **64.4%** and F **75.3%**; the 747 climbs +584 ft and passes +476 / +305 ft above cores 3 and 4.
 
 **5. The finding: the headline double-counts the 747's own climb.**
 
@@ -803,7 +937,9 @@ it, re-trimmed, linearised by `jacfwd`, and compared against Table IX-5, printed
 - **It is the thrust moment.** The engine puts thrust through the CG, so its trim C_m is zero
   where CR-2144's is −0.0159, and its M_u is short the `(ρScU₀/I_y)·C_m` term. Folding that
   term into Cm_M takes both phugoid errors under 1%. **The compensated value is a diagnostic,
-  not a declaration**: the sourced fix is a thrust line, which the model does not have.
+  not a declaration**: the sourced fix is a thrust line, ~~which the model does not have~~
+  **which `boeing747` declares later in session 30: phugoid −0.05% / +1.13%** (§4, "CR-2144's
+  thrust line, declared").
 - **The drag term is where a partial correction goes wrong.**
   - The engine already has a drag Mach slope, Korn/Lock's. At FC9 it is **0.0477 per Mach**,
     against a sourced total of 0.0251 (curve) or 0.0276 (table) — **1.7–1.9× too steep**.
@@ -922,7 +1058,7 @@ accounted for before a line of test changed:
 
 - ~~It does not declare the set on `boeing747`.~~ **It does** — asked for directly, after items
   4–6 were measured. The pre-declaration tree is the commit before the declaration.
-- It does not model a thrust line, and does not replace or re-fit Korn/Lock.
+- ~~It does not model a thrust line,~~ It does not replace or re-fit Korn/Lock. (The thrust line was declared later in session 30 — §4's first entry.)
 - It does not schedule anything on Mach from pp. 220–221's α-family curves; those are used
   only to check the reading.
 - It does not re-read p. 222 from the PDF independently of the hand digitisation.
@@ -1791,6 +1927,7 @@ checkout**, which §10 documents and which this script caught on its first run b
 | `σ_n` | **0.6394 g** | severe ≥ 0.3 g (Misaka) | severe, on a field identified from an encounter that injured people |
 | vertical gust peak — **session 30, speed derivatives declared** | **−81.5 / +51.9 ft/s** | `V₀` = 86.8 ft/s | **no longer lands on −V₀.** The declared 747 pitches further and flies through the cores off-centre, so it meets weaker gusts — which also widens the gap to the recorded wind §5 attributes part of the shortfall to |
 | load factor `n_z` — **session 30** | **−0.374 to +1.367 g** | −1.0 to +1.7 g | inside the band, at **64.5%** of its peak-to-peak: further from the record than the row above |
+| load factor `n_z` — **session 30, with CR-2144's thrust line** | **−0.367 to +1.372 g** | −1.0 to +1.7 g | inside the band, at **64.4%**: the line moves the headline 0.1 point |
 | air-relative α — **session 30** | −5.83 to +7.16° | — | inside the 10° linear band |
 | air- vs inertial α — **session 30** | up to **6.47°** | — | — |
 | `σ_n` — **session 30** | **0.6273 g** | severe ≥ 0.3 g | still severe |
@@ -2895,10 +3032,12 @@ is smaller than the fix.
 | Phugoid ζ (as shipped until session 30) | 0.0560 | 0.0489 | 14.4% — attributed, §5 |
 | Short-period ωn (as shipped until session 30) | 0.9508 | 0.964 rad/s | 1.4% — attributed, §5 |
 | Short-period ζ (as shipped until session 30) | 0.3425 | 0.387 | 11.5% — attributed, §5 |
-| **Phugoid ωn (as shipped, session 30)** | **0.0700** | 0.0673 rad/s | **+4.0%** — CR-2144's speed derivatives declared; the residual is the thrust line, §4 |
-| **Phugoid ζ (as shipped, session 30)** | **0.0506** | 0.0489 | **+3.5%** — ±5 points from the hand reading, §4 |
-| **Short-period ωn (as shipped, session 30)** | **0.9511** | 0.964 rad/s | −1.3% — α̇ family still omitted, §5 |
-| **Short-period ζ (as shipped, session 30)** | **0.3425** | 0.387 | −11.5% — α̇ family still omitted, §5 |
+| Phugoid ωn (speed derivatives declared, session 30) | 0.0700 | 0.0673 rad/s | +4.0% — the residual was the thrust line, §4 |
+| Phugoid ζ (speed derivatives declared, session 30) | 0.0506 | 0.0489 | +3.5% |
+| **Phugoid ωn (as shipped: speed derivatives + thrust line, session 30)** | **0.06727** | 0.0673 rad/s | **−0.05%** — CR-2144 Table IX-3's thrust line declared, §4 |
+| **Phugoid ζ (as shipped, session 30)** | **0.04945** | 0.0489 | **+1.1%** — ±5 points from the hand reading, §4 |
+| **Short-period ωn (as shipped, session 30)** | **0.9515** | 0.964 rad/s | −1.3% — α̇ family still omitted, §5 |
+| **Short-period ζ (as shipped, session 30)** | **0.3427** | 0.387 | −11.5% — α̇ family still omitted, §5 |
 | Phugoid / short period (augmented model) | — | — | ~1% |
 
 **All four published longitudinal factors are now listed.** CR-2144 Table IX-5's
@@ -4236,8 +4375,9 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   ω_n from −18.1% to +4.1% and ζ from +13.2% to +4.6% (±5 points from the reading).
 
   It leaves two named residuals, neither a digitisation error:
-  - **No thrust line.** CR-2144's trim C_m is −0.0159 and the engine's is 0. Compensating for
-    that term closes both phugoid errors to under 1%.
+  - ~~**No thrust line.** CR-2144's trim C_m is −0.0159 and the engine's is 0. Compensating for
+    that term closes both phugoid errors to under 1%.~~ **CLOSED later in session 30**: Table
+    IX-3's thrust line is declared, and the phugoid reads −0.05% / +1.13% (§4).
   - **Korn/Lock's drag Mach slope is 1.7–1.9× CR-2144's at FC9.** Left in place, it makes
     phugoid damping worse than not declaring at all.
 
@@ -5257,6 +5397,33 @@ but the no-winglet baseline is plotted in every high-speed stability figure. §7
   entry would be weak ground for settling the sealed
   `dc10_does_not_close_the_hannibal_gap`, whose settlement names "a published DC-10 cruise
   derivative set".
+
+**12. Then the thrust line, asked for directly: "add the engine thrust line and redo the SPPO".**
+§4's first entry, "CR-2144's thrust line, declared", has the detail.
+
+- **Declared on `boeing747`: LTH 10.0 ft, XI 2.50°** (Table IX-3). The trim is referenced to
+  it, so it stays at α₀ with zero elevator and aerodynamic C_m = −0.0159.
+- **Phugoid, against Table IX-5: +4.05% / +3.45% → −0.05% / +1.13%.** Short period
+  −1.30% / −11.46%, unmoved. Reading uncertainty around the new value: frequency −3.2 … +2.9%
+  and damping −2.9 … +6.7% at 1 px.
+- **Two earlier statements were wrong and are corrected in place:**
+  - `ASSUMPTIONS.md` C5 said CR-2144 tabulates no thrust line. Table IX-3 does, and CR-2144's
+    tables agree with its 10 ft (Cm_M RMS 0.0063), not CR-114494's revised 5.70 ft (0.0167).
+  - C5's verdict that modelling it buys ≤0.93% came from folding the moment into the
+    aerodynamic C_m, which removes the M_u term that matters.
+- **The Hannibal headline moves 0.1 point**: A 64.5% → 64.4%, F 75.0% → 75.3%. The line is a
+  phugoid effect, and the encounter lasts a few seconds.
+- **`aircraft.boeing747_without_thrust_line()`** rebuilds the old entry bit for bit, so every
+  bare-747 claim still runs on the aeroplane it was measured on.
+- **Suite on the declared tree: 9 failed, then fixed**, every one accounted for in §4: 3 claims
+  moved onto the speed-only entry, 1 stale trim-C_L recomputation, 5 re-captured pins, and 2
+  new tests. No tolerance widened, and no validated-baseline file moved. **Final: 861 passed,
+  1 skipped.**
+- **Re-run:** `cr2144_speed_derivatives.py`, `hannibal_along_track_wind.py` and
+  `cr2144_report_figures.py`. **Not re-run:** the other CAT scripts, whose tests pass on the
+  line.
+- **Not done.** The approach and JSBSim 747 entries declare no line. Engine cant and spool
+  dynamics are still absent.
 
 ### Session 28 — the errors did not grow, the questions did
 
@@ -6891,7 +7058,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 
 | Command | What it does |
 |---|---|
-| `.venv/Scripts/python.exe -m pytest -q` | **859 passed, 1 skipped, 1,673 s** (session 30, after the Parks Fig. 6 altitude: 852 plus 7 in `test_parks_fig6_altitude.py`). Before that **852 passed, 1 skipped, 1,295 s** (the 844 below plus the 8 tests in `test_hannibal_horizontal_wind.py`). Before that, **844 passed, 1 skipped, 887 s** (measured session 30 after `boeing747` declared CR-2144's speed derivatives: 23 tests in `test_cr2144_speed_derivatives.py`, and 17 existing tests re-captured, moved onto the undeclared entry, split, or fixed — §4's session-30 entry, item 7, says which. Earlier the same session measured **843** before the declaration, which was 821 + 22 with nothing else moved. The wall clock is machine load, not the suite). Previously **821 passed, 1 skipped, 34m37s** at session 28 after the compressibility merge; 812 before it, same session; 811 at session 26; 807 at session 25; it was 788 at session 24 and **758 measured session 23b**; the 626 this row claimed was stale by five sessions, and the 322 before that by several more — this row has now been wrong twice, so re-measure it rather than trusting it). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. |
+| `.venv/Scripts/python.exe -m pytest -q` | **861 passed, 1 skipped, 1,000 s** (session 30, after `boeing747` declared CR-2144's thrust line: 859 plus 2 in `test_cr2144_speed_derivatives.py`, with 9 existing tests re-pointed or re-captured — §4's thrust-line entry says which). Before that **859 passed, 1 skipped, 1,673 s** (session 30, after the Parks Fig. 6 altitude: 852 plus 7 in `test_parks_fig6_altitude.py`). Before that **852 passed, 1 skipped, 1,295 s** (the 844 below plus the 8 tests in `test_hannibal_horizontal_wind.py`). Before that, **844 passed, 1 skipped, 887 s** (measured session 30 after `boeing747` declared CR-2144's speed derivatives: 23 tests in `test_cr2144_speed_derivatives.py`, and 17 existing tests re-captured, moved onto the undeclared entry, split, or fixed — §4's session-30 entry, item 7, says which. Earlier the same session measured **843** before the declaration, which was 821 + 22 with nothing else moved. The wall clock is machine load, not the suite). Previously **821 passed, 1 skipped, 34m37s** at session 28 after the compressibility merge; 812 before it, same session; 811 at session 26; 807 at session 25; it was 788 at session 24 and **758 measured session 23b**; the 626 this row claimed was stale by five sessions, and the 322 before that by several more — this row has now been wrong twice, so re-measure it rather than trusting it). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. |
 | `.venv/Scripts/python.exe scripts/sanity.py` | **The ladder, for a reader who does not yet trust the model.** Twelve cases from degenerate inputs upward — zero the wind, zero a coefficient so a motion becomes impossible, then signs, then hand-computable numbers, then structural properties. Every expected value is derived by hand in the source and printed beside the model's answer, so it is read rather than trusted. Ends with the item 08 convention probe, which is a measurement rather than a pass/fail. |
 | `.venv/Scripts/python.exe -m pytest --nbval-lax notebooks/ -q` | **The second gate.** Executes `notebooks/solver-validation.ipynb` so it cannot rot. Needs the `dev` extra (`jupyter`, `nbval`). Deliberately *not* in `testpaths` and `--nbval-lax` is deliberately *not* in `addopts`: that would make every `pytest` run fail with "unrecognized arguments" wherever nbval is absent. **Run it from a worktree with an ABSOLUTE `PYTHONPATH`** — nbval starts the kernel with its cwd in `notebooks/`, so a relative `PYTHONPATH=.` resolves to the wrong directory and `atisim` silently loads from the main checkout. |
 | `.venv/Scripts/python.exe scripts/checkpoint.py` | 747 only, no flags. Trim residuals, 60 s fixed-control hold, longitudinal modes against CR-2144 Table IX-5. |

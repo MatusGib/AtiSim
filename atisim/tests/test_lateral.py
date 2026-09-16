@@ -35,7 +35,7 @@ import numpy as np
 import pytest
 
 from atisim import vortex_viz, wind
-from atisim.aircraft import CRUISE, REGISTRY
+from atisim.aircraft import CRUISE, REGISTRY, boeing747_without_thrust_line
 from atisim.units import RAD2DEG
 
 _PSI = math.radians(wind.MEHTA_HANNIBAL_PSI_DEG)
@@ -401,7 +401,7 @@ def test_the_line_vortex_rolls_the_aircraft_and_the_strip_path_changes_it():
         peak = p.n_z[p.window].max()
         return abs(e.n_z[e.window].max() - peak) / abs(peak - 1.0)
 
-    bare = REGISTRY["boeing747"]._replace(mach_deriv_ref=jnp.array(-1.0))
+    bare = boeing747_without_thrust_line()._replace(mach_deriv_ref=jnp.array(-1.0))
     b_point = _fly(lambda p: wind.vortex_wind(p, _oblique()), ac=bare)
     b_line = _fly(lambda p: wind.line_vortex_wind(p, _oblique()), ac=bare)
     b_strip = _fly(lambda p: wind.line_vortex_wind(p, _oblique()), strip=True, ac=bare)

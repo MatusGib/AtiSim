@@ -50,7 +50,7 @@ from scipy.interpolate import Akima1DInterpolator, CubicSpline, PchipInterpolato
 
 from atisim import aero  # noqa: E402
 from atisim import cr2144_mach as cm  # noqa: E402
-from atisim.aircraft import CRUISE, REGISTRY  # noqa: E402
+from atisim.aircraft import CRUISE, REGISTRY, boeing747_without_thrust_line  # noqa: E402
 from atisim.atmosphere import density, speed_of_sound  # noqa: E402
 from atisim.trim import trim  # noqa: E402
 from atisim.validation import longitudinal_matrix  # noqa: E402
@@ -227,11 +227,17 @@ def check():
 # ---------------------------------------------------------------------------
 
 AC = REGISTRY["boeing747"]
-# `boeing747` DECLARES the FC9 set since session 30, so the baseline for every
-# "what did declaring do" row is this: the same entry with the seam shut, which
-# is the 747 as it stood before.
-BARE = AC._replace(mach_deriv_ref=jnp.array(-1.0), CL_M=jnp.array(0.0),
-                   CD_M=jnp.array(0.0), Cm_M=jnp.array(0.0))
+# `boeing747` DECLARES the FC9 set and CR-2144's thrust line since session 30,
+# so the baseline for every "what did declaring do" row is this: the entry
+# without the line and with the seam shut, which is the 747 as it stood before.
+BARE = boeing747_without_thrust_line()._replace(
+    mach_deriv_ref=jnp.array(-1.0), CL_M=jnp.array(0.0), CD_M=jnp.array(0.0), Cm_M=jnp.array(0.0))
+# The speed set as first declared, before the thrust line: the shipped entry of
+# commit 0d84eae, rebuilt exactly.
+SPEED_ONLY = boeing747_without_thrust_line()
+# The shipped entry with only the seam shut: the base `price` adds the speed set
+# to, so the reading uncertainty is centred on the model that ships.
+LINE_BASE = AC._replace(mach_deriv_ref=jnp.array(-1.0))
 V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
 M_REF = cm.IX3[9][1]
 
@@ -275,7 +281,17 @@ def retest():
     print(f"  shipped entry declares CL_M {float(AC.CL_M):.4f}, Cm_M {float(AC.Cm_M):.4f}, "
           f"CD_M {float(AC.CD_M):+.4f} net (total {float(AC.CD_M) + kl:.4f} at the flown trim)")
     rows = {"bare entry, seam shut (the 747 before session 30)": bare}
-    rows["SHIPPED boeing747, FC9 set declared"] = engine_modes(AC)[0]
+    rows["FC9 set declared, thrust through the CG (0d84eae)"] = engine_modes(SPEED_ONLY)[0]
+    rows["SHIPPED boeing747, FC9 set + thrust line"] = engine_modes(AC)[0]
+    rows["  thrust line alone (shipped, seam shut)"] = engine_modes(
+        AC._replace(mach_deriv_ref=jnp.array(-1.0)))[0]
+    # The arm CR-2144's own tables agree with is 10 ft (Cm_M check RMS 0.0063,
+    # against 0.0167 at 5.70 ft). CR-114494's REVISED arm, ASSUMPTIONS C5, as the
+    # sensitivity: Cm0 re-referenced so the trim stays at zero elevator.
+    qsc = 177.0 * cm.S_FT2 * cm.CBAR_FT
+    t_trim = 0.043 * 177.0 * cm.S_FT2 / math.cos(math.radians(4.60) + cm.XI_RAD)
+    rows["  shipped with CR-114494's revised 5.70 ft arm"] = engine_modes(AC._replace(
+        thrust_arm=jnp.array(5.70 * 0.3048), Cm0=AC.Cm0 + t_trim * (10.0 - 5.70) / qsc))[0]
     sourced = declare(d["cl_m"], d["cd_m"], d["cm_m"])
     rows["  a copy, CD_M net of Korn/Lock at the flown trim"] = engine_modes(sourced)[0]
     rows["  ...Korn/Lock slope kept as CD_M"] = engine_modes(
@@ -314,12 +330,12 @@ def retest():
 # ---------------------------------------------------------------------------
 
 def price(d, resid, n_mc: int, seed: int):
-    print("\n== 5. PRICE: how much of the retest is the hand reading ==")
-    x, _ = trim(jnp.array(V), jnp.array(H), BARE)
+    print("\n== 5. PRICE: how much of the retest is the hand reading (on the shipped thrust line) ==")
+    x, _ = trim(jnp.array(V), jnp.array(H), LINE_BASE)
     alpha, de, th = (float(v) for v in x)
-    A0 = longitudinal_matrix(BARE, alpha, de, th, V, H)
+    A0 = longitudinal_matrix(LINE_BASE, alpha, de, th, V, H)
     a_s = float(speed_of_sound(jnp.array(H)))
-    kl = korn_lock_slope(BARE, alpha, V / a_s)
+    kl = korn_lock_slope(LINE_BASE, alpha, V / a_s)
     rho = float(density(jnp.array(H)))
     Iyy = float(np.asarray(AC.inertia)[1, 1])
 

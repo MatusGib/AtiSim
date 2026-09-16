@@ -348,11 +348,16 @@ def aero_forces_moments(
 def thrust_force(
     controls: Controls, ac: Aircraft, rho: Array, mach: Array = 0.0
 ) -> Array:
-    """Body-axis thrust, assumed aligned with the body x axis.
+    """Body-axis thrust, along the aircraft's thrust line.
 
     Deliberately not an engine model: throttle times maximum thrust, with a
     density lapse and a ram term. The exponent is 1 for a normally-aspirated
     piston and around 0.7-0.8 for a high-bypass turbofan.
+
+    The line is tilted `ac.thrust_incidence` nose-up from body x, so thrust
+    gains an upward (negative body z) component. At the default of zero the
+    vector is [T, 0, -0.0], which adds to any force bit-for-bit as [T, 0, 0]
+    did. Its moment is `thrust_moment`.
 
     `mach` is optional and defaults to zero, which switches the ram term off
     entirely, so callers written before it existed keep their exact behaviour.
@@ -366,4 +371,19 @@ def thrust_force(
         * (rho / RHO0) ** ac.thrust_lapse
         * (1.0 + ac.mach_ram * mach**2)
     )
-    return jnp.array([magnitude, 0.0, 0.0])
+    return jnp.array([magnitude * jnp.cos(ac.thrust_incidence), 0.0,
+                      -magnitude * jnp.sin(ac.thrust_incidence)])
+
+
+def thrust_moment(thrust: Array, ac: Aircraft) -> Array:
+    """Body-axis moment of `thrust_force`'s vector acting along the thrust line.
+
+    The line passes `ac.thrust_arm` below the CG, so the moment is the thrust
+    magnitude times that arm, nose-up for a positive arm. The magnitude is
+    recovered by projecting back onto the line rather than as a vector norm:
+    a norm has no derivative at zero thrust, and jacfwd through an idle
+    engine would return NaN.
+    """
+    along_line = (thrust[0] * jnp.cos(ac.thrust_incidence)
+                  - thrust[2] * jnp.sin(ac.thrust_incidence))
+    return jnp.array([0.0, along_line * ac.thrust_arm, 0.0])

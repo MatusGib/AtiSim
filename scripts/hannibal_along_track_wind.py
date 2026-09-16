@@ -13,8 +13,8 @@ point form does NOT do is project it: it puts the whole perturbation along the
 path, where only cos(31 deg) = 0.857 of it lies.
 
 Five fields, each flown by the 747 with its Mach-derivative seam SHUT (the
-airframe before session 30) and as SHIPPED (CR-2144's speed derivatives
-declared), through Mehta's array at 37,000 ft with fixed controls, dt 0.01 and
+airframe before session 30, thrust through the CG) and as SHIPPED (CR-2144's
+speed derivatives and thrust line declared), through Mehta's array at 37,000 ft with fixed controls, dt 0.01 and
 `cat_validation.py`'s window:
 
   A  as flown           `wind.vortex_wind`, unchanged
@@ -57,7 +57,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
 from atisim import viz, vortex_viz, wind  # noqa: E402
-from atisim.aircraft import CRUISE, REGISTRY  # noqa: E402
+from atisim.aircraft import CRUISE, REGISTRY, boeing747_without_thrust_line  # noqa: E402
 from atisim.units import FT2M, RAD2DEG  # noqa: E402
 
 COS_PSI = math.cos(math.radians(wind.MEHTA_HANNIBAL_PSI_DEG))
@@ -181,7 +181,7 @@ def main():
 
     # ---------------------------------------------------------------- flights
     runs = {}
-    bare = REGISTRY["boeing747"]._replace(mach_deriv_ref=jnp.array(-1.0))
+    bare = boeing747_without_thrust_line()._replace(mach_deriv_ref=jnp.array(-1.0))
     shipped = REGISTRY["boeing747"]
     for key, (label, field) in fields(miss).items():
         for name, ac in (("bare", bare), ("shipped", shipped)):

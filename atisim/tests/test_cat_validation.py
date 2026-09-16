@@ -33,7 +33,7 @@ import numpy as np
 import pytest
 
 from atisim import checks, trim, validation, viz, wind
-from atisim.aircraft import REGISTRY
+from atisim.aircraft import REGISTRY, boeing747_without_thrust_line
 from atisim.atmosphere import speed_of_sound
 from atisim.units import FT2M
 
@@ -987,7 +987,7 @@ def test_the_flown_gust_spacing_reproduces_the_recorded_five_seconds():
     # derivatives, pitches further in the cores and meets them off-centre, which
     # moves WHEN the extrema are met: peak-to-peak 5.28 -> 5.50 s, +10.0% at
     # dt 0.02 AND at dt 0.01 -- so the path, not the sampling.
-    readings = readings_for(REGISTRY["boeing747"]._replace(mach_deriv_ref=jnp.array(-1.0)))
+    readings = readings_for(boeing747_without_thrust_line()._replace(mach_deriv_ref=jnp.array(-1.0)))
     # The claim must not depend on which reading of "apart" was taken.
     assert max(readings.values()) - min(readings.values()) < 0.20
 
@@ -1137,7 +1137,7 @@ def test_no_gust_strength_reaches_the_recorded_peak_inside_the_linear_range():
         return float(np.abs(enc.alpha_air[enc.window]).max() * RAD2DEG)
 
     recorded = wind.TM102186_HANNIBAL_NZ[1]
-    bare = REGISTRY["boeing747"]._replace(mach_deriv_ref=jnp.array(-1.0))
+    bare = boeing747_without_thrust_line()._replace(mach_deriv_ref=jnp.array(-1.0))
 
     def elasticity(hi0, hi3):
         return ((hi3 - 1.0) / (hi0 - 1.0) - 1.0) / 2.0

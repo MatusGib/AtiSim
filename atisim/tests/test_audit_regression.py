@@ -31,7 +31,7 @@ import pytest
 
 from atisim import airframe, provenance, wind
 from atisim.aero import aero_forces_moments, air_data
-from atisim.aircraft import CRUISE, REGISTRY, _unprime
+from atisim.aircraft import CRUISE, REGISTRY, _unprime, boeing747_without_thrust_line
 from atisim.atmosphere import G0, density
 from atisim.state import Controls, State, euler_to_quat, quat_to_dcm
 from atisim.trim import trim
@@ -90,12 +90,12 @@ IX5_FC9_DENOM = dict(phugoid_zeta=0.0489, phugoid_wn=0.0673,
 
 B747 = REGISTRY["boeing747"]
 B747PA = REGISTRY["boeing747_approach"]
-# The cruise 747 with its Mach-derivative seam shut: the engine as it stood
-# before session 30 declared CR-2144's speed derivatives on `boeing747`. The
-# attribution tests in section 3 explain THAT engine's gap to Table IX-5 by the
-# two families it omitted, so they run on it; the mode-error pins run on the
-# shipped entry. Both states stay measurable this way.
-B747_BARE = B747._replace(mach_deriv_ref=jnp.array(-1.0))
+# The cruise 747 with its Mach-derivative seam shut and no thrust line: the
+# engine as it stood before session 30 declared CR-2144's speed derivatives and
+# thrust line on `boeing747`. The attribution tests in section 3 explain THAT
+# engine's gap to Table IX-5 by the two families it omitted, so they run on it;
+# the mode-error pins run on the shipped entry. Both states stay measurable.
+B747_BARE = boeing747_without_thrust_line()._replace(mach_deriv_ref=jnp.array(-1.0))
 G = 32.174  # ft/s^2, the value CR-2144's own arithmetic uses
 
 
@@ -355,7 +355,13 @@ def _cruise_modes(ac=B747):
 # that family. The short-period pair moves under 0.2 points and keeps its
 # values here. abs=0.01 is unchanged. The pre-session-30 figures are what
 # B747_BARE still returns.
-MODE_ERRORS_VS_IX5 = {"phugoid_wn": +0.0405, "phugoid_zeta": +0.0345,
+#
+# LATER IN SESSION 30, THE WORLD CHANGED AGAIN. `boeing747` also declares
+# CR-2144 Table IX-3's thrust line (10 ft below the CG, 2.5 deg), which carries
+# the M_u term the speed set alone lacked: phugoid_wn +0.0405 -> -0.0005 and
+# phugoid_zeta +0.0345 -> +0.0113. Short period under 0.05 points. abs=0.01
+# is unchanged.
+MODE_ERRORS_VS_IX5 = {"phugoid_wn": -0.0005, "phugoid_zeta": +0.0113,
                       "sp_wn": -0.014, "sp_zeta": -0.115}
 
 
@@ -1082,8 +1088,12 @@ def test_the_wind_hold_costs_the_headline_figure_more_than_E4_bounds_it():
     # both schemes (hold 2.2596 -> 2.3878, per-stage 2.2230 -> 2.3523). The
     # FINDING did not move: the scheme cost is still ~1.5% at dt = 0.02 (-1.48%
     # against 1.62%), inside the unchanged abs=0.004 below. abs=0.005 unchanged.
-    assert held == pytest.approx(2.3878, abs=0.005)
-    assert per_stage == pytest.approx(2.3523, abs=0.005)
+    # LATER IN SESSION 30 `boeing747` also declared CR-2144's thrust line, which
+    # re-references its trim: hold 2.3878 -> 2.3366, per-stage 2.3523 -> 2.3009,
+    # both -2.1%. The scheme cost reads 1.53%, still inside abs=0.004 of 0.0162,
+    # so that pin and both tolerances are unchanged.
+    assert held == pytest.approx(2.3366, abs=0.005)
+    assert per_stage == pytest.approx(2.3009, abs=0.005)
     assert abs(rel) == pytest.approx(0.0162, abs=0.004)
     assert abs(rel) > 1e-3, (
         "the wind hold now costs less than 0.1% at dt=0.02; ASSUMPTIONS.md E4's "

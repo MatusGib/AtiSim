@@ -108,7 +108,7 @@ reference.
 | A9 | Korn equation `M_dd = κ/cosΛ − (t/c)/cos²Λ − CL/(10cos³Λ)` | `aero.drag_divergence_mach` | model form |
 | A10 | Lift and drag are wind-axis; side force is body-axis; rotation into body through α and β | `aero.aero_forces_moments:157` | convention |
 | A11 | Moments are `q̄S·[b·Cl, c·Cm, b·Cn]` | `aero.aero_forces_moments:165` | convention |
-| A12 | Thrust is `throttle × max_thrust × (ρ/ρ₀)^lapse`, along body x, through the CG | `aero.thrust_force` | model form |
+| A12 | Thrust is `throttle × max_thrust × (ρ/ρ₀)^lapse`, ~~along body x, through the CG~~ along the aircraft's thrust line — body x through the CG by default; `boeing747` declares CR-2144's 10 ft arm and 2.5° incidence since session 30 (ASSUMPTIONS C5) | `aero.thrust_force`, `aero.thrust_moment` | model form |
 | A13 | Airspeed floor `V_MIN = 1.0 m/s` guards the divisions | `aero.V_MIN` | numerics |
 | A14 | Derivatives are constant over the whole envelope — one linearisation point per aircraft | `Aircraft` pytree (by omission) | **implicit** |
 | A15 | An external `CoeffIncrement` may be added to CL, Cl, Cm, Cn after build-up | `aero.aero_forces_moments:143` | seam |

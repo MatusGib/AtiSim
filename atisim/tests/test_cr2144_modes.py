@@ -21,7 +21,7 @@ import numpy as np
 import pytest
 
 from atisim import trim
-from atisim.aircraft import CRUISE, REGISTRY
+from atisim.aircraft import CRUISE, REGISTRY, boeing747_without_thrust_line
 from atisim.tests.modes import lateral_modes, longitudinal_modes
 from atisim.units import DEG2RAD
 
@@ -138,7 +138,7 @@ def test_the_sims_own_unaugmented_longitudinal_modes_are_the_documented_gap():
     # no longer the alpha/q/de-only form this test documents: its phugoid is +4%
     # against Table IX-5, not -18%. The figures below are that form's, measured
     # on the same entry with the Mach seam shut, and every band is as it was.
-    bare = AC._replace(mach_deriv_ref=jnp.array(-1.0))
+    bare = boeing747_without_thrust_line()._replace(mach_deriv_ref=jnp.array(-1.0))
     x, _ = trim.trim(jnp.array(V), jnp.array(H), bare)
     alpha, elevator, throttle = (float(v) for v in x)
     phugoid, short_period = longitudinal_modes(bare, alpha, elevator, throttle, V, H)

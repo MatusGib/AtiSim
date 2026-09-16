@@ -90,6 +90,21 @@ class Aircraft(NamedTuple):
     # the real table has around M 0.2. See the 737's docstring.
     mach_ram: Array = jnp.array(0.0)
 
+    # The THRUST LINE. `thrust_arm` is its perpendicular distance BELOW the CG,
+    # in metres, so forward thrust on a positive arm pitches the nose up; and
+    # `thrust_incidence` tilts it nose-up from the body x axis, in radians.
+    # CR-2144 Table IX-3 calls them LTH and XI.
+    #
+    # Defaulted, and both defaults put thrust exactly where every entry had it
+    # before -- along body x, through the CG -- so no aircraft moves until one
+    # declares a line. Why it matters is not the moment itself, which the trim
+    # absorbs: it is that a moment balanced at trim leaves the AERODYNAMIC C_m
+    # non-zero there, and dynamic pressure scales that with u^2, so M_u gains
+    # a term a thrust-through-the-CG model cannot carry. PROJECT.md section 4,
+    # "CR-2144's speed derivatives", item 4, is where it was found.
+    thrust_arm: Array = jnp.array(0.0)
+    thrust_incidence: Array = jnp.array(0.0)
+
     # Sideslip drag, CD += CD_beta * beta^2. Quadratic because drag is an even
     # function of sideslip, so the linear term is identically zero at beta = 0.
     # Linear small-perturbation theory therefore has no such derivative, which
@@ -470,7 +485,7 @@ def _unprime(Lp, Np, Ix, Iz, Ixz):
 _B747_G = 32.174
 
 
-def _boeing_747() -> Aircraft:
+def _boeing_747(thrust_line: bool = True) -> Aircraft:
     # -- Table IX-3: geometry and flight condition (imperial, verbatim) --
     S, b, c = 5500.0, 195.68, 27.31  # ft^2, ft, ft
     W = 636636.0  # lb
@@ -502,10 +517,25 @@ def _boeing_747() -> Aircraft:
         "dr": (0.153, -0.475),
     }
 
+    # -- Table IX-3: the thrust line, identical at every flight condition --
+    # LTH is the moment arm below the CG and XI the inclination above body x;
+    # PROJECT.md section 4 fixes the sign of LTH by the tables agreeing, not
+    # by assumption. T_trim is DERIVED: level flight balances drag along the
+    # line's direction, alpha0 + XI from the velocity, with the Figure IX-6
+    # trim drag above.
+    #
+    # `thrust_line=False` builds the entry exactly as it stood before the line
+    # existed -- thrust through the CG, T_trim zero in the two lines below --
+    # so before and after stay measurable. See `boeing747_without_thrust_line`.
+    LTH, XI = (10.0, 2.50 * DEG2RAD) if thrust_line else (0.0, 0.0)  # ft, rad
+
     m = W / _B747_G  # slugs
     qS = qbar * S
     AR = b * b / S
-    CL_trim = W / qS  # 0.654
+    T_trim = CD_trim * qS / math.cos(alpha0 + XI) if thrust_line else 0.0  # lb, ~42,200
+    # The AERODYNAMIC lift at trim: weight less the thrust line's lift share,
+    # 0.8% of it. Until the thrust line existed this was W / qS = 0.654.
+    CL_trim = (W - T_trim * math.sin(alpha0 + XI)) / qS  # 0.649
 
     # Longitudinal, from the dimensional definitions in CR-2144 Appendix A.
     CLa = -Zw * m * U0 / qS - CD_trim
@@ -515,10 +545,13 @@ def _boeing_747() -> Aircraft:
     Cmq = Mq * 2.0 * Iy * U0 / (qS * c * c)
     Cmde = Mde * Iy / (qS * c)
 
-    # The linear model is referenced to the trimmed condition: CL = CL_trim and
-    # Cm = 0 at alpha0 with zero elevator (the stabiliser carries the trim).
+    # The linear model is referenced to the trimmed condition at alpha0 with zero
+    # elevator (the stabiliser carries the trim). There the AERODYNAMIC moment
+    # balances the thrust line's, so Cm is -T LTH / (qS c) = -0.0159 rather than
+    # zero -- the same term CR-2144 Appendix A's M_u carries, and the one this
+    # entry lacked while thrust went through the CG.
     CL0 = CL_trim - CLa * alpha0
-    Cm0 = -Cma * alpha0
+    Cm0 = -Cma * alpha0 - T_trim * LTH / (qS * c)
 
     # Drag. Oswald efficiency is not tabulated, so it is recovered from Xw:
     #   Xw = qS(-CDa cos a + CD sin a + CLa sin a + CL cos a) / (m U0)
@@ -632,12 +665,14 @@ def _boeing_747() -> Aircraft:
         # +39.9%; declaring nothing here and leaving Korn/Lock alone gives
         # +21.3%, which is WORSE than declaring no Mach derivatives at all.
         #
-        # THE PHUGOID STILL OVERSHOOTS BY ABOUT 4%, AND THAT IS NOT THE DATA.
-        # Table IX-4's own implied set overshoots the same way. CR-2144 puts
-        # the thrust line 10 ft from the CG, so its aerodynamic C_m at trim is
-        # -0.0159 and Appendix A's M_u carries that term; this model puts
-        # thrust through the CG and cannot. Section 4 measures it: restoring
-        # that one term alone closes the phugoid to under 1%.
+        # ALONE, THIS SET OVERSHOOTS THE PHUGOID BY ABOUT 4%, AND THAT IS NOT
+        # THE DATA. Table IX-4's own implied set overshoots the same way.
+        # CR-2144 puts the thrust line 10 ft from the CG, so its aerodynamic C_m
+        # at trim is -0.0159 and Appendix A's M_u carries that term. This
+        # entry now declares that line (`thrust_arm` below), and with it the
+        # phugoid is -0.05% in frequency and +1.13% in damping against
+        # Table IX-5. Neither half works without the other: the line on the
+        # bare entry takes the frequency error from -18% to -23%.
         mach_deriv_ref=jnp.array(mach0),
         CL_M=jnp.array(0.1304),
         CD_M=jnp.array(0.0251 - dcd_wave_dmach),
@@ -658,6 +693,10 @@ def _boeing_747() -> Aircraft:
         # models no engine, so this is a modelling choice, not source data.
         max_thrust=jnp.array(4 * 43500.0 * LBF2N),
         thrust_lapse=jnp.array(0.8),
+        # SOURCED, Table IX-3: the thrust line, LTH 10.0 ft below the CG and XI
+        # 2.50 deg above body x. CL0 and Cm0 above are referenced to it.
+        thrust_arm=jnp.array(LTH * FT2M),
+        thrust_incidence=jnp.array(XI),
         elevator_limit=jnp.array(25.0 * DEG2RAD),
         aileron_limit=jnp.array(20.0 * DEG2RAD),
         rudder_limit=jnp.array(25.0 * DEG2RAD),
@@ -1931,6 +1970,14 @@ def boeing787_yoshimura() -> Aircraft:
         Cmadot=jnp.array(Cmadot),
         # No band: see the docstring. It is a transcribed set, not a fit.
     )
+
+
+def boeing747_without_thrust_line() -> Aircraft:
+    """`boeing747` as it stood before the thrust line: thrust through the CG,
+    and CL0, Cm0 and the drag polar referenced to that. Not in REGISTRY. It
+    exists so the pre-line entry is measurable exactly rather than rebuilt by
+    hand -- with the Mach seam also shut it is the 747 before session 30."""
+    return _boeing_747(thrust_line=False)
 
 
 REGISTRY: dict[str, Aircraft] = {
