@@ -6,11 +6,57 @@ __pycache__/
 *.egg-info/
 runs/
 
-# Third-party reference PDFs, 58 MB between them. Kept on disk because several
-# open questions can only be closed by reading them, and deliberately kept out
-# of history: they are re-downloadable and mostly not ours to redistribute.
+# Tooling scratch folders, not project content.
+.impeccable/
+
+# Third-party reference PDFs. Kept on disk because several open questions can
+# only be closed by reading them, and deliberately kept out of history: they
+# are re-downloadable and mostly not ours to redistribute.
 # refs/ holds NASA-CR-2144, NASA-CR-114494 (Hanke & Nordwall, Boeing
 # D6-30643, the nonlinear 747 model), Caughey MAE5070, Doyle et al. 2011,
-# Oseguera & Bowles 1988, and Proctor, Hinton & Bowles 2000.
+# Oseguera & Bowles 1988, Proctor, Hinton & Bowles 2000, and MIL-F-8785C.
 refs/
 Flight_Dynamics_-_Second_Edition.pdf
+
+# Reference_papers/ follows the same rule as refs/ from session 32 on, and did
+# not before: seven publisher-copyrighted documents were tracked, in a PUBLIC
+# repository, until that session adjudicated all 24 against their own printed
+# copyright statements. DENY BY DEFAULT, then re-include only what is verified
+# redistributable. Reference_papers/SOURCES.md is the index: what each document
+# is, its md5, and where to fetch the ones that are not here.
+#
+# Before adding a PDF here, read its own copyright page. A US Government work,
+# or one printing the Title 17 "no copyright is asserted in the United States"
+# statement, may be re-included below with the basis named. Anything else --
+# INCLUDING anything whose licence you could not establish -- stays ignored.
+# Rule 2 applies to a licence exactly as it applies to a coefficient: flag,
+# never invent.
+Reference_papers/**/*.pdf
+Reference_papers/**/*.zip
+
+# NASA, US Government work. TM-102186 (Wingrove & Bach): Figs. 6, 7 and 8, read
+# by digitise_tm102186_fig6.py and digitise_hannibal_horizontal_wind.py.
+!Reference_papers/19890016606.pdf
+# Printed: "U.S. Government and therefore is in the public domain." Parks et al.
+# 1985, J. Aircraft 22(2): r0, V0 and spacing, and Fig. 6's altitude trace, read
+# by digitise_parks_fig6_altitude.py.
+!Reference_papers/parks-1985-identification-of-vortex-induced-clear-air-turbulence-JA22-2.pdf
+# Printed: "no copyright is asserted in the United States under Title 17, U.S.
+# Code." Mehta 1987 -- the five-vortex Hannibal field itself.
+!Reference_papers/mehta-2012-modeling-clear-air-turbulence-with-vortices-using-parameter-identification-techniques.pdf
+# Printed: the same Title 17 statement. Bach & Parks 1987 -- the error budget.
+!Reference_papers/bach-parks-1987-angle-of-attack-estimation-JA24-11.pdf
+# Printed: "Approved for public release, distribution unlimited." USAF HICAT.
+!Reference_papers/AFFDL-TR-70-101-Ashburn-Waco-Melvin-1970-HICAT-AD878415.pdf
+# Printed: "and is not subject to copyright protection in the United States."
+!Reference_papers/Ger/schultz-2012-multiple-vortex-ring-model-of-the-dfw-microburst.pdf
+# NASA, US Government work, NTRS 19910009769.
+!Reference_papers/Xiao_ger/19910009769.pdf
+
+# CR-2144/ is NOT a third-party document. It is this project's OWN automated
+# digitisation of NASA CR-2144 pp. 218-228 -- 25 panels, 77 curves, each CSV
+# carrying its calibration, tick-fit residual and any manual intervention in
+# its header -- plus the overlays and verification sheet that let a reader
+# check the trace against the scan. Derived data from a US Government source.
+# Session 32 found it UNTRACKED in the main checkout, which is rule 1b again.
+!Reference_papers/CR-2144/verification.pdf
