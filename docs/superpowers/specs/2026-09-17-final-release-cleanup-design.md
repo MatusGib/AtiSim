@@ -11,6 +11,54 @@ later session that disagrees with the shape should disagree with the answers.
 | Which documentation toolchain? | **Sphinx + autodoc**, published to GitHub Pages. Doxygen was asked for, and declined on the evidence below |
 | Who is the repository for? | **A public open-source release**, MIT licensed |
 | What should the runnable notebook cover? | **The validation ladder, end to end**, nbval-gated in CI |
+| **Amended, later on day 1:** repository visibility | **Private now, public when done.** Going private immediately closes the copyright exposure; the Phase 6 history rewrite **still happens**, because the copyrighted PDFs are in history and going public again would re-expose them |
+| **Amended:** history strategy | **Clean up in place.** Keep `MatusGib/AtiSim`, its 183 commits and its PR record. A fresh repository was offered and declined |
+| **Amended:** `CLAUDE.md` | **Moved to `docs/DEVELOPMENT.md`.** Off the front page entirely. The cost was stated before the choice and is recorded in the file itself: automated tooling no longer loads it, so rules 1 and 1b lose continuous enforcement |
+
+### Amendment, day 1: the repository must read as *finished*
+
+**Added requirement, and it changes Phase 4 substantially.** The repository must not look like a
+work in progress conducted in numbered sessions. "Include the main changes in the updates but
+not every single session."
+
+**What this does NOT mean.** It does not mean deleting the record. `PROJECT.md` §4 is the
+project's principal asset and §5's negative results are worth more than most of the code;
+rule 1's whole point is that a result not written down was never obtained. **The session
+*narrative* is what goes, not the evidence.**
+
+**Measured before deciding, because the assumption was that the commit log was the problem:**
+
+| | |
+|---|---|
+| Commits on `main` | **183** |
+| Subject lines mentioning a session | **8** |
+| Subject lines mentioning Claude | **0** |
+
+**So the history is not the problem** — it reads as engineering work, with subjects like "Read
+the DC-10's altitude from Parks Fig. 6: it did not climb before the pair". That is the evidence
+against starting a fresh repository: 183 such commits are credibility, and one `initial commit`
+of 47,000 lines is a dump. The 8 subjects are reworded in the Phase 6 `filter-repo` pass, which
+was already scheduled for the PDFs.
+
+**The real tells, and where each is handled:**
+
+| Tell | Disposition |
+|---|---|
+| `FIX_PROMPT.md` (31 KB), `analysis-ui-investigation-prompt.md`, `audit/AUDIT_PROMPT.md` — prompts written to an AI, referenced by nothing | **DONE, day 1.** Deleted |
+| `CLAUDE.md` at the root | **DONE, day 1.** → `docs/DEVELOPMENT.md`, 36 cross-references updated |
+| No licence, `license: null` on a public repo | **DONE, day 1.** MIT |
+| Repo description "Jax based vortex flight simulator ", no topics | **DONE, day 1.** Both set |
+| `docs/superpowers/` — the directory name | **Phase 4c.** → `docs/design/`. **Deferred deliberately**: three unmerged branches modify files under it, so a rename now conflicts with all three |
+| `docs/SESSION_27_REPORT.md` | **Phase 4c.** Its closing section states the validation claim more plainly than anything else in the repository. **Harvest that prose into the docs site, then delete the file** — not the other way round |
+| `PROJECT.md` §9, 32 session entries | **Phase 4c.** Becomes `CHANGELOG.md` keyed to **capabilities, not sessions** — the frame, the CAT validation, the sensitivity study, the compressibility work. §9 itself is kept, moved behind the docs site as the provenance appendix |
+| `PROJECT.md` §0, a work-in-progress inventory | **Phase 7.** Empty at the release, or every remaining row justified. §0 going empty *is* the finished signal |
+| README's "I asked claude to add test", "23 scripts" (there are 42) | **Phase 4b** |
+| No release, no tag | **Phase 7.** `v1.0.0` |
+
+**One ordering consequence.** Structural renames conflict with unmerged branches, so the rule is:
+**delete freely what nothing else touches, and defer every rename until after Phase 2.** Day 1's
+moves were all checked against all seven substantial branches first; `docs/superpowers/` failed
+that check and waits.
 
 **Why not Doxygen, since it was asked for.** `atisim` is 31,632 lines of Python carrying
 *narrative* docstrings — `dynamics.gravity` spends six lines naming the effects it omits and
