@@ -132,14 +132,55 @@ def _wrap(text: str, width: int) -> list[str]:
     return lines
 
 
+# The header is STACKED BANDS, in pixels, and every one of them is measured.
+#
+# Plotly does not reserve room for a title: `margin.t` is the only thing that
+# keeps the caption off the gridlines, and the first version of this function
+# guessed at the arithmetic. Read back out of the browser at 1440 px, it was
+# wrong in three separate ways at once, on every panel that carries a subtitle:
+#
+#   * a title block's lines are spaced by 1.3x the TITLE's font size, 17 px at
+#     13, and NOT by the 10 px the subtitle spans are set in. The old formula
+#     reserved 13 px a line, so a four-line block measuring 68 px got 47 px and
+#     the last line of every subtitle was drawn INSIDE the plot area;
+#   * the block does not start at the top of the figure, so its own offset has
+#     to be in the sum as well;
+#   * the legend sat at paper y=1.02 -- above the plot, which is the same band
+#     the title was already overflowing into. Measured on Fig. 8: title
+#     x 0..293, legend x 110..649, both at y 39..68. The legend was drawn
+#     straight through the caption.
+#
+# So each thing that lives above the plot gets its OWN band, positioned in
+# container coordinates from a running pixel offset. Nothing is anchored to the
+# plot area, which is what made the old positions circular -- the plot's height
+# depends on the margin that was being computed from it.
+TITLE_TOP = 10  # gap above the first line
+TITLE_LINE = 17  # 1.3 x the 13 px title font, measured
+# A "top"-anchored title is drawn 14 px ABOVE the y it is given, and by a
+# constant: measured at three panel heights (300, 340, 360) and at both three
+# and four line blocks, the offset was -14 px every time. Without it the first
+# line is clipped by the top of the figure -- which is how it was found.
+TITLE_ANCHOR = 14
+BANNER_ROW = 26  # a one-line annotation, including its background wash
+LEGEND_ROW = 30  # a one-row horizontal legend at 10 px
+HEADER_PAD = 8  # gap between the last band and the plot area
+_BOTTOM = 38  # margin under the plot, for the x-axis and its title
+
+
 def _base(fig: go.Figure, height: int, title: str | None = None,
-          subtitle: str | None = None, legend: bool = False) -> go.Figure:
+          subtitle: str | None = None, legend: bool = False,
+          banner: tuple[str, str] | None = None) -> go.Figure:
     """Chrome shared by every panel.
 
     `subtitle` carries WHAT THE PANEL IS FOR in one line. A reader who has to
     infer a panel's job from its axes will infer wrong -- that is what happened
     with the first version of this module, where the two scatter panels read as
     decoration because nothing on them said what they assert.
+
+    `banner` is `(html, background)` for a panel whose VERDICT is stated in
+    words above the chart. It is drawn here rather than by the caller so that it
+    gets a reserved band like everything else; `ordering` placed its own at
+    paper y=1.16 and it landed on top of the subtitle.
     """
     # WRAPPED, because plotly does not wrap a title and an unwrapped subtitle
     # runs straight off the panel. Measured in the browser: the cross-section's
@@ -151,21 +192,49 @@ def _base(fig: go.Figure, height: int, title: str | None = None,
         body = "<br>".join(lines)
         text = (f"{title}<br><span style='font-size:10px;color:{INK_MUTED}'>"
                 f"{body}</span>")
-    top = 30 if title else 8
-    if lines:
-        top = 34 + 13 * len(lines)
+
+    # Each band's top edge, in pixels from the top of the figure, accumulated in
+    # draw order. `top` is the running offset and ends up as the margin.
+    top = TITLE_TOP if (text or banner or legend) else HEADER_PAD
+    title_y = 1.0 - (top + TITLE_ANCHOR) / height
+    if text:
+        top += TITLE_LINE * (1 + len(lines))
+    banner_top = top
+    if banner:
+        top += BANNER_ROW
+    legend_y = 1.0 - top / height
+    if legend:
+        top += LEGEND_ROW
+    top += HEADER_PAD
+
+    if banner:
+        # An annotation is the one thing here that CANNOT take container
+        # coordinates -- plotly's `yref` enumeration is paper-or-an-axis. So it
+        # is placed above the plot in paper units, which needs the plot's height,
+        # which is why the whole margin is solved for first.
+        plot_h = max(height - top - _BOTTOM, 1)
+        fig.add_annotation(
+            xref="paper", x=0.0, xanchor="left",
+            yref="paper", y=1.0 + (top - banner_top) / plot_h, yanchor="top",
+            showarrow=False, text=banner[0], align="left",
+            font=dict(size=11, color=INK), bgcolor=banner[1], borderpad=4,
+        )
+
     fig.update_layout(
         uirevision=UIREVISION,
         height=height,
-        margin=dict(l=68, r=16, t=top, b=38),
-        title=dict(text=text, font=dict(size=13, color=INK), x=0.0, xanchor="left")
+        margin=dict(l=68, r=16, t=top, b=_BOTTOM),
+        title=dict(text=text, font=dict(size=13, color=INK),
+                   xref="container", x=0.0, xanchor="left",
+                   yref="container", y=title_y, yanchor="top")
         if text else None,
         template="plotly_white",
         paper_bgcolor=SURFACE,
         plot_bgcolor=SURFACE,
         showlegend=legend,
-        legend=dict(orientation="h", y=1.02, yanchor="bottom", x=1.0,
-                    xanchor="right", font=dict(size=10, color=INK_MUTED),
+        legend=dict(orientation="h", yref="container", y=legend_y,
+                    yanchor="top", x=1.0, xanchor="right",
+                    font=dict(size=10, color=INK_MUTED),
                     bgcolor="rgba(0,0,0,0)"),
         font=dict(size=11, color=INK,
                   family='system-ui, -apple-system, "Segoe UI", sans-serif'),
@@ -334,7 +403,8 @@ def strip_stack(s: Series, window: np.ndarray, cursor_t: float | None = None,
 # P3 -- load factor against incidence
 # ---------------------------------------------------------------------------
 
-def load_vs_alpha(s: Series, cursor_index: int | None = None) -> go.Figure:
+def load_vs_alpha(s: Series, cursor_index: int | None = None,
+                  against: str = "alpha") -> go.Figure:
     """This panel is an assertion, not a display.
 
     The air-relative points must fall on a STRAIGHT LINE and the inertial ones
@@ -345,9 +415,24 @@ def load_vs_alpha(s: Series, cursor_index: int | None = None) -> go.Figure:
     The straightness is also the honest picture of a permanent gap: a real
     aircraft's curve bends at buffet onset and `CL = CL0 + CLa*alpha` cannot,
     which is why no +-g asymmetry can come out of this model.
+
+    `against="time"` SWAPS THE TWO NON-LOAD VARIABLES rather than plotting a
+    different set. Incidence is the x-axis and time is the colour here; over
+    there time is the x-axis and incidence is the colour. The same three
+    quantities, the same points, one exchange -- so the two views are readings
+    of one dataset and not two panels that could disagree.
+
+    The reason to want the swap: the incidence view is deliberately timeless,
+    which is what makes the straight line legible, and that is exactly what
+    makes it impossible to say WHEN a point was flown. Against time the peak
+    lines up with the strip stack and the cursor, at the cost of the assertion
+    -- so the assertion's correlations are carried into this view in words.
     """
     r_air = float(np.corrcoef(s.n_z, s.alpha_deg)[0, 1])
     r_inertial = float(np.corrcoef(s.n_z, s.alpha_inertial_deg)[0, 1])
+
+    if against == "time":
+        return _load_vs_time(s, cursor_index, r_air, r_inertial)
 
     fig = go.Figure()
     fig.add_trace(go.Scattergl(
@@ -382,6 +467,48 @@ def load_vs_alpha(s: Series, cursor_index: int | None = None) -> go.Figure:
                  "ground-relative ones must scatter. A scattered blue cloud "
                  "means the wind is not reaching the sensing path.",
         legend=True,
+    )
+
+
+def _load_vs_time(s: Series, cursor_index: int | None,
+                  r_air: float, r_inertial: float) -> go.Figure:
+    """The same panel with incidence and time exchanged. See `load_vs_alpha`.
+
+    The correlations are printed even though nothing here draws them, because
+    they are the reason the OTHER view exists and a reader who switched to this
+    one should not lose the assertion by doing so.
+    """
+    fig = go.Figure()
+    fig.add_trace(go.Scattergl(
+        x=s.t, y=s.n_z, mode="markers",
+        name="n_z, coloured by air-relative alpha",
+        marker=dict(size=4.5, color=s.alpha_deg, colorscale=SEQUENTIAL,
+                    colorbar=dict(title=dict(text="alpha  deg", side="right",
+                                             font=dict(size=10)),
+                                  thickness=11, len=0.85, outlinewidth=0,
+                                  tickfont=dict(size=9))),
+        hovertemplate="t %{x:.2f} s<br>n_z %{y:.3f} g<extra></extra>",
+    ))
+    # Trim, from the run's own first sample -- the same reference the strip
+    # stack draws, so a load read off one panel means the same on the other.
+    fig.add_hline(y=float(s.n_z[0]),
+                  line=dict(color=AXIS_RULE, width=1, dash="dot"))
+    if cursor_index is not None:
+        fig.add_trace(go.Scatter(
+            x=[s.t[cursor_index]], y=[s.n_z[cursor_index]], mode="markers",
+            marker=dict(size=13, color="rgba(0,0,0,0)",
+                        line=dict(color=CRITICAL, width=2.5)),
+            name="cursor", showlegend=False, hoverinfo="skip",
+        ))
+    fig.update_xaxes(title_text="time  s", **_AXIS)
+    fig.update_yaxes(title_text="load factor n_z  g", **_AXIS)
+    return _base(
+        fig, 340,
+        title="Load factor against time — the same points, x and colour swapped",
+        subtitle=f"Places the excursion in time so it lines up with the strips "
+                 f"and the cursor. The straight-line assertion is the incidence "
+                 f"view's: r = {r_air:.4f} air-relative against "
+                 f"{r_inertial:.3f} inertial.",
     )
 
 
@@ -466,13 +593,6 @@ def ordering(points: list[dict]) -> go.Figure:
     colour, wash = (("#1a7f37", "rgba(26,127,55,0.09)") if holds
                     else (CRITICAL, "rgba(208,59,59,0.09)"))
     chain = " &lt; ".join(f"{v:.2f}°" for v in model_x) or "no categories"
-    fig.add_annotation(
-        xref="paper", yref="paper", x=0.0, xanchor="left", y=1.16,
-        showarrow=False,
-        text=(f"<b style='color:{colour}'>ordering {verdict}</b>"
-              f"  ·  vortex &lt; updraft &lt; manoeuvre  ·  model reads {chain}"),
-        font=dict(size=11, color=INK), bgcolor=wash, borderpad=4,
-    )
 
     reach = max([*FIG8_REFERENCE.values(), *model_x]) if model_x \
         else max(FIG8_REFERENCE.values())
@@ -483,12 +603,15 @@ def ordering(points: list[dict]) -> go.Figure:
                      showgrid=False, zeroline=False, linecolor=AXIS_RULE,
                      tickfont=dict(color=INK_MUTED, size=10))
     return _base(
-        fig, 280,
+        fig, 300,
         title="Does the discriminator's ordering hold?",
         subtitle="The same three categories on one axis. The claim is the "
                  "ORDER, not the numbers: the paper never states which aircraft "
                  "its records came from, so the two rows are not expected to "
-                 "line up.")
+                 "line up.",
+        banner=(f"<b style='color:{colour}'>ordering {verdict}</b>"
+                f"  ·  vortex &lt; updraft &lt; manoeuvre  ·  model reads {chain}",
+                wash))
 
 
 def discriminator(points: list[dict]) -> go.Figure:
@@ -567,8 +690,12 @@ def discriminator(points: list[dict]) -> go.Figure:
     missing = [c for c in ("vortex", "updraft", "manoeuvr")
                if not any(c in s for s in shown)]
     if missing:
+        # INSIDE the plot, hanging from its top edge. Above it is where the
+        # legend lives, and two things sharing one band is the collision this
+        # module's header arithmetic exists to prevent.
         fig.add_annotation(
-            xref="paper", yref="paper", x=0.5, y=1.0, showarrow=False,
+            xref="paper", yref="paper", x=0.5, y=1.0, yanchor="top",
+            yshift=-6, showarrow=False,
             text=("INCOMPLETE — the claim is an <b>ordering</b> across three "
                   f"categories; missing: {', '.join(missing)}"),
             font=dict(size=10, color="#b42318"),
@@ -711,6 +838,10 @@ def field_cross_section(s: Series, field, *, scale: float, peak: float,
                      scaleanchor="x", scaleratio=1.0, constrain="domain",
                      **_AXIS)
     return _base(
+        # 360, and a taller panel does NOT make a bigger map: the 1:1 lock is
+        # bound by the card's WIDTH for any field wider than it is deep, so
+        # measured at 460 the plot box came back the same 130 px it is at 360
+        # and the extra hundred pixels were whitespace. Checked, not assumed.
         fig, 360,
         title=f"{label}: vertical gust field and flight path",
         subtitle=(

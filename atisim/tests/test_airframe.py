@@ -107,6 +107,46 @@ def test_the_derived_arms_take_their_recorded_values():
         ), f"{name} derived arm moved"
 
 
+def test_every_registry_aircraft_gives_finite_stations_or_a_clear_refusal():
+    """`stations` must never hand back a station set it knows is unusable.
+
+    The failure this closes: the longitudinal set was built from the derived arm
+    with no check at all, so the three entries whose source defines no CLq got
+    l_eff/c = -Cmq/0 = inf, a linspace running to -inf, and a NaN out of every
+    fitted gradient downstream. `wind.sampled_field_model` carried that NaN to
+    the end of a rollout and raised nothing -- the run completed and reported a
+    NaN rms. `tail_arm_is_plausible` already returned False for all of them; it
+    was simply never called here.
+
+    Asserted over the WHOLE registry rather than the names known to fail today,
+    so an aircraft added later cannot quietly reintroduce it.
+    """
+    for name in sorted(REGISTRY):
+        ac = REGISTRY[name]
+        if airframe.tail_arm_is_plausible(ac):
+            st = airframe.stations(ac)
+            assert np.isfinite(np.asarray(st.span)).all(), f"{name} span is not finite"
+            assert np.isfinite(np.asarray(st.longitudinal)).all(), (
+                f"{name} longitudinal stations are not finite"
+            )
+        else:
+            with pytest.raises(ValueError, match="tail arm"):
+                airframe.stations(ac)
+
+
+def test_the_refusal_says_which_of_the_two_causes_it_is():
+    """The two ways the gate fires are not the same problem and the message must
+    not blur them. The 737's CLq does not EXIST in its source -- the arm is
+    undefined, and no better estimator can help. The Cessna's derivatives both
+    exist and disagree, giving a finite arm the airframe plainly does not have.
+    One is a missing input, the other a suspect one.
+    """
+    with pytest.raises(ValueError, match="CLq"):
+        airframe.stations(REGISTRY["boeing737"])
+    with pytest.raises(ValueError, match="0.8558"):
+        airframe.stations(REGISTRY["cessna172"])
+
+
 def test_span_stations_cover_the_whole_span_symmetrically():
     """The lateral extent is the span, which is sourced. Symmetry matters: an
     asymmetric station set would give a non-zero fitted roll gradient in a

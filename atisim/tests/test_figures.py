@@ -226,6 +226,160 @@ def test_an_unsigned_scalar_does_not_get_a_diverging_map(sample):
     assert line.cmid is None
 
 
+# --- the header bands: a caption drawn on the gridlines is a wrong chart ------
+
+
+def _bands(fig) -> dict[str, tuple[float, float]]:
+    """Top and bottom pixel of everything the panel draws ABOVE its plot area.
+
+    Title and legend are positioned in CONTAINER coordinates, which is what
+    makes them computable at all: anchoring them to the plot area would be
+    circular, because the plot's height is what the top margin is being solved
+    for. A banner is a plotly annotation and annotations take no container
+    reference, so it is converted back here through the plot's height.
+    """
+    h = float(fig.layout.height)
+    margin = fig.layout.margin
+    plot_h = h - float(margin.t) - float(margin.b)
+    out = {}
+    title = fig.layout.title
+    if title.text:
+        assert title.yref == "container", "the title band must not float"
+        lines = 1 + title.text.count("<br>")
+        top = (1.0 - float(title.y)) * h - figures.TITLE_ANCHOR
+        assert top >= 0.0, "the first line of the title is clipped"
+        out["title"] = (top, top + figures.TITLE_LINE * lines)
+    for i, note in enumerate(fig.layout.annotations):
+        if note.yref == "paper" and float(note.y) > 1.0:
+            top = float(margin.t) - (float(note.y) - 1.0) * plot_h
+            out[f"banner{i}"] = (top, top + figures.BANNER_ROW)
+    if fig.layout.showlegend:
+        assert fig.layout.legend.yref == "container"
+        top = (1.0 - float(fig.layout.legend.y)) * h
+        out["legend"] = (top, top + figures.LEGEND_ROW)
+    return out
+
+
+def _panels_with_headers(sample):
+    window = np.ones(len(sample.t), dtype=bool)
+    return {
+        "strips": figures.strip_stack(sample, window, cursor_t=12.0),
+        "load_vs_alpha": figures.load_vs_alpha(sample, cursor_index=3),
+        "load_vs_time": figures.load_vs_alpha(sample, cursor_index=3,
+                                              against="time"),
+        "ordering": figures.ordering(_THREE),
+        "discriminator": figures.discriminator(_THREE),
+        # The narrowest card in the layout, so the longest subtitle: five
+        # wrapped lines against everything else's three or four.
+        "cross_section": figures.field_cross_section(
+            sample, lambda p: p * 0.0, scale=182.88, peak=13.0,
+            cores=[(0.0, 12192.0)], window=window, cursor_index=3),
+        "energy": figures.energy_residual(
+            type("P", (), dict(north=sample.north, per_step=np.abs(sample.n_z),
+                               median=0.1))()),
+    }
+
+
+def test_no_panel_draws_its_header_inside_its_plot_area(sample):
+    """The measured bug, made structural.
+
+    Read out of the browser at 1440 px: every panel with a three-line subtitle
+    had `margin.t` of 73 px reserved for a title block that measured 68 px
+    starting 23 px down, so the last line of every caption was drawn 18 px
+    inside the plot. The old formula assumed 13 px a line because that is close
+    to the subtitle's 10 px font -- but plotly spaces a title block by the
+    TITLE's font size, 17 px at 13, whatever the spans inside it are set to.
+    """
+    for name, fig in _panels_with_headers(sample).items():
+        top = float(fig.layout.margin.t)
+        for band, (_, bottom) in _bands(fig).items():
+            assert bottom <= top, (
+                f"{name}: {band} runs {bottom - top:.0f} px into the plot area")
+
+
+def test_no_two_things_in_a_panel_header_share_a_band(sample):
+    """The other half of it, and the half that was visible at a glance.
+
+    The legend sat at paper y=1.02 -- just above the plot, which is the band the
+    title was already overflowing into. On Fig. 8 the two measured title
+    x 0..293 and legend x 110..649, both at y 39..68: the legend was drawn
+    straight through the caption. Fig. 8 carries a title, a subtitle and a
+    legend, and `ordering` carries a title, a subtitle and a verdict banner, so
+    between them every band this module can stack is exercised.
+    """
+    for name, fig in _panels_with_headers(sample).items():
+        bands = sorted(_bands(fig).items(), key=lambda kv: kv[1][0])
+        for (a, (_, a_end)), (b, (b_start, _)) in zip(bands, bands[1:]):
+            # Bands are stacked flush, so they touch. The tolerance is for the
+            # round trip through paper coordinates, not for slop.
+            assert a_end <= b_start + 1e-6, f"{name}: {a} overlaps {b}"
+
+
+def test_the_ordering_verdict_is_a_reserved_band_not_an_overlay():
+    """It is the first thing a reader should read, so it cannot be underneath
+    the subtitle -- which is where paper y=1.16 put it."""
+    fig = figures.ordering(_THREE)
+    verdicts = [a for a in fig.layout.annotations if "ordering" in (a.text or "")]
+    assert verdicts, "the verdict annotation is gone"
+    assert float(verdicts[0].y) > 1.0, "the verdict is inside the plot"
+    assert verdicts[0].yanchor == "top"
+
+
+def test_the_discriminator_incompleteness_note_hangs_inside_the_plot():
+    """Above the plot is the legend's band. This note is not more important than
+    a collision-free header, and it is legible either way."""
+    fig = figures.discriminator([
+        dict(label="vortex", dtheta=2.24, dn=-1.235, dtheta_whole=8.29,
+             dn_whole=-1.235),
+    ])
+    note = [a for a in fig.layout.annotations if "INCOMPLETE" in (a.text or "")]
+    assert note, "the incompleteness note is gone"
+    assert note[0].yanchor == "top" and note[0].yshift < 0
+
+
+# --- the incidence/time exchange ---------------------------------------------
+
+
+def test_the_time_view_exchanges_incidence_and_time_rather_than_replotting(sample):
+    """The switch is a SWAP, so both views are readings of the same three
+    quantities: load on y in both, and incidence and time trading x for colour.
+
+    A view that plotted something else could disagree with its sibling, and a
+    reader would have no way to tell which one was wrong.
+    """
+    alpha_view = figures.load_vs_alpha(sample)
+    time_view = figures.load_vs_alpha(sample, against="time")
+
+    air = [tr for tr in alpha_view.data if "air-relative" in (tr.name or "")][0]
+    assert np.array_equal(air.x, sample.alpha_deg)
+    assert np.array_equal(air.marker.color, sample.t)
+
+    swapped = [tr for tr in time_view.data if tr.name and "n_z" in tr.name][0]
+    assert np.array_equal(swapped.x, sample.t)
+    assert np.array_equal(swapped.marker.color, sample.alpha_deg)
+    assert np.array_equal(swapped.y, air.y), "the load factor must not move"
+    assert "time" in time_view.layout.xaxis.title.text
+
+
+def test_the_time_view_carries_the_assertion_it_cannot_draw(sample):
+    """Switching away from the incidence view must not lose the claim.
+
+    The straight line is the whole point of `load_vs_alpha`, and it is invisible
+    against time, so the two correlations are printed instead of dropped.
+    """
+    fig = figures.load_vs_alpha(sample, against="time")
+    r_air = np.corrcoef(sample.n_z, sample.alpha_deg)[0, 1]
+    assert f"{r_air:.4f}" in fig.layout.title.text, fig.layout.title.text
+
+
+def test_the_cursor_follows_the_exchange(sample):
+    """A cursor left at the incidence x-coordinate would sit at 4.6 SECONDS."""
+    fig = figures.load_vs_alpha(sample, cursor_index=1234, against="time")
+    cursor = [tr for tr in fig.data if tr.name == "cursor"][0]
+    assert cursor.x[0] == pytest.approx(sample.t[1234])
+    assert cursor.y[0] == pytest.approx(sample.n_z[1234])
+
+
 def test_the_discriminator_draws_the_whole_run_marker_and_the_connector():
     """The windowing trap is the panel's main content, not an annotation."""
     fig = figures.discriminator([
