@@ -19,16 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-This licence covers the AtiSim source code, its documentation and the data
-this project derived itself. It does NOT cover the third-party reference
-documents the project reads, nor the published data digitised from them.
-
-Reference documents are not redistributed here. `Reference_papers/SOURCES.md`
-lists every source with its licence basis and a permanent locator, and
-`docs/PROJECT.md` §3 names the table behind every number. Data digitised from
-US Government works (NASA CR-2144, NASA TM-102186, Parks et al. 1985) carries
-no separate restriction; anything read from a publisher-held document is
-recorded as a citation rather than reproduced.

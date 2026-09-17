@@ -127,6 +127,7 @@ field with the trajectory threaded through it — jumps to that same instant. Us
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE). The reference documents the project reads are not
+MIT — see [`LICENSE`](LICENSE), with [`NOTICE`](NOTICE) for what it does and does not cover.
+The reference documents the project reads are not
 redistributed; [`Reference_papers/SOURCES.md`](Reference_papers/SOURCES.md) lists each one with
 its licence basis and where to obtain it.
