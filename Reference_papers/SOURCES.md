@@ -12,7 +12,7 @@ copy, and **where to fetch it**.
 > Third-party reference PDFs … deliberately kept out of history: they are re-downloadable and
 > mostly not ours to redistribute.
 
-That reasoning is right and `Reference_papers/` did not follow it. **Session 31 adjudicated all
+That reasoning is right and `Reference_papers/` did not follow it. **Session 32 adjudicated all
 24 documents against their own printed copyright statements** and split them in two.
 
 **Documents that stay in the repository** are US Government works, or carry the Title 17

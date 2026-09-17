@@ -1,6 +1,6 @@
 # Final release cleanup — design
 
-**Written:** 17 September 2026, session 31. **Deadline:** 30 September 2026.
+**Written:** 17 September 2026, session 32. **Deadline:** 30 September 2026.
 **Scope decided by the project owner**, in answer to questions asked before any work started.
 The answers are recorded here because they are the reason the plan has the shape it has, and a
 later session that disagrees with the shape should disagree with the answers.
