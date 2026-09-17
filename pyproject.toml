@@ -27,6 +27,11 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["atisim*"]
 
+# `cr2144_mach.py` reads its digitised points from a CSV beside it, so the data
+# has to travel with the package rather than only existing in the checkout.
+[tool.setuptools.package-data]
+atisim = ["data/*.csv"]
+
 [tool.pytest.ini_options]
 # notebooks/ is deliberately NOT here. It needs --nbval-lax, and putting that in
 # addopts would make every pytest run fail with "unrecognized arguments" wherever

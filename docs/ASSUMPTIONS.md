@@ -411,6 +411,14 @@ any speed, altitude and angle of attack the sim reaches.
 **Why:** CR-2144 tabulates derivatives at discrete flight conditions. The project
 transcribed one per aircraft, two for the 747.
 
+**Session 30 — `boeing747` only, and this heading is no longer entirely true of it.** That
+entry declares CR-2144's **speed derivatives** (`CL_M`, `CD_M`, `Cm_M`, about M 0.800, printed
+p. 222), so its lift, drag and pitching-moment coefficients now vary with Mach at fixed alpha.
+It is a **first-order tangent, not a schedule**, and it is only that entry. Everything else
+below stands: every other coefficient is still frozen, the alpha and altitude axes are
+untouched, and every other registry entry is constant in all of them. PROJECT.md §4 has what
+declaring it moved.
+
 **This is the largest unbounded assumption in the model**, and it is the one that most
 deserves attention next. The derivatives are a small-perturbation linearisation about a
 single point, and the sim is nonlinear and flies away from that point:
@@ -426,10 +434,23 @@ through the transonic region, so ΔM = 0.03 near M 0.80 is not a small excursion
 where those curves bend.
 
 ~~**Bound: none.**~~ **Bound on the ALTITUDE axis, measured session 23. The Mach axis is
-still unbounded.** Producing a Mach bound still means digitising the derivative-vs-Mach
+still unbounded.** ~~Producing a Mach bound still means digitising the derivative-vs-Mach
 plots, which §7 declines for the reason it declines further flight conditions: they are
 chart reads off a poor scan, and a chart read is weaker evidence than the tabulated set
-already in use.
+already in use.~~
+
+**Session 30 did the chart read, and the objection to it does not survive.** All eight curves
+on printed pp. 220–222 were digitised by hand and checked against Table IX-4 at every circled
+flight condition through Appendix A: the smooth curves agree to **0.7–1.5%** and Cm_M to RMS
+**0.006**. A chart read anchored at eight tabulated points is not weaker evidence than the
+table — it is the table, interpolated.
+
+**What that settles, and what it does not.** It settles the **speed derivatives'** Mach
+content (p. 222): sourced, checked, and available through `Aircraft.CL_M/CD_M/Cm_M`, which no
+entry declares. **It does not bound this assumption.** The α-family curves on pp. 220–221 were
+read and used only to check the digitisation; nothing is scheduled on them, so the frozen
+derivatives are still frozen. The unmerged session-29 branch bounds C3 at cruise by a
+different route (PROJECT.md §0).
 
 The **altitude** axis no longer needs a chart read, because a second tabulated condition
 turned up. B1 above has the coefficient table; what matters here is the consequence, which
@@ -530,7 +551,20 @@ result rather than after it.
 Documented in `PROJECT.md` §5 with measured residuals: within 0.004 near the fit, up to
 0.014 below M 0.75 and 0.006 above M 0.88. Not repeated here.
 
-### C5. Thrust acts along body x, through the CG, with no engine dynamics
+### C5. ~~Thrust acts along body x, through the CG,~~ with no engine dynamics
+
+> **SUPERSEDED IN PART, session 30: `boeing747` carries a thrust line** —
+> `Aircraft.thrust_arm` **5.70 ft** below the CG (CR-114494's REVISED arm, below) and
+> `thrust_incidence` 2.50° (Table IX-3's XI), with CL0 and Cm0 referenced to it so trim stays
+> at CR-2144's α₀ with zero elevator. CR-2144's printed 10.0 ft was declared first and then
+> replaced by request: the revised figure is the one its own report marks operative, and an
+> arm is not chosen because a different one gives the better answer. Every other entry still puts thrust along body x through the CG, which is
+> the seam's default. **Two statements below were wrong and are corrected where they
+> stand:** CR-2144 *does* tabulate the line; and the verdict's measurement folded the
+> moment into the aerodynamic C_m, which removes the mechanism that matters. Modelled as
+> a thrust moment at the declared 5.70 ft, it takes the shipped phugoid from **+4.05% →
+> +1.69%** in frequency and **+3.45% → +2.83%** in damping against Table IX-5; CR-2144's
+> 10 ft would read −0.05% / +1.13%. `PROJECT.md` §4 has the entry.
 
 **Where:** `aero.thrust_force` — `throttle × max_thrust × (ρ/ρ₀)^lapse`.
 
@@ -542,17 +576,28 @@ Documented in `PROJECT.md` §5 with measured residuals: within 0.004 near the fi
   *thrust authority*, which is a statement about what the engines could do. If a recovery
   manoeuvre is ever flown, spool time is the first thing that must be added.
 - **No thrust moment.** The 747's engines hang below the CG, so real thrust produces a
-  nose-up pitching moment that changes with throttle. Still unmodelled, but **no longer
-  unquantified** — the bound is below.
-- **Thrust parallel to body x.** The real thrust line is inclined **2.5° up** from the
+  nose-up pitching moment that changes with throttle. ~~Still unmodelled, but **no longer
+  unquantified** — the bound is below.~~ **Modelled for `boeing747` since session 30.**
+- **Thrust parallel to body x.** ~~The real thrust line is inclined~~ **The 2.5° incidence
+  is modelled for `boeing747` since session 30; the 2° inward cant is not** (it cancels in
+  pitch and yaw with four equal engines). The real thrust line is inclined **2.5° up** from the
   fuselage reference line, with each engine canted **2° inward** (CR-114494 p. 1.3-3, cited
   below, which writes those as T_z = −0.0436·T_x and T_y = 0.0349·(T₁+T₂−T₃−T₄) — exactly
   tan 2.5° and tan 2°). At FC9 trim the inclination is 8.1 kN of vertical force, **0.286%
   of weight**, and it makes the thrust magnitude only 0.095% larger than its x component.
 - **No Mach dependence of thrust.** Only a density lapse.
 
-**Bound, measured — and the source for it is not CR-2144.** CR-2144 does not tabulate a
-thrust-line offset, which is why this entry read "unquantified". The document it draws its
+**Bound, measured — and the source for it is not CR-2144.** ~~CR-2144 does not tabulate a
+thrust-line offset, which is why this entry read "unquantified".~~ **CORRECTED, session 30:
+it does.** Table IX-3, printed p. 229, gives LTH = 10.0 ft and XI = 2.50° at all eight
+flight conditions. They match the *as-issued* CR-114494 arm below, not the revised one, and
+CR-2144's own tables confirm it: the Table IX-4 back-solve of Cm_M agrees with the hand-read
+curve at RMS **0.0063** with a 10 ft arm and **0.0167** with the revised 5.70 ft. So 10 ft is
+the arm CR-2144's derivative set was built on. ~~and it is what `boeing747` declares~~
+**`boeing747` declares the revised 5.70 ft anyway** (phugoid +1.69% / +2.83%), because the
+revised table is the operative one in the report that measured the engines, and matching
+CR-2144's derivative tables better is not a reason to use a superseded arm. 10 ft is carried
+as the sensitivity (phugoid −0.05% / +1.13%). The document it draws its
 747 data from does: **NASA CR-114494 / Boeing D6-30643 Vol. II, Hanke & Nordwall, *The
 Simulation of a Jumbo Jet Transport Aircraft, Volume II: Modeling Data*, Boeing Wichita,
 September 1970** (NTRS 19730001300, public domain). It is the same airframe — its wing
@@ -606,9 +651,15 @@ spans **0 to 0.487° of equivalent elevator** (measured the fixed-moment way, si
 throttle at cruise is not a trim condition to re-solve). Under half a degree, end to end,
 against ±25° of authority.
 
-**Verdict: sound for the fixed-throttle encounters flown so far, and now bounded rather
+~~**Verdict: sound for the fixed-throttle encounters flown so far, and now bounded rather
 than asserted.** Modelling it would move §4 baselines that are off-limits to this work, and
-it buys at most 10.7% of one tolerance band. It remains the first thing to fix before any
+it buys at most 10.7% of one tolerance band.~~ **SUPERSEDED, session 30.** The bound above
+was measured with the moment folded in "as a constant Cm offset". An aerodynamic offset
+scales with dynamic pressure and is trimmed to zero with the rest of the aerodynamic moment,
+so it leaves M_u untouched. A THRUST moment does not scale with dynamic pressure: the
+aerodynamic C_m at trim is left at −0.0159, and q̄ ∝ u² turns that into an M_u term. That
+term is the phugoid's missing piece. The fixed-throttle Hannibal load barely notices it
+(64.5% → 64.4%). It remains the first thing to fix before any
 powered-recovery result — not because the steady moment is large, but because a recovery
 *changes throttle*, and the 0.49° swing is then a transient the model would not produce at
 all.
@@ -1515,7 +1566,7 @@ solver preconditions live rather than a defect repair.
 |---|---|---|---|
 | 1 | **E4** wind held across RK4 stages | **body force CLOSED session 12; ORDER measured session 15; BOUND CORRECTED in the remediation pass** | no spurious body force, to 1e-9 m against a closed form. But the scheme is **first order** in a spatially varying field (1.05 against 3.99 in still air; 4.05 with the hold removed). The old bound, 0.0024 m/s of gust error in the Parks core, measured the wrong quantity by ~80×: hold-vs-per-stage at the published dt costs **0.82%** of the headline in-core Δθ. No conclusion moves, but **2.240° is not good to four figures** |
 | 2 | **B1** rigid airframe vs flexible data | **unquantifiable** | cap claims; do not assert structural fidelity |
-| 3 | **C3** derivatives frozen across the envelope | ~~**unbounded**~~ **BOUNDED ON BOTH AXES, session 29** | **Altitude**: 23.5% of `ω_n` per 2.48× of q̄ (session 23). **Mach, at cruise, on the headline run: −5.04% of the peak-to-peak load** over a measured Mach span of 0.7187–0.8257, by declaring `pg_mach_ref` at the tabulation Mach — no chart read needed. Session 27's LES point (ΔM = −0.393, ×0.859 on gust rms) is the far-field companion. **Still unbounded on the α axis.** And the bound is sharply sensitive to the tabulation Mach itself: ±0.05 there is worth +3.0%/−15.8%, three times the rest of the budget. Still state the excursion with every result |
+| 3 | **C3** derivatives frozen across the envelope | ~~**unbounded**~~ **BOUNDED ON BOTH AXES, session 29** | **Altitude**: 23.5% of `ω_n` per 2.48× of q̄ (session 23). **Mach, at cruise, on the headline run: −5.04% of the peak-to-peak load** over a measured Mach span of 0.7187–0.8257, by declaring `pg_mach_ref` at the tabulation Mach — no chart read needed. Session 27's LES point (ΔM = −0.393, ×0.859 on gust rms) is the far-field companion. **Still unbounded on the α axis.** And the bound is sharply sensitive to the tabulation Mach itself: ±0.05 there is worth +3.0%/−15.8%, three times the rest of the budget. Still state the excursion with every result. **And the 747's speed derivatives are no longer frozen**: CR-2144 p. 222's CL_M, CD_M and Cm_M are declared on `boeing747` since session 30 |
 | 4 | **E2** point-aircraft gusts, vortex at 2.3–3.1 spans | **CLOSED for the linear fit, session 13; strip path flyable and measured, session 14** | correction is exactly 0 inside the core and 2.0·`V₀/r₀` at the boundary, where the gradient is discontinuous. Curvature beyond the linear fit rests on a DECLARED loading shape: 2.6% across defensible shapes, 49.7% including a uniform bracket. Flying the strip path moves the vortex result by **0.000000 m** — the field has no spanwise variation — so the headline number is still the point model's. **Roll only**; a pitch integral is the open work |
 | 5 | **A2** constant g, +0.383% at cruise | ~~CLOSED, session 12~~ **MODELLED, session 23** | `dynamics.gravity(z) = g₀(R/(R+z))²`. Session 12 measured it and chose not to model it; session 23 modelled it anyway, preferring correctness at altitude to a frozen baseline. Moved the 747 phugoid ωn −0.3984% against g's −0.3817% — Lanchester's 1:1. Sea level bit-identical. **Latitude variation (0.53%, larger) is still absent** — see A1 |
 | 5a | **A3** geometric altitude through geopotential formulas | **WAS A DEFECT, NOT AN ASSUMPTION — FIXED session 23** | The register called it "sound" for 22 sessions, quoting the module's own docstring as evidence for the module's own correctness. Worth 0.159% of density at 30,000 ft and 0.368% at 40,000. AtiSim now matches JSBSim at the nominal altitude to 4.8e-6, where it was 0.159% out |

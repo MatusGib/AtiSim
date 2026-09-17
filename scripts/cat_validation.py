@@ -97,7 +97,7 @@ def _style(ax, xlabel=None, ylabel=None, title=None):
 # ---------------------------------------------------------------------------
 
 
-def fly_mehta(aircraft: str, dt: float, lead_r0: float = 12.0):
+def fly_mehta(aircraft: str, dt: float, lead_r0: float = 12.0, replayed: bool = False):
     """Fly one aircraft through Mehta's five-vortex field at its own altitude.
 
     The field is placed at the aircraft's own cruise altitude rather than at
@@ -108,6 +108,16 @@ def fly_mehta(aircraft: str, dt: float, lead_r0: float = 12.0):
 
     The 747 is flown at Mehta's own 37,000 ft, so the headline case has no such
     confound at all.
+
+    `replayed` evaluates the field on the path it was identified along
+    (`wind.on_identified_path`), whatever the aircraft's own climb. It is the
+    HEADLINE form since session 30, and used for the 747 headline only: flown at
+    its own altitude the fixed-control 747 climbed over cores 3 and 4 and met the
+    opposite horizontal wind to the DC-10, which Parks 1985 Fig. 6 shows held its
+    altitude through them. It is NOT used for the fleet ordering. The replay is
+    justified by the DC-10's record, and pinning a slow aircraft's field to a
+    fixed altitude holds it inside a core it would fly out of -- the Cherokee
+    reaches |alpha| 102 deg that way. PROJECT.md section 4 has both forms.
     """
     ac = REGISTRY[aircraft]
     V = CRUISE[aircraft]["airspeed"]
@@ -115,6 +125,8 @@ def fly_mehta(aircraft: str, dt: float, lead_r0: float = 12.0):
          else CRUISE[aircraft]["altitude"])
     array = wind.mehta_hannibal_array(H)
     field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
+    if replayed:
+        field = wind.on_identified_path(field, H)
 
     r0 = float(array.r0)
     x0, x1 = float(array.north.min()), float(array.north.max())
@@ -140,7 +152,7 @@ def figure_mehta(enc, meta, path: Path):
 
     fig, axes = plt.subplots(3, 1, figsize=(9.5, 9.0), sharex=True)
     fig.suptitle(
-        "Mehta 1987's identified Hannibal field, flown by AtiSim's 747\n"
+        "Mehta 1987's identified Hannibal field, flown by AtiSim's 747, replayed on its identified path\n"
         "Wind is the paper's own converged solution; the load band is what the "
         "DC-10 actually recorded",
         fontsize=11, fontweight="bold", x=0.02, ha="left",
@@ -439,6 +451,7 @@ def figure_fl200(cmp_, path: Path):
                       fontsize=10, loc="left", fontweight="bold")
     axes[1].set_title("b  Damping — the residual is the missing $C_{m\\dot\\alpha}$",
                       fontsize=10, loc="left", fontweight="bold")
+    fig.subplots_adjust(top=0.80, wspace=0.28)  # the two-line suptitle overlapped the panel titles
     fig.savefig(path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
@@ -512,9 +525,14 @@ def main() -> None:
 
     # -- 1 --------------------------------------------------------------------
     lo, hi = wind.TM102186_HANNIBAL_NZ
-    e747 = runs["boeing747"]
+    # THE HEADLINE: the 747 with Mehta's field replayed on its identified path.
+    # The fleet above, and the ordering below, fly the field at their own altitude.
+    enc_h, meta_h = fly_mehta("boeing747", args.dt, replayed=True)
+    e747 = dict(enc=enc_h, meta=meta_h,
+                sigma_n=float(checks.rms_normal_load(enc_h.log, meta_h["ac"], dt=args.dt).value),
+                start_offset=float(enc_h.n_z[0] - math.cos(float(enc_h.theta[0]))))
     print("=" * 78)
-    print("1. MEHTA 1987's FIVE-VORTEX HANNIBAL FIELD, FLOWN BY THE 747")
+    print("1. MEHTA 1987's FIVE-VORTEX HANNIBAL FIELD, FLOWN BY THE 747 (replayed on its path)")
     print("=" * 78)
     print(f"  altitude        {e747['meta']['H']:.0f} m "
           f"({e747['meta']['H'] / FT2M:.0f} ft) -- Mehta's own")

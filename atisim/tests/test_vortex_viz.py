@@ -115,7 +115,23 @@ def pushdown():
 # the divisor stays standard gravity), so a lighter local g reports a larger
 # excursion. Nothing here is a rollout defect and the arithmetic-exactness claim
 # still binds from here on.
-FIG8_VORTEX = (2.241674009986879, -1.2396439681557148)
+#
+# SESSION 30 re-captured it again, deliberately. `boeing747` now declares
+# CR-2144's speed derivatives (PROJECT.md section 4): d(theta) 2.241674 ->
+# 2.362979 (+5.41%), dn -1.239644 -> -1.248819 (+0.74%). A model change, not a
+# rollout defect; the arithmetic-exactness claim binds from here on. Previous:
+# (2.241674009986879, -1.2396439681557148).
+#
+# LATER IN SESSION 30, again deliberately: `boeing747` also declares CR-2144's
+# thrust line (10 ft below the CG, 2.5 deg), with its trim referenced to it.
+# d(theta) 2.362979 -> 2.311468 (-2.18%), dn -1.248819 -> -1.244248 (-0.37%).
+# The inert seam alone left this pin unmoved; the declaration moved it. Previous:
+# (2.3629788988555624, -1.248819284885492).
+#
+# And once more: the arm replaced by CR-114494's revised 5.70 ft. d(theta)
+# 2.311468 -> 2.333270, dn -1.244248 -> -1.246266. Previous (10 ft):
+# (2.311468013307627, -1.244247638948896).
+FIG8_VORTEX = (2.3332704114024994, -1.2462664938758317)
 FIG8_VORTEX_BEFORE_LOGGING = FIG8_VORTEX  # old name, kept for one release
 
 
@@ -248,7 +264,10 @@ def test_the_window_is_what_decides_the_discriminator_coordinate(encounter):
     """
     in_core, _ = vortex_viz.fig8_point(encounter)
     whole = float(encounter.theta.max() - encounter.theta.min()) * RAD2DEG
-    assert in_core == pytest.approx(2.20, abs=0.15)
+    # SESSION 30: 2.20 -> 2.36. `boeing747` declares CR-2144's speed derivatives
+    # and pitches ~5% further in the core; abs=0.15 is unchanged, and the
+    # whole-run excursion below is still several times the in-core value.
+    assert in_core == pytest.approx(2.36, abs=0.15)
     assert whole > 3.0 * in_core  # measured 8.33 vs 2.20
 
 

@@ -172,13 +172,24 @@ def main() -> None:
     print(f"       changed every result by exactly 0.000000 until now.")
 
     up_p = point.n_z[point.window].max() - 1.0
-    print(f"\n  AND THE LONGITUDINAL ANSWER BARELY MOVES: up-increment "
-          f"{up_p:.4f} g ->")
-    for name, enc in (("line", line), ("strip", strip)):
-        up = enc.n_z[enc.window].max() - 1.0
+    ups = {name: enc.n_z[enc.window].max() - 1.0 for name, enc in (("line", line), ("strip", strip))}
+    worst = max(abs(up / up_p - 1.0) for up in ups.values())
+    # Session 30: this used to print "BARELY MOVES ... nothing this project has
+    # concluded was resting on the missing dimension" unconditionally. It was
+    # true at +5.9% on the 747 without Mach derivatives and is false at +16% once
+    # `boeing747` declares CR-2144's speed derivatives, because Cm_M turns the
+    # line vortex's along-track gust into pitch. The verdict is now read off the
+    # number rather than written in advance of it.
+    print(f"\n  AND THE LONGITUDINAL ANSWER {'BARELY MOVES' if worst < 0.10 else 'MOVES'}: "
+          f"up-increment {up_p:.4f} g ->")
+    for name, up in ups.items():
         print(f"    {up:.4f} g ({name}), {100 * (up / up_p - 1):+.2f}%")
-    print(f"  So nothing this project has concluded was resting on the missing")
-    print(f"  dimension -- which is the reassuring half of the result.")
+    if worst < 0.10:
+        print(f"  So nothing this project has concluded was resting on the missing")
+        print(f"  dimension -- which is the reassuring half of the result.")
+    else:
+        print(f"  By more than a tenth of the increment, so the missing dimension now")
+        print(f"  reaches the longitudinal answer: PROJECT.md section 4, session 30, item 7.")
 
     # -- figure -------------------------------------------------------------
     fig, axes = plt.subplots(1, 3, figsize=(15.0, 4.4))

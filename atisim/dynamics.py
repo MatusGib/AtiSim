@@ -12,7 +12,7 @@ aerodynamics see air-relative quantities.
 import jax.numpy as jnp
 from jax import Array
 
-from atisim.aero import V_MIN, aero_forces_moments, thrust_force
+from atisim.aero import V_MIN, aero_forces_moments, thrust_force, thrust_moment
 from atisim.aircraft import Aircraft
 from atisim.atmosphere import G0, RHO0, density, speed_of_sound
 from atisim.loads import CoeffIncrement
@@ -148,6 +148,10 @@ def derivatives(
             increment=increment, alphadot_gust=alphadot,
         )
         f = f + thrust
+        # Selected rather than added, so an aircraft with no thrust line keeps
+        # its moment bit-for-bit: adding an exact zero would still turn a -0.0
+        # component into +0.0.
+        m = jnp.where(ac.thrust_arm != 0.0, m + thrust_moment(thrust, ac), m)
         return f, m, f / ac.mass + gravity_body - jnp.cross(state.omega, state.vel_body)
 
     # --- angle-of-attack rate, both halves -------------------------------

@@ -90,6 +90,21 @@ class Aircraft(NamedTuple):
     # the real table has around M 0.2. See the 737's docstring.
     mach_ram: Array = jnp.array(0.0)
 
+    # The THRUST LINE. `thrust_arm` is its perpendicular distance BELOW the CG,
+    # in metres, so forward thrust on a positive arm pitches the nose up; and
+    # `thrust_incidence` tilts it nose-up from the body x axis, in radians.
+    # CR-2144 Table IX-3 calls them LTH and XI.
+    #
+    # Defaulted, and both defaults put thrust exactly where every entry had it
+    # before -- along body x, through the CG -- so no aircraft moves until one
+    # declares a line. Why it matters is not the moment itself, which the trim
+    # absorbs: it is that a moment balanced at trim leaves the AERODYNAMIC C_m
+    # non-zero there, and dynamic pressure scales that with u^2, so M_u gains
+    # a term a thrust-through-the-CG model cannot carry. PROJECT.md section 4,
+    # "CR-2144's speed derivatives", item 4, is where it was found.
+    thrust_arm: Array = jnp.array(0.0)
+    thrust_incidence: Array = jnp.array(0.0)
+
     # Sideslip drag, CD += CD_beta * beta^2. Quadratic because drag is an even
     # function of sideslip, so the linear term is identically zero at beta = 0.
     # Linear small-perturbation theory therefore has no such derivative, which
@@ -256,6 +271,41 @@ class Aircraft(NamedTuple):
     # derivatives are published AT M 0.80 and already contain compressibility,
     # so that form would count it twice.
     pg_mach_ref: Array = jnp.array(-1.0)
+
+    # -- Mach derivatives at constant alpha --------------------------------
+    # CR-2144's C_LM, C_DM and C_mM (Appendix A printed p. A-14, dC/dM; the
+    # 747's are plotted on printed p. 222), applied as a FIRST-ORDER increment
+    # about the Mach they were read at:
+    #
+    #     CL += CL_M (M - M_ref),  CD += CD_M (M - M_ref),  Cm += Cm_M (M - M_ref)
+    #
+    # NEGATIVE `mach_deriv_ref` MEANS NOT DECLARED, and then all three terms
+    # add an exact zero -- the default, so every entry is bit-for-bit unmoved
+    # unless it opts in, exactly as `pg_mach_ref` above.
+    #
+    # This is the "Mach content of Xu, Zu, Mu" that PROJECT.md section 5 names
+    # as missing. Through validation.longitudinal_matrix it reproduces CR-2144
+    # Appendix A's (M/2) C_XM, C_NM and C_mM terms in X_u, Z_u, M_u, X_w, Z_w
+    # and M_w exactly -- asserted in test_cr2144_speed_derivatives, not argued.
+    #
+    # THREE THINGS AN ENTRY DECLARING THESE MUST KNOW.
+    #
+    # 1. CD_M IS ADDITIVE ON TOP OF `aero.wave_drag`, which already carries a
+    #    Mach slope of its own. To represent a SOURCED total drag derivative
+    #    the entry declares the source value MINUS the model's own wave-drag
+    #    slope at the reference condition. Declaring the source value as it
+    #    stands counts the drag rise twice, and on the 747 that is not subtle:
+    #    phugoid damping goes from +13% to +40% against Table IX-5.
+    # 2. CL_M OVERLAPS `pg_mach_ref`. Both give lift a Mach dependence at fixed
+    #    alpha, so declaring both counts compressibility twice.
+    # 3. IT IS A TANGENT. CR-2144's own curves are strongly curved -- the
+    #    747's 40,000 ft Cm_M runs from +0.28 at M 0.72 through zero near
+    #    M 0.82 -- so the increment is faithful only near M_ref, which is the
+    #    same statement every other constant derivative here already makes.
+    mach_deriv_ref: Array = jnp.array(-1.0)
+    CL_M: Array = jnp.array(0.0)
+    CD_M: Array = jnp.array(0.0)
+    Cm_M: Array = jnp.array(0.0)
 
 
 def inertia_tensor(Ixx, Iyy, Izz, Ixz) -> Array:
@@ -435,7 +485,7 @@ def _unprime(Lp, Np, Ix, Iz, Ixz):
 _B747_G = 32.174
 
 
-def _boeing_747() -> Aircraft:
+def _boeing_747(thrust_line: bool = True) -> Aircraft:
     # -- Table IX-3: geometry and flight condition (imperial, verbatim) --
     S, b, c = 5500.0, 195.68, 27.31  # ft^2, ft, ft
     W = 636636.0  # lb
@@ -467,10 +517,37 @@ def _boeing_747() -> Aircraft:
         "dr": (0.153, -0.475),
     }
 
+    # -- The thrust line: LTH the moment arm below the CG, XI the inclination --
+    # XI = 2.50 deg is SOURCED from Table IX-3, and CR-114494 p. 1.3-3 writes
+    # the same tan 2.5 deg. The sign of the arm is fixed by CR-2144's tables
+    # agreeing (PROJECT.md section 4), not assumed.
+    #
+    # LTH = 5.70 ft is SOURCED from NASA CR-114494 (Boeing D6-30643 Vol. II)
+    # p. 19.0-2, Appendix E "Revised Simulation Data": the mean of the revised
+    # in-flight engine pitching arms Z_EI 8.3 ft and Z_EO 3.1 ft. That report
+    # marks its own as-issued 10.0 ft superseded, and 10.0 ft is what CR-2144
+    # Table IX-3 prints. This entry takes the REVISED figure. CR-2144's
+    # derivative tables are better matched by 10.0 ft (the Table IX-4
+    # back-solve of Cm_M agrees with the hand-read curve at RMS 0.0063 there,
+    # 0.0167 here), and 10.0 ft would put the phugoid nearer Table IX-5. Neither
+    # is grounds for choosing it: an arm is not picked because it improves the
+    # answer. ASSUMPTIONS.md C5.
+    #
+    # T_trim is DERIVED: level flight balances drag along the line's direction,
+    # alpha0 + XI from the velocity, with the Figure IX-6 trim drag above.
+    #
+    # `thrust_line=False` builds the entry exactly as it stood before the line
+    # existed -- thrust through the CG, T_trim zero in the two lines below --
+    # so before and after stay measurable. See `boeing747_without_thrust_line`.
+    LTH, XI = (5.70, 2.50 * DEG2RAD) if thrust_line else (0.0, 0.0)  # ft, rad
+
     m = W / _B747_G  # slugs
     qS = qbar * S
     AR = b * b / S
-    CL_trim = W / qS  # 0.654
+    T_trim = CD_trim * qS / math.cos(alpha0 + XI) if thrust_line else 0.0  # lb, ~42,200
+    # The AERODYNAMIC lift at trim: weight less the thrust line's lift share,
+    # 0.8% of it. Until the thrust line existed this was W / qS = 0.654.
+    CL_trim = (W - T_trim * math.sin(alpha0 + XI)) / qS  # 0.649
 
     # Longitudinal, from the dimensional definitions in CR-2144 Appendix A.
     CLa = -Zw * m * U0 / qS - CD_trim
@@ -480,10 +557,14 @@ def _boeing_747() -> Aircraft:
     Cmq = Mq * 2.0 * Iy * U0 / (qS * c * c)
     Cmde = Mde * Iy / (qS * c)
 
-    # The linear model is referenced to the trimmed condition: CL = CL_trim and
-    # Cm = 0 at alpha0 with zero elevator (the stabiliser carries the trim).
+    # The linear model is referenced to the trimmed condition at alpha0 with zero
+    # elevator (the stabiliser carries the trim). There the AERODYNAMIC moment
+    # balances the thrust line's, so Cm is -T LTH / (qS c) = -0.0090 rather than
+    # zero -- the kind of term CR-2144 Appendix A's M_u carries (at -0.0159, with
+    # its own 10 ft arm), and the one this entry lacked while thrust went through
+    # the CG.
     CL0 = CL_trim - CLa * alpha0
-    Cm0 = -Cma * alpha0
+    Cm0 = -Cma * alpha0 - T_trim * LTH / (qS * c)
 
     # Drag. Oswald efficiency is not tabulated, so it is recovered from Xw:
     #   Xw = qS(-CDa cos a + CD sin a + CLa sin a + CL cos a) / (m U0)
@@ -500,6 +581,9 @@ def _boeing_747() -> Aircraft:
     m_crit = m_dd - (0.1 / 80.0) ** (1.0 / 3.0)
     cd_wave = 20.0 * max(mach0 - m_crit, 0.0) ** 4
     dcd_wave_dalpha = 80.0 * max(mach0 - m_crit, 0.0) ** 3 / (10.0 * cos_s**3) * CLa
+    # The model's OWN drag Mach slope at this condition, d/dM of Lock's fourth
+    # power law. Needed below, where CD_M is declared net of it.
+    dcd_wave_dmach = 80.0 * max(mach0 - m_crit, 0.0) ** 3
     e = 2.0 * CL_trim * CLa / (math.pi * AR * (CDa - dcd_wave_dalpha))
     CD0 = CD_trim - CL_trim**2 / (math.pi * e * AR) - cd_wave
 
@@ -575,6 +659,39 @@ def _boeing_747() -> Aircraft:
         # Zero matches the source rather than inventing a value.
         CYp=jnp.array(0.0),
         CYr=jnp.array(0.0),
+        # -- Mach derivatives, CR-2144 printed p. 222, 40,000 ft curves ----
+        # SOURCED, read at M 0.800 (session 30's hand digitisation; PROJECT.md
+        # section 4 carries the check against Table IX-4 at eight flight
+        # conditions and the reading uncertainty). This is the "Mach content of
+        # Xu, Zu, Mu" that section 5 named as missing, and declaring it takes
+        # the phugoid frequency from -18.1% to about +4% against Table IX-5.
+        # See the `mach_deriv_ref` field for what the seam does.
+        #
+        # TWO THINGS HERE ARE NOT THE NUMBERS ON THE SHEET.
+        #
+        # CD_M IS DECLARED NET OF THIS MODEL'S OWN DRAG RISE. `aero.wave_drag`
+        # already carries a Mach slope -- 80 (M - M_crit)^3, about 0.049 per
+        # Mach at this condition -- so the field holds the difference and the
+        # TOTAL slope is the sourced 0.0251. DERIVED, from the sourced value
+        # and this entry's own construction. Declaring the sourced value as it
+        # stands counts the drag rise twice and takes phugoid damping to
+        # +39.9%; declaring nothing here and leaving Korn/Lock alone gives
+        # +21.3%, which is WORSE than declaring no Mach derivatives at all.
+        #
+        # ALONE, THIS SET OVERSHOOTS THE PHUGOID BY ABOUT 4%, AND THAT IS NOT
+        # THE DATA. Table IX-4's own implied set overshoots the same way.
+        # CR-2144 puts the thrust line 10 ft from the CG, so its aerodynamic C_m
+        # at trim is -0.0159 and Appendix A's M_u carries that term. This
+        # entry now declares a thrust line (`thrust_arm` below) at CR-114494's
+        # revised 5.70 ft, and with it the phugoid is +1.69% in frequency and
+        # +2.83% in damping against Table IX-5 (CR-2144's own 10 ft would give
+        # -0.05% / +1.13%; see LTH for why it is not used). Neither half works
+        # without the other: the line on the bare entry takes the frequency
+        # error from -18% to -21%.
+        mach_deriv_ref=jnp.array(mach0),
+        CL_M=jnp.array(0.1304),
+        CD_M=jnp.array(0.0251 - dcd_wave_dmach),
+        Cm_M=jnp.array(0.1753),
         CYdr=jnp.array(CYdr),
         Clb=jnp.array(nd["beta"][0]),
         Clp=jnp.array(nd["p"][0]),
@@ -591,6 +708,11 @@ def _boeing_747() -> Aircraft:
         # models no engine, so this is a modelling choice, not source data.
         max_thrust=jnp.array(4 * 43500.0 * LBF2N),
         thrust_lapse=jnp.array(0.8),
+        # SOURCED: the thrust line, 5.70 ft below the CG (CR-114494's revised
+        # arm) and 2.50 deg above body x (Table IX-3). CL0 and Cm0 above are
+        # referenced to it. See the comment at LTH for why not 10.0 ft.
+        thrust_arm=jnp.array(LTH * FT2M),
+        thrust_incidence=jnp.array(XI),
         elevator_limit=jnp.array(25.0 * DEG2RAD),
         aileron_limit=jnp.array(20.0 * DEG2RAD),
         rudder_limit=jnp.array(25.0 * DEG2RAD),
@@ -1864,6 +1986,14 @@ def boeing787_yoshimura() -> Aircraft:
         Cmadot=jnp.array(Cmadot),
         # No band: see the docstring. It is a transcribed set, not a fit.
     )
+
+
+def boeing747_without_thrust_line() -> Aircraft:
+    """`boeing747` as it stood before the thrust line: thrust through the CG,
+    and CL0, Cm0 and the drag polar referenced to that. Not in REGISTRY. It
+    exists so the pre-line entry is measurable exactly rather than rebuilt by
+    hand -- with the Mach seam also shut it is the 747 before session 30."""
+    return _boeing_747(thrust_line=False)
 
 
 REGISTRY: dict[str, Aircraft] = {
