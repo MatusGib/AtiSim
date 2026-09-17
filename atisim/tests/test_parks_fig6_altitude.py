@@ -11,7 +11,7 @@ Why it matters: the simulated 747 climbs ~500-600 ft before Mehta's cores 3 and 
 and passes above them (PROJECT.md section 4, "The Hannibal horizontal wind").
 Mehta placed those cores relative to the DC-10's path, so whether the DC-10 made
 the same climb decides whether the 747 should meet the fitted wind on its own
-path or on the nominal one. Bands and orderings, per CLAUDE.md rule 6. The suite
+path or on the nominal one. Bands and orderings, per docs/DEVELOPMENT.md rule 6. The suite
 does not import from `scripts/`, so the time-to-distance reading is rebuilt here
 from the two tracked tables.
 """

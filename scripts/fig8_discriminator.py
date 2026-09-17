@@ -39,7 +39,7 @@ WHAT THIS CANNOT ANSWER, AND IT BOUNDS THE SWEEP. ASSUMPTIONS.md E11 records tha
 fixed-control runs leave their trim condition, and section 1's envelope caps the
 linear aero at |alpha| = 10 deg. Peak |alpha| is therefore measured on every run
 and reported per sigma, and any sigma whose runs leave the envelope is marked --
-its AUC is printed but must not be used, per CLAUDE.md rule 6.
+its AUC is printed but must not be used, per docs/DEVELOPMENT.md rule 6.
 
 Run: PYTHONPATH=<abs worktree root> python -m scripts.fig8_discriminator
 """

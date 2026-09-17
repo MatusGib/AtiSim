@@ -16,7 +16,7 @@ later session that disagrees with the shape should disagree with the answers.
 *narrative* docstrings — `dynamics.gravity` spends six lines naming the effects it omits and
 how large each is. Doxygen's Python support parses neither docstring markup nor type hints, so
 that prose renders as flat unformatted text; getting good output would mean adding
-`\param`/`\return` blocks across modules that `CLAUDE.md` §3 puts off-limits to casual edits,
+`\param`/`\return` blocks across modules that `docs/DEVELOPMENT.md` §3 puts off-limits to casual edits,
 duplicating docstrings that already exist. Sphinx + autodoc renders what is already written.
 
 ---
@@ -33,7 +33,7 @@ Measured 17 September 2026, on `main` at `c1b7d71`, which is identical to `origi
   `atisim/tests/test_alphadot_derivatives.py`, a `.pptx` deck, and **14 untracked scripts**
   including `alphadot_conversion.py`, `alphadot_isolate.py`, `galilean_alphadot_probe.py`,
   `prandtl_glauert_check.py`, `e4_windhold_remeasure.py` and `recapture_fig8_pins.py`. The
-  main checkout holds 5 untracked reference PDFs. **This is the failure `CLAUDE.md` rule 1b
+  main checkout holds 5 untracked reference PDFs. **This is the failure `docs/DEVELOPMENT.md` rule 1b
   exists to prevent, live, for the third recorded time.**
 - **`docs/PROJECT.md` is 604 KB / 8,096 lines.** An excellent standing record and not an
   entry point.
@@ -90,7 +90,7 @@ rather than prospective.**
    and the notebook must **compute or cross-reference** every figure they show, never quote a
    literal. Built that way they can be written in parallel with Phase 2 and the re-baseline
    flows through them; built the other way, Phase 2 invalidates them on the last day. This is
-   what `CLAUDE.md` §2 and §6 already require, so the constraint costs nothing.
+   what `docs/DEVELOPMENT.md` §2 and §6 already require, so the constraint costs nothing.
 3. **A history rewrite invalidates every unmerged branch**, so it must come *after* all
    merging. It is also irreversible and force-pushes a public repository.
 
@@ -129,7 +129,7 @@ prints nothing that §0 does not have a row for.
 4. Review and either merge or abandon the four rescued-but-unendorsed branches, chief among
    them `claude/zen-maxwell-1ad0a4`'s tail-arm gate refactor.
 5. Take the two decisions §0 says the project has never taken: whether `old-origin`
-   (`MatusGib/Flight_sim`) still exists, and whether `CLAUDE.md` becomes `AGENTS.md`.
+   (`MatusGib/Flight_sim`) still exists, and whether `docs/DEVELOPMENT.md` becomes `AGENTS.md`.
 
 **Gate:** the two-line check prints only the WGS-84 pair and anything deliberately kept, each
 with a §0 row; suite green on `main`.
@@ -154,7 +154,7 @@ are frame-sensitive. Drive the suite green.
 
 **2c, Wed 23 – Thu 24.** The re-baseline. Every frame-dependent §4 row re-measured and
 **superseded in place, never deleted** (§4's own rule). `ASSUMPTIONS.md` A1 and A2 retired, A3
-revisited. §1's validation claim reconciled with whatever §4 now says — `CLAUDE.md` rule 1.4
+revisited. §1's validation claim reconciled with whatever §4 now says — `docs/DEVELOPMENT.md` rule 1.4
 exists because §1 once carried a stale 67% for several sessions.
 
 **Gate:** suite green; no §4 row deleted; §1 and §4 agree on the headline; A1/A2 retired in
@@ -165,7 +165,7 @@ exists because §1 once carried a stale 67% for several sessions.
 Every open item in §5, §7 and §8 gets one of exactly three statuses, with the evidence:
 
 - **measured** — a §4 row,
-- **impossible with sources held** — naming *which* source failed and *why*, per `CLAUDE.md` §2,
+- **impossible with sources held** — naming *which* source failed and *why*, per `docs/DEVELOPMENT.md` §2,
 - **abandoned** — a §9 entry saying why, per rule 1b.
 
 Includes: assessing the 5 new DC-10/MD-11 papers against the one genuinely-open acquisition
@@ -227,12 +227,12 @@ README, and gets a green suite and a rendered documentation site.
 
 ## 3. The execution loop
 
-Every phase runs this, because `CLAUDE.md` rules 1, 1b and 4 require it:
+Every phase runs this, because `docs/DEVELOPMENT.md` rules 1, 1b and 4 require it:
 
 ```
 for each phase:
   0. VERIFY THE TREE   .venv/Scripts/python.exe -c "import atisim; print(atisim.__file__)"
-                       -> abort if that is not the tree you edited (CLAUDE.md rule 4)
+                       -> abort if that is not the tree you edited (docs/DEVELOPMENT.md rule 4)
   1. STATE THE GATE    write the success criterion down BEFORE starting
   2. DO THE WORK       surgical; every changed line traces to the gate
   3. MEASURE           run the gate command; capture the real output
@@ -247,14 +247,14 @@ for each phase:
 
 ## 4. Out of scope, deliberately
 
-Named here so a later session does not go looking, per `CLAUDE.md` rule 1.3.
+Named here so a later session does not go looking, per `docs/DEVELOPMENT.md` rule 1.3.
 
 - **No new physics beyond what closes a gap.** The `boeing787_yoshimura` registry entry, Parks
   1985 Fig. 6's pitch and true-airspeed channels, and Hannibal inventory items 2–5 get a
   terminal status in §5/§7 — not an implementation. **Unless Phase 2 aborts**, which frees
   Wed 23 – Thu 24 and makes them the first candidates.
-- **No tolerance edited to make a test pass** (`CLAUDE.md` §3). If a §4 baseline file moves
+- **No tolerance edited to make a test pass** (`docs/DEVELOPMENT.md` §3). If a §4 baseline file moves
   during the re-baseline, that is Phase 2c's finding, recorded with the cause, not smoothed.
 - **`PROJECT.md` is not shortened.** All 8,096 lines stay.
 - **Doxygen is not used**, for the reasons at the top.
-- **The Cessna stays out of every conclusion** (`CLAUDE.md` §6).
+- **The Cessna stays out of every conclusion** (`docs/DEVELOPMENT.md` §6).

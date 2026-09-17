@@ -16,7 +16,7 @@ every circled flight condition. Asserted as bands.
 THE RETEST. `boeing747` DECLARES the FC9 set and CR-2144's thrust line, so the
 comparisons below are against `BARE` -- the entry without the line and with the
 seam shut, which is the 747 as it was before session 30 -- and the speed set as
-first declared, without the line. Bands and orderings, per CLAUDE.md rule 6.
+first declared, without the line. Bands and orderings, per docs/DEVELOPMENT.md rule 6.
 """
 
 import math

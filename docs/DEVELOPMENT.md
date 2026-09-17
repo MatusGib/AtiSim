@@ -3,6 +3,18 @@
 `docs/PROJECT.md` is the standing record. This file is the short list of rules that
 protect it. Read both before doing anything.
 
+> **These six rules are why the record in `PROJECT.md` is worth reading.** Every one of them
+> was written after the failure it prevents had already happened, and each names that failure
+> rather than stating a principle — which is why they are specific to the point of being
+> peculiar. If you are continuing this work, they are the most useful page here.
+>
+> **This file sat at the repository root as `CLAUDE.md` until the September 2026 release**,
+> where automated tooling loaded it at the start of every working session and the rules were
+> enforced continuously. Moving it here ends that enforcement: **rules 1 and 1b in particular
+> now depend on a human choosing to follow them.** They are recorded as the method the
+> evidence ledger was built with, and as the thing to re-establish before any substantial new
+> work begins.
+
 ---
 
 ## 1. NOTHING IS DONE UNTIL IT IS IN `docs/PROJECT.md`
