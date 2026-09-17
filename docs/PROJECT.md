@@ -554,6 +554,17 @@ m^−0.7, not an anomaly**: −25% gives +22.03% and +25% gives −14.20%.
      of mass.
    - Switch it off and the elasticity is **+0.447**, beside the static CD/CL estimate of +0.366.
    - **§4's "the phugoid damping is a `mass` result at cruise" is a Korn result at cruise.**
+   - **How fragile that term is.** This is arithmetic of `aero.drag_divergence_mach` and
+     `wave_drag` at the cruise trim (M 0.7995, C_L 0.652), not a flight.
+     - At the shipped κ = 0.87: M_dd 0.8230, M_crit 0.7153, slope **0.0477** per Mach.
+     - κ ×0.95 gives 0.2149, and κ ×1.05 gives 0.0020.
+     - At κ ×1.10 wave drag is identically zero. That is S3's saturation.
+     - **κ = 0.8829 (×1.015) reproduces CR-2144's sourced 0.0251.** A 1.5% change in a
+       DECLARED constant halves the slope. Adopting it would make κ CALIBRATED; it has not
+       been adopted.
+     - C_L ±1% moves the slope 0.0455 … 0.0500.
+     - At fixed C_L the slope runs 0 at M 0.70, 0.0033 at M 0.75, 0.1206 at M 0.83 and
+       0.1954 at M 0.85, across the encounter's measured Mach span of 0.72–0.83.
 
 **Two hypotheses ruled out.**
 
