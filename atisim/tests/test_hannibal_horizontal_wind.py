@@ -8,7 +8,7 @@ Hannibal, MO, as MEASURED and as Mehta 1987's five-vortex MODEL.
 A core the same distance above or below the flight path gives the SAME vertical
 wind; only the horizontal perturbation changes sign. So which side of the path
 each core sits on -- `wind.py`'s sign of z, argued from Mehta's prose -- is
-checkable only here. Bands and orderings, per CLAUDE.md rule 6.
+checkable only here. Bands and orderings, per docs/DEVELOPMENT.md rule 6.
 """
 
 import csv

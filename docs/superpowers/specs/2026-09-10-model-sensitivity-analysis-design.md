@@ -6,7 +6,7 @@ method**, **one budget**. What was deliberately excluded is in §7 and is exclud
 is already measured elsewhere, not because it is uninteresting.
 
 This document is a design, not a result. **Nothing here may be quoted as evidence.** Results
-go to `PROJECT.md` §4 as they are measured, one phase at a time, per `CLAUDE.md` rule 1.
+go to `PROJECT.md` §4 as they are measured, one phase at a time, per `docs/DEVELOPMENT.md` rule 1.
 
 ---
 
@@ -26,7 +26,7 @@ cannot say **which of its own numbers the answer rests on**. Three consequences:
    it is worth a session is a question about how much the answer moves per unit of derivative,
    which is exactly what an elasticity is.
 
-The deliverable is a **ranked elasticity table**, not a prediction. `CLAUDE.md` rule 6 governs
+The deliverable is a **ranked elasticity table**, not a prediction. `docs/DEVELOPMENT.md` rule 6 governs
 every line of output: bands and orderings, never values.
 
 ---
@@ -86,7 +86,7 @@ finally priced on the same axis**, against the same QoI, in the same table.
 `scripts/cat_uncertainty.py` already price these**, and §8/§4 already carry the numbers
 (−4.26% for the core-radius lineage; the propagated `V₀`/`r₀` band; the σ_w limbs). The budget
 in phase S6 **cites** them; it does not re-measure them. Re-measuring would be the exact
-duplication `CLAUDE.md` rule 1 exists to prevent.
+duplication `docs/DEVELOPMENT.md` rule 1 exists to prevent.
 
 ---
 
@@ -168,7 +168,7 @@ Two things this buys that AD cannot:
 ### 4.3 Tier 3 — banded propagation
 
 A factor gets a band **only** where a held source states one, or where the register states a
-measured cost. Everything else is fixed and named DECLARED, per `CLAUDE.md` rule 2. Then, for
+measured cost. Everything else is fixed and named DECLARED, per `docs/DEVELOPMENT.md` rule 2. Then, for
 Q1, combine:
 
 - **RSS** of the sourced bands — the statement if the errors are independent, which is not
@@ -208,13 +208,13 @@ things and records none.
 | **Trim fails to converge or returns an unphysical solution** at wide excursions | S3 | `validation.sweep` already checks both residual and `trim.is_physical`; the AD path must apply the same two checks or refuse to report |
 | **The two load paths drift apart** | everything downstream of S0 | the 1e-12 equality test; and it is named in `ASSUMPTIONS.md` if it ever has to be loosened |
 | **This container is not the documented environment** | every phase | there is no `.venv` here; `jax` was installed fresh on Linux, where §10 documents Python 3.10.11 with a Windows `.venv`. §10's four-row import table does not apply, but the principle does: **every script prints `atisim.__file__` before its first number**, and any §4 row measured here says so |
-| **A tolerance moves in the validated baseline** | S4, which changes dt, `N_SPAN` and the loading shape | those are `CLAUDE.md` rule 3 files. Tier B varies these **in the study's own harness**, never by editing shipped defaults |
+| **A tolerance moves in the validated baseline** | S4, which changes dt, `N_SPAN` and the loading shape | those are `docs/DEVELOPMENT.md` rule 3 files. Tier B varies these **in the study's own harness**, never by editing shipped defaults |
 
 ---
 
 ## 7. What this will NOT do, and why
 
-Recorded so a later session does not go looking, per `CLAUDE.md` rule 1 point 3.
+Recorded so a later session does not go looking, per `docs/DEVELOPMENT.md` rule 1 point 3.
 
 - **Not the wind and scenario inputs.** Already priced by `cat_bounds.py` and
   `cat_uncertainty.py`; cited, not re-measured.

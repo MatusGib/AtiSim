@@ -54,7 +54,7 @@ session normally edits only the volatile ones.
 
 | When you… | Edit |
 |---|---|
-| **leave anything unfinished** | **§0 work in progress — one row, with the BRANCH NAME and the worktree. `CLAUDE.md` rule 1b** |
+| **leave anything unfinished** | **§0 work in progress — one row, with the BRANCH NAME and the worktree. `docs/DEVELOPMENT.md` rule 1b** |
 | finish any session | §9 session log — add an entry at the top |
 | land a new module or change a public API | §2 architecture **and** §10 running it |
 | add or change a script, flag or key binding | §10 running it |
@@ -64,15 +64,22 @@ session normally edits only the volatile ones.
 | complete or re-order planned work | §7 plan |
 | discover something that changes the approach | §8 open questions |
 
-> **`CLAUDE.md` at the repository root is the enforcing document, and rule 1 there is the
+> **`docs/DEVELOPMENT.md` is the enforcing document, and rule 1 there is the
 > one this file depends on: NOTHING IS DONE UNTIL IT IS IN THIS FILE.** Session 27 found
 > two completed digitisations stranded in another worktree — untracked scripts, gitignored
-> outputs — while that worktree's copy of this document still listed both as open work. A
+> outputs — while that worktree's copy of this document still listed both as open work. **Session
+> 32 found three more caches the same way**, one of them a full digitisation of the project's
+> primary aerodynamic source and one a branch this file did not mention at all. A
 > measurement that is not written down here will be paid for twice. Before ending a session,
 > add the §9 entry, `git add` the scripts you wrote, and record what you deliberately did
-> *not* do. Until session 27 that `CLAUDE.md` did not exist, though this line referenced it.
+> *not* do.
+>
+> **That document was `CLAUDE.md` at the repository root until the September 2026 release**, and
+> was loaded automatically at the start of every working session. It is now ordinary
+> documentation, which means **rule 1 is no longer enforced by anything but the reader**. Until
+> session 27 it did not exist at all, though this line referenced it.
 
-Rules carried from `CLAUDE.md` and enforced throughout the code:
+Rules carried from `docs/DEVELOPMENT.md` and enforced throughout the code:
 
 - **Check that the tree you are testing is the tree you edited.** Every worktree shares the
   main checkout's `.venv`, whose editable install maps `atisim` to the **main checkout**
@@ -90,7 +97,7 @@ Rules carried from `CLAUDE.md` and enforced throughout the code:
 
 ## 0. Work in progress, and where it lives
 
-> **Required by `CLAUDE.md` rule 1b.** Rule 1 covers work that is done. This section covers
+> **Required by `docs/DEVELOPMENT.md` rule 1b.** Rule 1 covers work that is done. This section covers
 > work that is **not**, because an unmerged branch is indistinguishable from a branch nobody
 > wrote. **A row without a branch name is not a row.** Worktree directory names do NOT match
 > branch names in this repo — `turbulence-research-sources-39f87e` holds
@@ -256,7 +263,7 @@ session's work with a full re-baseline, and §7 has never listed it.
 | `claude/priceless-cori-688ee5` | — | 2 ahead, 60 behind | The geopotential ISA read, plus the AtiSim rename. **Probably subsumed by `new-session-943052`** — check before merging either |
 | `claude/flightsim-sweep-ui-graphs-d4d036` | same name | 1 ahead, 65 behind | "Give every panel header its own measured band, and let the load panel read against time" |
 | `claude/weekly-summary-analysis-7520db` | same name | 1 ahead, 7 behind | The LES runs and the two digitisations. **Session 27 harvested the scripts from here; the `runs/cat/` outputs are still only here** and are what §4's session-28 POD row reads |
-| `session-27-validation` | `cv-entry-project-e44ed6` | 2 ahead, **0 behind** | Renames `CLAUDE.md` to `AGENTS.md`. **On `origin`.** A naming decision this document has not taken — `CLAUDE.md` is what rules 1–6 live in and what this file references throughout |
+| `session-27-validation` | `cv-entry-project-e44ed6` | 2 ahead, **0 behind** | Renames `docs/DEVELOPMENT.md` to `AGENTS.md`. **On `origin`.** A naming decision this document has not taken — `docs/DEVELOPMENT.md` is what rules 1–6 live in and what this file references throughout |
 
 ### Rescued from a worktree at the session-32 audit, and unreviewed — THE α̇ DERIVATIVES
 
@@ -270,7 +277,7 @@ session's work with a full re-baseline, and §7 has never listed it.
 | **State** | **1 commit ahead of `7b71816`**, which is `main` as it stood before session 29 merged, so it is ~10 behind. **48 files.** Suite not run |
 | **What it is** | **`aircraft.py` restores Table IX-4's `Mwd` to the 747 as `Cmadot`** — the α̇ pitching derivative — with the conversion round-tripping to the tabulated −0.000116 and an argument that it *adds* rather than double-counts because the tabulated `Mq` is bare. **It leaves `CLadot` at zero and says why in twelve lines**: Table IX-4's `Zwd` = +0.00556 converts to a *negative* `CLadot`, which is unphysical, and rebuilding Table IX-5 with +0.00556, −0.00556 and 0.0 gives 1.11%, 0.66% and 0.68% — all inside a three-figure reference's reading precision, so **IX-5 cannot arbitrate the sign either**. That is rule 2 applied correctly. Also `dynamics.py`; four α̇ scripts (`alphadot_conversion`, `alphadot_isolate`, `galilean_alphadot_probe`, `zwdot_sign_probe`); `test_alphadot_derivatives.py`; and ten more scripts including `prandtl_glauert_check`, `e4_windhold_remeasure` and `recapture_fig8_pins`. Plus a presentation package: a 1.1 MB deck, `build_deck.py`, a QA defence brief and eleven figures |
 | **What it closes** | **§5's α̇ entry**, if it survives review — the derivative the model has excluded by form since session 1 |
-| **Blocking** | **Review, and one thing specifically. `atisim/tests/test_cr2144_modes.py` IS MODIFIED**, and it is one of the five files `CLAUDE.md` rule 3 declares off-limits to feature work. The `aircraft.py` comment claims the augmented model there closes all four Table IX-5 factors to ≤1.2%, which would make it a **re-capture** rather than a loosening — but rule 3 puts the burden of showing which *on the change, in a comment, at the change*, and that has not been shown. **Settle this before anything else in the branch.** Its `PROJECT.md` (+479) and `ASSUMPTIONS.md` (+28) edits predate sessions 29–30 and will conflict |
+| **Blocking** | **Review, and one thing specifically. `atisim/tests/test_cr2144_modes.py` IS MODIFIED**, and it is one of the five files `docs/DEVELOPMENT.md` rule 3 declares off-limits to feature work. The `aircraft.py` comment claims the augmented model there closes all four Table IX-5 factors to ≤1.2%, which would make it a **re-capture** rather than a loosening — but rule 3 puts the burden of showing which *on the change, in a comment, at the change*, and that has not been shown. **Settle this before anything else in the branch.** Its `PROJECT.md` (+479) and `ASSUMPTIONS.md` (+28) edits predate sessions 29–30 and will conflict |
 
 ### Rescued from worktrees at the session-28 audit, and unreviewed
 
@@ -1723,7 +1730,7 @@ tests that assert **exact bit equality**, and both differ in the 13th significan
 | `FIG8_VORTEX[1]` (Δn) | −1.2396439681557032 | −1.2396439681557148 | 9.31e-15 | ~42 |
 | `PRE_REFACTOR_VEL_HASH` | (sha256 differs) | — | — | — |
 
-**Neither tolerance was touched and neither should be** — `CLAUDE.md` rule 3, and these are
+**Neither tolerance was touched and neither should be** — `docs/DEVELOPMENT.md` rule 3, and these are
 doing precisely their job: they detect that the arithmetic environment changed. The reading
 is that **a rollout of 10⁴–10⁵ steps is bit-reproducible only within one platform**, while
 the linearisation path is stable across platforms to five decimals (row B). The test count
@@ -1962,7 +1969,7 @@ consecutive figure pages, printed pp. 220–222 (PDF indices 225–227), all cap
 
 **And that last reading is gone, which is why this row exists.** Session 21's entry says in
 its own words that "the working patch is kept out of the tree". The single M 0.80 cross-check
-survives in §4's prose; **the curve does not.** This is precisely the failure `CLAUDE.md`
+survives in §4's prose; **the curve does not.** This is precisely the failure `docs/DEVELOPMENT.md`
 rule 1 was written for, occurring six sessions before that rule existed, and it cost the
 project the bound it then spent sessions 22–27 saying it could not have.
 
@@ -6140,9 +6147,9 @@ digitisation. Quoted with that band everywhere it appears.
 
 **7. Session 29 is not in this document, and §0 now says where it is.** The sensitivity study
 — design, module, four scripts, the two `sqrt(0)` repairs, C3 bounded at cruise, §1's headline
-banded — is **8 commits ahead of `main` and 0 behind, on `origin` only**. `CLAUDE.md` rule 1b's
+banded — is **8 commits ahead of `main` and 0 behind, on `origin` only**. `docs/DEVELOPMENT.md` rule 1b's
 two-line check reads `refs/heads` and cannot see it. **Adding `refs/remotes/` to that check is
-the one-line fix**, and this session did not edit `CLAUDE.md` to make it.
+the one-line fix**, and this session did not edit `docs/DEVELOPMENT.md` to make it.
 
 **8. Then the set was declared — on request, after points 3–5 were measured — and the price
 was paid in the open.**
@@ -6535,7 +6542,7 @@ had already been done on another branch, the answer was **yes, and the biggest o
 Prandtl–Glauert implementation, `g(z)`, the geopotential fix and Mach-scheduled control
 derivatives. **It is now rebased and merged**, at 821 passed / 1 skipped, after three pins
 were re-captured against the new gravity and atmosphere. §4 has what moved; §0 exists because
-of it, and `CLAUDE.md` gained rule 1b. **The repo audit also cut 39 branches to 19** — 20 were
+of it, and `docs/DEVELOPMENT.md` gained rule 1b. **The repo audit also cut 39 branches to 19** — 20 were
 fully merged and carried nothing — and rescued uncommitted work from five worktrees, the
 largest a tail-arm gate refactor with tests.
 
@@ -6563,7 +6570,7 @@ work of digitising TM-102186 Fig. 6 and MIL-F-8785C Fig. 7 **had already been do
 `scripts/digitise_mil_f_8785c_fig7.py`, complete with three independent checks apiece. Both
 scripts were **untracked**, their outputs were gitignored PNGs, and that worktree's
 `PROJECT.md` still listed both figures as *open acquisitions*. **The measurement was not the
-hard part; keeping it was.** `CLAUDE.md` now carries the rule that closes this, and
+hard part; keeping it was.** `docs/DEVELOPMENT.md` now carries the rule that closes this, and
 §"How to update this document" points at it.
 
 **Five scripts were rescued into this tree. Two were re-run and are in §4; three were not,

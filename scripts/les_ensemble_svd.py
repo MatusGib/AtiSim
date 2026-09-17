@@ -31,7 +31,7 @@ what the SVD would remove, and the SVD is a second name for the same operation.
 
 Data: the n_z ensembles written by `scripts/les_flight.py`, 16 flights x 5000
 samples at dt = 0.02 s. They are gitignored and live in whichever worktree ran
-them, so `--runs` is required rather than assumed -- CLAUDE.md rule 5.
+them, so `--runs` is required rather than assumed -- docs/DEVELOPMENT.md rule 5.
 
 *** THESE ARE THE boeing747 RUNS SECTION 4 REFUSES FOR LOAD LEVEL. *** The
 aeroplane is 5.4% away in short period and 2.63 band widths outside its

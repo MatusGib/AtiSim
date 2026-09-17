@@ -11,12 +11,60 @@ later session that disagrees with the shape should disagree with the answers.
 | Which documentation toolchain? | **Sphinx + autodoc**, published to GitHub Pages. Doxygen was asked for, and declined on the evidence below |
 | Who is the repository for? | **A public open-source release**, MIT licensed |
 | What should the runnable notebook cover? | **The validation ladder, end to end**, nbval-gated in CI |
+| **Amended, later on day 1:** repository visibility | **Private now, public when done.** Going private immediately closes the copyright exposure; the Phase 6 history rewrite **still happens**, because the copyrighted PDFs are in history and going public again would re-expose them |
+| **Amended:** history strategy | **Clean up in place.** Keep `MatusGib/AtiSim`, its 183 commits and its PR record. A fresh repository was offered and declined |
+| **Amended:** `CLAUDE.md` | **Moved to `docs/DEVELOPMENT.md`.** Off the front page entirely. The cost was stated before the choice and is recorded in the file itself: automated tooling no longer loads it, so rules 1 and 1b lose continuous enforcement |
+
+### Amendment, day 1: the repository must read as *finished*
+
+**Added requirement, and it changes Phase 4 substantially.** The repository must not look like a
+work in progress conducted in numbered sessions. "Include the main changes in the updates but
+not every single session."
+
+**What this does NOT mean.** It does not mean deleting the record. `PROJECT.md` §4 is the
+project's principal asset and §5's negative results are worth more than most of the code;
+rule 1's whole point is that a result not written down was never obtained. **The session
+*narrative* is what goes, not the evidence.**
+
+**Measured before deciding, because the assumption was that the commit log was the problem:**
+
+| | |
+|---|---|
+| Commits on `main` | **183** |
+| Subject lines mentioning a session | **8** |
+| Subject lines mentioning Claude | **0** |
+
+**So the history is not the problem** — it reads as engineering work, with subjects like "Read
+the DC-10's altitude from Parks Fig. 6: it did not climb before the pair". That is the evidence
+against starting a fresh repository: 183 such commits are credibility, and one `initial commit`
+of 47,000 lines is a dump. The 8 subjects are reworded in the Phase 6 `filter-repo` pass, which
+was already scheduled for the PDFs.
+
+**The real tells, and where each is handled:**
+
+| Tell | Disposition |
+|---|---|
+| `FIX_PROMPT.md` (31 KB), `analysis-ui-investigation-prompt.md`, `audit/AUDIT_PROMPT.md` — prompts written to an AI, referenced by nothing | **DONE, day 1.** Deleted |
+| `CLAUDE.md` at the root | **DONE, day 1.** → `docs/DEVELOPMENT.md`, 36 cross-references updated |
+| No licence, `license: null` on a public repo | **DONE, day 1.** MIT |
+| Repo description "Jax based vortex flight simulator ", no topics | **DONE, day 1.** Both set |
+| `docs/superpowers/` — the directory name | **Phase 4c.** → `docs/design/`. **Deferred deliberately**: three unmerged branches modify files under it, so a rename now conflicts with all three |
+| `docs/SESSION_27_REPORT.md` | **Phase 4c.** Its closing section states the validation claim more plainly than anything else in the repository. **Harvest that prose into the docs site, then delete the file** — not the other way round |
+| `PROJECT.md` §9, 32 session entries | **Phase 4c.** Becomes `CHANGELOG.md` keyed to **capabilities, not sessions** — the frame, the CAT validation, the sensitivity study, the compressibility work. §9 itself is kept, moved behind the docs site as the provenance appendix |
+| `PROJECT.md` §0, a work-in-progress inventory | **Phase 7.** Empty at the release, or every remaining row justified. §0 going empty *is* the finished signal |
+| README's "I asked claude to add test", "23 scripts" (there are 42) | **Phase 4b** |
+| No release, no tag | **Phase 7.** `v1.0.0` |
+
+**One ordering consequence.** Structural renames conflict with unmerged branches, so the rule is:
+**delete freely what nothing else touches, and defer every rename until after Phase 2.** Day 1's
+moves were all checked against all seven substantial branches first; `docs/superpowers/` failed
+that check and waits.
 
 **Why not Doxygen, since it was asked for.** `atisim` is 31,632 lines of Python carrying
 *narrative* docstrings — `dynamics.gravity` spends six lines naming the effects it omits and
 how large each is. Doxygen's Python support parses neither docstring markup nor type hints, so
 that prose renders as flat unformatted text; getting good output would mean adding
-`\param`/`\return` blocks across modules that `CLAUDE.md` §3 puts off-limits to casual edits,
+`\param`/`\return` blocks across modules that `docs/DEVELOPMENT.md` §3 puts off-limits to casual edits,
 duplicating docstrings that already exist. Sphinx + autodoc renders what is already written.
 
 ---
@@ -33,7 +81,7 @@ Measured 17 September 2026, on `main` at `c1b7d71`, which is identical to `origi
   `atisim/tests/test_alphadot_derivatives.py`, a `.pptx` deck, and **14 untracked scripts**
   including `alphadot_conversion.py`, `alphadot_isolate.py`, `galilean_alphadot_probe.py`,
   `prandtl_glauert_check.py`, `e4_windhold_remeasure.py` and `recapture_fig8_pins.py`. The
-  main checkout holds 5 untracked reference PDFs. **This is the failure `CLAUDE.md` rule 1b
+  main checkout holds 5 untracked reference PDFs. **This is the failure `docs/DEVELOPMENT.md` rule 1b
   exists to prevent, live, for the third recorded time.**
 - **`docs/PROJECT.md` is 604 KB / 8,096 lines.** An excellent standing record and not an
   entry point.
@@ -90,7 +138,7 @@ rather than prospective.**
    and the notebook must **compute or cross-reference** every figure they show, never quote a
    literal. Built that way they can be written in parallel with Phase 2 and the re-baseline
    flows through them; built the other way, Phase 2 invalidates them on the last day. This is
-   what `CLAUDE.md` §2 and §6 already require, so the constraint costs nothing.
+   what `docs/DEVELOPMENT.md` §2 and §6 already require, so the constraint costs nothing.
 3. **A history rewrite invalidates every unmerged branch**, so it must come *after* all
    merging. It is also irreversible and force-pushes a public repository.
 
@@ -129,7 +177,7 @@ prints nothing that §0 does not have a row for.
 4. Review and either merge or abandon the four rescued-but-unendorsed branches, chief among
    them `claude/zen-maxwell-1ad0a4`'s tail-arm gate refactor.
 5. Take the two decisions §0 says the project has never taken: whether `old-origin`
-   (`MatusGib/Flight_sim`) still exists, and whether `CLAUDE.md` becomes `AGENTS.md`.
+   (`MatusGib/Flight_sim`) still exists, and whether `docs/DEVELOPMENT.md` becomes `AGENTS.md`.
 
 **Gate:** the two-line check prints only the WGS-84 pair and anything deliberately kept, each
 with a §0 row; suite green on `main`.
@@ -154,7 +202,7 @@ are frame-sensitive. Drive the suite green.
 
 **2c, Wed 23 – Thu 24.** The re-baseline. Every frame-dependent §4 row re-measured and
 **superseded in place, never deleted** (§4's own rule). `ASSUMPTIONS.md` A1 and A2 retired, A3
-revisited. §1's validation claim reconciled with whatever §4 now says — `CLAUDE.md` rule 1.4
+revisited. §1's validation claim reconciled with whatever §4 now says — `docs/DEVELOPMENT.md` rule 1.4
 exists because §1 once carried a stale 67% for several sessions.
 
 **Gate:** suite green; no §4 row deleted; §1 and §4 agree on the headline; A1/A2 retired in
@@ -165,7 +213,7 @@ exists because §1 once carried a stale 67% for several sessions.
 Every open item in §5, §7 and §8 gets one of exactly three statuses, with the evidence:
 
 - **measured** — a §4 row,
-- **impossible with sources held** — naming *which* source failed and *why*, per `CLAUDE.md` §2,
+- **impossible with sources held** — naming *which* source failed and *why*, per `docs/DEVELOPMENT.md` §2,
 - **abandoned** — a §9 entry saying why, per rule 1b.
 
 Includes: assessing the 5 new DC-10/MD-11 papers against the one genuinely-open acquisition
@@ -227,12 +275,12 @@ README, and gets a green suite and a rendered documentation site.
 
 ## 3. The execution loop
 
-Every phase runs this, because `CLAUDE.md` rules 1, 1b and 4 require it:
+Every phase runs this, because `docs/DEVELOPMENT.md` rules 1, 1b and 4 require it:
 
 ```
 for each phase:
   0. VERIFY THE TREE   .venv/Scripts/python.exe -c "import atisim; print(atisim.__file__)"
-                       -> abort if that is not the tree you edited (CLAUDE.md rule 4)
+                       -> abort if that is not the tree you edited (docs/DEVELOPMENT.md rule 4)
   1. STATE THE GATE    write the success criterion down BEFORE starting
   2. DO THE WORK       surgical; every changed line traces to the gate
   3. MEASURE           run the gate command; capture the real output
@@ -247,14 +295,14 @@ for each phase:
 
 ## 4. Out of scope, deliberately
 
-Named here so a later session does not go looking, per `CLAUDE.md` rule 1.3.
+Named here so a later session does not go looking, per `docs/DEVELOPMENT.md` rule 1.3.
 
 - **No new physics beyond what closes a gap.** The `boeing787_yoshimura` registry entry, Parks
   1985 Fig. 6's pitch and true-airspeed channels, and Hannibal inventory items 2–5 get a
   terminal status in §5/§7 — not an implementation. **Unless Phase 2 aborts**, which frees
   Wed 23 – Thu 24 and makes them the first candidates.
-- **No tolerance edited to make a test pass** (`CLAUDE.md` §3). If a §4 baseline file moves
+- **No tolerance edited to make a test pass** (`docs/DEVELOPMENT.md` §3). If a §4 baseline file moves
   during the re-baseline, that is Phase 2c's finding, recorded with the cause, not smoothed.
 - **`PROJECT.md` is not shortened.** All 8,096 lines stay.
 - **Doxygen is not used**, for the reasons at the top.
-- **The Cessna stays out of every conclusion** (`CLAUDE.md` §6).
+- **The Cessna stays out of every conclusion** (`docs/DEVELOPMENT.md` §6).
