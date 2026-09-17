@@ -5573,9 +5573,9 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   sooner. A run flown to the absolute reading would not be a harder test of the model, it
   would be outside it, and would prove nothing.
 
-## 6. Latent bugs — (a)–(d) fixed in session 5, (e) in session 7
+## 6. Latent bugs — (a)–(d) fixed in session 5, (e) in session 7, (f) in session 29, (g) in session 32
 
-All five are closed. Kept here rather than deleted because the *shape* of (a) and (b) is
+All seven are closed. Kept here rather than deleted because the *shape* of (a) and (b) is
 the thing worth remembering: both survived three sessions and a 209-test suite because
 every test in the project was still air, and still air cannot distinguish airspeed from
 groundspeed.
@@ -5684,6 +5684,36 @@ A still-air test suite cannot catch an air-relative/inertial confusion, because 
 air the two are the same number. Any future quantity with an air-relative and an inertial
 form needs at least one test that flies through a non-zero wind field —
 `test_sensors.py` exists for exactly that and nothing else.
+
+### (g) `airframe.stations` built sample stations out to −∞, silently — FIXED session 32
+
+**`loads.strip_model` gated on the tail arm and `airframe.stations` did not**, though
+`stations` is the only place a `Stations` is built and therefore the one point every
+sampling consumer passes through. For the registry entries whose source defines no `CLq`,
+`effective_tail_arm = −Cmq/CLq` is a **division by zero**, so `arm` was `inf`, the
+`linspace` ran to `−inf`, and **every fitted gradient came back NaN with nothing raised
+anywhere.** A rollout would run to completion and report a NaN rms.
+
+**Measured on the merged tree, rather than taken from the branch's own docstring: 5 of the
+7 registry entries are refused, and the two causes are different problems.**
+
+| entry | arm, chords | `CLq` | why |
+|---|---|---|---|
+| `boeing737`, `boeing737_approach`, `boeing747_jsbsim` | `inf` | **0** | the arm **does not exist** — division by zero, and no better estimator recovers it |
+| `cessna172` | 0.8558 | 7.282 | arm **finite and outside the band**: `CLq` and `Cmq` disagree about what airframe they describe |
+| `cherokee` | 1.2802 | 5.760 | as above |
+| `boeing747`, `boeing747_approach` | 4.0241, 3.8519 | 5.945, 5.400 | pass |
+
+**Fixed by `airframe.require_plausible_tail_arm`**, called from *both* `stations` and
+`strip_model`, so a caller cannot get two different accounts of the same refusal depending
+on which door they came in by. `_refusal` separates the two causes in the message, because
+blurring them would send someone looking for a fix where there is nothing to fix.
+
+**Why it survived**: the same shape as (a) and (b). The suite had no test that asked a
+refused aircraft for stations, and a NaN rms **looks like a result**. The work was rescued
+from an uncommitted worktree at the session-28 audit and sat unreviewed on
+`claude/zen-maxwell-1ad0a4` for three weeks — so the bug was found, fixed and then nearly
+lost, which is rule 1b's case in one line.
 
 ## 7. Plan
 

@@ -102,19 +102,18 @@ def strip_model(field, ac: Aircraft, stations=None):
 
     Raises if the aircraft fails the tail-arm plausibility gate. That check
     exists because the sample stations are built from a DERIVED tail arm, and
-    for two of the four aircraft in the registry that derivation returns a value
-    the airframe plainly does not have. Failing at construction is deliberate:
-    a run that quietly used a 0.856-chord tail arm would produce numbers that
-    look ordinary and are not.
+    for five of the seven aircraft in the registry that derivation returns a
+    value the airframe plainly does not have, or none at all. Failing at
+    construction is deliberate: a run that quietly used a 0.856-chord tail arm
+    would produce numbers that look ordinary and are not.
+
+    The check is kept here as well as in `airframe.stations` because the call to
+    it is skipped whenever a caller supplies its own station set. Both go through
+    `airframe.require_plausible_tail_arm`, so the refusal reads the same either
+    way.
     """
     from atisim import airframe
 
-    if not airframe.tail_arm_is_plausible(ac):
-        raise ValueError(
-            f"tail arm {float(airframe.effective_tail_arm(ac)):.4f} chords is outside "
-            f"{airframe.TAIL_ARM_BAND} -- this aircraft's CLq and Cmq disagree about "
-            f"what airframe they describe, so the strip path must not be used for it. "
-            f"Use the point model instead."
-        )
+    airframe.require_plausible_tail_arm(ac)
     st = airframe.stations(ac) if stations is None else stations
     return lambda state: strip_increment(state, field, ac, st)
