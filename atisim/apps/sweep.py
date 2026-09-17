@@ -44,6 +44,12 @@ REPRESENTATION = {
 _CARD = {"background": "#fff", "border": "1px solid #e3e3e3", "borderRadius": "6px",
          "padding": "8px 10px", "marginBottom": "8px"}
 _MONO = {"fontFamily": "ui-monospace, Consolas, monospace"}
+# A control sits IN THE CARD OF THE PANEL IT DRIVES. In the header they were a
+# row of four widgets three of which changed one panel each, so a reader had to
+# learn the mapping by trying them; `run` is the only one that changes the whole
+# page and it is the only one that stays up there.
+_CONTROLS = {"display": "flex", "alignItems": "center", "gap": "8px",
+             "marginBottom": "6px", "fontSize": "12px", "color": "#555"}
 
 
 class Loaded:
@@ -209,26 +215,6 @@ def build_app(root: Path) -> Dash:
                     style={"width": "340px", "display": "inline-block",
                            "verticalAlign": "middle"},
                 ),
-                dcc.Dropdown(
-                    id="scalar", value="n_z", clearable=False,
-                    options=[{"label": f"colour 3D by {k}", "value": k}
-                             for k in figures.SCALARS],
-                    style={"width": "220px", "display": "inline-block",
-                           "verticalAlign": "middle", "marginLeft": "8px"},
-                ),
-                # 2D IS THE DEFAULT, and for the Parks vortex it is not a
-                # simplification: `wind.vortex_wind` fixes dpsi = 0, so the field
-                # has NO east variation and one north-altitude plane contains all
-                # of it. The 3D scene is the option, not the baseline.
-                dcc.RadioItems(
-                    id="fieldview", value="2d",
-                    options=[{"label": " 2D cross-section", "value": "2d"},
-                             {"label": " 3D scene", "value": "3d"}],
-                    inline=True,
-                    style={"display": "inline-block", "marginLeft": "12px",
-                           "fontSize": "12px", "verticalAlign": "middle"},
-                    inputStyle={"marginRight": "4px", "marginLeft": "8px"},
-                ),
             ], style={"marginBottom": "8px"}),
             html.Div(id="header"),
             html.Div(id="badges", style=_CARD),
@@ -238,6 +224,26 @@ def build_app(root: Path) -> Dash:
                 ], style={"width": "56%", "display": "inline-block",
                           "verticalAlign": "top", **_CARD}),
                 html.Div([
+                    html.Div([
+                        # 2D IS THE DEFAULT, and for the Parks vortex it is not
+                        # a simplification: `wind.vortex_wind` fixes dpsi = 0, so
+                        # the field has NO east variation and one north-altitude
+                        # plane contains all of it. The 3D scene is the option,
+                        # not the baseline.
+                        dcc.RadioItems(
+                            id="fieldview", value="2d",
+                            options=[{"label": " 2D cross-section", "value": "2d"},
+                                     {"label": " 3D scene", "value": "3d"}],
+                            inline=True, style={"whiteSpace": "nowrap"},
+                            inputStyle={"marginRight": "4px", "marginLeft": "8px"},
+                        ),
+                        dcc.Dropdown(
+                            id="scalar", value="n_z", clearable=False,
+                            options=[{"label": f"colour 3D by {k}", "value": k}
+                                     for k in figures.SCALARS],
+                            style={"width": "200px"},
+                        ),
+                    ], style=_CONTROLS),
                     dcc.Graph(id="scene", config={"displaylogo": False, "responsive": True}),
                     html.Div(id="readout", style={"fontSize": "11.5px", **_MONO}),
                 ], style={"width": "41%", "display": "inline-block",
@@ -251,10 +257,26 @@ def build_app(root: Path) -> Dash:
                      style=_CARD),
             html.Div([
                 html.Div([dcc.Graph(id="fig8", config={"displaylogo": False, "responsive": True})],
-                         style={"width": "48%", "display": "inline-block", **_CARD}),
-                html.Div([dcc.Graph(id="nzalpha", config={"displaylogo": False, "responsive": True})],
                          style={"width": "48%", "display": "inline-block",
-                                "marginLeft": "1.5%", **_CARD}),
+                                "verticalAlign": "top", **_CARD}),
+                html.Div([
+                    # Incidence and time EXCHANGE places; the load factor stays
+                    # on y in both. See `figures.load_vs_alpha`: the incidence
+                    # view is timeless on purpose, which is what makes the
+                    # straight line legible and what makes it unable to say when.
+                    html.Div([
+                        html.Span("load factor against"),
+                        dcc.RadioItems(
+                            id="nzx", value="alpha",
+                            options=[{"label": " angle of attack", "value": "alpha"},
+                                     {"label": " time", "value": "time"}],
+                            inline=True, style={"whiteSpace": "nowrap"},
+                            inputStyle={"marginRight": "4px", "marginLeft": "8px"},
+                        ),
+                    ], style=_CONTROLS),
+                    dcc.Graph(id="nzalpha", config={"displaylogo": False, "responsive": True}),
+                ], style={"width": "48%", "display": "inline-block",
+                          "verticalAlign": "top", **_CARD, "marginLeft": "1.5%"}),
             ]),
             dcc.Store(id="cursor", data=None),
         ],
@@ -308,10 +330,10 @@ def build_app(root: Path) -> Dash:
         Output("fig8", "figure"), Output("nzalpha", "figure"),
         Output("readout", "children"),
         Input("run", "value"), Input("scalar", "value"), Input("cursor", "data"),
-        Input("fieldview", "value"),
+        Input("fieldview", "value"), Input("nzx", "value"),
         State("scene", "relayoutData"),
     )
-    def render(run_name, scalar, cursor_t, fieldview, scene_relayout):
+    def render(run_name, scalar, cursor_t, fieldview, nzx, scene_relayout):
         """Everything updates from the cursor in ONE callback, so nothing tears.
 
         Six outputs, one input set. Splitting this into six callbacks would let
@@ -356,7 +378,7 @@ def build_app(root: Path) -> Dash:
             scene,
             figures.ordering(fig8_points),
             figures.discriminator(fig8_points),
-            figures.load_vs_alpha(s, cursor_index=index),
+            figures.load_vs_alpha(s, cursor_index=index, against=nzx),
             _readout(loaded, index),
         )
 

@@ -353,6 +353,44 @@ decision someone takes rather than one that audit took for them. **Session 32 to
 | `claude/flight-dynamics-email-3601f2` | 143 behind; a `summary.py` rewrite and a `flightsim-summary.pdf` under the pre-rename name | nothing left |
 | `claude/flight-dynamics-validation-67fa59` | 169 behind, and says of itself "superseded on master by 099bd33" | nothing left |
 
+**The commit each pointed at, so abandoning is reversible.** A deleted branch whose SHA is
+written down can be recovered — `git show`, `git cherry-pick`, or a new branch at that commit —
+for as long as the object survives. A deleted branch whose SHA is *not* written down is the
+thing rule 1b is about. These were read before they were deleted, and this table is why the
+reading does not have to be repeated.
+
+| Branch | Commit |
+|---|---|
+| `claude/weekly-summary-analysis-7520db` | `f9b9717` |
+| `claude/cat-flight-model-dossier-04adb9` | `d703d37` |
+| `claude/priceless-cori-688ee5` | `ce886f6` |
+| `claude/project-md-restructure-95b7b8` | `39d1c56` |
+| `claude/flight-dynamics-cat-prompt-ec9839` | `124ae05` |
+| `claude/project-readme-mockup-0ef89a` | `39b3660` |
+| `claude/flight-dynamics-email-3601f2` | `04e9ae0` |
+| `claude/flight-dynamics-validation-67fa59` | `bd56979` |
+| `claude/flightsim-sweep-ui-graphs-d4d036` | `f5ed73d` — **not abandoned; applied**, see below |
+
+### The panel-chrome fix, applied across the rename — session 32
+
+**`claude/flightsim-sweep-ui-graphs-d4d036` was nearly abandoned with the rest** for being 97
+commits behind on the pre-rename `flightsim/` package. Measuring first changed the answer:
+`analysis/figures.py`, `apps/sweep.py` and `test_figures.py` are **the same length on `main` as
+at the merge base**, with 2–5 lines changed in each — the rename itself. So the branch was 97
+commits behind and its *files* were not behind at all.
+
+Applied by rewriting the diff's paths `flightsim/` → `atisim/` and `git apply --3way`: three
+files clean, **352 insertions**. `test_figures.py` gains 154 lines and the file passes 38 tests.
+
+**What it fixes is visible and was being shipped.** The panel chrome reserved its top margin by
+a guessed formula, wrong three ways at once on every panel carrying a subtitle: a title block's
+lines are spaced at 1.3× the *title* size, 17 px at 13, where the formula reserved 13 px, so
+**the last line of every subtitle was drawn inside the plot area**; the block's own offset was
+missing from the sum; and the legend sat at paper y = 1.02, the band the title was overflowing
+into — measured on Fig. 8 as title x 0–293 and legend x 110–649 **both at y 39–68, the legend
+drawn straight through the caption**. Each element now gets its own band from a running pixel
+offset, with the constants measured at three panel heights and at three- and four-line blocks.
+
 ### Deferred to the WGS-84 merge, deliberately — session 32
 
 **Two branches were NOT abandoned and NOT merged, for one reason: they contest the same file
