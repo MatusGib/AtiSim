@@ -312,22 +312,41 @@ def test_the_overshoot_is_not_the_reading_it_is_the_missing_thrust_moment(retest
     assert abs(c["ph_wn"]) < 0.01 and abs(c["ph_z"]) < 0.015
 
 
-def test_the_declared_thrust_line_closes_the_phugoid(retest):
-    """THE SOURCED FIX. `boeing747` declares Table IX-3's thrust line -- LTH
-    10 ft below the CG, XI 2.5 deg -- with its trim referenced to it. Measured:
-    phugoid wn -0.05%, zeta +1.13% against Table IX-5, where the speed set alone
-    read +4.04% / +5.62% and the unsourced diagnostic +0.07% / +0.64%. Short
-    period unmoved."""
-    s, c = retest["shipped"], retest["thrust_compensated"]
-    assert abs(s["ph_wn"]) < 0.01 and abs(s["ph_z"]) < 0.03
-    assert abs(s["ph_wn"]) < abs(retest["speed_only"]["ph_wn"]) / 4.0
-    assert abs(s["ph_wn"] - c["ph_wn"]) < 0.01 and abs(s["ph_z"] - c["ph_z"]) < 0.02
+def test_the_declared_thrust_line_closes_most_of_the_overshoot(retest):
+    """THE SOURCED FIX, AT THE REVISED ARM. `boeing747` declares a thrust line
+    5.70 ft below the CG (NASA CR-114494's revised engine pitching arms) and
+    2.5 deg up (Table IX-3), with its trim referenced to it. Measured: phugoid
+    wn +1.69%, zeta +2.83% against Table IX-5, where the speed set alone read
+    +4.05% / +3.45%.
+
+    CR-2144's OWN 10 ft closes it further (-0.05% / +1.13%) and its tables
+    agree with 10 ft better. The revised arm is declared anyway: an arm is not
+    chosen by the answer it gives. The second half asserts that cost exists,
+    so a later edit cannot quietly swap the arm for the better number."""
+    s, so = retest["shipped"], retest["speed_only"]
+    assert 0.0 < s["ph_wn"] < 0.03 and 0.0 < s["ph_z"] < 0.05
+    assert s["ph_wn"] < so["ph_wn"] / 2.0 and s["ph_z"] < so["ph_z"]
+    assert abs(float(AC.thrust_arm) / 0.3048 - 5.70) < 1e-9
+
+    ten_ft = AC._replace(
+        thrust_arm=jnp.array(10.0 * 0.3048),
+        Cm0=AC.Cm0 - _trim_thrust_moment_coefficient() * (10.0 - 5.70) / 5.70)
+    t = _errors(ten_ft)
+    assert abs(t["ph_wn"]) < 0.01 < s["ph_wn"]
+
+
+def _trim_thrust_moment_coefficient():
+    """T LTH / (qS c) at FC9 for the declared arm, from CR-2144's own trim."""
+    _, _, _, q, adeg = cm.IX3[9]
+    thrust = cm.backsolve(9)["CD"] * q * cm.S_FT2 / math.cos(math.radians(adeg) + cm.XI_RAD)
+    return thrust * 5.70 / (q * cm.S_FT2 * cm.CBAR_FT)
 
 
 def test_the_thrust_line_needs_the_speed_derivatives(retest):
     """NEITHER HALF WORKS ALONE. The line on the entry with its speed seam shut
-    takes the phugoid frequency from -18.1% to -23.4%: the M_u term it adds is
-    the one CR-2144 pairs with Cm_M, and without Cm_M it pulls the wrong way."""
+    takes the phugoid frequency from -18.1% to -21.1% (at 5.70 ft): the M_u term
+    it adds is the one CR-2144 pairs with Cm_M, and without Cm_M it pulls the
+    wrong way."""
     assert retest["line_only"]["ph_wn"] < retest["bare"]["ph_wn"] - 0.02
 
 

@@ -28,6 +28,10 @@ speed derivatives and thrust line declared), through Mehta's array at 37,000 ft 
                         whatever its own climb
   G  replayed + miss    D's field, replayed the same way
 
+F IS THE HEADLINE FORM since session 30 (`wind.on_identified_path`, used by
+`scripts/cat_validation.py`): Parks 1985 Fig. 6 shows the DC-10 held its
+altitude through cores 3 and 4 (`scripts/digitise_parks_fig6_altitude.py`).
+
 WHY F AND G EXIST. Cores 3 and 4 sit 94 ft and 254 ft above the nominal path,
 and the updrafts before them lift the 747 by ~500 ft, so it passes ABOVE both
 where the straight path passes below -- and the horizontal wind flips sign
@@ -125,7 +129,7 @@ def fields(recorded_miss):
         "C": ("Horizontal gust removed", no_along),
         "D": ("Projected, plus the horizontal wind the fit misses", with_miss),
         "E": ("Cores on the wrong side of the path", wrong_side),
-        "F": ("Fitted wind replayed along the path", on_path(as_flown)),
+        "F": ("Fitted wind replayed along the path (the headline)", on_path(as_flown)),
         "G": ("Replayed, projected, plus the wind the fit misses", on_path(with_miss)),
     }
 

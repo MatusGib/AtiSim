@@ -127,7 +127,11 @@ def pushdown():
 # d(theta) 2.362979 -> 2.311468 (-2.18%), dn -1.248819 -> -1.244248 (-0.37%).
 # The inert seam alone left this pin unmoved; the declaration moved it. Previous:
 # (2.3629788988555624, -1.248819284885492).
-FIG8_VORTEX = (2.311468013307627, -1.244247638948896)
+#
+# And once more: the arm replaced by CR-114494's revised 5.70 ft. d(theta)
+# 2.311468 -> 2.333270, dn -1.244248 -> -1.246266. Previous (10 ft):
+# (2.311468013307627, -1.244247638948896).
+FIG8_VORTEX = (2.3332704114024994, -1.2462664938758317)
 FIG8_VORTEX_BEFORE_LOGGING = FIG8_VORTEX  # old name, kept for one release
 
 

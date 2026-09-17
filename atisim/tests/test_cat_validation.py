@@ -860,7 +860,7 @@ def test_the_approach_747s_tabulated_alpha_dot_terms_are_a_trade_not_a_win():
 _MEHTA_LEAD_R0 = 12.0
 
 
-def _mehta_run(*, v0_scale=1.0, r0_scale=1.0, dt=0.02, ac=None):
+def _mehta_run(*, v0_scale=1.0, r0_scale=1.0, dt=0.02, ac=None, replayed=True):
     """The headline Mehta run with the identified parameters perturbed.
 
     dt 0.02 rather than the script's 0.01: PROJECT.md section 4 measures the
@@ -870,6 +870,11 @@ def _mehta_run(*, v0_scale=1.0, r0_scale=1.0, dt=0.02, ac=None):
     `ac` defaults to the shipped `boeing747`. Session 30 added it so a claim
     established before that entry declared CR-2144's speed derivatives can
     still be asserted on the entry it was established on.
+
+    `replayed` is the headline form since session 30, as in
+    `scripts/cat_validation.py`: the field evaluated on the path it was
+    identified along (`wind.on_identified_path`). False flies it at the
+    aircraft's own altitude, the form every claim before that was measured on.
     """
     from atisim import vortex_viz
     from atisim.aircraft import CRUISE
@@ -882,8 +887,9 @@ def _mehta_run(*, v0_scale=1.0, r0_scale=1.0, dt=0.02, ac=None):
     r0 = float(wind.MEHTA_HANNIBAL_R0)
     x0, x1 = float(array.north.min()), float(array.north.max())
     start = x0 - _MEHTA_LEAD_R0 * r0
+    field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
     enc = vortex_viz.fly_in_moving_air(
-        ac, lambda p: wind.vortex_wind(p, array), V, H, label="mehta",
+        ac, wind.on_identified_path(field, H) if replayed else field, V, H, label="mehta",
         start_north=start, seconds=(x1 + _MEHTA_LEAD_R0 * r0 - start) / V,
         dt=dt, window=(x0 - 2.0 * r0, x1 + 2.0 * r0), window_name="array",
     )
@@ -969,8 +975,8 @@ def test_the_flown_gust_spacing_reproduces_the_recorded_five_seconds():
     airspeed appears in no source held here, and 6% between two transports at
     37,000 ft is unremarkable.
     """
-    def readings_for(ac):
-        enc, _ = _mehta_run(ac=ac)
+    def readings_for(ac, replayed=True):
+        enc, _ = _mehta_run(ac=ac, replayed=replayed)
         w = enc.window
         times = _gust_times(enc.t[w], enc.w_up[w], 0.40 * wind.MEHTA_HANNIBAL_V0)
         assert len(times) == 4
@@ -987,7 +993,10 @@ def test_the_flown_gust_spacing_reproduces_the_recorded_five_seconds():
     # derivatives, pitches further in the cores and meets them off-centre, which
     # moves WHEN the extrema are met: peak-to-peak 5.28 -> 5.50 s, +10.0% at
     # dt 0.02 AND at dt 0.01 -- so the path, not the sampling.
-    readings = readings_for(boeing747_without_thrust_line()._replace(mach_deriv_ref=jnp.array(-1.0)))
+    # And it was established flown at the aircraft's own altitude, which is how
+    # it is asserted here; the headline has since switched to the replayed form.
+    readings = readings_for(boeing747_without_thrust_line()._replace(mach_deriv_ref=jnp.array(-1.0)),
+                            replayed=False)
     # The claim must not depend on which reading of "apart" was taken.
     assert max(readings.values()) - min(readings.values()) < 0.20
 
@@ -1102,12 +1111,23 @@ def test_the_propagated_input_band_does_not_reach_the_recorded_load():
     frac = wind.DFDR_WIND_RMS_ERROR["vertical"] / wind.MEHTA_HANNIBAL_V0
     assert frac == pytest.approx(0.0845, abs=0.0005)
 
-    _, (lo, hi) = _mehta_run(v0_scale=1.0 + frac, r0_scale=0.85)
+    # SESSION 30: THIS CLAIM DOES NOT SURVIVE THE HEADLINE SWITCH, AND IS KEPT
+    # WHERE IT WAS ESTABLISHED. Flown at the aircraft's own altitude the corner
+    # stays under three quarters (measured 68.0% on the shipped entry). Replayed
+    # on the path Mehta's field was identified along -- the headline form since
+    # session 30 -- the same corner reaches 80.4%, over the three-quarter line
+    # and still short of the record. Not re-banded to pass: both are asserted.
+    _, (lo, hi) = _mehta_run(v0_scale=1.0 + frac, r0_scale=0.85, replayed=False)
     assert (hi - lo) / recorded < 0.75
     # And it is an improvement on the unperturbed run, so the corner really is
     # the favourable one rather than merely a different one.
-    _, (lo0, hi0) = _mehta_run()
+    _, (lo0, hi0) = _mehta_run(replayed=False)
     assert (hi - lo) > (hi0 - lo0)
+
+    _, (r_lo, r_hi) = _mehta_run(v0_scale=1.0 + frac, r0_scale=0.85)
+    _, (r_lo0, r_hi0) = _mehta_run()
+    assert 0.75 < (r_hi - r_lo) / recorded < 1.0
+    assert (r_hi - r_lo) > (r_hi0 - r_lo0)
 
 
 def test_no_gust_strength_reaches_the_recorded_peak_inside_the_linear_range():
@@ -1151,8 +1171,8 @@ def test_no_gust_strength_reaches_the_recorded_peak_inside_the_linear_range():
     # is LESS saturated, and the pitching-moment term does most of that alone
     # (Cm_M only +0.266; CL_M only +0.129; CD_M only +0.102). PROJECT.md section
     # 4 records it as a weakened claim; it is not re-banded here to pass.
-    _, (_, hi0) = _mehta_run(ac=bare)
-    enc3, (_, hi3) = _mehta_run(v0_scale=3.0, ac=bare)
+    _, (_, hi0) = _mehta_run(ac=bare, replayed=False)
+    enc3, (_, hi3) = _mehta_run(v0_scale=3.0, ac=bare, replayed=False)
     assert hi3 - 1.0 < 0.85 * (recorded - 1.0)
     assert abs(elasticity(hi0, hi3)) < 0.20
     assert peak_alpha(enc3) < 10.0
@@ -1161,8 +1181,12 @@ def test_no_gust_strength_reaches_the_recorded_peak_inside_the_linear_range():
     # the linear range -- by 0.0045 g of the 0.85 bound, which is thin and is
     # recorded as thin -- and its elasticity is above the bare entry's and still
     # well short of a response that tracks the gust.
-    _, (_, s_hi0) = _mehta_run()
-    s_enc3, (_, s_hi3) = _mehta_run(v0_scale=3.0)
+    #
+    # Both halves were established flown at the aircraft's own altitude and are
+    # asserted in that form. The replayed headline is NOT saturated -- the next
+    # test -- which is the largest thing the headline switch moved.
+    _, (_, s_hi0) = _mehta_run(replayed=False)
+    s_enc3, (_, s_hi3) = _mehta_run(v0_scale=3.0, replayed=False)
     assert s_hi3 - 1.0 < 0.85 * (recorded - 1.0)
     assert abs(elasticity(hi0, hi3)) < elasticity(s_hi0, s_hi3) < 0.40
 
@@ -1171,9 +1195,41 @@ def test_no_gust_strength_reaches_the_recorded_peak_inside_the_linear_range():
     # short; above it the model reaches and is outside its own validity. For the
     # shipped entry the interval is x3.0 to x3.25 (1.591 g at 8.94 deg; 1.745 g
     # at 10.32 deg), where before session 30 it was x3.25 to x3.5.
-    enc_hi, (_, hi_hi) = _mehta_run(v0_scale=3.25)
+    enc_hi, (_, hi_hi) = _mehta_run(v0_scale=3.25, replayed=False)
     assert s_hi3 < recorded and peak_alpha(s_enc3) < 10.0
     assert hi_hi >= recorded and peak_alpha(enc_hi) > 10.0
+
+
+def test_the_replayed_headline_is_not_saturated_and_reaches_the_record_inside_the_linear_range():
+    """THE HEADLINE SWITCH REVERSES THE SATURATION CLAIM, measured session 30.
+
+    Flown at its own altitude, the 747 climbs in each updraft and passes the
+    cores off-centre, and the stronger the gust the further off-centre it
+    passes -- so tripling V0 barely moved the peak (elasticity +0.29) and no
+    gust strength reached the record inside |alpha| < 10 deg. Replayed on the
+    path the field was identified along, the aircraft cannot climb out of the
+    cores, and the peak tracks the gust:
+
+        x1.00   n_z max 1.604   |alpha|  8.05 deg   short
+        x1.20   n_z max 1.740   |alpha|  9.01 deg   reaches +1.7, INSIDE
+        x3.00   n_z max 2.893   |alpha| 22.2 deg    elasticity +1.07
+
+    So a vortex strength 15-20% above Mehta's fit reaches the recorded peak
+    with the aerodynamics still in their linear range -- the same direction as
+    session 27's digitised record saying the wind is ~12% light. Bands and
+    orderings; the trough (-1.0 g) needs about x1.5 and leaves the range.
+    """
+    from atisim.units import RAD2DEG
+
+    recorded = wind.TM102186_HANNIBAL_NZ[1]
+    _, (_, hi0) = _mehta_run()
+    enc12, (_, hi12) = _mehta_run(v0_scale=1.2)
+    _, (_, hi3) = _mehta_run(v0_scale=3.0)
+    assert hi0 < recorded
+    assert hi12 >= recorded
+    assert float(np.abs(enc12.alpha_air[enc12.window]).max() * RAD2DEG) < 10.0
+    elasticity = ((hi3 - 1.0) / (hi0 - 1.0) - 1.0) / 2.0
+    assert elasticity > 0.8
 
 
 # ---------------------------------------------------------------------------

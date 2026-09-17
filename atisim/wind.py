@@ -356,6 +356,26 @@ def mehta_hannibal_array(altitude: float = MEHTA_HANNIBAL_ALTITUDE) -> VortexArr
     )
 
 
+def on_identified_path(field, altitude: float = MEHTA_HANNIBAL_ALTITUDE):
+    """`field` evaluated on the level path it was identified along, at `altitude`.
+
+    Mehta's cores are placed relative to the path the DC-10's winds were
+    computed along -- "nearly straight and level at 37,000 ft", p. 29 -- and
+    Parks et al. 1985 Fig. 6 measures the "nearly": the inertially estimated
+    altitude was 36,985-36,996 ft at cores 3 and 4 (PROJECT.md section 4). A
+    simulated aircraft flown with fixed controls climbs ~500-600 ft in the
+    updraft before them and passes ABOVE both, where the horizontal wind has
+    the opposite sign. Flown at its own altitude it therefore meets a wind the
+    identification never described. This evaluates the field at the path's
+    altitude whatever the aircraft's own, so it meets the wind the DC-10 met.
+
+    Only the altitude is replaced: the along-track and lateral position are the
+    aircraft's own, so the field's x-gradients -- and the gust rates taken from
+    them -- are unchanged, while its z-gradient is zero by construction.
+    """
+    return lambda pos_ned: field(jnp.asarray(pos_ned).at[2].set(-altitude))
+
+
 # The two vortices whose cores the aircraft actually penetrated, as indices into
 # the arrays above. Named rather than written as `2, 3` at each use site because
 # the spacing reconciliation in test_wind.py and the analysis window in

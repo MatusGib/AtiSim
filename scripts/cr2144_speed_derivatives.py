@@ -285,13 +285,15 @@ def retest():
     rows["SHIPPED boeing747, FC9 set + thrust line"] = engine_modes(AC)[0]
     rows["  thrust line alone (shipped, seam shut)"] = engine_modes(
         AC._replace(mach_deriv_ref=jnp.array(-1.0)))[0]
-    # The arm CR-2144's own tables agree with is 10 ft (Cm_M check RMS 0.0063,
-    # against 0.0167 at 5.70 ft). CR-114494's REVISED arm, ASSUMPTIONS C5, as the
-    # sensitivity: Cm0 re-referenced so the trim stays at zero elevator.
+    # The shipped arm is CR-114494's REVISED 5.70 ft (ASSUMPTIONS C5). CR-2144's
+    # own tables agree better with its printed 10 ft (Cm_M check RMS 0.0063,
+    # against 0.0167 at 5.70 ft) and it closes the phugoid further; it is shown
+    # as the sensitivity, NOT declared, because an arm is not chosen by its
+    # answer. Cm0 re-referenced so the trim stays at zero elevator.
     qsc = 177.0 * cm.S_FT2 * cm.CBAR_FT
     t_trim = 0.043 * 177.0 * cm.S_FT2 / math.cos(math.radians(4.60) + cm.XI_RAD)
-    rows["  shipped with CR-114494's revised 5.70 ft arm"] = engine_modes(AC._replace(
-        thrust_arm=jnp.array(5.70 * 0.3048), Cm0=AC.Cm0 + t_trim * (10.0 - 5.70) / qsc))[0]
+    rows["  shipped but with CR-2144's printed 10 ft arm"] = engine_modes(AC._replace(
+        thrust_arm=jnp.array(10.0 * 0.3048), Cm0=AC.Cm0 - t_trim * (10.0 - 5.70) / qsc))[0]
     sourced = declare(d["cl_m"], d["cd_m"], d["cm_m"])
     rows["  a copy, CD_M net of Korn/Lock at the flown trim"] = engine_modes(sourced)[0]
     rows["  ...Korn/Lock slope kept as CD_M"] = engine_modes(
@@ -439,16 +441,17 @@ def price(d, resid, n_mc: int, seed: int):
 def headline(d, dt: float):
     from atisim import vortex_viz, wind
 
-    print(f"\n== HEADLINE: Mehta's Hannibal array at 37,000 ft, dt {dt} -- analysis only ==")
+    print(f"\n== HEADLINE: Mehta's Hannibal array at 37,000 ft, replayed on its path, dt {dt} ==")
     Hm = wind.MEHTA_HANNIBAL_ALTITUDE
     array = wind.mehta_hannibal_array(Hm)
-    field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
+    # The headline form since session 30: the field on the path it was identified along.
+    field = wind.on_identified_path(lambda p: wind.vortex_wind(p, array), Hm)
     r0 = float(array.r0)
     x0, x1 = float(array.north.min()), float(array.north.max())
     start = x0 - 12.0 * r0
     seconds = (x1 + 12.0 * r0 - start) / V
     out = {}
-    for label, ac in (("bare, before session 30", BARE), ("SHIPPED, FC9 set declared", AC)):
+    for label, ac in (("bare, before session 30", BARE), ("SHIPPED, FC9 set + line", AC)):
         enc = vortex_viz.fly_in_moving_air(ac, field, V, Hm, label=label, start_north=start,
                                            seconds=seconds, dt=dt, window=(x0 - 2 * r0, x1 + 2 * r0),
                                            window_name="array +- 2 r0")
@@ -457,7 +460,7 @@ def headline(d, dt: float):
         out[label] = (float(nz.max()), float(nz.min()), float(nz.max() - nz.min()), float(np.ptp(th)))
         print(f"  {label:28s} n_z {out[label][1]:+.4f} .. {out[label][0]:+.4f}  "
               f"peak-to-peak {out[label][2]:.4f} g  ({out[label][2]/2.70:.1%} of 2.70 g)  pitch ptp {out[label][3]:.3f} deg")
-    a, b = out["bare, before session 30"], out["SHIPPED, FC9 set declared"]
+    a, b = out["bare, before session 30"], out["SHIPPED, FC9 set + line"]
     print(f"  change: peak-to-peak {100*(b[2]-a[2])/a[2]:+.2f}%, pitch {100*(b[3]-a[3])/a[3]:+.2f}%")
 
 

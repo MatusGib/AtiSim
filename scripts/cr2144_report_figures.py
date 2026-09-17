@@ -139,7 +139,8 @@ def main():
     # s4 -- the headline load, before and after
     alt = wind.MEHTA_HANNIBAL_ALTITUDE
     arr = wind.mehta_hannibal_array(alt)
-    field = lambda p: wind.vortex_wind(p, arr)  # noqa: E731
+    # The headline form since session 30: Mehta's field on the path it was identified along.
+    field = wind.on_identified_path(lambda p: wind.vortex_wind(p, arr), alt)
     fig, ax = plt.subplots(figsize=(10, 4.4), dpi=150)
     for ac, color, lab in ((sd.BARE, C_BEFORE, "Before session 30"),
                            (sd.AC, C_ATISIM, "Now (speed derivatives and thrust line)")):
@@ -154,7 +155,7 @@ def main():
     ax.set_xlim(-18.5, 18.5)
     ax.set_xlabel("Distance along the flight path (thousand feet)")
     ax.set_ylabel("Load factor (g)")
-    ax.set_title("The load the 747 feels through the Hannibal vortex field")
+    ax.set_title("The load the 747 feels through the Hannibal vortex field (the headline flight)")
     ax.legend(loc="lower left")
     fig.tight_layout()
     fig.savefig(args.outdir / "s4-headline-load.png")

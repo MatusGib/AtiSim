@@ -356,12 +356,14 @@ def _cruise_modes(ac=B747):
 # values here. abs=0.01 is unchanged. The pre-session-30 figures are what
 # B747_BARE still returns.
 #
-# LATER IN SESSION 30, THE WORLD CHANGED AGAIN. `boeing747` also declares
-# CR-2144 Table IX-3's thrust line (10 ft below the CG, 2.5 deg), which carries
-# the M_u term the speed set alone lacked: phugoid_wn +0.0405 -> -0.0005 and
-# phugoid_zeta +0.0345 -> +0.0113. Short period under 0.05 points. abs=0.01
-# is unchanged.
-MODE_ERRORS_VS_IX5 = {"phugoid_wn": -0.0005, "phugoid_zeta": +0.0113,
+# LATER IN SESSION 30, THE WORLD CHANGED AGAIN. `boeing747` also declares a
+# thrust line -- 2.5 deg up (Table IX-3) and 5.70 ft below the CG (CR-114494's
+# revised arm; CR-2144's own 10 ft was declared first and replaced by request,
+# because an arm is not chosen by its answer) -- which carries the M_u term the
+# speed set alone lacked: phugoid_wn +0.0405 -> +0.0169 and phugoid_zeta
+# +0.0345 -> +0.0283. At 10 ft they read -0.0005 / +0.0113. Short period under
+# 0.05 points. abs=0.01 is unchanged.
+MODE_ERRORS_VS_IX5 = {"phugoid_wn": +0.0169, "phugoid_zeta": +0.0283,
                       "sp_wn": -0.014, "sp_zeta": -0.115}
 
 
@@ -1088,12 +1090,13 @@ def test_the_wind_hold_costs_the_headline_figure_more_than_E4_bounds_it():
     # both schemes (hold 2.2596 -> 2.3878, per-stage 2.2230 -> 2.3523). The
     # FINDING did not move: the scheme cost is still ~1.5% at dt = 0.02 (-1.48%
     # against 1.62%), inside the unchanged abs=0.004 below. abs=0.005 unchanged.
-    # LATER IN SESSION 30 `boeing747` also declared CR-2144's thrust line, which
-    # re-references its trim: hold 2.3878 -> 2.3366, per-stage 2.3523 -> 2.3009,
-    # both -2.1%. The scheme cost reads 1.53%, still inside abs=0.004 of 0.0162,
-    # so that pin and both tolerances are unchanged.
-    assert held == pytest.approx(2.3366, abs=0.005)
-    assert per_stage == pytest.approx(2.3009, abs=0.005)
+    # LATER IN SESSION 30 `boeing747` also declared a thrust line, which
+    # re-references its trim. At CR-2144's 10 ft: hold 2.3878 -> 2.3366,
+    # per-stage 2.3523 -> 2.3009. At CR-114494's revised 5.70 ft, which is what
+    # ships: hold 2.3583, per-stage 2.3228. The scheme cost reads 1.51%, still
+    # inside abs=0.004 of 0.0162, so that pin and both tolerances are unchanged.
+    assert held == pytest.approx(2.3583, abs=0.005)
+    assert per_stage == pytest.approx(2.3228, abs=0.005)
     assert abs(rel) == pytest.approx(0.0162, abs=0.004)
     assert abs(rel) > 1e-3, (
         "the wind hold now costs less than 0.1% at dt=0.02; ASSUMPTIONS.md E4's "

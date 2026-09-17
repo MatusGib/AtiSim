@@ -517,17 +517,29 @@ def _boeing_747(thrust_line: bool = True) -> Aircraft:
         "dr": (0.153, -0.475),
     }
 
-    # -- Table IX-3: the thrust line, identical at every flight condition --
-    # LTH is the moment arm below the CG and XI the inclination above body x;
-    # PROJECT.md section 4 fixes the sign of LTH by the tables agreeing, not
-    # by assumption. T_trim is DERIVED: level flight balances drag along the
-    # line's direction, alpha0 + XI from the velocity, with the Figure IX-6
-    # trim drag above.
+    # -- The thrust line: LTH the moment arm below the CG, XI the inclination --
+    # XI = 2.50 deg is SOURCED from Table IX-3, and CR-114494 p. 1.3-3 writes
+    # the same tan 2.5 deg. The sign of the arm is fixed by CR-2144's tables
+    # agreeing (PROJECT.md section 4), not assumed.
+    #
+    # LTH = 5.70 ft is SOURCED from NASA CR-114494 (Boeing D6-30643 Vol. II)
+    # p. 19.0-2, Appendix E "Revised Simulation Data": the mean of the revised
+    # in-flight engine pitching arms Z_EI 8.3 ft and Z_EO 3.1 ft. That report
+    # marks its own as-issued 10.0 ft superseded, and 10.0 ft is what CR-2144
+    # Table IX-3 prints. This entry takes the REVISED figure. CR-2144's
+    # derivative tables are better matched by 10.0 ft (the Table IX-4
+    # back-solve of Cm_M agrees with the hand-read curve at RMS 0.0063 there,
+    # 0.0167 here), and 10.0 ft would put the phugoid nearer Table IX-5. Neither
+    # is grounds for choosing it: an arm is not picked because it improves the
+    # answer. ASSUMPTIONS.md C5.
+    #
+    # T_trim is DERIVED: level flight balances drag along the line's direction,
+    # alpha0 + XI from the velocity, with the Figure IX-6 trim drag above.
     #
     # `thrust_line=False` builds the entry exactly as it stood before the line
     # existed -- thrust through the CG, T_trim zero in the two lines below --
     # so before and after stay measurable. See `boeing747_without_thrust_line`.
-    LTH, XI = (10.0, 2.50 * DEG2RAD) if thrust_line else (0.0, 0.0)  # ft, rad
+    LTH, XI = (5.70, 2.50 * DEG2RAD) if thrust_line else (0.0, 0.0)  # ft, rad
 
     m = W / _B747_G  # slugs
     qS = qbar * S
@@ -547,9 +559,10 @@ def _boeing_747(thrust_line: bool = True) -> Aircraft:
 
     # The linear model is referenced to the trimmed condition at alpha0 with zero
     # elevator (the stabiliser carries the trim). There the AERODYNAMIC moment
-    # balances the thrust line's, so Cm is -T LTH / (qS c) = -0.0159 rather than
-    # zero -- the same term CR-2144 Appendix A's M_u carries, and the one this
-    # entry lacked while thrust went through the CG.
+    # balances the thrust line's, so Cm is -T LTH / (qS c) = -0.0090 rather than
+    # zero -- the kind of term CR-2144 Appendix A's M_u carries (at -0.0159, with
+    # its own 10 ft arm), and the one this entry lacked while thrust went through
+    # the CG.
     CL0 = CL_trim - CLa * alpha0
     Cm0 = -Cma * alpha0 - T_trim * LTH / (qS * c)
 
@@ -669,10 +682,12 @@ def _boeing_747(thrust_line: bool = True) -> Aircraft:
         # THE DATA. Table IX-4's own implied set overshoots the same way.
         # CR-2144 puts the thrust line 10 ft from the CG, so its aerodynamic C_m
         # at trim is -0.0159 and Appendix A's M_u carries that term. This
-        # entry now declares that line (`thrust_arm` below), and with it the
-        # phugoid is -0.05% in frequency and +1.13% in damping against
-        # Table IX-5. Neither half works without the other: the line on the
-        # bare entry takes the frequency error from -18% to -23%.
+        # entry now declares a thrust line (`thrust_arm` below) at CR-114494's
+        # revised 5.70 ft, and with it the phugoid is +1.69% in frequency and
+        # +2.83% in damping against Table IX-5 (CR-2144's own 10 ft would give
+        # -0.05% / +1.13%; see LTH for why it is not used). Neither half works
+        # without the other: the line on the bare entry takes the frequency
+        # error from -18% to -21%.
         mach_deriv_ref=jnp.array(mach0),
         CL_M=jnp.array(0.1304),
         CD_M=jnp.array(0.0251 - dcd_wave_dmach),
@@ -693,8 +708,9 @@ def _boeing_747(thrust_line: bool = True) -> Aircraft:
         # models no engine, so this is a modelling choice, not source data.
         max_thrust=jnp.array(4 * 43500.0 * LBF2N),
         thrust_lapse=jnp.array(0.8),
-        # SOURCED, Table IX-3: the thrust line, LTH 10.0 ft below the CG and XI
-        # 2.50 deg above body x. CL0 and Cm0 above are referenced to it.
+        # SOURCED: the thrust line, 5.70 ft below the CG (CR-114494's revised
+        # arm) and 2.50 deg above body x (Table IX-3). CL0 and Cm0 above are
+        # referenced to it. See the comment at LTH for why not 10.0 ft.
         thrust_arm=jnp.array(LTH * FT2M),
         thrust_incidence=jnp.array(XI),
         elevator_limit=jnp.array(25.0 * DEG2RAD),

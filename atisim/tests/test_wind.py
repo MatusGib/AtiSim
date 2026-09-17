@@ -1233,3 +1233,32 @@ def test_the_jsbsim_recovered_entries_still_cannot_run_that_cross_check():
             f"{name} has acquired a CLq of {float(ac.CLq)}. If it came from the "
             "source file, run the cross-check on it directly and delete this "
             "test; if it was invented, remove it.")
+
+
+def test_the_identified_path_replays_mehtas_field_at_its_own_altitude():
+    """`on_identified_path` is the Hannibal headline's field since session 30.
+
+    On the nominal path it is the field exactly. Off it, it is the field AT the
+    path: an aircraft 500 ft above meets the wind Mehta's fit gives on the path,
+    not the one 500 ft higher -- which above cores 3 and 4 has the opposite
+    horizontal sign, the reason the switch was made. Along-track position is
+    the aircraft's own, so the along-track gradient survives and the vertical
+    gradient is zero.
+    """
+    H = wind.MEHTA_HANNIBAL_ALTITUDE
+    array = wind.mehta_hannibal_array(H)
+    field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
+    replayed = wind.on_identified_path(field, H)
+
+    for x_ft in (-6669.0, -343.0, 3761.0):
+        on_path = jnp.array([x_ft * FT2M, 0.0, -H])
+        above = on_path.at[2].add(-500.0 * FT2M)
+        assert np.array_equal(np.asarray(replayed(on_path)), np.asarray(field(on_path)))
+        assert np.array_equal(np.asarray(replayed(above)), np.asarray(field(on_path)))
+
+    core3 = jnp.array([-343.0 * FT2M, 0.0, -H - 403.0 * FT2M])  # where the as-flown 747 passed
+    assert float(field(core3)[0]) * float(replayed(core3)[0]) < 0.0
+
+    gradient = np.asarray(jax.jacfwd(replayed)(jnp.array([3000.0 * FT2M, 0.0, -H - 300.0 * FT2M])))
+    assert np.all(gradient[:, 2] == 0.0)
+    assert np.any(gradient[:, 0] != 0.0)

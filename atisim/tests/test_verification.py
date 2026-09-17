@@ -72,7 +72,9 @@ from atisim.aircraft import CRUISE, REGISTRY
 #   session 30b  : `boeing747` also declares CR-2144's thrust line and references
 #                  its trim to it -- again a deliberate model change. The inert
 #                  seam alone was checked first and left this hash unmoved.
-PRE_REFACTOR_VEL_HASH = "c3578de700859a914644c062c826273f7f615d5bc93c53442333cbc398334a30"
+#                  c3578de700859a914644c062c826273f7f615d5bc93c53442333cbc398334a30
+#   session 30c  : the arm replaced by CR-114494's revised 5.70 ft.
+PRE_REFACTOR_VEL_HASH = "97c3b546a3e196829077e7b16a3bfb155ccbf91f236849d86cc83b262b2149e5"
 
 
 def _fixed_control_rollout(dt, n_steps, d_elevator=0.02):

@@ -509,15 +509,18 @@ Documented in `PROJECT.md` §5 with measured residuals: within 0.004 near the fi
 
 ### C5. ~~Thrust acts along body x, through the CG,~~ with no engine dynamics
 
-> **SUPERSEDED IN PART, session 30: `boeing747` carries CR-2144's thrust line** —
-> `Aircraft.thrust_arm` 10.0 ft below the CG and `thrust_incidence` 2.50° (Table IX-3,
-> LTH and XI), with CL0 and Cm0 referenced to it so trim stays at CR-2144's α₀ with zero
-> elevator. Every other entry still puts thrust along body x through the CG, which is
+> **SUPERSEDED IN PART, session 30: `boeing747` carries a thrust line** —
+> `Aircraft.thrust_arm` **5.70 ft** below the CG (CR-114494's REVISED arm, below) and
+> `thrust_incidence` 2.50° (Table IX-3's XI), with CL0 and Cm0 referenced to it so trim stays
+> at CR-2144's α₀ with zero elevator. CR-2144's printed 10.0 ft was declared first and then
+> replaced by request: the revised figure is the one its own report marks operative, and an
+> arm is not chosen because a different one gives the better answer. Every other entry still puts thrust along body x through the CG, which is
 > the seam's default. **Two statements below were wrong and are corrected where they
 > stand:** CR-2144 *does* tabulate the line; and the verdict's measurement folded the
 > moment into the aerodynamic C_m, which removes the mechanism that matters. Modelled as
-> a thrust moment, it takes the shipped phugoid from **+4.04% → −0.05%** in frequency
-> and **+5.62% → +1.13%** in damping against Table IX-5. `PROJECT.md` §4 has the entry.
+> a thrust moment at the declared 5.70 ft, it takes the shipped phugoid from **+4.05% →
+> +1.69%** in frequency and **+3.45% → +2.83%** in damping against Table IX-5; CR-2144's
+> 10 ft would read −0.05% / +1.13%. `PROJECT.md` §4 has the entry.
 
 **Where:** `aero.thrust_force` — `throttle × max_thrust × (ρ/ρ₀)^lapse`.
 
@@ -546,8 +549,11 @@ it does.** Table IX-3, printed p. 229, gives LTH = 10.0 ft and XI = 2.50° at al
 flight conditions. They match the *as-issued* CR-114494 arm below, not the revised one, and
 CR-2144's own tables confirm it: the Table IX-4 back-solve of Cm_M agrees with the hand-read
 curve at RMS **0.0063** with a 10 ft arm and **0.0167** with the revised 5.70 ft. So 10 ft is
-the arm CR-2144's derivative set was built on, and it is what `boeing747` declares; the
-revised 5.70 ft is measured as a sensitivity in `PROJECT.md` §4 (phugoid +1.69% / +2.83%). The document it draws its
+the arm CR-2144's derivative set was built on. ~~and it is what `boeing747` declares~~
+**`boeing747` declares the revised 5.70 ft anyway** (phugoid +1.69% / +2.83%), because the
+revised table is the operative one in the report that measured the engines, and matching
+CR-2144's derivative tables better is not a reason to use a superseded arm. 10 ft is carried
+as the sensitivity (phugoid −0.05% / +1.13%). The document it draws its
 747 data from does: **NASA CR-114494 / Boeing D6-30643 Vol. II, Hanke & Nordwall, *The
 Simulation of a Jumbo Jet Transport Aircraft, Volume II: Modeling Data*, Boeing Wichita,
 September 1970** (NTRS 19730001300, public domain). It is the same airframe — its wing
