@@ -146,8 +146,6 @@ the *sourced* curve, and the two are a check on each other rather than alternati
 | **Blocking** | **Nothing — the decision was taken.** `boeing747` **declares** the FC9 set: phugoid ω_n −18.13% → **+4.05%**, ζ +13.16% → **+3.45%** against Table IX-5. What that moved elsewhere — the Fig. 8 pins, the CAT headline — is in §4, re-measured rather than predicted. ~~The horizontal-wind work leaves one question open, which path the headline should fly Mehta's cores on (§8).~~ Parks Fig. 6 answered it: on the path the fit was made along. **What remains is a decision**, whether to switch the shipped headline flight to that form. It does not block a merge |
 | **Read this beside it** | The eight `.dig` originals are **tracked, in `atisim/data/cr2144_dig/`** (384 KB, each embedding the page crop it was traced on), beside the `atisim/data/cr2144_p220_222_digitised.csv` that `--dig-dir` regenerates from them |
 
-### Reported done elsewhere, and NOT ON ORIGIN — added 16 September 2026
-
 ### Reported done elsewhere, and NOT ON ORIGIN — added 16 September 2026, address found session 31
 
 > **RESOLVED, end of session 30.** The branch this row points at was not on `origin` because it had not been pushed. It is now, as `session-30-speed-derivatives-hannibal`, merged with `main` and opened as a pull request — the row above is its record. Every result it reported is in §4, measured. This row is kept as written.
@@ -259,16 +257,20 @@ session's work with a full re-baseline, and §7 has never listed it.
 | **What it was** | Five NASA/NTRS reference PDFs, 31 MB, untracked beside them — CR-3677, CR-3748, TM-4745, TM-1998-206552 and Taylor 1978 |
 | **Decision** | **Not tracked.** All five are permanently available from NTRS, and `Reference_papers/SOURCES.md` now carries each one's md5, NTRS ID and what it does and does not supply. CR-3677's assessment against the open DC-10 acquisition is already in §7 |
 
-### Small, unmerged, and cheap to resolve
+### ~~Small, unmerged, and cheap to resolve~~ RESOLVED, session 32 — every row settled
 
-| Branch | Worktree | State | What it is |
-|---|---|---|---|
-| `claude/linearisation-verification-bounds-b73868` | — (worktree dir of that name holds `cat-flight-model-dossier-04adb9`) | 3 ahead, 60 behind | "Bound the linearisation, and find roll counted twice"; "a third `Ixz`"; "Say what kind of model this is, and who owns which effect" |
-| `claude/flight-dynamics-solver-oscillation-17139b` | same name | 2 ahead, 62 behind | "Carry altitude in the longitudinal reduction, and keep every published comparison 4-state"; "Reduce FD2e's own state sets, and discover the zero columns instead of assuming them" |
-| `claude/priceless-cori-688ee5` | — | 2 ahead, 60 behind | The geopotential ISA read, plus the AtiSim rename. **Probably subsumed by `new-session-943052`** — check before merging either |
-| `claude/flightsim-sweep-ui-graphs-d4d036` | same name | 1 ahead, 65 behind | "Give every panel header its own measured band, and let the load panel read against time" |
-| `claude/weekly-summary-analysis-7520db` | same name | 1 ahead, 7 behind | The LES runs and the two digitisations. **Session 27 harvested the scripts from here; the `runs/cat/` outputs are still only here** and are what §4's session-28 POD row reads |
-| `session-27-validation` | `cv-entry-project-e44ed6` | 2 ahead, **0 behind** | Renames `docs/DEVELOPMENT.md` to `AGENTS.md`. **On `origin`.** A naming decision this document has not taken — `docs/DEVELOPMENT.md` is what rules 1–6 live in and what this file references throughout |
+> **All six rows are closed.** Two were merged, two abandoned as subsumed, one applied across
+> the rename, and one is moot. The abandonment table above carries the reason and the commit
+> SHA for each; this table is kept because §0 supersedes rather than deletes.
+
+| Branch | What happened |
+|---|---|
+| `claude/linearisation-verification-bounds-b73868` | **DEFERRED, not resolved** — it modifies `atisim/validation.py`, the file the WGS-84 union fight is over, so it is handled with that merge. See "Deferred to the WGS-84 merge" above |
+| `claude/flight-dynamics-solver-oscillation-17139b` | **DEFERRED**, same reason, and it also touches two of rule 3's five off-limits files |
+| `claude/priceless-cori-688ee5` | **ABANDONED** — subsumed exactly as this row predicted: the rename is on `main`, the geopotential ISA read landed at `50b78a1` |
+| `claude/flightsim-sweep-ui-graphs-d4d036` | **APPLIED**, not abandoned. Its files had not drifted despite the branch being 97 behind, so the diff was rewritten across the rename and applied. It fixes subtitles drawn inside the plot area and a legend drawn through the caption — see "The panel-chrome fix" above |
+| `claude/weekly-summary-analysis-7520db` | **ABANDONED**, but only after its `runs/cat/` outputs — 55 files, the ten LES arrays, existing nowhere else — were harvested to the main checkout and verified by md5. §10 says where they now live |
+| `session-27-validation` | **MOOT.** It renamed `CLAUDE.md` to `AGENTS.md`. Session 32 moved that file to `docs/DEVELOPMENT.md` instead, so the naming decision §0 said "this document has not taken" is taken, differently. The branch is not on this machine |
 
 ### Rescued from a worktree at the session-32 audit, and unreviewed — THE α̇ DERIVATIVES
 
@@ -284,18 +286,24 @@ session's work with a full re-baseline, and §7 has never listed it.
 | **What it closes** | **§5's α̇ entry**, if it survives review — the derivative the model has excluded by form since session 1 |
 | **Blocking** | **Review, and one thing specifically. `atisim/tests/test_cr2144_modes.py` IS MODIFIED**, and it is one of the five files `docs/DEVELOPMENT.md` rule 3 declares off-limits to feature work. The `aircraft.py` comment claims the augmented model there closes all four Table IX-5 factors to ≤1.2%, which would make it a **re-capture** rather than a loosening — but rule 3 puts the burden of showing which *on the change, in a comment, at the change*, and that has not been shown. **Settle this before anything else in the branch.** Its `PROJECT.md` (+479) and `ASSUMPTIONS.md` (+28) edits predate sessions 29–30 and will conflict |
 
-### Rescued from worktrees at the session-28 audit, and unreviewed
+### ~~Rescued from worktrees at the session-28 audit, and unreviewed~~ ALL FIVE SETTLED, session 32
 
 **Five worktrees held uncommitted work.** All five were committed on their own branches to
-stop them being lost. **None was reviewed and none is endorsed** — the commit messages say so.
+stop them being lost. **None was reviewed and none was endorsed** — the commit messages said
+so, and for three weeks nobody reviewed them. **Session 32 reviewed all five and settled each.**
 
-| Branch | Worktree | What was rescued |
+| Branch | What was rescued | Settled |
 |---|---|---|
-| `claude/zen-maxwell-1ad0a4` | `turbulence-research-sources-39f87e` | **The most substantial: a tail-arm gate refactor with tests.** `airframe.require_plausible_tail_arm`, and a `_refusal` that separates a **missing `CLq`** (the arm does not exist — division by zero, nothing recoverable) from a **finite arm outside the band** (both derivatives exist and disagree). `loads.strip_model` routed through it so the two entry points cannot give different accounts. Five files, 160 insertions |
-| `claude/cat-flight-model-dossier-04adb9` | `linearisation-verification-bounds-b73868` | `docs/superpowers/plans/2026-08-31-close-the-dossier-limitations.md` — a plan on this conversation's own subject |
-| `claude/project-md-restructure-95b7b8` | same name | Local `PROJECT.md` edits |
-| `claude/flight-dynamics-cat-prompt-ec9839` | `jsbsim-737-validation-eeb6a9` | A CAT-sources search prompt |
-| `claude/project-readme-mockup-0ef89a` | `quasi-steady-aero-model-d5cf37` | A README mockup |
+| `claude/zen-maxwell-1ad0a4` | **The most substantial: a tail-arm gate refactor with tests** | **MERGED.** Reviewed, and it closes a silent NaN now recorded as **§6(g)** — `stations` built sample points out to −∞ for any entry with no `CLq`, and every fitted gradient returned NaN with nothing raised |
+| `claude/cat-flight-model-dossier-04adb9` | `docs/superpowers/plans/2026-08-31-close-the-dossier-limitations.md` | **ABANDONED — plan superseded, ledger harvested.** Five sources in it appear nowhere else in this document and are now §7, **14 CFR 25.341** chief among them |
+| `claude/project-md-restructure-95b7b8` | Local `PROJECT.md` edits | **ABANDONED** — 92 commits stale; reapplying would undo sessions 28–32 |
+| `claude/flight-dynamics-cat-prompt-ec9839` | A CAT-sources search prompt | **ABANDONED** — a prompt written to an AI, the class of file deleted from the root this session |
+| `claude/project-readme-mockup-0ef89a` | A README mockup | **ABANDONED, two headings harvested** into the README rewrite: "What it can't do (read this bit)" and "Why there's so much paperwork in here" |
+
+**The lesson the session-28 audit drew was "rescue it so it is not lost". The lesson this one
+adds is that a rescue is not a resolution.** Four of these five were worth nothing by the time
+they were read — and the fifth was a bug fix that had been sitting unmerged for three weeks
+while the bug it fixes stayed in `main`.
 
 ### ~~Designed, built and run~~ MERGED, session 29 — kept for the two bugs it found
 
