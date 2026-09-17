@@ -327,13 +327,43 @@ Prandtl–Glauert sentinel made the model non-differentiable in its own coeffici
 aircraft in the registry. Fixed, proved value-identical, recorded in **§6(f)** — with a second,
 open instance in `airframe.py` named there.
 
-### Superseded, kept only until someone confirms
+### ~~Superseded, kept only until someone confirms~~ ABANDONED, session 32 — the decision taken
 
-`claude/flight-dynamics-email-3601f2` (1 ahead, **111 behind**) and
-`claude/flight-dynamics-validation-67fa59` (1 ahead, **137 behind**) are both `WIP:` commits,
+`claude/flight-dynamics-email-3601f2` (1 ahead, **143 behind**) and
+`claude/flight-dynamics-validation-67fa59` (1 ahead, **169 behind**) are both `WIP:` commits,
 and the second says of itself "superseded on master by 099bd33". **These are the two safe
-deletions on the list**, and they are recorded here rather than deleted so the deletion is a
-decision someone takes rather than one this audit took for them.
+deletions on the list**, and they were recorded here rather than deleted so the deletion is a
+decision someone takes rather than one that audit took for them. **Session 32 took it.**
+
+### Abandoned, session 32 — with what was taken from each first
+
+> **Rule 1b: abandoning is a §9 entry saying why, never a silent removal.** Eight branches were
+> abandoned after checking each for anything not already on `main`. **Two were not empty**, and
+> what they held was harvested into this document *before* the branch went — which is the whole
+> point of doing it in this order.
+
+| Branch | Why abandoned | What was taken first |
+|---|---|---|
+| `claude/weekly-summary-analysis-7520db` | **Fully subsumed.** All five of its scripts — `digitise_mil_f_8785c_fig7`, `digitise_tm102186_fig6`, `les_compare`, `les_flight`, `yoshimura_flightsim` — are on `main`, verified by `git cat-file` on each | **Its `runs/cat/` outputs, which existed nowhere else**: 55 files, 11 MB, including the **ten `les-nz-*.npy` ensemble arrays** §4's session-28 POD row reads and §10's `les_ensemble_svd.py --runs` needs. Copied to the main checkout's `runs/cat/` and **verified file-by-file by md5**. They are gitignored by design, so §10 now names where they live |
+| `claude/cat-flight-model-dossier-04adb9` | **Plan superseded.** Its Phase 0 argues the 500 ft core radius session 26 reversed, and it asserts "Parks 1985 has never been obtained", which session 26 disproved by obtaining it | **Its retrieval ledger — five rows recorded nowhere else**, now §7's "retrieval ledger, harvested from an abandoned plan". Chief among them **14 CFR 25.341**, the only free source that would give the σ-against-altitude table *independently* of the U-2 lineage §7 warns MIL-F-8785C Fig. 7 may share |
+| `claude/priceless-cori-688ee5` | **Subsumed**, as §0 predicted. The AtiSim rename is on `main`; the geopotential ISA read landed at `50b78a1` with the compressibility branch | nothing left |
+| `claude/project-md-restructure-95b7b8` | A restructure of this document from **92 commits ago**, before sessions 28–32 rewrote §0, §4, §6, §7 and §9. Reapplying it would undo them | nothing left |
+| `claude/flight-dynamics-cat-prompt-ec9839` | A 278-line **search prompt written to an AI**, the same class of file as the three deleted from the repository root this session | nothing left |
+| `claude/project-readme-mockup-0ef89a` | A README mockup; the README is being rewritten from scratch in the release work | **Two headings better than the current README's**, carried into the rewrite plan: "What it can't do (read this bit)", which puts the envelope *before* the results, and "Why there's so much paperwork in here", which is the only place anything explains why this repository ships an 8,000-line evidence ledger |
+| `claude/flight-dynamics-email-3601f2` | 143 behind; a `summary.py` rewrite and a `flightsim-summary.pdf` under the pre-rename name | nothing left |
+| `claude/flight-dynamics-validation-67fa59` | 169 behind, and says of itself "superseded on master by 099bd33" | nothing left |
+
+### Deferred to the WGS-84 merge, deliberately — session 32
+
+**Two branches were NOT abandoned and NOT merged, for one reason: they contest the same file
+the WGS-84 union fight is over.** `atisim/validation.py` is modified by all four, and merging
+these two first would make that fight harder rather than easier. They are also on the
+**pre-rename `flightsim/` package** and 92–94 commits behind, so neither is a cheap merge.
+
+| Branch | State | What it holds |
+|---|---|---|
+| `claude/linearisation-verification-bounds-b73868` | 3 ahead, 92 behind, `flightsim/` | **~3,750 insertions of verification work**: `verification.py` at **953 lines against `main`'s 359**, plus `test_linearisation.py` (547), `test_caughey_lateral.py` (273), `test_scale_bounds.py` (230), `test_effect_ownership.py` (230). "Bound the linearisation, and find roll counted twice"; "a third `Ixz`"; "Say what kind of model this is, and who owns which effect" |
+| `claude/flight-dynamics-solver-oscillation-17139b` | 2 ahead, 94 behind, `flightsim/` | "Carry altitude in the longitudinal reduction, and keep every published comparison 4-state"; "Reduce FD2e's own state sets, and discover the zero columns instead of assuming them". **Touches `test_cr2144_modes.py` and `test_navion.py`**, two of rule 3's five off-limits files |
 
 ### What `main` itself is doing
 
@@ -5784,6 +5814,26 @@ disk. Session 26 received four more papers and closed items 3, 4 and 5 outright.
 | **test the frozen-`C_Lα` explanation of the LES ratio** | **NEW, session 27, and it is CHEAP.** Rescale the 747's `C_Lα` by the Prandtl–Glauert ratio 1.521 and re-fly D03/D04. If the 1.42× ratio collapses toward 1, the LES discrepancy is this project's frozen derivative and **not** a code disagreement — and it becomes the **first quantified point on the Mach axis** ASSUMPTIONS C3 has left unbounded since session 12, with no chart read needed |
 | ~~run the LES limb~~ | **ALREADY RUN, session 3–4 Sept, and found NOT LIKE-FOR-LIKE in session 27.** All four domains × two aircraft are on disk. §4's input audit says why no number from them is quoted: the aeroplane is 5.4% or 82.9% away in natural frequency, and the entry closest in frequency is 2.63 band widths outside its own envelope. The **field reader is sound** (+0.978/−0.968/−0.935 against their own sampled wind) and reusable; the **load comparison is not yet a comparison.** This remains the project's only route out of the circularity every load row carries |
 
+### The retrieval ledger, harvested from an abandoned plan — session 32
+
+> **Recovered from `claude/cat-flight-model-dossier-04adb9`**, an unmerged plan dated
+> **31 August 2026** that §0 listed only as "a plan on this conversation's own subject". The
+> plan itself is **superseded** — its Phase 0 argues the 500 ft core radius that session 26
+> reversed, and it states "Parks 1985 has never been obtained", which session 26 disproved by
+> obtaining it. **Its retrieval ledger is not superseded, and five of its seven rows appear
+> nowhere else in this document.** The branch is abandoned (§9); this table is what was taken
+> from it.
+
+| Document | What it would close | Status here |
+|---|---|---|
+| **14 CFR 25.341**, at the amendment in force | **Turbulence intensity against altitude, tabulated to 60,000 ft.** The plan calls it "the one fully-open document" for this, and that is the point: §7's item 3 warns that **MIL-F-8785C Fig. 7 may share its U-2 lineage with HICAT and therefore may not be an independent check** at the high-altitude end. A *regulatory* table, freely served by eCFR, descends from a different process and **would be independent**. Settling the lineage question otherwise needs ADA119421, which is not held | **NOT RECORDED ANYWHERE UNTIL NOW.** Free from eCFR. **The cheapest open acquisition the project has**, and the only one that attacks the independence problem rather than the data problem. **Record the amendment number**: the plan flags that the high-altitude discrete-gust value differs between older FAR text (26.0 ft/s at 50,000 ft) and current text (20.86 ft/s at 60,000 ft), so an undated quotation is not usable |
+| **NASA TP-2469**, Campbell | von Kármán rational-filter validity — i.e. whether the Dryden form this project uses is defensible where a von Kármán spectrum is the better model | **Not recorded anywhere.** NTRS, so free |
+| **Sharman et al. 2014** | The **EDR-to-σ bridge**. EDR is the operational turbulence metric; this project reports σ_w and `σ_n`, and has no route between them. That is why no result here can be stated in the units an airline or a forecaster uses | **Not recorded anywhere.** This is a *capability* gap, not a data gap, and it is the one that would make the model's output comparable to operational practice |
+| **MIL-STD-1797A** | The military alternative to 14 CFR 25.341 for the same table | **Not recorded anywhere.** Limited distribution — which is exactly why 25.341 is worth trying first |
+| Etkin 1981 | Four-point gust model coefficients | Already cited once in `ASSUMPTIONS.md`; the *four-point* use is not |
+| Doyle et al. 2011 / T-REX | N and cross-mountain U at 12 km | Held; `scripts/leewave.py` already flies it |
+| Parks et al. 1985 | Per-case vortex table, Scorer ratio | **HELD since session 26.** The plan's claim that it "has never been obtained" is what dates the plan |
+
 ### Hannibal comparisons beyond the peak load — inventory, session 30
 
 **Asked directly: what else do Mehta 1987 and TM-102186 hold that the model could be marked
@@ -6243,10 +6293,49 @@ one retires `ASSUMPTIONS.md` A1 and A2, the other closes three red tests and re-
 is the one that decides the cost: both linearise it, one about the transport rate and one about
 the equilibrium. §0 has the table.
 
-**What this session did NOT do**, so the next one does not go looking: it ran **no tests** —
-nothing in its four commits touches model code — **reviewed none** of the rescued work, and
-merged nothing. It did not resolve `old-origin`, the `AGENTS.md` rename, or any branch. The
-licence file is not written yet. Those are phases 1–7 of the plan.
+**6. Phase 1, the branch triage.** Sixteen branches carried unique commits at the start of it.
+
+**Merged, two:**
+
+- **Session 31's**, above — five conflicts in this file, every one resolved by keeping *both*
+  sides, because that branch predates the session-30 merge and taking "theirs" anywhere would
+  have deleted session 30. §4 went **55 entries → 56**: nothing superseded, one gained.
+- **`claude/zen-maxwell-1ad0a4`**, the tail-arm gate, rescued unreviewed at the session-28 audit
+  and left for three weeks. **Reviewed and merged, and it closes a silent bug now recorded as
+  §6(g)**: `airframe.stations` did not gate on the tail arm though it is the only place a
+  `Stations` is built, so for an entry with no `CLq` the arm was `−Cmq/0 = inf`, the `linspace`
+  ran to `−inf`, and **every fitted gradient returned NaN with nothing raised** — a rollout
+  would finish and report a NaN rms. Its docstring's claim of "five of the seven aircraft" was
+  **measured rather than trusted**, and holds: 5 refused of 7. 68 tests pass across the three
+  files it touches.
+
+**Abandoned, eight — and two of them were not empty.** §0 has the table of what was taken from
+each before it went, which is the only order that is safe:
+
+- `claude/weekly-summary-analysis-7520db`'s scripts were all already on `main`, but **its
+  `runs/cat/` outputs existed nowhere else** — 55 files, 11 MB, including the ten LES ensemble
+  arrays §4's POD row reads. Copied to the main checkout and **verified by md5 file-by-file**
+  before the branch was touched. §10 now says where they live.
+- `claude/cat-flight-model-dossier-04adb9`'s *plan* is superseded — it argues the 500 ft radius
+  session 26 reversed and says Parks 1985 "has never been obtained", which session 26 disproved
+  — but **its retrieval ledger had five rows recorded nowhere in this document**, now §7. The
+  best of them is **14 CFR 25.341**: free from eCFR, and the only identified source that would
+  give σ against altitude *independently* of the U-2 lineage §7 warns MIL-F-8785C Fig. 7 may
+  share with HICAT. **Cheapest open acquisition the project has.**
+
+**Deferred, two, for a stated reason rather than for lack of time.**
+`claude/linearisation-verification-bounds-b73868` (953 lines of `verification.py` against
+`main`'s 359) and `claude/flight-dynamics-solver-oscillation-17139b` both modify
+`atisim/validation.py` — **the same file the two WGS-84 branches fight over.** Merging them
+first would make that fight harder, not easier, so all four are handled together.
+
+**What this session did NOT do**, so the next one does not go looking: it has run **no full
+suite** — only the three files the tail-arm merge touches, plus a 907-test collection check —
+and **no re-measurement** of anything in §4. It did not review
+`claude/engine-validity-presentation-1408e8`, the α̇ work, which still modifies a rule-3
+validated-baseline file with the burden unmet. It did not resolve `old-origin`, and the
+`AGENTS.md` question is now moot: `CLAUDE.md` became `docs/DEVELOPMENT.md` instead. The WGS-84
+merge has not started.
 
 
 ### Session 31 — a summary is asked for, and the `mass` row turns out to be one lever read three ways
@@ -8376,7 +8465,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 | `C:/Users/mateusz/AppData/Local/Programs/Python/Python310/python.exe` `scripts/gen_jsbsim_747.py` | **Recovers the `boeing747_jsbsim` entry from the running B747.** Needs jsbsim, so it runs under the reference interpreter above, NOT the project venv. Writes `atisim/tests/data/jsbsim_747_reference.xml`. Run only when the recovery condition changes; drift shows up in `git diff`. |
 | `C:/Users/mateusz/AppData/Local/Programs/Python/Python310/python.exe` `scripts/gen_jsbsim_vortex_reference.py` | **Freezes JSBSim's answer to the three vortex cases.** Same interpreter, same reason. Writes `atisim/tests/data/jsbsim_vortex_reference.xml`. |
 | `.venv/Scripts/python.exe scripts/vortex_compare.py --png runs/vc.png` | **The cross-code vortex comparison.** Flies atisim through the identical field the frozen reference was generated from and reports where the two engines part, against Wingrove & Bach's own g-loads. Imports no jsbsim. |
-| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/les_ensemble_svd.py --runs <dir>` | **The LES ensemble POD (session 28).** Asks whether an SVD of the 16 x 5000 `n_z` arrays separates condition drift from gust response better than the shipped 0.05 Hz high-pass. **It does not** — on D03/D04 mode 1 carries 25% and 18% and is only half sub-0.05 Hz. Then asks the drift question directly, early half against late, and finds it confounded with along-track field inhomogeneity. `--runs` is required: the arrays are gitignored and live in whichever worktree flew them. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/les_ensemble_svd.py --runs <dir>` | **The LES ensemble POD (session 28).** Asks whether an SVD of the 16 x 5000 `n_z` arrays separates condition drift from gust response better than the shipped 0.05 Hz high-pass. **It does not** — on D03/D04 mode 1 carries 25% and 18% and is only half sub-0.05 Hz. Then asks the drift question directly, early half against late, and finds it confounded with along-track field inhomogeneity. `--runs` is required: the arrays are gitignored, so they are not in the repository. **Since session 32 they live in the MAIN CHECKOUT at `runs/cat/`** — 55 files, 11 MB, including the ten `les-nz-*.npy` arrays. They were harvested from `claude/weekly-summary-analysis-7520db`'s worktree, which was the only copy, and verified file-by-file by md5 before that branch was abandoned. Regenerating them needs the 17.9 GB figshare dataset, which is held outside the repository. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/svd_probe.py` | **What a singular value decomposition can and cannot see (session 28).** Four sections: cond(J) at the healthy trim against §5's two absurd roots (it does NOT separate them, and that is the point); F7's zero-authority channel, where sigma_min is exactly 0 at the initial guess; and the identifiability of (`Cma`, `Cmq`, `Iyy`) against the longitudinal modes, which recovers session 27's B787 `I_yy` result to 0.19 deg without being told it. Changes nothing — it imports `trim` and `validation` and measures matrices they already build. §4 has what it found. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/fig8_discriminator.py` | **Does Fig. 8's pitch axis stop discriminating? (session 29).** Replaces session 23d's extremes-gap statistic with `response.separability` and `response.standardised_difference`, whose expectation does not move with N. Section A shows the old statistic shrinking with N at fixed σ_w while the new one does not; section B sweeps intensity on both axes, marking every row that is outside the SOURCED σ range or past §1's 10° envelope; section C looks for the crossing and reports that there isn't one. **Checkpoints after every intensity** and prints with flush — redirect it, never pipe it through `tail`, and see `fly_grid` for why. `--seeds`, `--sigmas`, `--clear-every`. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/sensitivity_load.py` | **The headline load, differentiated and swept (session 29, S2/S3).** Section A is the gate — the differentiable path against `vortex_viz._measure`, and the claim is bit-identity. Section B ranks every independent coefficient by elasticity in ONE 4,737-step forward pass. Section C sweeps the top six at ±1/5/10/25% and prints, for each, whether the tangent survived and whether an **extreme changed sample**, which is what a peak-to-peak derivative actually turns on. `--top` widens section C. |

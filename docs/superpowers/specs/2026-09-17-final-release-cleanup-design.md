@@ -236,6 +236,13 @@ against the README's "23"), the test count read from a real run rather than asse
 `CONTRIBUTING.md`. A docstring sweep for autodoc — additive only, no rewriting of existing
 prose.
 
+> **Structure harvested from `claude/project-readme-mockup-0ef89a`** before that branch was
+> abandoned (§9). Two of its headings are better than what the README has and should survive
+> the rewrite: **"What it can't do (read this bit)"**, which puts the envelope in front of the
+> results instead of after them, and **"Why there's so much paperwork in here"**, which is the
+> only place anything explains *why* a flight simulator ships an 8,000-line evidence ledger.
+> A reader who does not get that explanation reads §4 as bureaucracy rather than as the point.
+
 **4c, Tue 29.** Site content: the architecture page, a running-it page generated from §10's
 table, and the validation-claim page carrying §1's envelope. `PROJECT.md` keeps all 8,096
 lines and gains an entry point in front of it; it is not shortened.
