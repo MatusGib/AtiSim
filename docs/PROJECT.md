@@ -4,7 +4,9 @@ A 6-DOF fixed-wing flight-dynamics core in JAX, built as a foundation for turbul
 modelling. This document is the standing record: what exists, what is validated, what is
 known-broken, and what happens next.
 
-**Last updated:** session 29 (**the sensitivity study, designed and then run end to end, S0–S6**, plus two follow-ups. **ASSUMPTIONS C3's Mach axis is bounded at cruise, −5.04%**; **§1's headline carries a band — 68.2%, 57.1–74.0% — and the shortfall survives all of it**; `CLa` +0.692 and `mass` −0.649 lead the load, with a DECLARED constant third. **Two `sqrt(0)` bugs repaired** — the model was not differentiable in its own coefficients, and no quoted result was ever wrong. And **session 23d's Fig. 8 reading is CORRECTED**: the pitch axis does not stop discriminating, the extremes gap it used shrinks with N, and it is the load axis that degrades faster)
+**Last updated:** session 31 (an investigation, no model code changed). **Session 29's `mass` row is right as arithmetic and wrong as a reading.** `mass` and `CLa` are one lever, mirrored to 0.04. The row does not price an error in CR-2144's weight, which cancels to +0.008 because the builder derives `CLa` from it. Holding inertia fixed moves the load elasticity by −0.36 to +0.19, and the sign depends on the flight form (as flown, or replayed on the identified path). The cruise phugoid-damping "`mass` +1.728" is mostly the DECLARED Korn drag rise, +0.447 without it. §4's first entry has the tables. §0 now also gives session 30's real branch name, `session-30-speed-derivatives-hannibal`, and says its merge with `origin/main` is half-done.
+
+Session 29 (**the sensitivity study, designed and then run end to end, S0–S6**, plus two follow-ups. **ASSUMPTIONS C3's Mach axis is bounded at cruise, −5.04%**; **§1's headline carries a band — 68.2%, 57.1–74.0% — and the shortfall survives all of it**; `CLa` +0.692 and `mass` −0.649 lead the load, with a DECLARED constant third — ~~two leads~~ **one lever counted twice, session 31**. **Two `sqrt(0)` bugs repaired** — the model was not differentiable in its own coefficients, and no quoted result was ever wrong. And **session 23d's Fig. 8 reading is CORRECTED**: the pitch axis does not stop discriminating, the extremes gap it used shrinks with N, and it is the load axis that degrades faster)
 
 Session 28 (an audit, no code changed: the "the agreement got worse" hypothesis tested and **falsified** — every early number re-measured and unchanged, no tolerance ever loosened, and the growth traced to a change of *reference class* dated to commit `c6b5342`, 1 Sep 2026, with ASSUMPTIONS C3's frozen derivatives the largest identified physical cause; the strip-load path judged: off the published path, +22.9% on one unvalidated channel, and worth keeping for its negative result).
 
@@ -95,22 +97,33 @@ sitting in the repository.** §4's session-28 entry on CR-2144's `CL_α(M)` figu
 read against it: the branch supplies the *theoretical* correction, printed p. 220 supplies
 the *sourced* curve, and the two are a check on each other rather than alternatives.
 
-### Reported done elsewhere, and NOT ON ORIGIN — added 16 September 2026
+### Reported done elsewhere, and NOT ON ORIGIN — added 16 September 2026, address found session 31
 
 | | |
 |---|---|
-| **Branch** | **`claude/cr-2144-speed-derivative-data-5012ac`**, commits `6ef5e4f` and `0d84eae` — **as reported to this session; none of the three resolves here** |
-| **Worktree** | unknown — a different Claude Code session, which holds the uploaded page scans |
-| **State** | **NOT VERIFIABLE FROM `origin`.** Checked three ways on 16 Sep 2026 — `git ls-remote --heads origin`, a full `git fetch --all --prune`, and the GitHub API — and `MatusGib/AtiSim` carries exactly two branches, `main` and `claude/model-sensitivity-analysis-t18v3v`. Neither named commit exists |
-| **What it is** | **The CR-2144 pp. 220–222 digitisation** — `CL_α(M)`, `Cm_α(M)`, and the `CL_M`/`CD_M`/`Cm_M` speed derivatives — reported complete, with results said to be in that branch's own §4 |
+| **Branch** | ~~`claude/cr-2144-speed-derivative-data-5012ac`~~ **`session-30-speed-derivatives-hannibal`** — **FOUND, session 31 (17 Sep 2026).** The reported name exists nowhere. The commits do, on this LOCAL branch: `6ef5e4f`, `0d84eae`, `9d7a77f`, `4e97e8c`, `b551403`, `ea74849`. That branch's own §0 still gives the old name |
+| **Worktree** | **`.claude/worktrees/engine-validity-error-check-d8ccdf`** |
+| **State** | **6 ahead of `origin/main`, 11 behind, and NOT PUSHED.** It forks from `7b71816` and does **not** contain session 29. **A merge of `origin/main` (`4e5191e`) into it is IN PROGRESS in that worktree**: `MERGE_HEAD` was written 17 Sep 10:30, conflicts in `PROJECT.md` and `ASSUMPTIONS.md` are staged as resolved, and nothing is committed. Session 31 read it and touched nothing. Suite on the merge: not run. ~~Checked three ways on 16 Sep 2026 … Neither named commit exists~~ — true of `origin`, which is where that check looked |
+| **What it is** | **The CR-2144 pp. 220–222 digitisation** — `CL_α(M)`, `Cm_α(M)`, and the `CL_M`/`CD_M`/`Cm_M` speed derivatives — reported complete, with results said to be in that branch's own §4. **Session 31 read the branch, and it holds more than that.** The speed set declared on `boeing747`; CR-2144's **thrust line** declared at CR-114494's revised 5.70 ft; TM-102186 Fig. 7's horizontal wind; Parks 1985 Fig. 6's altitude; and the Hannibal headline switched to the field **replayed on its identified path, 75.3%**. That §4 and §9 carry all of it |
 | **What it closes, if it lands** | The item §4's "C3's Mach axis is not unbounded" calls **the highest-value item on the list**: it turns session 29's DECLARED Prandtl–Glauert bound into a **SOURCED** curve, gives the altitude axis a second independent check free, and supplies the Mach content §5 names as missing from the phugoid |
-| **Blocking** | **It is not pushed, or not pushed here.** Until it is, this row is the only thing standing between that work and a later session re-doing it — which is precisely what rule 1b exists to prevent, and the reason this row is written from a report rather than from evidence |
+| **Blocking** | **The half-done merge, then a push.** Finishing the merge puts `sensitivity.py` and session 30's model in one tree for the first time. **After that, session 29's S2/S5/S6 must be re-run on it.** Every elasticity and §1's band were measured on the bare 747 and the as-flown field, and session 30 changed both. §4's first entry shows that a ±1% central difference on the replayed headline can land on a sample jump |
 
-> **Read this row as a POINTER, not as a result.** Nothing in it has been verified and no number
-> from it may be quoted. §4's own status for the Mach axis is unchanged: bounded at cruise by
+> **Read this row as a POINTER, not as a result.** The address is now verified; the numbers are
+> not re-measured here, and none may be quoted from it except the handful §4's first entry
+> re-ran on its tip `ea74849` (base loads 64.52% as flown and 75.34% replayed, which match it). §4's own status for the Mach axis is unchanged: bounded at cruise by
 > session 29's *theoretical* Prandtl–Glauert factor, and still awaiting the *sourced* curve.
 > **Whoever merges that branch should expect conflicts in §0, §4 and §9**, which both branches
 > edit; the `aero.py` changes were reported not to overlap.
+
+### Session 31's own work — unmerged
+
+| | |
+|---|---|
+| **Branch** | **`claude/work-summary-derivatives-sensitivity-9a2c03`** |
+| **Worktree** | `.claude/worktrees/jsbsim-atisim-vortex-rings-34659d` — the name does not match the branch |
+| **State** | **1 commit ahead of `origin/main`, 0 behind. Not pushed.** `scripts/sensitivity_mass_diagnosis.py` plus this document: §0, §4's first entry, in-place notes on session 29's `mass` claims, and §9. No model or test code changed, so the suite was not run |
+| **What it closes** | The reading of session 29's `mass` row (§4, first entry) |
+| **Blocking** | **Nothing — just unmerged.** It will conflict with the session-30 merge above in §0, §4 and §9 |
 
 ### Large, stranded, and a decision rather than a merge
 
@@ -162,7 +175,7 @@ stop them being lost. **None was reviewed and none is endorsed** — the commit 
 | **Worktree** | none — a remote container on the main checkout, no `.venv` (`jax` installed fresh on Linux; §10's Windows table does not apply) |
 | **State** | **MERGED at `105f689`.** All seven phases S0–S6 done, plus two follow-ups: `airframe.py`'s `sqrt(0)` closed, and Fig. 8's pitch axis investigated (§4, correcting session 23d). Suite: **776 passed** before any of this work, **808** after S0–S6, **819** after the follow-ups; the same 2 platform bit-pins fail throughout and predate the work |
 | **What it is** | `docs/superpowers/specs/2026-09-10-model-sensitivity-analysis-design.md` — a sensitivity study over three quantities of interest (headline CAT load, cruise modes, Dryden ensemble statistics) and two factor tiers (aerodynamic derivatives, `ASSUMPTIONS.md` modelling choices), by a tiered method: AD screen → OAT confirm → banded propagation |
-| **What it closes** | **CLOSED, all three.** `ASSUMPTIONS.md` **C3's Mach axis is bounded at cruise: −5.04%** of the headline load over a measured Mach span of 0.7187–0.8257. **§1's headline carries a band — 68.2%, 57.1–74.0%** — and states that the shortfall survives it. And phase 3's DC-10 acquisition has a **price**: `CLa` is the top-ranked coefficient on the load at **+0.692**, `mass` second at **−0.649** |
+| **What it closes** | **CLOSED, all three.** `ASSUMPTIONS.md` **C3's Mach axis is bounded at cruise: −5.04%** of the headline load over a measured Mach span of 0.7187–0.8257. **§1's headline carries a band — 68.2%, 57.1–74.0%** — and states that the shortfall survives it. And phase 3's DC-10 acquisition has a **price**: `CLa` is the top-ranked coefficient on the load at **+0.692**, `mass` second at **−0.649**. **Session 31 qualifies that price** (§4, first entry): the two are one lever, `CLa·q̄S/W`. `mass` was moved with the inertia held fixed, and scaling the inertia too gives −0.800. And an error in a *published* weight cancels (+0.008), because the entry derives `CLa` from it |
 | **Blocking** | **Nothing — merged.** What remains is named rather than pending: C3's **α axis**, still unbounded; **interaction terms**, which this study measured none of and says so with every table; and the question §8 raises about whether Fig. 8's pitch axis survives past this aeroplane's linear range. ~~`airframe.py`'s second `sqrt(0)`~~ was closed in the same session |
 
 **All three obstacles the design named are solved.** `trim`'s Newton solve is handled by the
@@ -481,6 +494,116 @@ spacing from a free parameter into a cited one.
 
 Every figure below is measured, with the tolerance the test asserts.
 
+### What session 29's `mass` row measures — and what it does not — session 31
+
+**Asked directly: "the sensitivity analysis shows mass to have a huge impact, but the results
+don't look correct".** The numbers are **right as arithmetic and wrong as a reading.** They
+reproduce exactly, there is no bug, and the row does not measure "a heavier aeroplane" or "an
+error in CR-2144's weight". `scripts/sensitivity_mass_diagnosis.py` does the separation.
+It uses central differences through the shipped `vortex_viz.fly_in_moving_air` and
+`validation.longitudinal_modes`, **not** `sensitivity.py`, so it is independent of the AD
+machinery. Each hypothesis gets one controlled variant.
+
+**What session 29 did to `mass`.** It moved `ac.mass` alone with the trim re-solved, as every
+field in the screen was. `inertia` is a `COUPLED_FIELDS` entry (`inertia_inv` is its inverse),
+so it **could not** move, although the design spec listed it in the same block. And
+`_boeing_747` **derives** `CLa`, `CL0`, `e` and `CD0` from CR-2144's `W`, because Table IX-4's
+derivatives are dimensional. A screen that moves `ac.mass` after construction holds all four at
+the old weight's values.
+
+#### On the tree session 29 measured (bare `boeing747`), ±1% unless stated
+
+| variant | load, as flown | load, replayed at the nominal altitude | phugoid ζ | short-period ω_n | short-period ζ |
+|---|---|---|---|---|---|
+| **`mass`, as session 29 moved it** | **−0.649** | −0.624 | **+1.728** | −0.056 | −0.421 |
+| `CLa` | **+0.692** | +0.668 | −0.166 | +0.058 | **+0.422** |
+| `mass` + inertia scaled with it | **−0.800** | **−0.445** | +1.554 | **−0.556** | −0.434 |
+| `mass`, wave drag off (`kappa_airfoil` ×1.25) | −0.678 | −0.674 | **+0.447** | −0.056 | −0.422 |
+| **CR-2144's printed `W`, builder re-run** | **+0.008** | +0.019 | +0.566 | +0.000 | +0.000 |
+
+Every load figure agrees at h = 0.25% and 1% to three decimals. The base reproduces session 29
+to the digit: 1.841396 g, 68.20% as flown, and 2.093763 g, 77.55% replayed. At ±10% and ±25% `mass` reads
+−0.693 and −0.725, and `CLa` +0.707 and +0.706. **S3's asymmetry is a power law of about
+m^−0.7, not an anomaly**: −25% gives +22.03% and +25% gives −14.20%.
+
+**Four findings.**
+
+1. **`mass` and `CLa` are ONE lever, counted twice.** The gust increment goes as
+   `CLα·q̄S/W`. So the two elasticities mirror each other to **0.04–0.05** on the load and to
+   **0.001** on short-period ζ. "`CLa` +0.692 and `mass` −0.649 lead the load" is one finding:
+   **lift slope per unit wing loading leads the load.** It is session 26's "wing loading is the
+   only thing that matters", re-measured.
+2. **The row does not price an error in the source's weight.** Re-running the builder with `W`
+   scaled moves the derived `CLa` with it, and the load elasticity is **+0.008**: the two
+   cancel. §0's "the DC-10 acquisition has a price … `mass` −0.649" prices a *heavier aeroplane
+   with the same aerodynamics and the same pitch inertia*. That is not what an error in a
+   published weight is.
+3. **Holding inertia fixed is not a detail.** It means ballast at the CG. Scaling the inertia
+   with the mass (constant radius of gyration, a **DECLARED** choice made for this diagnostic)
+   moves the load elasticity −0.649 → **−0.800** as flown and −0.624 → **−0.445** replayed.
+   **The inertia term changes sign with the flight form**, so no single `mass` number
+   describes a heavier aeroplane. It also moves short-period ω_n −0.056 →
+   **−0.556**, which would tie `c` (+0.557) at the top of S1's short-period row. The screen
+   could not show that row.
+4. **The cruise phugoid-damping "`mass` +1.728" is mostly the Korn drag rise, a DECLARED model.**
+   - At trim, wave drag is **2% of drag** (0.00100 of 0.04280, M 0.7995, M_crit 0.7153). But its
+     Mach slope, 80(M − M_crit)³ = **0.0477 per Mach** — 1.9× CR-2144's sourced total of 0.0251
+     (§4, "CR-2144's speed derivatives") — supplies **40% of the phugoid damping**: ζ 0.05534
+     with it, 0.03306 without.
+   - Mass raises the trim C_L, which lowers M_crit, which steepens that slope by about 5% per 1%
+     of mass.
+   - Switch it off and the elasticity is **+0.447**, beside the static CD/CL estimate of +0.366.
+   - **§4's "the phugoid damping is a `mass` result at cruise" is a Korn result at cruise.**
+
+**Two hypotheses ruled out.**
+
+- **Path.** The fixed-control climb at cores 3–4 is **151.5 / 155.0 m** at base and
+  150.7–151.6 m across mass ×0.75–×1.25. Replaying the field on the nominal altitude moves the
+  elasticity by 0.025. The climb session 30 found is real, but it is not mass-dependent.
+- **Korn on the load.** Switching wave drag off moves it by 0.029.
+
+#### On session 30's shipped `boeing747` (speed derivatives + 5.70 ft thrust line)
+
+Measured on `ea74849`, exported with `git archive` to a scratch directory, with `atisim.__file__`
+printed there. **That branch does not contain `sensitivity.py`**, so only the central-difference
+path was run. Load at h = 0.25% / 1% / 5%; modes at 1%.
+
+| variant | load, **as flown** (1.742058 g, 64.52%) | load, **replayed** (2.034180 g, 75.34%, the session-30 headline) | phugoid ζ |
+|---|---|---|---|
+| `mass` | −0.602 / −0.597 / −0.574 | −0.699 / −0.699 / −0.754 | **+2.230** |
+| `CLa` | +0.664 / +0.659 / +0.639 | **+0.740 / +0.497 / +0.695** | −0.106 |
+| `mass` + inertia | **−0.958** / −0.954 / −0.929 | **−0.505** / −0.505 / −0.512 | +1.992 |
+| printed `W`, builder re-run | −0.038 / −0.038 / −0.038 | **−0.051 / +0.196 / +0.001** | −0.937 |
+| `mass`, `CD_M` re-netted at the perturbed trim | — | — | **+0.535** |
+
+- **The mirror holds** (−0.699 against +0.740), and a wrong printed weight still cancels to
+  within 0.05.
+- **The inertia term changes sign with the flight form here too, and is larger as flown.** As
+  flown it steepens the load elasticity by 0.36 (bare entry: 0.15). Replayed it flattens it by
+  0.19 (bare entry: 0.18), because the maximum's share turns positive (+0.137): a 747 with more
+  pitch inertia pitches away less from the +1.62 g core.
+- **The Korn inflation persists, and it is worse.** `CD_M` is stored **net of the Korn slope at
+  the construction C_L**, so moving `mass` shifts the Korn slope while the netting stays put. It
+  silently changes the total drag Mach slope the entry declares as sourced. Holding that total
+  at its base value (0.0257 here) takes phugoid ζ's mass elasticity from +2.230 to **+0.535**.
+- **A hazard for anyone re-running S2 on the replayed headline.** At ±1% two of these rows are
+  **sampling artefacts**: `CLa` +0.497 and printed `W` +0.196. The trough moves one sample,
+  2962 → 2961, the same sample-placement mechanism S4 found in dt. The 0.25% and 5% columns
+  agree with each other and not with 1%. **Quote a peak-to-peak elasticity only with two step
+  sizes that agree**, which is what the script now prints.
+
+**What this entry does NOT do.**
+
+- No table above it has been re-computed. Session 29's rows stand as measurements and are
+  annotated in place.
+- `sensitivity.py` still screens `mass` with inertia fixed. No reparameterisation (`W/S`, or
+  mass with a radius of gyration) was added, because which question the screen should ask is a
+  decision, not a correction.
+- S2, S5 and S6 were not re-run on session 30's model, and the Dryden rms (S5) was not re-run
+  with inertia scaled. The approach condition was not measured.
+- §1's band (57.1–74.0%) does not contain `mass`, so it does not move. It is built on the bare
+  747 and the as-flown field, and session 30 moved both.
+
 ### The headline load, differentiated and then swept — session 29 (phases S2–S6)
 
 **The study's own deliverable: `PROJECT.md` §1's headline is no longer a bare point.**
@@ -505,7 +628,7 @@ A tolerance would have admitted a second path that had become a different model.
 | rank | field | elasticity | what it is |
 |---|---|---|---|
 | 1 | **`CLa`** | **+0.69242** | SOURCED, CR-2144 |
-| 2 | **`mass`** | **−0.64869** | SOURCED |
+| 2 | **`mass`** | **−0.64869** | SOURCED. **Session 31: this is rank 1 again, mirrored** — the lever is `CLa·q̄S/W`. Inertia was held fixed (−0.800 with it scaled), and a wrong *printed* weight cancels to +0.008 (§4, first entry) |
 | 3 | **`kappa_airfoil`** | **−0.33850** | **DECLARED — the Korn technology factor, "~0.87 conventional"** |
 | 4 | `Cma` | +0.19233 | SOURCED |
 | 5 | `c` | +0.12242 | SOURCED |
@@ -622,7 +745,9 @@ resolved at that N**.
 
 **The answer is: partly the aeroplane, partly the peak.** `CLa` and `mass` are the top two
 under *both* statistics, at both intensities, with the same signs and magnitudes within 20% —
-that pair is a property of the airframe. **`c` and `Cmα` reverse sign**, which no ranking taken
+that pair is a property of the airframe. **Session 31: and it is one property, not two.** The
+pair mirrors to within 0.022–0.028 here and 0.043 on the peak, because both enter as
+`CLa·q̄S/W`. The inertia-scaled rms was not measured. **`c` and `Cmα` reverse sign**, which no ranking taken
 from one statistic could have revealed, and **`Clb` goes from an exact zero to third place**,
 because `dryden_field`'s v component is a real lateral input (sideslip, not a rolling gust) where
 the vortex array has none. **A sensitivity ranking is a property of the statistic as well as of
@@ -824,7 +949,10 @@ term is measured, and none may be inferred.**
    in `Cnr` moves the cruise spiral time constant by 4.3%.
 3. **The phugoid damping is a `mass` result at cruise (+1.728) and a `c` result at the
    approach (+6.891).** The dominant coefficient is not a property of the mode; it is a
-   property of the mode *at a condition*.
+   property of the mode *at a condition*. **Session 31: at cruise it is mostly a Korn result.**
+   Wave drag is 2% of trim drag, but its Mach slope (0.0477 per Mach, 1.9× the sourced total)
+   carries 40% of the phugoid damping and steepens with trim C_L. With it off, `mass` reads
+   **+0.447** (§4, first entry).
 
 **Nine fields are STRUCTURALLY INERT at both conditions** — elasticity exactly 0.000000,
 which means *not used*, not *unimportant*: `CYp`, `CYr`, `CYdr`, `Clda`, `Cldr`, `Cnda`,
@@ -4625,7 +4753,7 @@ re-measuring them.
 |---|---|---|---|
 | **S0** | `atisim/sensitivity.py` + `test_sensitivity.py` | the differentiable load QoI matches `vortex_viz._measure`'s `n_z` to **1e-12**, sample-for-sample | **DONE for the MODE path, session 29** — 24 tests. The load QoI and its 1e-12 gate move to S2, because §6(f) had to be fixed first before anything could be differentiated at all |
 | **S1** | AD screen on the cruise modes | ~~reproduces session 11's four sweep slopes to <2%~~ **the gate as written was the wrong test and is corrected here**: an AD tangent and a least-squares slope over a 3–8× range are different objects, so the machinery gate is AD against a **central difference at the same point** | **DONE, session 29. PASSED at 5.2e-10 against a 1e-6 gate.** §4 has all four sections, including the proof that the 0.6–4.2% tangent-vs-fit gap is curvature |
-| **S2** | AD screen on the headline CAT load, all of tier A | AD elasticity vs ±1% central difference agree to **<1%** | **DONE, session 29.** Gate passed; the load path is **bit-identical** to `_measure`, better than the 1e-12 asked. `CLa` +0.692, `mass` −0.649, **`kappa_airfoil` −0.339 — a DECLARED constant in third place** |
+| **S2** | AD screen on the headline CAT load, all of tier A | AD elasticity vs ±1% central difference agree to **<1%** | **DONE, session 29.** Gate passed; the load path is **bit-identical** to `_measure`, better than the 1e-12 asked. `CLa` +0.692, `mass` −0.649, **`kappa_airfoil` −0.339 — a DECLARED constant in third place**. *Session 31: the first two are one lever, and `mass` was moved with inertia fixed (§4, first entry)* |
 | **S3** | OAT confirm on the top factors at ±1/5/10/25% | a ranked table carrying the excursion it was ranked at | **DONE, session 29.** **Three of the six top fields lose the tangent's sign or magnitude by ±10%** — wave-drag saturation, and the extreme jumping to a different core. The ranking is valid at ±1–5% and the table says so |
 | **S4** | Tier B — the `ASSUMPTIONS.md` modelling choices, on the same axis | **C3 gets its first BOUND at cruise** | **DONE, session 29. C3's Mach axis: −5.04%** over a measured Mach span of 0.7187–0.8257. `ASSUMPTIONS.md`'s C3 row and summary table both updated. dt found worth +0.22% by **sample placement, not integration order** |
 | **S5** | Dryden ensemble `n_z` rms elasticity | N stated with the result | **DONE, session 29, N = 8 with the per-seed spread beside every mean.** `CLa`/`mass` survive the change of statistic; **`c` and `Cmα` REVERSE SIGN** and `Clb` goes from an exact zero to third. A ranking is a property of the statistic too |
@@ -4946,6 +5074,62 @@ source exactly. A smoother interpolant would agree with the source less.
 
 ## 9. Session log
 
+### Session 31 — a summary is asked for, and the `mass` row turns out to be one lever read three ways
+
+**Asked for a summary of the past fortnight** (speed derivatives, the sensitivity analysis, the
+thrust line) **and an explanation of a `mass` result that "does not look correct".** An
+investigation session: no model code, no test, and no tolerance changed. New:
+`scripts/sensitivity_mass_diagnosis.py`. §4's first entry carries every number.
+
+**1. Where the fortnight's work actually is.**
+- Session 29 is merged: on `main` and `origin/main` at `105f689`.
+- Session 30 is **not**. It is on the local branch `session-30-speed-derivatives-hannibal`, not
+  the name either §0 gives, and it is not pushed.
+- A merge of `origin/main` into it is half-done in its worktree. §0 now carries the address.
+- The two-line check in `CLAUDE.md` would print that branch. It would not print the half-done
+  merge, which is a worktree state, not a ref.
+
+**2. The `mass` row, diagnosed rather than defended.** Four hypotheses, one controlled variant
+each, by central difference on the shipped paths.
+
+Two survive:
+- **`mass` and `CLa` are one lever.** They mirror to 0.04.
+- **Inertia held fixed matters**: −0.649 → −0.800 as flown and −0.624 → −0.445 replayed on the
+  bare 747. The same sign change between flight forms appears on session 30's.
+
+Two are refuted:
+- **Path.** The fixed-control climb does not depend on mass.
+- **Korn, on the load.**
+
+**And one that was not asked.** An error in CR-2144's *printed* weight cancels (+0.008),
+because `_boeing_747` derives `CLa` from it. **Separately, the cruise phugoid-damping
+"`mass` +1.728" is mostly the DECLARED Korn drag rise** (+0.447 without it). On session 30's
+entry it is worse, because `CD_M` is netted against the Korn slope at the construction C_L
+(+2.230, and +0.535 re-netted).
+
+**3. Session 29's claims were annotated in place, not rewritten**: the header, §0's "price",
+S2's rank-2 row, S5's pair, S1's phugoid finding, the §7 S2 row, and session 29's §9 bullet. Its
+tables are measurements and stand.
+
+**4. A method hazard, found by accident.** On session 30's replayed headline, ±1% central
+differences land on a one-sample trough jump. `CLa` reads +0.497 at 1% against +0.740 at 0.25%
+and +0.695 at 5%. The diagnosis script prints two step sizes and flags disagreement. **Any
+re-run of S2 there must do the same.**
+
+**What this session did NOT do.**
+- It did not touch the in-progress merge in `engine-validity-error-check-d8ccdf`, which belongs
+  to whoever started it.
+- It did not push anything.
+- It did not re-run S2/S5/S6 on session 30's model. That tree lacks `sensitivity.py` until the
+  merge lands; only central differences were run there, from a `git archive` of `ea74849` in a
+  scratch directory.
+- It did not reparameterise the screen's `mass` factor (`W/S`, or mass with a radius of
+  gyration). Which question the screen asks is a decision.
+- It did not re-run the Dryden rms with inertia scaled, or measure the approach condition.
+- It did not refit Korn/Lock.
+- **The suite was not run**, because nothing it imports changed. `scripts/sensitivity_mass_diagnosis.py` was run
+  from the worktree root with `atisim.__file__` printed and reproduces the bare-747 figures.
+
 ### Session 29 — the sensitivity study, designed and then run end to end
 
 **The scope was settled by question, the design written before any number was measured, and
@@ -4990,7 +5174,7 @@ before and after.
 
 - **`CLa` +0.692 and `mass` −0.649 lead the headline load**, and `CLa` at the top is session
   27's LES result arriving from the other direction, at a different condition by a different
-  method.
+  method. *(Session 31: one lever, `CLa·q̄S/W`, counted twice. See §4's first entry.)*
 - **A DECLARED constant is third.** `kappa_airfoil` — the Korn technology factor, "~0.87
   conventional" — scores −0.339 and outranks `Cmα`, `c` and every drag coefficient. With
   `sweep` and `t_over_c` the wave-drag trio sums to 0.454 against `CD0`'s 0.0087: on this run
