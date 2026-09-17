@@ -4,7 +4,18 @@ A 6-DOF fixed-wing flight-dynamics core in JAX, built as a foundation for turbul
 modelling. This document is the standing record: what exists, what is validated, what is
 known-broken, and what happens next.
 
-**Last updated:** session 30. CR-2144's speed derivatives were digitised, checked against
+**Last updated:** session 31 — **the run to the 30 September deadline, and it measured nothing
+about the aeroplane.** The plan is
+`docs/superpowers/specs/2026-09-17-final-release-cleanup-design.md`. Three findings change what
+the rest of it has to do: **the repository is public and was redistributing seven copyrighted
+papers** (now untracked, with `Reference_papers/SOURCES.md` as the index and the history rewrite
+scheduled after the merges); **rule 1b failed twice more**, stranding the α̇ work and a full
+**automated digitisation of CR-2144 pp. 218–228** that nobody had tracked; and **§0's question
+about the two WGS-84 branches is answered — neither is the trunk, the merge is the union**, and
+`atisim/validation.py` decides its cost. §9's session-31 entry has all of it. **No test was run
+and nothing was reviewed or merged.**
+
+**Session 30.** CR-2144's speed derivatives were digitised, checked against
 Table IX-4 at every circled condition, and **declared on `boeing747`** through a new
 `Aircraft` seam. **Phugoid ω_n goes −18.1% → +4.05%**; the residual is the engine's missing
 thrust line, not the reading — **and then a thrust line was declared too**, at CR-114494's
@@ -150,11 +161,60 @@ the *sourced* curve, and the two are a check on each other rather than alternati
 | Branch | Worktree | State | What it is |
 |---|---|---|---|
 | `claude/atisim-wgs84-earth-rotation-32fbdd` | `atisim-wgs84-earth-rotation-b7b3bc` | **68 ahead, 27 behind** | A **rotating WGS-84 Earth**: `earth.py` and `earth_ref.py`, an ECEF state, every test migrated, a latent autopilot sign bug found and fixed, and **`ASSUMPTIONS.md` A1 and A2 retired**. Carries its own §9 entry ("Record session 23 in the project log") |
-| `claude/wgs84-earth-rotation-tasks-5dbdc3` | `sleepy-moore-7186bb` | **65 ahead, 27 behind** | **Sibling of the above, sharing commits** (`01d7502`, `84a8e53`, …). Adds "Measure what FLAT costs against the pre-Earth model, and find it is not round-off" and "Linearise about the equilibrium, and close the three red tests". **Which of the two is the trunk is not recorded anywhere and must be established before either is merged** |
+| `claude/wgs84-earth-rotation-tasks-5dbdc3` | `sleepy-moore-7186bb` | **65 ahead, 27 behind** | **Sibling of the above, sharing commits** (`01d7502`, `84a8e53`, …). Adds "Measure what FLAT costs against the pre-Earth model, and find it is not round-off" and "Linearise about the equilibrium, and close the three red tests". ~~**Which of the two is the trunk is not recorded anywhere and must be established before either is merged**~~ **ESTABLISHED, session 31 — see below** |
 
 **These two are not cleanup.** Merging 65–68 commits that replace the inertial frame changes
 every number in §4 and retires two assumptions the validation claim rests on. That is a
 session's work with a full re-baseline, and §7 has never listed it.
+
+> **Which is the trunk? NEITHER — established session 31, and the answer is that the merge is
+> the UNION.** They diverge at `01d7502` (28 August) after **61 shared commits**, and each
+> carries unique work the other does not have.
+>
+> | | `…tasks-5dbdc3` | `…earth-rotation-32fbdd` |
+> |---|---|---|
+> | unique commits | **4**, latest 31 Aug | **7**, latest 28 Aug |
+> | only it has | measures what FLAT costs against the pre-Earth model; **re-measures the §4 evidence ledger on the rotating Earth**; linearises **about the equilibrium** and **closes three red tests**; corrects seven docstrings that claimed a red suite | **retires `ASSUMPTIONS.md` A1 and A2** and revisits A3; re-measures F4 for the ECEF state; re-captures the Fig-8 vortex pin; linearises validation **about the transport rate**; the architecture and audit-inventory updates |
+>
+> **`git merge-tree` reports 8 files changed in both**: `atisim/validation.py`,
+> `atisim/tests/test_validation.py`, `atisim/tests/test_vortex_viz.py`,
+> `atisim/tests/test_jsbsim_737_layers.py`, `audit/INVENTORY.md`, `audit/NOTATION.md`,
+> `docs/ASSUMPTIONS.md`, `docs/PROJECT.md`.
+>
+> **`atisim/validation.py` is the one that decides the cost.** Both branches linearise it
+> independently — one about the **transport rate**, one about the **equilibrium** — and
+> whether those compose or contradict is **not established**. Answer that before touching the
+> other seven, because it decides whether this is a merge or a rewrite.
+
+### Session 31's own work — the release cleanup
+
+| | |
+|---|---|
+| **Branch** | **`release-cleanup-september`** — deliberately not a `claude/*` name |
+| **Worktree** | `.claude/worktrees/new-session-943052` — **the directory name is the old branch's**, as everywhere else here |
+| **State** | 4 commits beyond `main`'s `c1b7d71`, 0 behind. Suite **not run**: nothing in these four touches model code |
+| **What it is** | The plan for the final month, in `docs/superpowers/specs/2026-09-17-final-release-cleanup-design.md`, and the first phase of it: the copyright remediation, the CR-2144 rescue, and this §0 pass |
+| **What it closes** | §0 itself, as the month's work merges. The plan's phases 1–7 are the route |
+| **Blocking** | Nothing — it is the working branch |
+
+### Found untracked in the MAIN CHECKOUT — session 31
+
+> **A third instance of the rule-1b failure, and the largest by data volume.** Sessions 27 and
+> 28 each found stranded work elsewhere; this session found two more caches, one of them a
+> digitisation of the project's primary aerodynamic source. **Now tracked**, at `e521dbc`.
+
+| | |
+|---|---|
+| **What it was** | `Reference_papers/CR-2144/` — an **automated digitisation of NASA CR-2144 printed pp. 218–228**: 25 panels, 78 curves, 77 emitted, at 300 dpi off the embedded scans, each panel calibrated on its own printed ticks by a RANSAC fit. With overlays, a verification sheet and an overrides log |
+| **Why it matters** | §7 records session 30 digitising **pp. 220–222 by hand** and §4 calls that the highest-value item on the plan. This covers **pp. 218–228**: p.221 `Cm_adot` — the α̇ curves; p.222's `CL_M`/`CD_M`/`Cm_M`, which session 30 read by hand; and the **whole lateral set** (`Cl_p`, `Cn_p`, `Cl_r`, `Cn_r`, `Cl_da`, `Cn_da`, `Cy_dr`, `Cn_dr`, `Cl_dr`), which §5 names as a gap |
+| **What is now free** | **Two independent digitisations of pp. 220–222 exist** — this one and session 30's Engauge reading in `atisim/data/cr2144_dig/`. Comparing them **prices the reading error on both by a route neither can price alone**, and costs one script. §7 carries it |
+| **Its own stated limits** | The README's confidence column marks **four panels `poor`** — `Cm_adot`, `CL_M`, `Cy_beta`, `Cl_p` — where the three altitude curves print within a line width of each other and the altitude split is partly interpretive. Tick-fit residuals are 0.2–3.5 px; the dominant error is the **printed line width**, ~1–2% of full scale, not the calibration |
+| **Status** | **TRACKED, NOT REVIEWED, NOT USED.** No number in it has been checked against Table IX-4 and none reaches any aircraft entry |
+
+| | |
+|---|---|
+| **What it was** | Five NASA/NTRS reference PDFs, 31 MB, untracked beside them — CR-3677, CR-3748, TM-4745, TM-1998-206552 and Taylor 1978 |
+| **Decision** | **Not tracked.** All five are permanently available from NTRS, and `Reference_papers/SOURCES.md` now carries each one's md5, NTRS ID and what it does and does not supply. CR-3677's assessment against the open DC-10 acquisition is already in §7 |
 
 ### Small, unmerged, and cheap to resolve
 
@@ -166,6 +226,20 @@ session's work with a full re-baseline, and §7 has never listed it.
 | `claude/flightsim-sweep-ui-graphs-d4d036` | same name | 1 ahead, 65 behind | "Give every panel header its own measured band, and let the load panel read against time" |
 | `claude/weekly-summary-analysis-7520db` | same name | 1 ahead, 7 behind | The LES runs and the two digitisations. **Session 27 harvested the scripts from here; the `runs/cat/` outputs are still only here** and are what §4's session-28 POD row reads |
 | `session-27-validation` | `cv-entry-project-e44ed6` | 2 ahead, **0 behind** | Renames `CLAUDE.md` to `AGENTS.md`. **On `origin`.** A naming decision this document has not taken — `CLAUDE.md` is what rules 1–6 live in and what this file references throughout |
+
+### Rescued from a worktree at the session-31 audit, and unreviewed — THE α̇ DERIVATIVES
+
+> **Committed at `6148cd8` to stop it being lost. NOT reviewed, NOT endorsed, suite NOT run.**
+> Rescuing work and approving it are different acts, per the session-28 precedent.
+
+| | |
+|---|---|
+| **Branch** | **`claude/engine-validity-presentation-1408e8`** |
+| **Worktree** | `.claude/worktrees/project-md-restructure-95b7b8` — **the directory name is a different branch's**, again |
+| **State** | **1 commit ahead of `7b71816`**, which is `main` as it stood before session 29 merged, so it is ~10 behind. **48 files.** Suite not run |
+| **What it is** | **`aircraft.py` restores Table IX-4's `Mwd` to the 747 as `Cmadot`** — the α̇ pitching derivative — with the conversion round-tripping to the tabulated −0.000116 and an argument that it *adds* rather than double-counts because the tabulated `Mq` is bare. **It leaves `CLadot` at zero and says why in twelve lines**: Table IX-4's `Zwd` = +0.00556 converts to a *negative* `CLadot`, which is unphysical, and rebuilding Table IX-5 with +0.00556, −0.00556 and 0.0 gives 1.11%, 0.66% and 0.68% — all inside a three-figure reference's reading precision, so **IX-5 cannot arbitrate the sign either**. That is rule 2 applied correctly. Also `dynamics.py`; four α̇ scripts (`alphadot_conversion`, `alphadot_isolate`, `galilean_alphadot_probe`, `zwdot_sign_probe`); `test_alphadot_derivatives.py`; and ten more scripts including `prandtl_glauert_check`, `e4_windhold_remeasure` and `recapture_fig8_pins`. Plus a presentation package: a 1.1 MB deck, `build_deck.py`, a QA defence brief and eleven figures |
+| **What it closes** | **§5's α̇ entry**, if it survives review — the derivative the model has excluded by form since session 1 |
+| **Blocking** | **Review, and one thing specifically. `atisim/tests/test_cr2144_modes.py` IS MODIFIED**, and it is one of the five files `CLAUDE.md` rule 3 declares off-limits to feature work. The `aircraft.py` comment claims the augmented model there closes all four Table IX-5 factors to ≤1.2%, which would make it a **re-capture** rather than a loosening — but rule 3 puts the burden of showing which *on the change, in a comment, at the change*, and that has not been shown. **Settle this before anything else in the branch.** Its `PROJECT.md` (+479) and `ASSUMPTIONS.md` (+28) edits predate sessions 29–30 and will conflict |
 
 ### Rescued from worktrees at the session-28 audit, and unreviewed
 
@@ -5469,6 +5543,8 @@ disk. Session 26 received four more papers and closed items 3, 4 and 5 outright.
 | ~~**CR-2144 printed pp. 220–222**, the 747's derivative-vs-Mach curves~~ | **DONE session 30** — `scripts/cr2144_speed_derivatives.py`, checked against Table IX-4 at eight conditions; §4 has the entry. Session 28 called this the highest-value item on the list. **What is left from it is a DECISION rather than work**: whether `boeing747` declares the FC9 speed set, which moves the shipped phugoid, the Fig. 8 pins and the CAT headline |
 | ~~**TM-102186 Fig. 6**, the recorded g trace~~ | **DONE session 27** — `scripts/digitise_tm102186_fig6.py`; and it moved two numbers, see §4 |
 | ~~747 buffet onset boundary~~ | **DONE session 26** — `aircraft.buffet_cl` |
+| **compare the two independent digitisations of CR-2144 pp. 220–222** | **NEW, session 31, and it is the cheapest item on this list.** Session 30 read pp. 220–222 by hand through Engauge (`atisim/data/cr2144_dig/`, 295 placed points). `Reference_papers/CR-2144/`, found untracked this session, read pp. 218–228 automatically at 300 dpi with per-panel RANSAC tick calibration. **Neither has been compared with the other.** §4's session-30 entry prices the hand reading by interpolation, leave-one-out, a pixel Monte Carlo and the Table IX-4 residuals — all of which are *internal* to one reading. A second independent trace of the same ink prices it from **outside**, which nothing else on this list can do, and it needs no new source and no new method. Read the automated set's own confidence column first: it marks `CL_M` **poor** |
+| **the α̇ derivatives — `Cm_adot` from p.221, and the `Zwd` sign** | **NEW, session 31.** Two routes now exist and they should be run together. `claude/engine-validity-presentation-1408e8` (§0) restores Table IX-4's `Mwd` as `Cmadot` and argues `CLadot`'s sign is unsettleable from IX-4 or IX-5; `Reference_papers/CR-2144/csv/p221_Cm_adot_*.csv` is the printed **curve** for the same derivative, across Mach. The curve cannot settle the `Zwd` sign either — it is `Cm_adot`, not `CL_adot` — but it is what would turn a single tabulated value into a Mach schedule, and **its own README marks that panel `poor`**: the three altitude curves print within a line width of each other |
 | **the Hannibal flight record** (operator, tail, weight) | **NEW, session 27.** The only thing that would pin the wing-loading ratio, and therefore the only thing that would let the aircraft-type explanation be tested rather than argued |
 | ~~four B787 numbers — `m`, `S`, `c`, `I_yy`~~ | **OBTAINED session 27, and three of the four are CHECKED rather than looked up.** m = 215,910 kg, S = 325.3 m² (trapezoidal), c̄ = 6.437 m, all confirmed by inverting their own `Z_a` to a physical `C_Lα` = 4.847. `I_yy` is DECLARED and provably **unobservable** — it cancels against `C_mα`. §4 has the table. **This is now an implementation task, not an acquisition** |
 | **build the `boeing787_yoshimura` registry entry, then re-fly the LES** | **NEW, session 27, and it is the top of the list.** All inputs are in hand. Give it a `valid_mach`/`valid_altitude` band around its own condition. Carry the known difference that AtiSim has no `M_α̇` where Yoshimura has −0.137 |
@@ -5876,6 +5952,51 @@ source exactly. A smoother interpolant would agree with the source less.
   touch the core response.
 
 ## 9. Session log
+
+### Session 31 — the final month is planned, and the repository is found publishing seven copyrighted papers
+
+**This session measures nothing about the aeroplane.** It is the first of the run to the
+30 September deadline, and its subject is the repository rather than the model. The plan is
+`docs/superpowers/specs/2026-09-17-final-release-cleanup-design.md`; what follows is phase 0
+of it, plus three findings that were not expected and that change what the remaining phases
+have to do.
+
+**1. The repository is public, and has been redistributing seven copyrighted papers.**
+`private: false`, `license: null`. Fourteen third-party PDFs were tracked. All 24 documents on
+disk were adjudicated **against their own printed copyright pages**, not against the
+publisher's name, and the split is not what the name predicts: `parks-1985` prints "U.S.
+Government and therefore is in the public domain"; `mehta-2012` and `bach-parks-1987` both
+print the Title 17 "no copyright is asserted in the United States" statement **despite being
+AIAA *J. Aircraft* papers**; `schultz-2012` says it is "not subject to copyright protection in
+the United States". Seven are kept on that basis and seven removed — Yoshimura 2023 (CC BY-**NC**,
+and the copy carries an institutional-access watermark), an AIAA 2007 paper printing "All
+rights reserved", two AMS papers **one of which is a byte-for-byte 4.1 MB duplicate of the
+other**, `loving-2012`, a 1989 *Mon. Wea. Rev.* paper, and `dynamics_of_rigid_aircraft`, which
+is excluded **because its licence could not be established** — rule 2 applies to a licence
+exactly as it applies to a coefficient. `Reference_papers/SOURCES.md` is the new index, with
+md5 and a permanent locator for every document. `.gitignore` now denies by default there, as
+it always has for `refs/`. **The files remain in history** until the rewrite, which cannot run
+until the outstanding branches are merged without orphaning them.
+
+**2. Rule 1b failed twice more, and one of them is large.** `project-md-restructure-95b7b8`
+held **49 uncommitted files** — the α̇ work, §0 has the row — and the main checkout held
+`Reference_papers/CR-2144/`, **an automated digitisation of CR-2144 printed pp. 218–228**: 25
+panels, 77 curves emitted, with overlays and a verification sheet. §7 records session 30
+digitising **pp. 220–222 by hand** and §4 calls that the highest-value item on the plan. Both
+are now tracked, neither is reviewed. **Two independent digitisations of pp. 220–222 now
+exist**, which prices the reading error on both for the cost of one script; §7 carries it.
+
+**3. §0's open question about the two WGS-84 branches is answered, and the answer is
+"neither".** They diverge at `01d7502` after 61 shared commits and each carries unique work —
+one retires `ASSUMPTIONS.md` A1 and A2, the other closes three red tests and re-measures the
+§4 ledger. The merge is the **union**, with 8 files changed in both, and `atisim/validation.py`
+is the one that decides the cost: both linearise it, one about the transport rate and one about
+the equilibrium. §0 has the table.
+
+**What this session did NOT do**, so the next one does not go looking: it ran **no tests** —
+nothing in its four commits touches model code — **reviewed none** of the rescued work, and
+merged nothing. It did not resolve `old-origin`, the `AGENTS.md` rename, or any branch. The
+licence file is not written yet. Those are phases 1–7 of the plan.
 
 ### Session 30 — the speed derivatives are read, and the overshoot is the thrust line
 
