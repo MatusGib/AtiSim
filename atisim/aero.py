@@ -152,10 +152,32 @@ def coefficients(
     # rest mix section lift slope with dihedral, fin geometry and sidewash in
     # proportions this project has no source for, so scaling them would be
     # inventing a correction rather than applying one.
+    #
+    # THE SENTINEL MUST BE CLAMPED BEFORE THE SQRT, AND THIS IS NOT TIDINESS.
+    # `jnp.where` evaluates BOTH branches. At the undeclared sentinel -1.0 the
+    # numerator below is sqrt(1 - min(-1, 0.9)^2) = sqrt(0), and sqrt has a
+    # derivative of du/(2 sqrt(u)) -- so at u = 0 its forward-mode tangent is
+    # 0/0 = NaN for ANY tangent, a ZERO one included. The select discards the
+    # value, so no result this project has ever quoted was wrong; what it made
+    # impossible is differentiating the model with respect to its own
+    # coefficients at all, for every aircraft that does not declare a reference
+    # Mach -- which is all of them but the compressibility entries. Found by
+    # atisim/sensitivity.py, whose first `jvp` through `trim.residual` tripped
+    # the suite's NaN guard; recorded in PROJECT.md section 6.
+    #
+    # Clamping the UNSELECTED branch's input to 0.0 is the standard repair and
+    # is value-identical by construction: a DECLARED reference Mach is >= 0 and
+    # passes through untouched, and the sentinel branch's value is thrown away
+    # either way. `test_the_undeclared_prandtl_glauert_sentinel_has_a_FINITE_
+    # derivative` asserts the tangent; the VALUE-identity was measured, not
+    # asserted here -- the sha256 of [trim, vdot_body, omegadot] is unchanged
+    # for all seven registry aircraft, and the two frozen bit-pins that fail
+    # on Linux fail with byte-identical values before and after. Section 6(f).
+    mach_ref = jnp.where(ac.pg_mach_ref < 0.0, 0.0, ac.pg_mach_ref)
     pg = jnp.where(
         ac.pg_mach_ref < 0.0,
         1.0,
-        jnp.sqrt(jnp.maximum(1.0 - jnp.minimum(ac.pg_mach_ref, PG_MACH_MAX) ** 2, 0.0))
+        jnp.sqrt(jnp.maximum(1.0 - jnp.minimum(mach_ref, PG_MACH_MAX) ** 2, 0.0))
         / jnp.sqrt(jnp.maximum(1.0 - jnp.minimum(mach, PG_MACH_MAX) ** 2, PG_FLOOR)),
     )
 

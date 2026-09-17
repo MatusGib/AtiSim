@@ -156,10 +156,37 @@ def elliptic_chord(y: Array, ac: Aircraft) -> Array:
     The argument of the square root is clamped: `stations` places points exactly
     at +-b/2 where it is analytically zero, and round-off can make it slightly
     negative, which conftest's jax_debug_nans would trip on.
+
+    THE CLAMP GUARDS THE VALUE AND NOT THE DERIVATIVE, WHICH IS A SEPARATE BUG.
+    At a tip station the argument is EXACTLY 0.0, and sqrt's forward-mode tangent
+    is du/(2 sqrt(u)) -- so at u = 0 it is 0/0, NaN for ANY tangent including a
+    zero one, exactly as PROJECT.md section 6(f) records for `aero.py`'s
+    Prandtl-Glauert sentinel. A `jvp` seeded in `CLa`, which this function does
+    not even depend on, was enough to trip it. Found session 29 while screening
+    the strip load path, and repaired there.
+
+    The repair is the double-`where`: the sqrt never sees the zero, and the tip
+    returns a constant 0.0 whose tangent is 0.0.
+
+    *** WHY A ZERO TANGENT IS THE RIGHT ANSWER HERE AND NOT A CONVENIENT ONE. ***
+    The chord at the tip is zero for EVERY aircraft: `normalised` is 2y/b and the
+    station IS +-b/2, so it stays exactly 1 under a perturbation of `b`, and `c0`
+    multiplies an exact zero under a perturbation of `S`. The derivative of the
+    tip chord with respect to any aircraft parameter is therefore genuinely 0,
+    and that is what this returns.
+
+    What it does NOT return correctly is d(chord)/dy AT THE TIP, which is
+    genuinely infinite -- the sqrt singularity that `calibrated_lift_slope`'s
+    docstring blames for the 82.6% quadrature shortfall is this same one. Nothing
+    in this project differentiates the chord with respect to spanwise position;
+    if something ever does, it must not come through here.
     """
     c0 = 4.0 * ac.S / (jnp.pi * ac.b)
     normalised = 2.0 * y / ac.b
-    return c0 * jnp.sqrt(jnp.maximum(1.0 - normalised * normalised, 0.0))
+    argument = jnp.maximum(1.0 - normalised * normalised, 0.0)
+    interior = argument > 0.0
+    safe = jnp.where(interior, argument, 1.0)
+    return c0 * jnp.where(interior, jnp.sqrt(safe), 0.0)
 
 
 def chord_distribution(y: Array, ac: Aircraft, name: str | None = None) -> Array:

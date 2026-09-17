@@ -40,7 +40,8 @@ jitted, and none of it belongs inside the integrator.
 import numpy as np
 from scipy import signal
 
-__all__ = ["spectrum", "peak_frequency", "exceedance", "PHUGOID_FLOOR_HZ"]
+__all__ = ["spectrum", "peak_frequency", "exceedance", "separability",
+           "standardised_difference", "PHUGOID_FLOOR_HZ"]
 
 
 # The default low-frequency floor for a peak search, in Hz. NOT a physical
@@ -129,3 +130,70 @@ def exceedance(x, dt: float, levels) -> np.ndarray:
         raise ValueError("an exceedance rate needs at least two samples")
     below, above = x[:-1, None] <= levels[None, :], x[1:, None] > levels[None, :]
     return (below & above).sum(axis=0) / ((x.size - 1) * dt)
+
+
+# ---------------------------------------------------------------------------
+# Separability of two ensembles
+#
+# WHY THESE ARE HERE AND NOT IN A SCRIPT. Session 23d asked whether two clouds
+# of Fig. 8 coordinates overlap and answered with the GAP BETWEEN THEIR
+# EXTREMES. That statistic's expectation MOVES WITH N: the extremes of a
+# distribution spread as more samples are drawn, so the gap shrinks towards zero
+# with effort whatever the truth is, and collecting more evidence makes "the
+# clouds are separate" harder to say. The record calls that result marginal, and
+# it was right to.
+#
+# Both functions below have an expectation that does NOT depend on N, so more
+# seeds shrink the error bar instead of moving the answer. They belong beside
+# `exceedance` for the same reason it exists: a statistic with an N in its
+# denominator is a different kind of claim from a peak.
+# ---------------------------------------------------------------------------
+
+
+def separability(a, b) -> float:
+    """P(b > a) for one independent draw from each, ties counted as a half.
+
+    The Mann-Whitney U statistic divided by `len(a) * len(b)`, also called the
+    AUC. 1.0 is perfect separation with `b` above, 0.0 perfect separation with
+    `b` below, and 0.5 no separation at all.
+
+    UNPAIRED ON PURPOSE, even where the two ensembles share their random seeds.
+    The question this answers is whether two INDEPENDENT records can be told
+    apart, because a real diagnosis has one record and no matched control.
+    Pairing would answer a different and easier question.
+
+    It is a RANK statistic, so it is invariant under any strictly increasing
+    transform applied to both inputs -- `test_response.py` asserts exactly that,
+    because it is the property that makes the result about the distributions
+    rather than about the units they were measured in.
+    """
+    a = np.asarray(a, dtype=float).ravel()
+    b = np.asarray(b, dtype=float).ravel()
+    if a.size == 0 or b.size == 0:
+        raise ValueError("separability needs a non-empty sample on both sides")
+    difference = b[None, :] - a[:, None]
+    return float((np.count_nonzero(difference > 0)
+                  + 0.5 * np.count_nonzero(difference == 0)) / difference.size)
+
+
+def standardised_difference(a, b) -> float:
+    """Cohen's d: (mean(b) - mean(a)) / pooled standard deviation.
+
+    Reported beside `separability` because the two fail differently and a reader
+    should see both. `separability` saturates at 1.0 the moment no pair
+    overlaps, and cannot then say whether the clouds are a hair apart or a mile;
+    `d` keeps counting. Against that, `d` assumes the spread is meaningful and a
+    rank statistic does not.
+
+    Returns NaN where both samples are constant, rather than raising or
+    returning a large number that would sort to the top of a ranking.
+    """
+    a = np.asarray(a, dtype=float).ravel()
+    b = np.asarray(b, dtype=float).ravel()
+    if a.size < 2 or b.size < 2:
+        raise ValueError("a pooled standard deviation needs 2 samples a side")
+    pooled = np.sqrt(((a.size - 1) * a.var(ddof=1) + (b.size - 1) * b.var(ddof=1))
+                     / (a.size + b.size - 2))
+    if pooled == 0.0:
+        return float("nan")
+    return float((b.mean() - a.mean()) / pooled)
