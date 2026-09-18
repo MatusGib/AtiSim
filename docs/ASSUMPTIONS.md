@@ -1650,3 +1650,13 @@ this file is where the reasons live.
 
 **To extend it:** add the computation to `verification.py` or `validation.py`, assert it in
 the corresponding test, then add a notebook cell that calls it. Never the other way round.
+
+**The second notebook, `notebooks/validation-ladder.ipynb`,** walks the validation claim rather
+than the solver — hand-derived checks, the source data's own modes and drag polar, the JSBSim
+cross-check, the Hannibal encounter, and the two published orderings — and keeps the same
+division of labour with one exception. Its published values, tolerances and the drag
+computation are imported from the tests that assert them; the Hannibal flights come from
+`scripts/cat_validation.py`. **But nothing in `atisim/tests/` flies TM-102186 Fig. 8's
+six-aircraft fleet**, so the notebook's assertions on that ordering and its mechanism are the
+only gate on them, run by CI. Moving that computation into the package and asserting it in the
+suite is the route above, and it has not been taken (`docs/PROJECT.md` §9, session 32).
