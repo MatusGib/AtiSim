@@ -15,6 +15,8 @@ worktree, a full **automated digitisation of CR-2144 pp. 218–228** nobody had 
 question about the two WGS-84 branches is answered — neither is the trunk, the merge is the
 union**, with `atisim/validation.py` deciding its cost. §9's session-32 entry has all of it.
 
+**Then every open item was given one status** — the table at the head of §5 is where to start. Doing it turned up **one open latent bug, §6(h): the strip load path counts the gust's rolling moment twice**, so the strip path's published +22.9% on peak bank is −2.5% with one path owning roll; nothing longitudinal and nothing in §1 moves. And **the speed derivatives the 747 declares were checked from outside their own reading for the first time** — against an independent trace of the same pages, adjudicated on Table IX-4 — **and they hold**. The rotating-Earth union is banked, not merged, so A1 (flat, non-rotating Earth) stays open.
+
 **Session 31** (an investigation, no model code changed). **Session 29's `mass` row is right as arithmetic and wrong as a reading.** `mass` and `CLa` are one lever, mirrored to 0.04. The row does not price an error in CR-2144's weight, which cancels to +0.008 because the builder derives `CLa` from it. Holding inertia fixed moves the load elasticity by −0.36 to +0.19, and the sign depends on the flight form (as flown, or replayed on the identified path). The cruise phugoid-damping "`mass` +1.728" is mostly the DECLARED Korn drag rise, +0.447 without it. §4's first entry has the tables. **It also identified the Hannibal aircraft** — United Airlines 12, **N1809U, a DC-10-10** — which narrows §5's wing-loading ratio to **0.584–1.046×** and removes the 1.3× corner. The weight on the day is still not found.
 
 **Session 30.** CR-2144's speed derivatives were digitised, checked against
@@ -38,7 +40,7 @@ Session 29 was merged from `main` into this branch before its pull request; its 
 
 Session 29 (**the sensitivity study, designed and then run end to end, S0–S6**, plus two follow-ups. **ASSUMPTIONS C3's Mach axis is bounded at cruise, −5.04%**; **§1's headline carries a band — 68.2%, 57.1–74.0% — and the shortfall survives all of it**; `CLa` +0.692 and `mass` −0.649 lead the load, with a DECLARED constant third — ~~two leads~~ **one lever counted twice, session 31**. **Two `sqrt(0)` bugs repaired** — the model was not differentiable in its own coefficients, and no quoted result was ever wrong. And **session 23d's Fig. 8 reading is CORRECTED**: the pitch axis does not stop discriminating, the extremes gap it used shrinks with N, and it is the load axis that degrades faster)
 
-Session 28 (an audit, no code changed: the "the agreement got worse" hypothesis tested and **falsified** — every early number re-measured and unchanged, no tolerance ever loosened, and the growth traced to a change of *reference class* dated to commit `c6b5342`, 1 Sep 2026, with ASSUMPTIONS C3's frozen derivatives the largest identified physical cause; the strip-load path judged: off the published path, +22.9% on one unvalidated channel, and worth keeping for its negative result).
+Session 28 (an audit, no code changed: the "the agreement got worse" hypothesis tested and **falsified** — every early number re-measured and unchanged, no tolerance ever loosened, and the growth traced to a change of *reference class* dated to commit `c6b5342`, 1 Sep 2026, with ASSUMPTIONS C3's frozen derivatives the largest identified physical cause; the strip-load path judged: off the published path, +22.9% on one unvalidated channel, and worth keeping for its negative result — **a verdict session 32 strengthened: the +22.9% was the gust's roll counted twice, §6(h)**).
 
 Session 27 (the recorded trace digitised, and it says the *wind* is 12% light; a second sealed prediction settled RIGHT; the DC-10 wing loading found unpinnable, withdrawing session 26's sign; the LES comparison audited, refused, then re-run with Yoshimura's OWN aeroplane rebuilt from their source code -- 1.427 to 1.202, with the residual now attributable to neither aircraft nor Mach).
 
@@ -306,16 +308,16 @@ first thing to review and the first thing to re-measure after, rather than the l
 > found**. §5's ratio is therefore narrowed, not closed, and the aircraft-type explanation is
 > still not testable.
 
-### Session 32's own work — the release cleanup
+### ~~Session 32's own work — the release cleanup~~ MERGED, phase by phase, through pull requests #4–#11
 
 | | |
 |---|---|
 | **Branch** | **`release-cleanup-september`** — deliberately not a `claude/*` name |
 | **Worktree** | `.claude/worktrees/new-session-943052` — **the directory name is the old branch's**, as everywhere else here |
-| **State** | 4 commits beyond `main`'s `c1b7d71`, 0 behind. Suite **not run**: nothing in these four touches model code |
+| **State** | ~~4 commits beyond `main`'s `c1b7d71`, 0 behind.~~ **MERGED.** `release-cleanup-september` landed through PRs #4–#8 (phases 0–1), `wgs84-merge-analysis` through #9 (phase 2), and `phase-3` through #11. Each phase's suite result is in its §9 point |
 | **What it is** | The plan for the final month, in `docs/superpowers/specs/2026-09-17-final-release-cleanup-design.md`, and the first phase of it: the copyright remediation, the CR-2144 rescue, and this §0 pass |
 | **What it closes** | §0 itself, as the month's work merges. The plan's phases 1–7 are the route |
-| **Blocking** | Nothing — it is the working branch |
+| **Blocking** | Nothing — merged. The release's remaining phases (documentation, notebook, history rewrite) work from `main` |
 
 ### Found untracked in the MAIN CHECKOUT — session 32
 
@@ -2551,7 +2553,7 @@ and line + strip 21.209° — `scripts/lateral.py` itself, same tree — against
 21.579° recorded, which predate session 30's thrust line. Everything the project claims is
 longitudinal, and none of it moves.
 
-**Three things have to be said together about that +22.9%, and only the first is favourable.**
+**Three things have to be said together about that +22.9%, and only the first is favourable.** *A fourth, found session 32 and stated in the superseding note above: it is a double count.*
 
 1. **The kernel is well verified.** `wind.strip_roll_moment` agrees with the tabulated `Clp`
    for a rigid roll rate (rel 1e-3), with Stengel eq. 3.4-40's closed form for a rectangular
@@ -3579,7 +3581,7 @@ dt 0.01.
 1. **A wind field rolls the aircraft** — 12.5° of bank, 15.4° with strip loads.
    The point model gives **exactly 0.000**, not something small: the equations
    have no `y` in them.
-2. **`loads.strip_increment` moves a reported number**, +22.9% on peak bank.
+2. ~~**`loads.strip_increment` moves a reported number**, +22.9% on peak bank.~~ **[Superseded session 32: a double count — `PROJECT.md` §6(h). With one path owning roll the strip effect is −2.5%, its F5 quadrature deficit.]**
    Built in session 14, it had changed every result by *exactly* 0.000000
    because no field varied across the span.
 
@@ -6782,14 +6784,65 @@ rotating Earth is complete, reconciled, pushed, and one rebase from landing — 
 that rebase is, and where in it to look first: **15 of the 30 silent references are in session 29's
 sensitivity study**, which is the path that produced §1's banded headline.
 
+**9. Phase 3 — every open item given one status.** The plan is
+`docs/superpowers/plans/2026-09-18-phase-3-close-every-open-item.md`, reviewed and approved with
+five decisions before it ran. **The head of §5 now carries a status table**: every open item in §5,
+§7 and §8, and the one sealed prediction, each with exactly one of four statuses — CLOSED /
+MEASURED / BOUNDED, IMPOSSIBLE WITH SOURCES HELD, FUTURE WORK, OUT OF SCOPE — and the evidence or
+route beside it. FUTURE WORK is new and was the owner's decision: it is the list a successor
+starts from, not a list of defects.
+
+**The inventory was taken against the code and against §4, not against each item's own wording,
+and that changed it.** Five rows were already closed — two of them the ones §7 called "the top of
+the list" and "CHEAP", both done in session 27 — and one claim of this session's own, that A2 stays
+open on `main`, was wrong and is struck through in point 8.
+
+**Four measurements, and the most consequential was not planned:**
+
+- **The strip load path counts the gust's rolling moment twice — §6(h), OPEN.** Found in a branch
+  about to be deleted, which had seen it before session 24 could make it show. `strip=True` adds
+  the strip rolling moment to the point path's equivalent roll rate instead of replacing it.
+  Measured on `main` with a harness that reproduces `lateral.py` to three decimals: the published
+  strip effect of **+17.4%** on peak bank is **−2.5%** with one path owning roll, and that residual
+  is F5's quadrature deficit. **§4's "+22.9%" and §7's phase-1 gate were both met by the double
+  count** and are superseded in place. Nothing longitudinal moves, and nothing in §1.
+- **CR-2144 read twice.** Sealed first, while the comparing function did not exist; **WRONG on
+  `Cm_M`** at 2.40% of full scale. Scored against Table IX-4, the automated trace is the biased one:
+  **on all three speed derivatives the shipped 747 declares, the session-30 hand reading is the
+  better-anchored** — the first check of those values from outside their own reading, and it
+  supports them. The automated `CL_M` and `Cm_α̇` are wrong curves, which corrects §7's route for
+  a `Cmα̇` Mach schedule.
+- **14 CFR 25.341 is not the independent check §7 hoped for**: its continuous-turbulence `Uσref` is
+  a design limit, constant above 24,000 ft, with no exceedance probability. The high-altitude
+  discrete-gust "discrepancy" the ledger warned of is one linear law, extended in 2015.
+- **The last three DC-10/MD-11 papers hold no derivative set**, so §7's DC-10 row is final and the
+  sealed DC-10 prediction stays unsettleable.
+
+**The α̇ branch was reviewed**: its change to a rule-3 file is a re-capture, not a loosening, and
+the burden was discharged at the change — §0's claim that it was not is corrected. **Parked as
+FUTURE WORK** by decision, because merging moves the four CR-2144 modes and §1's headline.
+
+**Also harvested before two branches were deleted:** a third, sign-flipped `Ixz` in Caughey's
+worked example (§5.16c), and the finding that the phugoid the simulation flies is not the 4-state
+one it reports (§5.21).
+
+**What phase 3 did NOT do:** fix §6(h) — the repair is a modelling decision, a week before release;
+merge the α̇ branch or `wgs84-earth`; run the engines' still-air discriminator for §8 (owner's
+decision; FUTURE WORK, with the code already written into the plan); re-measure §5.21 on the
+shipped 747; or fetch the NTSB pre-1982 database. **Re-measured no §4 row except incidentally** —
+the lateral rows, which are recorded stale beside §6(h).
+
+*The paragraph below was written at the end of phase 2 and is kept as written; point 9 above
+supersedes it where they differ — the α̇ work is now reviewed.*
+
 **What this session did NOT do**, so the next one does not go looking: it made
 **no re-measurement** of anything in §4 — every number there is still session 30's or earlier,
 and the merges this session took changed no model code that §4 reads. It did not review
 `claude/engine-validity-presentation-1408e8`, the α̇ work, which still modifies a rule-3
 validated-baseline file with the burden unmet. It did not resolve `old-origin`, and the
 `AGENTS.md` question is now moot: `CLAUDE.md` became `docs/DEVELOPMENT.md` instead. **It did not merge the WGS-84 union into
-`main`** — by decision, on the measurements in point 8 — so `ASSUMPTIONS.md` A1 remains (A2 was already retired on `main` — see point 8's correction)
-open there. It did not rebase the union, review the 30 silent references, or re-run anything in
+`main`** — by decision, on the measurements in point 8 — so `ASSUMPTIONS.md` A1 remains open there (A2 was already retired on `main` — see point 8's
+correction). It did not rebase the union, review the 30 silent references, or re-run anything in
 §4 on a rotating Earth.
 
 
@@ -7320,7 +7373,7 @@ without a single defect.
 **Fifth, the strip-load path was judged rather than described.** It is **not on any published
 path** — `integrate.step` defaults to `load_model=None` and a test asserts the strip and
 tangent estimators disagree at the core edge precisely so the default cannot be switched
-silently. Re-measured, it moves peak bank **+22.9%** and the longitudinal load increment
+silently. Re-measured, it moves peak bank **+22.9%** **[Superseded session 32: a double count — `PROJECT.md` §6(h). With one path owning roll the strip effect is −2.5%, its F5 quadrature deficit.]** and the longitudinal load increment
 **−0.5%**, and that single non-zero effect sits on a quadrature that F5 records as returning
 **82.6%** of its own calibration at the shipped nine stations, in a channel E10 records as
 validated against **nothing**. **Its real value is a negative result**: point-vs-strip on the
@@ -7748,7 +7801,7 @@ said so.** Now §5 does.
 **The result, and it is not small.** Through Mehta's own field the 747 reaches **12.5° of
 bank, 15.4° with strip loads** — against **exactly 0.000°** from the point model. And
 `loads.strip_increment`, built in session 14, **moves a reported number for the first
-time**: +22.9% on peak bank, where it had previously changed every result by exactly
+time**: +22.9% on peak bank **[Superseded session 32: a double count — `PROJECT.md` §6(h). With one path owning roll the strip effect is −2.5%, its F5 quadrature deficit.]**, where it had previously changed every result by exactly
 0.000000. The longitudinal answer moves +5.9%, so nothing already concluded was resting
 on the missing dimension.
 
