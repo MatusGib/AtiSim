@@ -184,6 +184,31 @@ with a §0 row; suite green on `main`.
 
 ### Phase 2 — WGS-84 (Mon 21 – Thu 24, days 3–6)
 
+> **AMENDED, Fri 18 — descoped on measurement, before the gate, by the project owner.** The
+> first day of Phase 2 measured what the merge costs, and the plan below was written on
+> figures that turned out to be wrong by a factor that changes the decision:
+>
+> | | planned on | measured |
+> |---|---|---|
+> | behind `main` | 27 | **78** |
+> | conflicts against `main` | "8 files" (that was A-vs-B) | **20 files, 50 hunks** |
+> | silent conflicts | not considered | **30** — `quat`, `omega`, `vel_body` keep their names and change their meaning, so they merge clean and return wrong numbers |
+>
+> **Decision: bank the union, stop short of `main`.** Build `wgs84-earth` from the two branches,
+> resolving their 13 hunks on the merits; push it; map the 50 + 30 for whoever lands it. `main`
+> is not touched this month. The gate below was never reached, and it is recorded as
+> **inadequate for this merge** in any case: the suite asserts bands and orderings, so a small
+> frame error in one of the 30 can land inside a band and pass. A green suite could certify a
+> broken merge.
+>
+> **What this frees:** Mon 21 – Thu 24. Phases 3, 4 and 5 move forward into it, which puts the
+> release on firmer ground than the original schedule did.
+>
+> **What it costs, stated plainly:** `ASSUMPTIONS.md` A1 and A2 stay **open on `main`**, and
+> the release ships a flat, non-rotating Earth with that assumption declared rather than
+> retired. The rotating-Earth work is complete, reconciled and one rebase from landing, and
+> `PROJECT.md` §0 says exactly how big that rebase is. The original text follows, unedited.
+
 **2a, Mon 21.** Build the union on a fresh branch `wgs84-earth`. Reconcile the 8 overlapping
 files. Answer `atisim/validation.py`'s question first: do the two linearisations compose, or
 does one supersede the other? A red suite is expected here and is enumerated rather than
