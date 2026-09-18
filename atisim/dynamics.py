@@ -244,11 +244,13 @@ def load_factor(
     omega_gust: Array,
     increment: CoeffIncrement | None = None,
 ) -> Array:
-    """Normal load factor n_z. +1 in level flight, 0 in free fall.
+    """Normal load factor n_z. About +1 in level flight, 0 in free fall.
 
     Body-normal, not flight-path-normal: this is the quantity Wingrove & Bach's
     Fig. 8 is built from, since DFDR "normal acceleration" is what an
-    accelerometer reads. In trimmed level flight it is cos(theta), not 1.
+    accelerometer reads. In trimmed level flight it is cos(theta) g(h)/G0, not
+    1 -- the lift holds up the local gravity, and `specific_force` counts it in
+    standard g.
 
     Needed because the turbulence work's headline comparison is stated in load
     factor, and nothing in the package produced it before.

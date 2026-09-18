@@ -61,7 +61,11 @@ check("zero wind doesn't touch the relative velocity",
       0.0, float(jnp.abs(zw - trim_state.vel_body).max()))
 
 # free fall - kill the aero model completely, gravity's the only thing
-# left, so it should fall straight down at g and nothing else
+# left, so it should fall straight down at g and nothing else.
+# "g" here is the LOCAL g, not G0: gravity falls off with height as
+# (R/(R+h))^2 now, and at cruise altitude that's 0.38% less than G0.
+# worked out by hand below with R = 6371 km, the mean earth radius
+g_here = G0 * (6371000.0 / (6371000.0 + h)) ** 2
 naked = verification.without_aerodynamics(ac)
 d_free = derivatives(
     trim_state._replace(omega=jnp.zeros(3)),
@@ -70,7 +74,7 @@ d_free = derivatives(
 )
 accel_ned = quat_to_dcm(trim_state.quat) @ d_free.vel_body
 check("no aero + no thrust = straight down at g",
-      G0, float(accel_ned[2]), tol=1e-12)
+      g_here, float(accel_ned[2]), tol=1e-12)
 check("...and nothing sideways or forwards",
       0.0, float(jnp.abs(accel_ned[:2]).max()), tol=1e-12)
 
@@ -107,9 +111,16 @@ print("  not zero, and that's fine - the yaw moment leaks into roll through Ixz"
 print()
 
 # pitch is a cleaner version of this test because Iyy doesn't couple
-# to anything else, no Ixy or Iyz on this aircraft
+# to anything else, no Ixy or Iyz on this aircraft.
+# "Cm=0" means every Cm term, and there are more than the four obvious
+# ones now. Cm_M * (M - 0.80) is not zero here because the sideslip adds
+# 12 m/s to the airspeed. and the engines have to go too: the 747's
+# thrust line sits 5.70 ft below the CG, so thrust on its own pitches the
+# nose up. zeroing the arm puts the thrust back through the CG, where it
+# has no moment at all
 no_pitch_ac = ac._replace(
     Cm0=jnp.array(0.0), Cma=jnp.array(0.0), Cmq=jnp.array(0.0), Cmde=jnp.array(0.0),
+    Cmadot=jnp.array(0.0), Cm_M=jnp.array(0.0), thrust_arm=jnp.array(0.0),
 )
 d_nopitch = derivatives(
     slip_state,
@@ -161,9 +172,12 @@ check("pitched 10 deg nose-up: gravity along x_b should be -g*sin(10)",
 check("...and gravity along z_b should be +g*cos(10)",
       G0 * np.cos(np.radians(10.0)), float(g_body[2]), tol=1e-12)
 
+# level flight, so theta = alpha. the lift is holding up the LOCAL g but
+# load factor is counted in standard g units (that's what an accelerometer
+# reads), so the g_here/G0 from the free-fall check shows up here too
 nz = float(load_factor(trim_state, trim_controls, ac, jnp.zeros(3), jnp.zeros(3)))
-check("load factor in trimmed level flight is cos(alpha), NOT 1",
-      float(np.cos(alpha)), nz, tol=1e-6)
+check("load factor in trimmed level flight is cos(alpha) * g_here/G0, NOT 1",
+      float(np.cos(alpha)) * g_here / G0, nz, tol=1e-6)
 
 # =====================================================================
 # does the whole assembled model behave right structurally
