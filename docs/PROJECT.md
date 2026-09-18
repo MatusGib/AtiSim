@@ -478,7 +478,29 @@ into — measured on Fig. 8 as title x 0–293 and legend x 110–649 **both at 
 drawn straight through the caption**. Each element now gets its own band from a running pixel
 offset, with the constants measured at three panel heights and at three- and four-line blocks.
 
-### Deferred to the WGS-84 merge, deliberately — session 32
+### ~~Deferred to the WGS-84 merge, deliberately~~ HARVESTED AND ABANDONED, later in session 32
+
+> **Both branches were read commit by commit and each claim checked against `main` before either
+> was deleted** — the order the rest of this section follows. They were **not merged**: 92–94
+> commits behind, on the pre-rename `flightsim/` package, and touching two of rule 3's five
+> off-limits files. **They held three findings `main` did not have, and one of them was live and
+> contaminating a published number.**
+>
+> | Claim on the branch | On `main` | Now recorded as |
+> |---|---|---|
+> | **Roll counted twice** — `field_model` and `strip_model` both own the spanwise rolling moment (`cf538dd`) | **LIVE, and measured**: `strip=True` adds the strip path to the point path's roll rather than replacing it. The published strip effect of +17.4% on peak bank becomes **−2.5%** with one path owning roll | **§6(h)**, with §4's lateral result and §7's phase-1 gate superseded in place |
+> | **A third `Ixz`** — Caughey's 747 approach −2.23e6 against CR-2144's 0.825e6 and 0.870e6 (`65b7ce3`, `8c36d92`) | **Not recorded anywhere on `main`** | **§5.16(c)**, an error in the source |
+> | **The flown phugoid is not the reported one** — altitude couples through density; +20.5% ωn, −50.6% ζ (`e50ad31`) | **Live as a fact, not a bug**: `main` reports the 4-state, which is the correct CR-2144 comparator | **§5.21**, FUTURE WORK to re-measure on the shipped 747 |
+> | `L1 = −(F11 + ω̃)`, not `−F11`, off trim | **N/A** — the identity belongs to the branch's own 12-state linearisation, which `main` does not have | — |
+> | ψ left behind by a one-pass reduction | **N/A** — the branch's own reduction code | — |
+>
+> **Commits, so the abandonment is reversible:** `claude/linearisation-verification-bounds-b73868`
+> was **`8c36d92`**; `claude/flight-dynamics-solver-oscillation-17139b` was **`69c8c00`**. The
+> first carries ~3,750 lines of verification work — `verification.py` at 953 lines against
+> `main`'s 359 — which is the instrument §5.21 needs and a starting point for §6(h)'s repair.
+
+*The original deferral, as written:*
+
 
 > **The reason below has lapsed, later in session 32.** It was that these two should be handled
 > *with* the WGS-84 merge because all four touch `atisim/validation.py`. The WGS-84 union was
@@ -2456,8 +2478,16 @@ session it still does:
 | **session 30:** line | 18.418° | 4.551° | 1.4678 | 0.4678 g (**+15.86%**) |
 | **session 30:** line + strip | **21.579°** (**+17.2%**) | 4.941° | 1.4696 | 0.4696 g (**+16.31%**) |
 
-**So the strip increment's own contribution, isolated, is +22.9% of peak bank and −0.5% of the
-longitudinal load increment.** Everything the project claims is longitudinal.
+~~**So the strip increment's own contribution, isolated, is +22.9% of peak bank and −0.5% of the
+longitudinal load increment.**~~ **SUPERSEDED, session 32 — the +22.9% (and session 30's +17.2%)
+is the gust's rolling moment counted twice, not the strip path's own contribution.** `strip=True`
+adds the strip rolling moment on top of the point path's equivalent roll rate rather than
+replacing it; §6(h) has the mechanism. With roll owned by one path, the strip path's effect on
+peak bank is **−2.5%**, and that is its known quadrature deficit (`ASSUMPTIONS.md` F5), not new
+physics. **The absolute rows above are also stale**: on today's 747 the line run reads 18.067°
+and line + strip 21.209° — `scripts/lateral.py` itself, same tree — against the 18.418° and
+21.579° recorded, which predate session 30's thrust line. Everything the project claims is
+longitudinal, and none of it moves.
 
 **Three things have to be said together about that +22.9%, and only the first is favourable.**
 
@@ -5258,6 +5288,11 @@ wording** — which is how five of them were found already closed (§9, session 
 | 5.18 | ±g asymmetry | buffet boundary **CLOSED**, session 26 · nonlinear lift curve **IMPOSSIBLE WITH SOURCES HELD** | CR-114494 draws `CL_BASIC` as straight lines |
 | 5.19 | Absolute agreement with recorded g-loads | **IMPOSSIBLE WITH SOURCES HELD** · route **FUTURE WORK** | aircraft identified (N1809U, DC-10-10); the weight on the day is not found. Routes: the NTSB docket, the NTSB pre-1982 database (39 MB Access file, not tried), and the 1982 SFTE paper by Parks, Bach & Wingrove |
 | 5.20 | Half the Fig. 8 load band unreachable | **IMPOSSIBLE WITH SOURCES HELD** — structural | linear aero; the same ceiling as 5.18 |
+| 5.21 | The reported phugoid (4-state) is not the flown one — altitude couples through density | **FUTURE WORK** — the 4-state is the correct CR-2144 comparator; re-measure the flown one on the shipped 747 | measured on an unmerged branch at +20.5% ωn / −50.6% ζ, on the pre-session-30 747, so not quotable for the shipped one |
+
+**§6 carries the one open latent bug, (h): the strip load path counts the gust's rolling moment
+twice.** Measured this session; it supersedes §4's lateral strip result and the finishing plan's
+phase-1 gate, and touches no longitudinal claim and nothing in §1.
 
 #### §7 — the plan's open rows
 
@@ -5671,6 +5706,19 @@ remains decidable exactly as written.
   quoting a startup estimate, or a mislabelled unit, as a result. It is why §3's rule that
   every number carries the table it came from is worth its cost.
 
+  **(c) A third, added session 32: Caughey's 747 approach `Ixz` is a third value, and not a
+  sign convention.** Caughey's MAE 5070 lateral worked example uses **Ixz = −2.23e6** for the 747
+  power approach, against CR-2144's **0.825e6** (Figure IX-1) and **0.870e6** (Table IX-3) —
+  opposite sign and 2.56× the magnitude. It is not a convention difference: his own appendix
+  carries **+0.97e6** for the cruise condition, matching CR-2144. Substituting his Eq. (5.89)
+  inertias closes every element of that worked example to under 3%, against disagreements of up
+  to 189% otherwise, so **the whole lateral discrepancy with Caughey is his `Ixz`**. This project
+  takes Figure IX-1's value and has not moved it. **Found by
+  `claude/linearisation-verification-bounds-b73868` (commits `65b7ce3`, `8c36d92`), never merged,
+  harvested session 32** — measured on that branch's tree, not re-run here. If the 747 approach's
+  lateral modes are ever compared against Caughey's worked example, use CR-2144's `Ixz` for both
+  sides.
+
 - **The Hannibal encounter is dated two ways.** Mehta 1987 says July 1981; TM-102186
   says April 1981 in three figure captions and Bach 1991's Table 7.1 lists case 1 as
   `4/81`. Everything else matches across the accounts — 37,000 ft, DC-10, ψ = 31°, a
@@ -5815,9 +5863,36 @@ remains decidable exactly as written.
   sooner. A run flown to the absolute reading would not be a harder test of the model, it
   would be outside it, and would prove nothing.
 
-## 6. Latent bugs — (a)–(d) fixed in session 5, (e) in session 7, (f) in session 29, (g) in session 32
+**Added session 32 — attributed, from the branch harvest:**
 
-All seven are closed. Kept here rather than deleted because the *shape* of (a) and (b) is
+- **The phugoid this project REPORTS is not the phugoid its simulation FLIES, and both are
+  right for their purpose.** `validation.longitudinal_modes` linearises in the 4-state
+  `[u, w, q, θ]` — which is the correct comparator for CR-2144: its Appendix C gives the
+  longitudinal system as 3×3 in `[u, w, θ]` with `q = sθ`, a quartic denominator, and altitude
+  only as an *output*. But the simulation integrates altitude, and density varies with it, so the
+  aircraft that is actually flown carries a fifth state and a height–density coupling the
+  reported modes omit. **Measured on `claude/flight-dynamics-solver-oscillation-17139b`**
+  (commit `e50ad31`), at 747 cruise:
+
+  | | 4-state (reported) | 5-state `[u, w, q, θ, z]` | nonlinear rollout |
+  |---|---|---|---|
+  | phugoid ωn | 0.055319 | 0.066502 | 0.066657 |
+  | phugoid ζ | 0.055956 | 0.027408 | 0.027628 |
+
+  The rollout agrees with the 5-state to 0.23% in ωn and 0.80% in ζ, and the 4-state is
+  **+20.5% / −50.6%** away from what is flown. **Those numbers predate session 30**, which
+  declared CR-2144's speed derivatives and a thrust line on `boeing747` and moved its phugoid, so
+  they describe an earlier aircraft and **may not be quoted for the shipped one**. The mechanism
+  does not depend on the derivatives. **What it affects:** any claim about how the simulated 747
+  behaves over phugoid timescales, which none of the CAT results are — Mehta's array is crossed
+  in about 34 s, inside a 45 s run, against a phugoid period of 94–114 s on either reading. **What it does not affect:** every
+  comparison against CR-2144, Caughey or the Navion, which are correctly 4-state. **FUTURE
+  WORK:** re-measure on the shipped 747; the branch's `full_matrix` and `constant_altitude` are
+  the instrument, recoverable from its SHA (§0).
+
+## 6. Latent bugs — (a)–(d) fixed in session 5, (e) in session 7, (f) in session 29, (g) in session 32; (h) OPEN
+
+Seven are closed; **(h) is open**, measured and deliberately not fixed before the release. Kept here rather than deleted because the *shape* of (a) and (b) is
 the thing worth remembering: both survived three sessions and a 209-test suite because
 every test in the project was still air, and still air cannot distinguish airspeed from
 groundspeed.
@@ -5952,7 +6027,58 @@ on which door they came in by. `_refusal` separates the two causes in the messag
 blurring them would send someone looking for a fix where there is nothing to fix.
 
 **Why it survived**: the same shape as (a) and (b). The suite had no test that asked a
-refused aircraft for stations, and a NaN rms **looks like a result**. The work was rescued
+refused aircraft for stations, and a NaN rms **looks like a result**.
+
+### (h) The strip load path counts the gust's rolling moment twice — OPEN, measured session 32
+
+**`vortex_viz.fly(strip=True)` adds the strip rolling moment on top of the point path's,
+instead of replacing it.** Its docstring says strip "**swaps** the point-plus-gradient load path
+for strip-integrated loads". The code does not: it sets `load_model = loads.strip_model(field, ac)`
+and passes the same `field` on to `fly_from_state`, which still builds the default
+`wind.field_model(field)`. That model's `omega_gust[0]` is the point path's equivalent roll rate
+from `dw/dy`, and `loads.strip_increment` adds its integrated rolling moment without removing it.
+`integrate.step` applies both. **The strip kernel's own verification is the evidence**: §4 records
+it agreeing with "the equivalent-rate treatment for a linear gradient" to 1e-6 — which is the
+physics the point path already carries.
+
+**Found by `claude/linearisation-verification-bounds-b73868` (commit `cf538dd`) before session
+24, and never merged.** It measured "both = point + strip to every digit, 1.82× at the shipped
+station count and 1.996× converged", and noted it could not show because every field then had
+`dw/dy` identically zero along its track. **Session 24 then added line vortices, which do not** —
+and published the strip path's effect.
+
+**Measured on `main`, session 32**, `scripts/strip_roll_double_count.py`: Mehta's five-core field
+as line vortices, shipped `boeing747`, flown exactly as `scripts/lateral.py` flies it — whose own
+run on the same tree prints the first two rows to three decimals, so the harness is the canonical
+one:
+
+| run | peak \|φ\| | against line |
+|---|---|---|
+| line — point path only | 18.067° | — |
+| **line + strip — what `strip=True` does** | **21.209°** | **+17.4%** |
+| **strip owns roll** — point roll rate removed, pitch and yaw gust rates kept | **17.614°** | **−2.5%** |
+| no gust roll at all | 14.674° | 81% of line |
+
+`lateral.py` shows the mechanism in its own columns: `|p_gust|` is **0.0887 rad/s with the strip
+path off and 0.0888 with it on** — the point path's roll rate is fully live in the strip run.
+
+**With roll owned by one path, the strip path's effect on peak bank is −2.5%, and that residual is
+its known quadrature error, not new physics.** At the shipped 9 stations the strip integral
+returns 82.6% of `Clp` (`ASSUMPTIONS.md` F5). The gust-roll share of the line run's bank is
+18.067 − 14.674 = 3.393°; scaled by that deficit it predicts 17.48° for the corrected run, against
+17.614° measured. **So, properly attributed, the strip path moves no reported number beyond its
+own calibration error** — which strengthens session 28's verdict on it rather than overturning it.
+
+**What it contaminates:** §4's "the strip increment's own contribution, isolated, is +22.9% of
+peak bank" (and +17.2% on session 30's 747), and §7's finishing-plan phase 1, whose gate — "the
+strip path moves a reported number for the first time" — was met by this double count. Both are
+superseded in place. **It does NOT touch §1's headline or any longitudinal claim**: the strip path
+is roll only, the headline flies the point path, and `n_z` max moves by 0.0020 g or less across the line,
+double-counted and corrected runs (1.4806–1.4826).
+
+**Not fixed, deliberately, a week before release.** The repair is a modelling decision about which
+path owns roll, and `point_roll_removed` in the measuring script is one candidate for it, not a
+reviewed change. **FUTURE WORK**, with the measurement above as its acceptance test. The work was rescued
 from an uncommitted worktree at the session-28 audit and sat unreviewed on
 `claude/zen-maxwell-1ad0a4` for three weeks — so the bug was found, fixed and then nearly
 lost, which is rule 1b's case in one line.
@@ -5975,7 +6101,7 @@ T2, build T3's foundation on the way*.
 | Phase | What | Gate | Status |
 |---|---|---|---|
 | **0** | Bank what is already true: a formal validation claim in §1 with its envelope attached, and the lateral gap written into §5 | §1 carries the claim; §5 and `ASSUMPTIONS.md` E10 carry the gap | **DONE, session 24.** Writing the claim is what found the gap |
-| **1** | Give the model a lateral dimension: Dryden `u`/`v`, lateral channels on `Encounter`, the vortex as lines in space | the strip path moves a reported number for the first time | **DONE, session 24.** +22.9% on peak bank, after nine sessions of exactly 0.000000 |
+| **1** | Give the model a lateral dimension: Dryden `u`/`v`, lateral channels on `Encounter`, the vortex as lines in space | the strip path moves a reported number for the first time | **DONE, session 24** — the lateral dimension is real: line vortices take peak bank from 0.000° to 18.07°. ~~+22.9% on peak bank, after nine sessions of exactly 0.000000~~ **The gate itself was met by a double count — session 32, §6(h).** With roll owned by one path the strip path moves peak bank by −2.5%, its known quadrature error. **The strip path still moves no reported number beyond its own calibration** |
 | **2** | Change what counts as agreement: response spectra instead of peaks, exceedance distributions over ensembles | a load-exceedance curve with N in its denominator becomes sayable | **DONE, session 25.** §4 has both. The comparison against a *published* curve is now the open half, and it is source-gated |
 | **3** | Acquire four documents, in priority order | each arrival settles a sealed prediction or closes a §5 entry | **In progress, session 25 searched for all four** — see the table below |
 | **4** | Keep the predictive discipline running: every new capability ships with a prediction made before it is tested | at least one sealed prediction settled, right or wrong | **Two of three settled, both right.** `the_dryden_response_peaks_at_the_short_period` (session 25) and `mil_f_8785c_sigma_w_exceeds_the_mehta_ceiling` (**session 27**, by 0.34 m/s with the merge band clearing it). The one still sealed is the DC-10 entry, which bets *against* the project's own story and is now the only open bet |
