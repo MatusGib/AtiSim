@@ -6401,7 +6401,7 @@ investigation session: no model code, no test, and no tolerance changed. New:
 - Session 30 is **not**. It is on the local branch `session-30-speed-derivatives-hannibal`, not
   the name either §0 gives, and it is not pushed.
 - A merge of `origin/main` into it is half-done in its worktree. §0 now carries the address.
-- The two-line check in `CLAUDE.md` would print that branch. It would not print the half-done
+- The two-line check in `docs/DEVELOPMENT.md` would print that branch. It would not print the half-done
   merge, which is a worktree state, not a ref.
 
 **2. The `mass` row, diagnosed rather than defended.** Four hypotheses, one controlled variant
