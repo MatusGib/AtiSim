@@ -200,6 +200,36 @@ PREDICTIONS: tuple[Prediction, ...] = (
             "test_cat_spectra.py."
         ),
     ),
+    Prediction(
+        name="cr2144_two_readings_agree_on_the_good_panels",
+        claim=(
+            "On the four CR-2144 pp. 220-222 panels the automated trace rates "
+            "'good' (CL_alpha, CD_alpha, Cm_alpha, Cm_M), session 30's hand "
+            "reading and the automated trace agree to within 2.0% of the "
+            "panel's full scale -- the median over the hand-placed points -- "
+            "at every altitude, and each hand curve sits closest to the "
+            "automated curve of its OWN altitude."
+        ),
+        falsified_if=(
+            "Any of those twelve curves shows a median disagreement above 2.0% "
+            "of full scale, or a hand curve sits closer to a different "
+            "altitude's automated curve."
+        ),
+        reasoning=(
+            "2% of full scale is the automated trace's own stated accuracy "
+            "(Reference_papers/CR-2144/README.md: 'good to about 1-2% of full "
+            "scale', the printed line width dominating). The hand reading was "
+            "checked against Table IX-4 at eight conditions in session 30. Two "
+            "readings each good to that level of the same ink should agree to "
+            "it. Sealed before the comparison code existed."
+        ),
+        settled_by=(
+            "scripts/cr2144_digitisation_crosscheck.py, which prints "
+            "atisim.cr2144_mach.crosscheck()"
+        ),
+        sealed_at="1091fc7",
+        digest="72262a936af4ab7e",
+    ),
 )
 
 # The digests above are LITERALS on purpose. An earlier draft computed them at
