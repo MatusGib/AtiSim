@@ -204,7 +204,9 @@ with a §0 row; suite green on `main`.
 > **What this frees:** Mon 21 – Thu 24. Phases 3, 4 and 5 move forward into it, which puts the
 > release on firmer ground than the original schedule did.
 >
-> **What it costs, stated plainly:** `ASSUMPTIONS.md` A1 and A2 stay **open on `main`**, and
+> **What it costs, stated plainly:** ~~`ASSUMPTIONS.md` A1 and A2 stay **open on `main`**~~
+> **Corrected, later in session 32: only A1 stays open — A2 and A3 were retired on `main` in
+> session 28** — and
 > the release ships a flat, non-rotating Earth with that assumption declared rather than
 > retired. The rotating-Earth work is complete, reconciled and one rebase from landing, and
 > `PROJECT.md` §0 says exactly how big that rebase is. The original text follows, unedited.

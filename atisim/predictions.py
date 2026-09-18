@@ -200,6 +200,50 @@ PREDICTIONS: tuple[Prediction, ...] = (
             "test_cat_spectra.py."
         ),
     ),
+    Prediction(
+        name="cr2144_two_readings_agree_on_the_good_panels",
+        claim=(
+            "On the four CR-2144 pp. 220-222 panels the automated trace rates "
+            "'good' (CL_alpha, CD_alpha, Cm_alpha, Cm_M), session 30's hand "
+            "reading and the automated trace agree to within 2.0% of the "
+            "panel's full scale -- the median over the hand-placed points -- "
+            "at every altitude, and each hand curve sits closest to the "
+            "automated curve of its OWN altitude."
+        ),
+        falsified_if=(
+            "Any of those twelve curves shows a median disagreement above 2.0% "
+            "of full scale, or a hand curve sits closer to a different "
+            "altitude's automated curve."
+        ),
+        reasoning=(
+            "2% of full scale is the automated trace's own stated accuracy "
+            "(Reference_papers/CR-2144/README.md: 'good to about 1-2% of full "
+            "scale', the printed line width dominating). The hand reading was "
+            "checked against Table IX-4 at eight conditions in session 30. Two "
+            "readings each good to that level of the same ink should agree to "
+            "it. Sealed before the comparison code existed."
+        ),
+        settled_by=(
+            "scripts/cr2144_digitisation_crosscheck.py, which prints "
+            "atisim.cr2144_mach.crosscheck()"
+        ),
+        sealed_at="1091fc7",
+        digest="72262a936af4ab7e",
+        status="SETTLED",
+        outcome=(
+            "WRONG, on one panel of four. Ten of the twelve good-panel curves "
+            "agree to 0.22-1.32% of full scale (CL_alpha 0.23/0.29/0.74, "
+            "CD_alpha 0.30/0.52/0.55, Cm_alpha 0.22/0.27/0.56, Cm_M SL 1.32), "
+            "but Cm_M reads 2.40% at 20K and 2.02% at 40K, biased the same way "
+            "at all three altitudes. The altitude half of the claim holds: "
+            "every good curve sits on its own altitude. Scored against Table "
+            "IX-4 at the circled conditions, the AUTOMATED trace is the one "
+            "that is off -- Cm_M RMS 0.0146 against the hand reading's 0.0063 "
+            "-- so the hand reading the shipped 747 declares its speed "
+            "derivatives from is the better-anchored of the two. Run: "
+            "scripts/cr2144_digitisation_crosscheck.py, session 32."
+        ),
+    ),
 )
 
 # The digests above are LITERALS on purpose. An earlier draft computed them at

@@ -120,6 +120,11 @@ RUN_GATED = {
     # Settled by a run in this repository. Admissible ONLY because the seal
     # commit precedes the run -- see the test below for why that is the rule.
     "the_dryden_response_peaks_at_the_short_period": "scripts/cat_spectra.py",
+    # Session 32. Sealed together with the script that settles it, while the
+    # function that script calls -- atisim.cr2144_mach.crosscheck -- did not
+    # yet exist. So the seal commit provably precedes any run, which is the
+    # rule this class exists to protect; see the test below.
+    "cr2144_two_readings_agree_on_the_good_panels": "scripts/cr2144_digitisation_crosscheck.py",
     # MOVED from SOURCE_GATED in session 27, and the move is a fact about the
     # shelf rather than a convenience. This entry was sealed (0c72200) when
     # MIL-F-8785C was not held; session 25 fetched it to `refs/MIL-F-8785C.pdf`,

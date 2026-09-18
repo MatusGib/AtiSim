@@ -1342,8 +1342,12 @@ statement and a much weaker one.
 **Closed as a capability, session 24.** `wind.line_vortex_wind` writes Parks' vortex as
 lines in three dimensions, reducing to `vortex_wind` on the flight path to 1.2e-14 m/s
 and differing off it; `wind.dryden_field` adds the lateral and longitudinal components.
-Flown, the strip path moves peak bank by **+22.9%** — the first reported number it has
-ever changed.
+~~Flown, the strip path moves peak bank by **+22.9%** — the first reported number it has
+ever changed.~~ **SUPERSEDED, session 32 (`PROJECT.md` §6(h)): that +22.9% is the gust's rolling
+moment counted twice** — `strip=True` adds the strip path to the point path's roll rate instead
+of replacing it. With one path owning roll the strip path moves peak bank by **−2.5%**, which is
+F5's quadrature deficit. The strip path has still never moved a reported number beyond its own
+calibration error.
 
 **NOT closed as validation, and the distinction is the whole entry.** No source held by
 this project records a lateral CAT response. The model can now represent a rolling gust;
@@ -1579,7 +1583,7 @@ solver preconditions live rather than a defect repair.
 | 12 | **A4 / D2** no ground, no atmosphere floor | **declared, guarded at one call site** | a 747-approach integrates to −698 m through air of increasing density. Truncate at your own clearance |
 | 13 | **E7** along-track shear needs the caller's turn rate | **repaired, residual on the caller** | the term was missing entirely; worth **ΔF = 0.1423** at a standard-rate turn, and identically zero on all 77,036 samples of the runs on record |
 | 14 | **F7** singular control Jacobian returns NaN silently | **latent** | no shipped solver carries rudder as an unknown; a steady-turn solve would be the first |
-| 15 | **E10** no wind field varied across the span | **capability CLOSED session 24; NOT validated** | the strip path moves peak bank +22.9%, its first non-zero effect. No source held records a lateral CAT response, so every lateral number is a capability demonstration |
+| 15 | **E10** no wind field varied across the span | **capability CLOSED session 24; NOT validated** | ~~the strip path moves peak bank +22.9%, its first non-zero effect~~ — **a double count, session 32 (`PROJECT.md` §6(h)); −2.5% with one path owning roll, its F5 quadrature deficit**. No source held records a lateral CAT response, so every lateral number is a capability demonstration |
 | 16 | **E11** a response spectrum assumes a stationary record | **measured session 25, and it bites at the upper σ** | fixed controls hold no condition: 703 m of altitude and **13.1% of airspeed** over 100 s at σ = 4.459 m/s, which is ~25% of `q` and is the true cause of the +5.46% "superlinearity". Lower σ is the clean ensemble; upper is a bound. Report the drift with the spectrum |
 | 17 | **E12** four papers disagree on the Hannibal core radius | **carried, not resolved; the hybrid is gone** | Parks' own triple (600 ft / 85 ft/s / 3500 ft) restored session 26 after three sessions flying a radius from one paper with a strength and spacing from another. Worth −4.26% on the headline peak-to-peak load, in the UNCOMFORTABLE direction. Never cross the rows |
 
