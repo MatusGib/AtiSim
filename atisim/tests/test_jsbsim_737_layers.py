@@ -110,6 +110,7 @@ def _atisim_coefficients(point, ac):
     ]
 
 
+
 def _atisim_trim(condition="cruise"):
     """(solution, worst residual). The solution is SIX long now, not three.
 
@@ -1309,6 +1310,12 @@ def test_atisim_has_no_aerodynamic_speed_derivative_of_pitching_moment():
         without, _ = _longitudinal_pair(bare, condition)
         assert abs(ati[3, 0]) > 1e-5, f"{condition}: M_u vanished; the probe is vacuous"
 
+        # Measured on the other branch of this merge, by a formula that is the same
+        # algebra written with qbar: -8.430010e-08 predicted against -8.428e-08 at
+        # cruise, four digits, three to four orders below a real transport's M_u.
+        # That branch needed rel=0.05 to pass, and the reason is instructive: it took
+        # q0 at theta = 0 rather than at the trimmed attitude. Reading theta0 off the
+        # trim solution, as below, is what lets this hold at 2e-3.
         # The whole of the bare M_u, predicted from the airframe's own constants
         # and the ellipsoid -- no fitted quantity anywhere in it.
         anchor = anchor_for(cond)

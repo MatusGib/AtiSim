@@ -44,7 +44,34 @@ rows, so it is recorded rather than taken in a documentation pass.
 
 ## A. Frames and Earth
 
-### A1. RETIRED session 23 — flat, non-rotating Earth; NED is an inertial frame
+### A1. RETIRED session 23 — the Earth is now a rotating WGS-84 ellipsoid
+
+**This assumption no longer holds and the text below is kept as the record of what was
+assumed before.** `dynamics.derivatives` carries Coriolis, centrifugal and J2 gravity in
+JSBSim's own formulation, the state propagates in ECEF, and `trim` solves six unknowns
+against six residuals. The formulation was established by driving the JSBSim binary rather
+than transcribed, and it reproduces JSBSim's translational and rotational equations to
+machine zero — see `docs/superpowers/specs/2026-08-26-wgs84-earth-rotation-design.md` §2.
+
+**What replaced it, and what it bought.** The 737 cross-code comparison improved on every
+layer it touches: layer 2's alpha error is 11× smaller with its sign flipped, layer 3's
+Dutch-roll ωn went from 0.022% to 0.0007% and the spiral from 0.228% to 0.0145%, and layer
+4's cruise-doublet lateral divergence went from 0.012 m/s to **0.000**.
+
+**What is assumed NOW, in its place:**
+
+| | |
+|---|---|
+| **A1a. Gravity is truncated at J2** | Because JSBSim's is. Measured cost against exact WGS-84 normal gravity: 4.5e-6 relative at the equator, 4.9e-6 at 45°, **1.2e-5 at the pole** — 1.2e-4 m/s², three orders below the Coriolis term this change is about. **No JSBSim comparison can see this**, since both engines truncate identically, which is why it needs its own entry. |
+| **A1b. Position is an offset from a run anchor, not absolute ECEF** | The one deliberate deviation from JSBSim's `FGPropagate`, and it is numerical rather than physical. An absolute ECEF coordinate has a 9.3e-10 m ulp against 1.8e-12 m for a 12 km NED altitude — 512× — which would bind the convergence studies F4 already reports as marginal. |
+| **A1c. No polar motion, no nutation, no time-varying gravity** | Unmeasured, and stated as such. All three are far below J2 truncation over a flight, and JSBSim models none of them either. |
+| **A1d. A trim is exact only instantaneously** | Level flight over a curved Earth needs the transport rate, which `trim.trimmed_state` carries — but it is evaluated at the anchor, and the aircraft moves. Measured on the 747 over 60 s: **0.0295 m** of geodetic drift, against 4.2356 m with no transport rate at all. Only a controller can remove the remainder. |
+
+---
+
+**THE TEXT BELOW IS THE RETIRED ASSUMPTION, KEPT VERBATIM.**
+
+### A1 (retired). Flat, non-rotating Earth; NED is an inertial frame
 
 **This is no longer assumed. It is modelled.** `atisim/earth.py` carries the WGS-84
 ellipsoid and `dynamics.earth_acceleration_terms` carries the rotating-Earth equations, in
@@ -83,13 +110,33 @@ is 0.35% of the signal and does not accumulate within a window. The limit it nam
 sound for any claim about ground track over hundreds of km, or a run longer than about ten
 minutes", 6.88 m per 20 s growing as t² — is the limit this change removes.
 
-### A2. RETIRED session 23 — constant gravity, g = 9.80665 m/s²
+### A2. RETIRED session 23 — gravity is WGS-84 J2, and it is no longer constant
 
-**Session 12 decided `g(h)` was not worth modelling, and session 23 modelled it anyway —
-not because that decision was wrong, but because it was overtaken.** `earth.gravitation`
-is now `GM/r²` with J2, and the centrifugal term is in the equations of motion, so the
-gravity the aircraft feels falls out of the Earth model rather than being chosen. The
-session-12 measurement below is what says the change was *safe*, and it is kept in full.
+**This assumption no longer holds.** `earth.gravitation` returns the J2 zonal-harmonic
+field, and the centrifugal term is carried separately in the equation of motion exactly as
+JSBSim carries it — which is why `earth.py` reports 9.8142 m/s² at the equator (gravitation)
+rather than 9.7803 (apparent).
+
+Session 12 measured what constant gravity cost and decided it was affordable. That decision
+is not overturned — it was correct for what the project then did — it is simply superseded,
+because the gravity model came along with the ellipsoid rather than being adopted on its own.
+
+`atmosphere.G0` survives, and its remaining uses are deliberate: it is the divisor that makes
+a load factor a load factor, and it is the constant the Navion and Cessna transcription paths
+must use because it is the g their source tables used.
+
+**Measured, at 47°N and 12,192 m:** apparent gravity is **9.770541 m/s²** against G0's
+9.806650, so a trimmed 747 weighs 0.37% less than the constant says. That shows up directly
+in the load factor — see A2a below.
+
+**A2a. The load factor is no longer `cos(theta)`.** Three terms displace it, and the closed
+form containing all three is now what `test_dynamics.py` asserts:
+
+    n_z = ((g_apparent − V²/R) / G0) · cos(theta) · cos(phi)
+
+Measured 0.9922240966 against a predicted 0.9922185780 — 5.6e-06 relative — and the same
+form holds for the 737 at 6.5e-06 and the Cherokee at 3.1e-07.
+
 
 **What the change was actually worth, measured session 23.** The same 747 cruise
 comparison, re-run as `earth.FLAT` (constant `G0` along the local vertical) against the
@@ -134,6 +181,12 @@ here. §4 carries the repair.
 an order above the worst movement in the table. Session 12's closing caveat ("revisit if
 the project ever compares one aircraft across two altitudes") extends to latitude, and is
 the case this change serves.
+
+---
+
+**THE TEXT BELOW IS THE RETIRED ASSUMPTION, KEPT VERBATIM.**
+
+### A2 (retired). Constant gravity, g = 9.80665 m/s²
 
 **Where:** `atmosphere.G0`, used by `dynamics.derivatives`, `trim`, `specific_force`.
 
@@ -213,6 +266,11 @@ that is geometric, height above the ellipsoid** — and hands it straight to
 **Where:** `dynamics.py:155` produces it, `dynamics.py:161-162` consumes it. `sensors.py`
 and `state.altitude` return the same geodetic height.
 
+~~**Verdict: sound, and now the ONLY member of the family it used to belong to.**~~ **SUPERSEDED
+by the density measurement below.** This verdict quoted the 0.17% / 0.31% figure as the size of
+the error, and those are ALTITUDE differences. What the aero forces see is the DENSITY error,
+two to three times larger, and at cruise it is the same size as A2 -- not its smaller sibling.
+
 **Bound, measured session 23 — and the old bound was on the wrong quantity.** A3 used to
 quote "0.17% at 11 km, 0.31% at 20 km" from `atmosphere.py`. Those are the *altitude*
 differences `h − H`, where `H = Rh/(R+h)`. What the aero forces see is the **density**
@@ -238,6 +296,30 @@ calling the atmosphere — and it would move every §4 row taken at cruise, whic
 the kind of change §4's standing rule keeps out of a documentation pass. It is recorded as
 a known, bounded, one-line defect with its cost measured, which is what this file is for.
 Below 3 km it is under 0.01% and nothing needs to wait for it.
+
+**REVISITED session 23, and deliberately NOT changed.** True geodetic altitude is available
+for the first time: `state.altitude(state, anchor)` returns height above the WGS-84
+ellipsoid, and that is what `dynamics.derivatives` feeds `atmosphere.density`. So the
+altitude reaching the atmosphere is now GEOMETRIC in the strict sense, while the ISA tables
+are written in GEOPOTENTIAL height — which is exactly the 0.17%/0.31% mismatch this entry
+records, unchanged in size but now precisely located rather than approximately assumed.
+
+Correcting it is a two-line change (`h_geopotential = R h / (R + h)`) and it was left alone
+on purpose. It would move every density in the project by up to 0.31%, hence every force,
+hence every number in §4's ledger — for a term this entry has always called sound, in the
+same session that already re-measured that ledger for a different reason. Two independent
+movements in one re-measurement cannot be told apart afterwards. It is a clean, isolated,
+one-session change whenever someone wants it.
+
+**What DID change here is the meaning of the word.** Before this session `-pos_ned[2]` was
+the altitude and the tangent plane was the reference; now the ellipsoid is. Those differ by
+**783.9 m at 100 km of ground track** — three orders above the geopotential correction this
+entry is about, and the reason `altitude()` exists as a function rather than an index.
+
+> **On `main` this entry is already CLOSED.** The geopotential conversion landed at `50b78a1`
+> with the compressibility branch in session 28, after this branch left `main`. When this
+> union is rebased, `main`'s A3 supersedes everything above. It is kept here so the branch
+> reads correctly on its own.
 
 ### A4. There is no ground
 
@@ -1129,6 +1211,13 @@ difference of two trajectories at altitude.** It is why the order-of-accuracy wi
 at dt = 1/32. Any future convergence study must check it is above the floor before
 believing its own slope.
 
+~~**RE-MEASURED session 23, for the ECEF state, and the ceiling did NOT drop.**~~ **SUPERSEDED
+by the measurement below, which the other WGS-84 branch made and this one did not.** That claim
+rested on the pre-existing 7e-11 m floor being "unchanged in kind" -- an argument about the
+floor, not a measurement of it at finer steps. Extending the dt sweep two more octaves shows it
+falls to 1.2e-11 m. The ulp analysis that came with the superseded claim is kept below it,
+because it is correct and it is the MECHANISM the new measurement needs.
+
 **Re-measured session 23 on the ECEF state, and the floor MOVED DOWN because the
 differenced quantity got smaller.** Position is now an offset from the anchor (A7), so a
 trajectory difference no longer carries the aircraft's altitude at all — what gets
@@ -1185,6 +1274,27 @@ and grows cubically (1009.9× from 2 s to 20 s). Pinned by
 rotating plant rather than a way back to the old one.** Anything that needs bit-comparable
 flat-Earth behaviour should compare against the frozen trajectory and expect 0.49 m at
 20 s, not zero.
+
+**Why the floor fell -- the ulp budget, measured on the 747 at 47N and 12,192 m.** This is
+the mechanism behind the result above: an absolute ECEF coordinate is ~6.4e6 m, so its ulp is
+512x coarser than a 12 km altitude's, and the floor would have gone with it had position been
+stored absolutely.
+
+| | |
+|---|---|
+| ulp of an **absolute** ECEF coordinate | 9.313e-10 m |
+| ulp of the old `pos_ned` altitude | 1.819e-12 m |
+| **ulp of the stored `pos_ecef` OFFSET** | **2.220e-16 m** |
+
+**That is what storing position as an offset from the run anchor bought**, and it is the one
+deliberate deviation from JSBSim's `FGPropagate` (A1b). The absolute coordinate is formed
+only where gravity and geodesy need it, where 9.3e-10 m does not matter; the quantity that
+accumulates over a run never carries it.
+
+Empirically, perturbing the initial position by 1e-9 m and flying 20 s moves the trajectory
+by **7.314e-10 m** — an amplification of **0.7×**, so the perturbation decays rather than
+grows. The pre-existing 7e-11 m discretisation floor is therefore unchanged in kind, and the
+dt = 1/32 window still stands for the same reason it always did.
 
 ### F5. The strip integral at the shipped station count returns 82.6% of its own calibration
 
