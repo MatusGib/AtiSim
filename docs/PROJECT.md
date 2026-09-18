@@ -196,6 +196,50 @@ session's work with a full re-baseline, and §7 has never listed it.
 > whether those compose or contradict is **not established**. Answer that before touching the
 > other seven, because it decides whether this is a merge or a rewrite.
 
+#### Measured, session 32 — what the merge actually costs
+
+**Question 1, answered: the two linearisations neither compose nor contradict. `32fbdd`'s is an
+incomplete version of `5dbdc3`'s.** Both linearise at `q = q0` and cite the *identical*
+measurement — `−1.369798008797381e-07` leaking into `A[2,0]` — so it is one diagnosis, fixed
+twice. But `5dbdc3` measured what `32fbdd` did not: at `q = q0` alone the residual is
+`|f(x0)| = 1.336e-05`, **still not an equilibrium**. The kinematic row must also become the
+local-NED pitch rate `θ̇ = q − q0`, because `omega` is a rate relative to ECEF while `θ` is an
+angle in a frame itself turning at `q0`. Only with both does `|f(x0)|` fall to `2.064e-13`.
+**`32fbdd`'s linearisation point is therefore off-equilibrium by 1.3e-05**, and keeping both
+blocks would compute `q0` twice. **Resolution: take `5dbdc3`'s, drop `32fbdd`'s hunk.**
+
+**The union itself is cheap** — trial-merged in a throwaway worktree: **7 files, 13 hunks**, one of
+them `validation.py`, now answered.
+
+**The union against today's `main` is not.** §0's "27 behind" was stale: both branches are
+**78 behind**, having left `main` at `889714d` on 26 August. Since then `main` has changed
+**272 files, +45,459 lines**. Trial-merged:
+
+| | |
+|---|---|
+| Files changed by both the WGS-84 union and `main` | **32** — every file that touches the state vector |
+| Textual conflicts, trial merge of the union into `main` | **20 files, 50 hunks** — `integrate.py` 6, `dynamics.py` 5, `test_audit_regression.py` 5, `checks.py` 4, `test_jsbsim_737_layers.py` 4 |
+
+**The 50 hunks are the floor, not the cost, and this is why.** WGS-84 changed the `State`:
+
+| field | `main` | WGS-84 | if `main`'s code reads it unchanged |
+|---|---|---|---|
+| `pos_ned` → `pos_ecef` | NED position | ECEF offset from the run anchor | **fails LOUDLY** — renamed, `AttributeError` |
+| `quat` | body → **NED** | body → **ECEF** | **fails SILENTLY** — same name, new meaning |
+| `omega` | body rate | body rate **relative to ECEF** | **fails SILENTLY** |
+| `vel_body` | body velocity | **ECEF-relative**, body axes | **fails SILENTLY** |
+
+Counted in code `main` added since the fork — code the WGS-84 branches never saw: **15
+references to `pos_ned`**, which will announce themselves, and **30 to `quat`, `omega` and
+`vel_body`** (10, 7, 13), **which will merge clean, run without error, and return a wrong
+number.** `wind.py` shows the shape of it: **1 textual hunk, against 836 lines `main` changed** —
+sessions 23–30's CAT work, written in new regions, so it merges clean and was written against
+the flat-Earth state.
+
+**Every one of those 30 needs a human to decide what it means in ECEF.** That is the part
+that cannot be estimated from a hunk count, and it is also the part that fails in the way this
+project most needs to avoid: a plausible number with no error attached.
+
 ### ~~UNRECORDED ENTIRELY, and it closes a §7 item~~ MERGED, session 32 — kept as the record of how it was found
 
 > **This document did not mention this branch, in any section, at all.** Not a stale row, not a
