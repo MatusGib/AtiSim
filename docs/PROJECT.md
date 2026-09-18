@@ -5342,8 +5342,13 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   Until then, treat the spectra as evidence about the **model's internal consistency** —
   which is real, and is what §4's rows claim — and not as agreement with the atmosphere.
 
-- **Gravity is constant at 9.80665 m/s², which is +0.383% high at the 747's cruise
-  altitude.** True `g(h) = g₀(R/(R+h))²` is 9.76922 at 12,192 m. **Session 12 measured what
+- ~~**Gravity is constant at 9.80665 m/s², which is +0.383% high at the 747's cruise
+  altitude.**~~ **SUPERSEDED by session 28's compressibility merge — found stale in session 32.**
+  Gravity is no longer constant on `main`: `dynamics.gravity(z) = g₀(R/(R+z))²`
+  (`atisim/dynamics.py:31`), and `ASSUMPTIONS.md` A2 is retired. **Still assumed:** the
+  latitude variation (0.53%) and the centrifugal term; `wgs84-earth` carries both. The
+  session-12 measurement below is kept, because it is what said the change was safe.
+  *The session-12 record, as written:* True `g(h) = g₀(R/(R+h))²` is 9.76922 at 12,192 m. **Session 12 measured what
   that costs and decided not to model it**; §4 carries the table and `ASSUMPTIONS.md` §A2
   the reasoning. Lanchester's `ωn_phugoid = √2·g/u₀` predicts a **1:1** mapping and the
   measurement confirms it to three figures — phugoid ωn moves −0.3798% against a −0.3816%
@@ -5596,7 +5601,8 @@ of them stale. If one moves, the derivative chain or the integrator changed.
   `4/81`. Everything else matches across the accounts — 37,000 ft, DC-10, ψ = 31°, a
   ~150 kt horizontal wind bias, the same ±25 kft plot range — so they are the same
   encounter. **Two NASA documents say April; cite April 1981.** Nothing physical depends
-  on it.
+  on it. **CLOSED, session 31:** NTSB case CHI81DA042 dates the encounter **3 April 1981**,
+  which settles it for the two NASA documents against Mehta.
 
 **Structurally impossible — cannot be fixed from any source currently held:**
 
@@ -5941,8 +5947,8 @@ disk. Session 26 received four more papers and closed items 3, 4 and 5 outright.
 - **Routes:** the NTSB brief or docket for that date (registration, load manifest); the 1982 SFTE paper; and NASA CR-3748, *DC-10 Winglet Flight Evaluation* (McDonnell Douglas, 18.6 MB, not yet read), for flight-measured DC-10 aerodynamics.
 - *Was:* **NEW, session 27.** The only thing that would pin the wing-loading ratio, and therefore the only thing that would let the aircraft-type explanation be tested rather than argued |
 | ~~four B787 numbers — `m`, `S`, `c`, `I_yy`~~ | **OBTAINED session 27, and three of the four are CHECKED rather than looked up.** m = 215,910 kg, S = 325.3 m² (trapezoidal), c̄ = 6.437 m, all confirmed by inverting their own `Z_a` to a physical `C_Lα` = 4.847. `I_yy` is DECLARED and provably **unobservable** — it cancels against `C_mα`. §4 has the table. **This is now an implementation task, not an acquisition** |
-| **build the `boeing787_yoshimura` registry entry, then re-fly the LES** | **NEW, session 27, and it is the top of the list.** All inputs are in hand. Give it a `valid_mach`/`valid_altitude` band around its own condition. Carry the known difference that AtiSim has no `M_α̇` where Yoshimura has −0.137 |
-| **test the frozen-`C_Lα` explanation of the LES ratio** | **NEW, session 27, and it is CHEAP.** Rescale the 747's `C_Lα` by the Prandtl–Glauert ratio 1.521 and re-fly D03/D04. If the 1.42× ratio collapses toward 1, the LES discrepancy is this project's frozen derivative and **not** a code disagreement — and it becomes the **first quantified point on the Mach axis** ASSUMPTIONS C3 has left unbounded since session 12, with no chart read needed |
+| ~~**build the `boeing787_yoshimura` registry entry, then re-fly the LES**~~ | **DONE, session 27 — this row was stale for five sessions.** `atisim/aircraft.py:1798`, flown through D03 against Yoshimura's own ensemble: the ratio goes **1.427 → 1.202**, closing **53%** of the discrepancy, with no frozen-slope error at all because its derivatives are tabulated at M 0.406. §4, "The LES comparison", has the table. Found stale in session 32 by reading §4 before planning from this row. *Was:* ~~**NEW, session 27, and it is the top of the list.**~~ All inputs are in hand. Give it a `valid_mach`/`valid_altitude` band around its own condition. Carry the known difference that AtiSim has no `M_α̇` where Yoshimura has −0.137 |
+| ~~**test the frozen-`C_Lα` explanation of the LES ratio**~~ | **DONE, session 27**, in the same §4 table: the full Prandtl–Glauert-corrected 747 reads **1.225 (47% closed)** and lift-only **1.135 (68%)**. The Mach axis is a partial explanation, not the whole one — which is why the residual is recorded as attributable to neither aircraft nor Mach. Found stale in session 32. *Was:* ~~**NEW, session 27, and it is CHEAP.**~~ Rescale the 747's `C_Lα` by the Prandtl–Glauert ratio 1.521 and re-fly D03/D04. If the 1.42× ratio collapses toward 1, the LES discrepancy is this project's frozen derivative and **not** a code disagreement — and it becomes the **first quantified point on the Mach axis** ASSUMPTIONS C3 has left unbounded since session 12, with no chart read needed |
 | ~~run the LES limb~~ | **ALREADY RUN, session 3–4 Sept, and found NOT LIKE-FOR-LIKE in session 27.** All four domains × two aircraft are on disk. §4's input audit says why no number from them is quoted: the aeroplane is 5.4% or 82.9% away in natural frequency, and the entry closest in frequency is 2.63 band widths outside its own envelope. The **field reader is sound** (+0.978/−0.968/−0.935 against their own sampled wind) and reusable; the **load comparison is not yet a comparison.** This remains the project's only route out of the circularity every load row carries |
 
 ### The retrieval ledger, harvested from an abandoned plan — session 32
@@ -6345,7 +6351,11 @@ source exactly. A smoother interpolant would agree with the source less.
   parameter and aircraft, but its text layer OCRs to unaligned columns and the wind
   reconstruction's own output rate is not stated anywhere held here.
 
-- **New, session 23: what does `PARKS_CASES["hannibal"]` being a hybrid cost?** It pairs
+- ~~**New, session 23: what does `PARKS_CASES["hannibal"]` being a hybrid cost?**~~ **MOOT since
+  session 26**, which obtained Parks 1985, adopted 600 ft, and deleted the hybrid; §8's
+  core-radius entry records it. **Verified in code, session 32:** `PARKS_CASES["hannibal"]`
+  is r0 = 182.88 m (600 ft), v0 = 25.908 m/s (85 ft/s), spacing 1066.8 m (3,500 ft) — Parks'
+  own triple, no longer a hybrid. Found still listed as open in session 32. *Was:* It pairs
   Fig. 4's radius (500 ft) with Parks' strength (85 ft/s); Mehta and TM-102186 both pair
   500 ft with 87. The field is exactly linear in V₀, so every wind-derived quantity moves
   by 2.1% — measured, not argued. It is left alone because §4 baselines sit downstream.
