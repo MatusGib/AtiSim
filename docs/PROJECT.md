@@ -6497,7 +6497,13 @@ overtaken by a measurement at 1.2e-11 m.
 **Union suite: 750 passed, 1 skipped, 0 failed.** The two source branches are retired with their
 SHAs in §0, after confirming the union holds every commit of both.
 
-**What it costs the release, stated plainly: `ASSUMPTIONS.md` A1 and A2 stay open on `main`.** The
+~~**What it costs the release, stated plainly: `ASSUMPTIONS.md` A1 and A2 stay open on `main`.**~~
+**CORRECTED, later in session 32: only A1 stays open.** A2 and A3 were already retired on `main` by
+the compressibility merge in session 28 — `dynamics.gravity(z) = g₀(R/(R+z))²` and the geopotential
+conversion. What the union would add beyond `main` is gravity's latitude variation (0.53%) and the
+centrifugal term, both of which `main`'s A2 lists as still assumed. The error was made writing this
+entry, repeated in PR #9 and in the plan document, and found while inventorying §5 for phase 3. It
+did not reach code. The
 release ships a flat, non-rotating Earth with that assumption declared rather than retired. The
 rotating Earth is complete, reconciled, pushed, and one rebase from landing — and §0 says how big
 that rebase is, and where in it to look first: **15 of the 30 silent references are in session 29's
@@ -6509,7 +6515,7 @@ and the merges this session took changed no model code that §4 reads. It did no
 `claude/engine-validity-presentation-1408e8`, the α̇ work, which still modifies a rule-3
 validated-baseline file with the burden unmet. It did not resolve `old-origin`, and the
 `AGENTS.md` question is now moot: `CLAUDE.md` became `docs/DEVELOPMENT.md` instead. **It did not merge the WGS-84 union into
-`main`** — by decision, on the measurements in point 8 — so `ASSUMPTIONS.md` A1 and A2 remain
+`main`** — by decision, on the measurements in point 8 — so `ASSUMPTIONS.md` A1 remains (A2 was already retired on `main` — see point 8's correction)
 open there. It did not rebase the union, review the 30 silent references, or re-run anything in
 §4 on a rotating Earth.
 
