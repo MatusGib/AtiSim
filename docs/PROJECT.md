@@ -166,7 +166,7 @@ the *sourced* curve, and the two are a check on each other rather than alternati
 > **Whoever merges that branch should expect conflicts in §0, §4 and §9**, which both branches
 > edit; the `aero.py` changes were reported not to overlap.
 
-### Large, stranded, and a decision rather than a merge
+### ~~Large, stranded, and a decision rather than a merge~~ UNITED as `wgs84-earth`, session 32 — the rows below are the record
 
 | Branch | Worktree | State | What it is |
 |---|---|---|---|
@@ -239,6 +239,41 @@ the flat-Earth state.
 **Every one of those 30 needs a human to decide what it means in ECEF.** That is the part
 that cannot be estimated from a hunk count, and it is also the part that fails in the way this
 project most needs to avoid: a plausible number with no error attached.
+
+**Where they are — the rebase map.** Counted by walking `git diff -U0` from the fork point to
+`main` and recording the file and line of every added reference:
+
+| field | n | files |
+|---|---|---|
+| `quat` | 10 | `integrate.py` 2, `sensitivity.py` 2, `sensitivity_assumptions.py` 2, `dynamics.py`, `vortex_viz.py`, `cat_bounds.py`, `les_flight.py` |
+| `omega` | 7 | `sensitivity.py` 3, `sensitivity_assumptions.py` 2, `dynamics.py`, `test_cat_validation.py` |
+| `vel_body` | 13 | `sensitivity.py` 4, `les_flight.py` 2, `sensitivity_assumptions.py` 2, `integrate.py`, `test_cat_validation.py`, `vortex_viz.py`, `cat_bounds.py`, `cat_spectra.py` |
+| *`pos_ned`* | *15* | *loud — renamed, so these announce themselves: `integrate.py` 3, `sensitivity.py` 2, `verification.py` 2, and eight files with one each* |
+
+**Half of the 30 silent references — 15 — are in session 29's sensitivity study**:
+`sensitivity.py` has 9 and `sensitivity_assumptions.py` 6. That is the differentiable path, the
+one that produced §1's banded headline and the `CLa`/`mass` ranking. **It is therefore where the
+rebase is hardest, and where a frame error would reach a published number** — so it is the
+first thing to review and the first thing to re-measure after, rather than the last.
+
+#### The union — BANKED, session 32, and not merged
+
+> **Decided after the measurements above: build the union, push it as one branch, and stop
+> short of `main`.** Merging into `main` this month was judged not to fit alongside the
+> release, on the numbers in this section: 50 textual hunks in the engine core, 30 silent
+> references, and a §4 re-baseline behind them. **A green suite was also judged an
+> insufficient gate** for this particular merge — the suite asserts bands and orderings, so a
+> small frame error in one of the 30 can land inside a band and pass. Whoever lands it should
+> add an exact before/after on the four CR-2144 modes and the Hannibal headline.
+
+| | |
+|---|---|
+| **Branch** | **`wgs84-earth`** — the union, built from `claude/wgs84-earth-rotation-tasks-5dbdc3` with `claude/atisim-wgs84-earth-rotation-32fbdd` merged in |
+| **Worktree** | `.claude/worktrees/wgs84-earth` |
+| **What it resolves** | The two branches' **13 hunks across 7 files**, each on its merits rather than by taking a side. **It supersedes both source branches**, which carry nothing it lacks |
+| **Suite on the union** | **750 passed, 1 skipped, 0 failed**, 993 s, measured on the union's own tree (`atisim.__file__` checked). The three files the resolution touched pass 69 of 69. **750 against `main`'s 918 is not a loss**: the union is 78 commits behind and predates the tests sessions 23-32 added. What it shows is that reconciling both branches left nothing broken |
+| **What it does NOT do** | Touch `main`. It is still **78 behind**; the 50 hunks and 30 silent references above are the work that remains |
+| **Source branches** | **RETIRED, session 32**, after checking the union holds every commit of each — 0 missing from either. `claude/wgs84-earth-rotation-tasks-5dbdc3` was `d030701`; `claude/atisim-wgs84-earth-rotation-32fbdd` was `ec153fb`. Their worktrees, `sleepy-moore-7186bb` and `atisim-wgs84-earth-rotation-b7b3bc`, were clean and are removed |
 
 ### ~~UNRECORDED ENTIRELY, and it closes a §7 item~~ MERGED, session 32 — kept as the record of how it was found
 
@@ -444,6 +479,12 @@ drawn straight through the caption**. Each element now gets its own band from a 
 offset, with the constants measured at three panel heights and at three- and four-line blocks.
 
 ### Deferred to the WGS-84 merge, deliberately — session 32
+
+> **The reason below has lapsed, later in session 32.** It was that these two should be handled
+> *with* the WGS-84 merge because all four touch `atisim/validation.py`. The WGS-84 union was
+> then banked and **not** merged into `main`, so these two now face `main`'s flat-Earth
+> `validation.py` on their own — a different and smaller question. **They move to the gap
+> phase**, to be merged against `main` or abandoned there, on their own merits.
 
 **Two branches were NOT abandoned and NOT merged, for one reason: they contest the same file
 the WGS-84 union fight is over.** `atisim/validation.py` is modified by all four, and merging
@@ -6424,13 +6465,53 @@ session 30's 906 plus the 12 `test_figures.py` tests the panel-chrome fix brings
 failures** — the two platform bit-pins that failed through session 29 are green. §10's count row
 is re-measured rather than incremented, per its own instruction; it has been wrong twice before.
 
+**8. Phase 2, the WGS-84 merge — measured first, then descoped by the project owner, then
+banked.** The plan gave it four days and a go/no-go gate on Tue 22. The first day measured what
+it would cost before spending the rest, and the plan's figures were wrong by enough to change the
+decision: **78 behind, not 27; 20 files and 50 hunks against `main`, not 8 files; and 30 silent
+conflicts the plan had not considered**, because `quat`, `omega` and `vel_body` keep their names
+across the frame change and alter their meaning. Those merge clean, run without error, and return
+wrong numbers. §0 has the table and the file-by-file map.
+
+**The gate itself was judged inadequate.** "Suite green" catches the 15 loud `pos_ned` breaks and
+gross frame errors, but the suite asserts bands and orderings, so a small frame error in one of the
+30 can land inside a band. A green suite could have certified a broken merge.
+
+**Decision: build the union, push it, and stop short of `main`.** `wgs84-earth` resolves the two
+branches' 13 hunks one at a time, and three of those resolutions are findings in their own right:
+
+- **The two linearisations are one fix done twice, and one copy is incomplete.** `32fbdd`'s
+  linearises off-equilibrium by `|f(x0)| = 1.3e-05`; `5dbdc3`'s also corrects the kinematic row and
+  reaches `2.064e-13`.
+- **A tolerance had been loosened 25× to absorb an error.** `32fbdd` held a bare-`M_u` check at
+  `rel = 0.05` because its helper took the transport rate at `θ = 0`. `5dbdc3` took θ₀ from the trim
+  and holds it at `2e-3`. Rule 3's case exactly, and the tight version passes.
+- **An architecture inventory misdescribed its own code.** `5dbdc3`'s R6 row omits the Earth-rotation
+  term that `dynamics.py:107–109` computes.
+
+**Two `ASSUMPTIONS.md` entries contradicted each other**, and the superseded side is kept struck
+through beside its correction rather than dropped: A3's "sound, 0.17%/0.31%" was an altitude
+difference standing in for a density error 2–3× larger, and F4's "the ceiling did NOT drop" was
+overtaken by a measurement at 1.2e-11 m.
+
+**Union suite: 750 passed, 1 skipped, 0 failed.** The two source branches are retired with their
+SHAs in §0, after confirming the union holds every commit of both.
+
+**What it costs the release, stated plainly: `ASSUMPTIONS.md` A1 and A2 stay open on `main`.** The
+release ships a flat, non-rotating Earth with that assumption declared rather than retired. The
+rotating Earth is complete, reconciled, pushed, and one rebase from landing — and §0 says how big
+that rebase is, and where in it to look first: **15 of the 30 silent references are in session 29's
+sensitivity study**, which is the path that produced §1's banded headline.
+
 **What this session did NOT do**, so the next one does not go looking: it made
 **no re-measurement** of anything in §4 — every number there is still session 30's or earlier,
 and the merges this session took changed no model code that §4 reads. It did not review
 `claude/engine-validity-presentation-1408e8`, the α̇ work, which still modifies a rule-3
 validated-baseline file with the burden unmet. It did not resolve `old-origin`, and the
-`AGENTS.md` question is now moot: `CLAUDE.md` became `docs/DEVELOPMENT.md` instead. The WGS-84
-merge has not started.
+`AGENTS.md` question is now moot: `CLAUDE.md` became `docs/DEVELOPMENT.md` instead. **It did not merge the WGS-84 union into
+`main`** — by decision, on the measurements in point 8 — so `ASSUMPTIONS.md` A1 and A2 remain
+open there. It did not rebase the union, review the 30 silent references, or re-run anything in
+§4 on a rotating Earth.
 
 
 ### Session 31 — a summary is asked for, and the `mass` row turns out to be one lever read three ways
