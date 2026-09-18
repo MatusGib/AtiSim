@@ -10,7 +10,7 @@
 
 **Tech Stack:** Python 3.10+, JAX (float64, `jax_debug_nans` on in tests), NumPy, pytest.
 
-**Design document:** `docs/superpowers/specs/2026-08-14-wind-shear-fidelity-design.md`. Read §2 before touching any sign convention — two equations in the source text are wrong and the design records which.
+**Design document:** `docs/design/specs/2026-08-14-wind-shear-fidelity-design.md`. Read §2 before touching any sign convention — two equations in the source text are wrong and the design records which.
 
 **Python interpreter for every command below:**
 `C:/Users/mateusz/UROP/Claude_Flight_Sim/.venv/Scripts/python.exe`
@@ -1742,7 +1742,7 @@ In `atisim/provenance.py`, extend the `strip.loading_shape` detail with the meas
    **The three gust-rate signs are correct and independently verified** against
    Stengel eqs. 3.4-48, 3.4-50 and 3.4-52. Two equations in that source are
    wrong — eq. 3.4-49's sign, and eq. 3.4-55 by a factor of −2 — and
-   `docs/superpowers/specs/2026-08-14-wind-shear-fidelity-design.md` §2 records
+   `docs/design/specs/2026-08-14-wind-shear-fidelity-design.md` §2 records
    which, with the self-consistency test that found them. Read it before
    changing any sign here.
 ```

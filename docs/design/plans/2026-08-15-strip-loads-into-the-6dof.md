@@ -8,9 +8,9 @@
 
 **Tech Stack:** Python 3.10+, JAX (float64, `jax_debug_nans` on in tests), NumPy, pytest.
 
-**Predecessor:** `docs/superpowers/plans/2026-08-14-wind-shear-fidelity.md`, complete through Task 13. This plan is that plan's Task 12, answered **(b)**.
+**Predecessor:** `docs/design/plans/2026-08-14-wind-shear-fidelity.md`, complete through Task 13. This plan is that plan's Task 12, answered **(b)**.
 
-**Design document:** `docs/superpowers/specs/2026-08-14-wind-shear-fidelity-design.md`. §2 records two errors in the theory source; read it before touching any sign.
+**Design document:** `docs/design/specs/2026-08-14-wind-shear-fidelity-design.md`. §2 records two errors in the theory source; read it before touching any sign.
 
 **Python interpreter:**
 

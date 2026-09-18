@@ -8,7 +8,7 @@
 
 **Tech Stack:** JAX, numpy, scipy, matplotlib (PdfPages), pytest, JSBSim 1.3.1 Python extension.
 
-**Spec:** `docs/superpowers/specs/2026-08-20-jsbsim-737-verification-design.md`
+**Spec:** `docs/design/specs/2026-08-20-jsbsim-737-verification-design.md`
 
 ---
 
@@ -166,7 +166,7 @@ Deliberately does NOT import jsbsim. The reference is generated once by
 scripts/gen_jsbsim_reference.py and checked in, so the test suite runs on a
 machine with no JSBSim installed and reference drift shows up in git diff.
 
-See docs/superpowers/specs/2026-08-20-jsbsim-737-verification-design.md.
+See docs/design/specs/2026-08-20-jsbsim-737-verification-design.md.
 """
 
 import xml.etree.ElementTree as ET
@@ -453,7 +453,7 @@ def _boeing_737() -> Aircraft:
     "educational and entertainment purposes only". Nothing here supports any
     claim about a real 737. It exists to verify this project's solver against an
     independent engine fed the same coefficients -- see
-    docs/superpowers/specs/2026-08-20-jsbsim-737-verification-design.md.
+    docs/design/specs/2026-08-20-jsbsim-737-verification-design.md.
 
     VALIDITY BAND: linearised about 30,000 ft, M 0.78, alpha 1.95 deg. Unlike
     every other entry in REGISTRY -- which are linear derivative sets valid

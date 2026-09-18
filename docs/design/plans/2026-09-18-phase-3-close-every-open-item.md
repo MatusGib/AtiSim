@@ -14,7 +14,7 @@
 
 ## Read this first — what the inventory found
 
-The plan in `docs/superpowers/specs/2026-09-17-final-release-cleanup-design.md` gave Phase 3 one day, sized on what §7 *says* is open. **Reading each item against the code and against §4 changed that list materially.**
+The plan in `docs/design/specs/2026-09-17-final-release-cleanup-design.md` gave Phase 3 one day, sized on what §7 *says* is open. **Reading each item against the code and against §4 changed that list materially.**
 
 **1. An error of mine from Phase 2, corrected first.** I wrote that "`ASSUMPTIONS.md` A1 and A2 stay open on `main`" — in §9 twice, in the spec, and in PR #9's description. **A2 is not open on `main`.** The compressibility branch merged in session 28 already models `g(z) = g₀(R/(R+z))²` (`atisim/dynamics.py:31`), and `ASSUMPTIONS.md` marks **A2 and A3 both retired**. Only **A1** — flat, non-rotating Earth — stays open. What the WGS-84 union would add beyond `main` is gravity's *latitude* variation (0.53%) and the centrifugal term, which `main`'s A2 already lists as still assumed. Task 1.
 
@@ -126,7 +126,7 @@ This is the table Task 3 inserts at the head of §5. **It is the phase's main de
 | File | Change | Task |
 |---|---|---|
 | `docs/PROJECT.md` | §0, §5, §6, §7, §8, §9 — supersede in place, never delete | 1–6, 12 |
-| `docs/superpowers/specs/2026-09-17-final-release-cleanup-design.md` | correct the A2 claim | 1 |
+| `docs/design/specs/2026-09-17-final-release-cleanup-design.md` | correct the A2 claim | 1 |
 | `atisim/predictions.py` | seal one new prediction; settle it | 7 |
 | `atisim/cr2144_mach.py` | add `automated_curves()`, `CrossCheck`, `crosscheck()` beside the existing `curves()` | 7 |
 | `atisim/tests/test_cr2144_crosscheck.py` | new | 7 |
@@ -160,7 +160,7 @@ Expected: a path ending `worktrees\new-session-943052\atisim\__init__.py`. **If 
 
 ### Task 1: Correct my A2 error, everywhere it was written
 
-**Files:** Modify `docs/PROJECT.md` (the two §9 sentences), `docs/superpowers/specs/2026-09-17-final-release-cleanup-design.md` (Phase 2 amendment). PR #9's description on GitHub.
+**Files:** Modify `docs/PROJECT.md` (the two §9 sentences), `docs/design/specs/2026-09-17-final-release-cleanup-design.md` (Phase 2 amendment). PR #9's description on GitHub.
 
 - [ ] **Step 1: Confirm the three places**
 

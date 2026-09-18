@@ -109,7 +109,7 @@ class Aircraft(NamedTuple):
     # function of sideslip, so the linear term is identically zero at beta = 0.
     # Linear small-perturbation theory therefore has no such derivative, which
     # is why the sourced aircraft here carry none and the default is neutral.
-    # See docs/superpowers/specs/2026-08-20-model-fidelity-improvements-design.md
+    # See docs/design/specs/2026-08-20-model-fidelity-improvements-design.md
     # section 1 -- including the fact that no reference in refs/ supplies a
     # coefficient form, so this one rests on symmetry rather than on a citation.
     CD_beta: Array = jnp.array(0.0)
@@ -1233,7 +1233,7 @@ def _boeing_737() -> Aircraft:
     can be checked against an independent, mature engine fed the SAME
     coefficients -- a disagreement is then a defect in one of the two
     implementations, whatever the numbers describe. See
-    docs/superpowers/specs/2026-08-20-jsbsim-737-verification-design.md.
+    docs/design/specs/2026-08-20-jsbsim-737-verification-design.md.
 
     VALIDITY BAND: linearised about 30,000 ft, M 0.78, alpha 1.965 deg. Unlike
     every other entry in REGISTRY -- linear derivative sets from CR-2144 and

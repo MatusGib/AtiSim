@@ -48,7 +48,7 @@ was already scheduled for the PDFs.
 | `CLAUDE.md` at the root | **DONE, day 1.** → `docs/DEVELOPMENT.md`, 36 cross-references updated |
 | No licence, `license: null` on a public repo | **DONE, day 1.** MIT |
 | Repo description "Jax based vortex flight simulator ", no topics | **DONE, day 1.** Both set |
-| `docs/superpowers/` — the directory name | **Phase 4c.** → `docs/design/`. **Deferred deliberately**: three unmerged branches modify files under it, so a rename now conflicts with all three |
+| `docs/design/` — the directory name | **Phase 4c.** → `docs/design/`. **Deferred deliberately**: three unmerged branches modify files under it, so a rename now conflicts with all three |
 | `docs/SESSION_27_REPORT.md` | **Phase 4c.** Its closing section states the validation claim more plainly than anything else in the repository. **Harvest that prose into the docs site, then delete the file** — not the other way round |
 | `PROJECT.md` §9, 32 session entries | **Phase 4c.** Becomes `CHANGELOG.md` keyed to **capabilities, not sessions** — the frame, the CAT validation, the sensitivity study, the compressibility work. §9 itself is kept, moved behind the docs site as the provenance appendix |
 | `PROJECT.md` §0, a work-in-progress inventory | **Phase 7.** Empty at the release, or every remaining row justified. §0 going empty *is* the finished signal |
@@ -57,7 +57,7 @@ was already scheduled for the PDFs.
 
 **One ordering consequence.** Structural renames conflict with unmerged branches, so the rule is:
 **delete freely what nothing else touches, and defer every rename until after Phase 2.** Day 1's
-moves were all checked against all seven substantial branches first; `docs/superpowers/` failed
+moves were all checked against all seven substantial branches first; `docs/design/` failed
 that check and waits.
 
 **Why not Doxygen, since it was asked for.** `atisim` is 31,632 lines of Python carrying

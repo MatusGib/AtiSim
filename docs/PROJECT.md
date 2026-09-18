@@ -5,7 +5,7 @@ modelling. This document is the standing record: what exists, what is validated,
 known-broken, and what happens next.
 
 **Last updated:** session 32 — **the run to the 30 September deadline.** The plan is
-`docs/superpowers/specs/2026-09-17-final-release-cleanup-design.md`. Findings that change what
+`docs/design/specs/2026-09-17-final-release-cleanup-design.md`. Findings that change what
 the rest of it has to do: **the repository is public and was redistributing seven copyrighted
 papers** (now untracked, with `Reference_papers/SOURCES.md` as the index and the history rewrite
 scheduled after the merges); **rule 1b failed three more times** — the α̇ work stranded in a
@@ -274,7 +274,7 @@ first thing to review and the first thing to re-measure after, rather than the l
 | **Worktree** | `.claude/worktrees/wgs84-earth` |
 | **What it resolves** | The two branches' **13 hunks across 7 files**, each on its merits rather than by taking a side. **It supersedes both source branches**, which carry nothing it lacks |
 | **Suite on the union** | **750 passed, 1 skipped, 0 failed**, 993 s, measured on the union's own tree (`atisim.__file__` checked). The three files the resolution touched pass 69 of 69. **750 against `main`'s 918 is not a loss**: the union is 78 commits behind and predates the tests sessions 23-32 added. What it shows is that reconciling both branches left nothing broken |
-| **What it does NOT do** | Touch `main`. It is still **78 behind**; the 50 hunks and 30 silent references above are the work that remains |
+| **What it does NOT do** | Touch `main`. It is still **78 behind**; the 50 hunks and 30 silent references above are the work that remains. **Since phase 4, `docs/superpowers/` is `docs/design/` on `main`**; the union adds two files under the old path, which git's rename detection should carry across on rebase — check they land in `docs/design/` |
 | **Source branches** | **RETIRED, session 32**, after checking the union holds every commit of each — 0 missing from either. `claude/wgs84-earth-rotation-tasks-5dbdc3` was `d030701`; `claude/atisim-wgs84-earth-rotation-32fbdd` was `ec153fb`. Their worktrees, `sleepy-moore-7186bb` and `atisim-wgs84-earth-rotation-b7b3bc`, were clean and are removed |
 
 ### ~~UNRECORDED ENTIRELY, and it closes a §7 item~~ MERGED, session 32 — kept as the record of how it was found
@@ -315,7 +315,7 @@ first thing to review and the first thing to re-measure after, rather than the l
 | **Branch** | **`release-cleanup-september`** — deliberately not a `claude/*` name |
 | **Worktree** | `.claude/worktrees/new-session-943052` — **the directory name is the old branch's**, as everywhere else here |
 | **State** | ~~4 commits beyond `main`'s `c1b7d71`, 0 behind.~~ **MERGED.** `release-cleanup-september` landed through PRs #4–#8 (phases 0–1), `wgs84-merge-analysis` through #9 (phase 2), and `phase-3` through #11. Each phase's suite result is in its §9 point |
-| **What it is** | The plan for the final month, in `docs/superpowers/specs/2026-09-17-final-release-cleanup-design.md`, and the first phase of it: the copyright remediation, the CR-2144 rescue, and this §0 pass |
+| **What it is** | The plan for the final month, in `docs/design/specs/2026-09-17-final-release-cleanup-design.md`, and the first phase of it: the copyright remediation, the CR-2144 rescue, and this §0 pass |
 | **What it closes** | §0 itself, as the month's work merges. The plan's phases 1–7 are the route |
 | **Blocking** | Nothing — merged. The release's remaining phases (documentation, notebook, history rewrite) work from `main` |
 
@@ -376,7 +376,7 @@ so, and for three weeks nobody reviewed them. **Session 32 reviewed all five and
 | Branch | What was rescued | Settled |
 |---|---|---|
 | `claude/zen-maxwell-1ad0a4` | **The most substantial: a tail-arm gate refactor with tests** | **MERGED.** Reviewed, and it closes a silent NaN now recorded as **§6(g)** — `stations` built sample points out to −∞ for any entry with no `CLq`, and every fitted gradient returned NaN with nothing raised |
-| `claude/cat-flight-model-dossier-04adb9` | `docs/superpowers/plans/2026-08-31-close-the-dossier-limitations.md` | **ABANDONED — plan superseded, ledger harvested.** Five sources in it appear nowhere else in this document and are now §7, **14 CFR 25.341** chief among them |
+| `claude/cat-flight-model-dossier-04adb9` | `docs/design/plans/2026-08-31-close-the-dossier-limitations.md` | **ABANDONED — plan superseded, ledger harvested.** Five sources in it appear nowhere else in this document and are now §7, **14 CFR 25.341** chief among them |
 | `claude/project-md-restructure-95b7b8` | Local `PROJECT.md` edits | **ABANDONED** — 92 commits stale; reapplying would undo sessions 28–32 |
 | `claude/flight-dynamics-cat-prompt-ec9839` | A CAT-sources search prompt | **ABANDONED** — a prompt written to an AI, the class of file deleted from the root this session |
 | `claude/project-readme-mockup-0ef89a` | A README mockup | **ABANDONED, two headings harvested** into the README rewrite: "What it can't do (read this bit)" and "Why there's so much paperwork in here" |
@@ -400,7 +400,7 @@ while the bug it fixes stayed in `main`.
 | **Branch** | **`claude/model-sensitivity-analysis-t18v3v`** |
 | **Worktree** | none — a remote container on the main checkout, no `.venv` (`jax` installed fresh on Linux; §10's Windows table does not apply) |
 | **State** | **MERGED at `105f689`.** All seven phases S0–S6 done, plus two follow-ups: `airframe.py`'s `sqrt(0)` closed, and Fig. 8's pitch axis investigated (§4, correcting session 23d). Suite: **776 passed** before any of this work, **808** after S0–S6, **819** after the follow-ups; the same 2 platform bit-pins fail throughout and predate the work |
-| **What it is** | `docs/superpowers/specs/2026-09-10-model-sensitivity-analysis-design.md` — a sensitivity study over three quantities of interest (headline CAT load, cruise modes, Dryden ensemble statistics) and two factor tiers (aerodynamic derivatives, `ASSUMPTIONS.md` modelling choices), by a tiered method: AD screen → OAT confirm → banded propagation |
+| **What it is** | `docs/design/specs/2026-09-10-model-sensitivity-analysis-design.md` — a sensitivity study over three quantities of interest (headline CAT load, cruise modes, Dryden ensemble statistics) and two factor tiers (aerodynamic derivatives, `ASSUMPTIONS.md` modelling choices), by a tiered method: AD screen → OAT confirm → banded propagation |
 | **What it closes** | **CLOSED, all three.** `ASSUMPTIONS.md` **C3's Mach axis is bounded at cruise: −5.04%** of the headline load over a measured Mach span of 0.7187–0.8257. **§1's headline carries a band — 68.2%, 57.1–74.0%** — and states that the shortfall survives it. And phase 3's DC-10 acquisition has a **price**: `CLa` is the top-ranked coefficient on the load at **+0.692**, `mass` second at **−0.649**. **Session 31 qualifies that price** (§4, first entry): the two are one lever, `CLa·q̄S/W`. `mass` was moved with the inertia held fixed, and scaling the inertia too gives −0.800. And an error in a *published* weight cancels (+0.008), because the entry derives `CLa` from it |
 | **Blocking** | **Nothing — merged.** What remains is named rather than pending: C3's **α axis**, still unbounded; **interaction terms**, which this study measured none of and says so with every table; and the question §8 raises about whether Fig. 8's pitch axis survives past this aeroplane's linear range. ~~`airframe.py`'s second `sqrt(0)`~~ was closed in the same session |
 
@@ -559,7 +559,7 @@ turbulence layer under construction. Float64 throughout (`jax_enable_x64`, set b
 array is created — a Newton trim solve to 1e-10 and quaternion norm stability over 1e5
 steps are both marginal in float32).
 
-The original design spec is `docs/superpowers/specs/2026-08-04-jax-flight-sim-design.md`.
+The original design spec is `docs/design/specs/2026-08-04-jax-flight-sim-design.md`.
 It remains accurate on architecture. **It is stale in one respect: it lists turbulence as
 out of scope, which is no longer true** — that was always the intended destination, and
 the two "non-negotiable interfaces" it names exist precisely so turbulence could be added
@@ -700,7 +700,7 @@ Gust-rate signs, derived from the repo's own conventions:
 eqs. 3.4-48, 3.4-50 and 3.4-52, by re-deriving them from `v_rel = v_cg + ω×r − w_g(r)` rather
 than transcribing them. **Two equations in that source are wrong** — eq. 3.4-49's sign, and
 eq. 3.4-55 by a factor of −2 — and
-`docs/superpowers/specs/2026-08-14-wind-shear-fidelity-design.md` §2 records which, with the
+`docs/design/specs/2026-08-14-wind-shear-fidelity-design.md` §2 records which, with the
 rigid-rotation self-consistency test that found them. **Read it before changing any sign here.**
 
 3. **Gust gradients may be sampled rather than differentiated.** `wind.gust_rates` takes the
@@ -2003,7 +2003,7 @@ fields, not what it does for the DC-10-class records the chart was drawn from.
 **The first sensitivity machinery this project has had, and the first time any quantity here
 has been differentiated with respect to a COEFFICIENT rather than with respect to a state.**
 `atisim/sensitivity.py`, `scripts/sensitivity_screen.py`, 24 tests in `test_sensitivity.py`.
-Design: `docs/superpowers/specs/2026-09-10-model-sensitivity-analysis-design.md`.
+Design: `docs/design/specs/2026-09-10-model-sensitivity-analysis-design.md`.
 
 **Measured on Linux with JAX 0.10.2 / NumPy 2.4.6, not on §10's Windows `.venv`.** The
 mode path reproduces exactly there (row B below); two bit-exact rollout pins do not, and
@@ -4663,7 +4663,7 @@ built from public data "and guesses", validated only to the extent that it "seem
 right", and is for "educational and entertainment purposes only". Feeding two codes the
 same coefficients makes the dataset's quality irrelevant — a disagreement is a defect in
 one of the two implementations. Design:
-`docs/superpowers/specs/2026-08-20-jsbsim-737-verification-design.md`.
+`docs/design/specs/2026-08-20-jsbsim-737-verification-design.md`.
 
 **Derivatives are recovered by finite-differencing the running engine, not read from the
 XML, and the difference is not cosmetic.** JSBSim applies aero forces at the AERORP
@@ -4749,7 +4749,7 @@ Report: `docs/summary/jsbsim-737-report.pdf`.
 ### Model fidelity from the JSBSim comparison (session 18)
 
 Five model changes arising from session 17, and one sequence worth reading as a whole.
-Design: `docs/superpowers/specs/2026-08-20-model-fidelity-improvements-design.md`.
+Design: `docs/design/specs/2026-08-20-model-fidelity-improvements-design.md`.
 
 | Change | What it is |
 |---|---|
@@ -6278,7 +6278,7 @@ the answer rest on?** §4 measures the model against sources. It does not measur
 against *itself*, so no row in it says whether the headline load is set by `CLa` or by `Cmq`,
 nor whether a modelling choice from `ASSUMPTIONS.md` costs more than a derivative does.
 
-Full design in `docs/superpowers/specs/2026-09-10-model-sensitivity-analysis-design.md`.
+Full design in `docs/design/specs/2026-09-10-model-sensitivity-analysis-design.md`.
 **Scope was agreed before it was written**, and what it excludes is as deliberate as what it
 covers — the wind and scenario inputs are excluded **because `cat_bounds.py` and
 `cat_uncertainty.py` already price them**, and the budget cites those numbers rather than
@@ -6646,7 +6646,7 @@ source exactly. A smoother interpolant would agree with the source less.
 
 **This session measures nothing about the aeroplane.** It is the first of the run to the
 30 September deadline, and its subject is the repository rather than the model. The plan is
-`docs/superpowers/specs/2026-09-17-final-release-cleanup-design.md`; what follows is phase 0
+`docs/design/specs/2026-09-17-final-release-cleanup-design.md`; what follows is phase 0
 of it, plus three findings that were not expected and that change what the remaining phases
 have to do.
 
@@ -6785,7 +6785,7 @@ that rebase is, and where in it to look first: **15 of the 30 silent references 
 sensitivity study**, which is the path that produced §1's banded headline.
 
 **9. Phase 3 — every open item given one status.** The plan is
-`docs/superpowers/plans/2026-09-18-phase-3-close-every-open-item.md`, reviewed and approved with
+`docs/design/plans/2026-09-18-phase-3-close-every-open-item.md`, reviewed and approved with
 five decisions before it ran. **The head of §5 now carries a status table**: every open item in §5,
 §7 and §8, and the one sealed prediction, each with exactly one of four statuses — CLOSED /
 MEASURED / BOUNDED, IMPOSSIBLE WITH SOURCES HELD, FUTURE WORK, OUT OF SCOPE — and the evidence or
@@ -9009,8 +9009,8 @@ several sessions, which is the drift §4's rules exist to prevent.
 |---|---|
 | **`docs/PROJECT.md`** (this file) | what exists, what is **measured**, what is known-broken, what happens next |
 | **`docs/ASSUMPTIONS.md`** | what is **assumed** before any measurement, with a bound on each. Read before quoting a result to better than ~0.5%, before flying far from a trim point, or before adding a wind field whose scale approaches a wingspan. Its closing section explains what the notebook does and does not demonstrate |
-| `docs/superpowers/plans/2026-08-11-close-the-verification-gaps.md` | the current plan, plus a full handover of session 11 for a session that was not there |
-| `docs/superpowers/specs/2026-08-11-solver-validation-design.md` | why the verification/validation split, and the source-qualification tiers that answer "is a 1972 document a source of error" |
+| `docs/design/plans/2026-08-11-close-the-verification-gaps.md` | the current plan, plus a full handover of session 11 for a session that was not there |
+| `docs/design/specs/2026-08-11-solver-validation-design.md` | why the verification/validation split, and the source-qualification tiers that answer "is a 1972 document a source of error" |
 
 Flags: `tune.py` takes `--aircraft` only. `fly.py` takes `--aircraft --autopilot --save
 --dt --fps --window --seed --wind --lead-in --sharpness`. `vortex.py` takes `--case

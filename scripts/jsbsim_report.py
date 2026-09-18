@@ -17,7 +17,7 @@ AERORP-offset correction.
 This does NOT import jsbsim. It reads the frozen reference, exactly as the test
 suite does, so the report can be rebuilt on a machine that has no JSBSim.
 
-Design: docs/superpowers/specs/2026-08-20-jsbsim-737-verification-design.md
+Design: docs/design/specs/2026-08-20-jsbsim-737-verification-design.md
 """
 
 import sys

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.10, JAX (x64), matplotlib (Agg in tests, TkAgg live), pytest.
 
-**Spec:** `docs/superpowers/specs/2026-08-06-free-air-flying-interface-design.md`
+**Spec:** `docs/design/specs/2026-08-06-free-air-flying-interface-design.md`
 
 **Run everything from the project root**, not from the worktree, or the editable install resolves to the main checkout (PROJECT.md §10). Test command throughout:
 

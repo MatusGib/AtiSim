@@ -12,7 +12,7 @@ Layer 4's backstops are ALLOWANCES and are labelled as such rather than dressed
 up; the predictive statements about layer 4 live in the two tests that separate
 the replay artifact from the model difference.
 
-Design: docs/superpowers/specs/2026-08-20-jsbsim-737-verification-design.md
+Design: docs/design/specs/2026-08-20-jsbsim-737-verification-design.md
 """
 
 import numpy as np

@@ -7,7 +7,7 @@ modelling choice from `ASSUMPTIONS.md` costs more than a derivative does. This
 module supplies the derivative of a result with respect to a coefficient, which
 is the object all three of those questions are asking for.
 
-Design: docs/superpowers/specs/2026-09-10-model-sensitivity-analysis-design.md.
+Design: docs/design/specs/2026-09-10-model-sensitivity-analysis-design.md.
 Nothing here is evidence on its own -- a number produced by this module belongs
 in section 4 with the run that produced it.
 

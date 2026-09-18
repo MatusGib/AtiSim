@@ -18,7 +18,7 @@ the wrong thing.
     real plant, which is the only comparison that tests the formula rather than
     restating it.
 
-Design: docs/superpowers/specs/2026-09-10-model-sensitivity-analysis-design.md.
+Design: docs/design/specs/2026-09-10-model-sensitivity-analysis-design.md.
 """
 
 import jax

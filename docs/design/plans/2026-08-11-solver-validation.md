@@ -4,7 +4,7 @@
 
 **Goal:** Establish that the solver is arithmetically correct and that known coefficient changes produce known results, before any further modelling layer is added.
 
-**Architecture:** Two new flat modules beside the existing ones — `atisim/verification.py` for checks that depend on no aircraft data at all, and `atisim/validation.py` for checks against analytic laws and published worked examples. A Jupyter notebook is a thin front end that imports both and plots; it contains no arithmetic, and is executed by `nbval` as a required gate so it cannot drift. Design spec: `docs/superpowers/specs/2026-08-11-solver-validation-design.md`.
+**Architecture:** Two new flat modules beside the existing ones — `atisim/verification.py` for checks that depend on no aircraft data at all, and `atisim/validation.py` for checks against analytic laws and published worked examples. A Jupyter notebook is a thin front end that imports both and plots; it contains no arithmetic, and is executed by `nbval` as a required gate so it cannot drift. Design spec: `docs/design/specs/2026-08-11-solver-validation-design.md`.
 
 **Tech Stack:** Python 3.10, JAX (float64 via `atisim/__init__.py`), NumPy, SciPy, pytest, Jupyter + nbval.
 
