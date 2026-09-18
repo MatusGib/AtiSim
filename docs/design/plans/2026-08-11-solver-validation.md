@@ -1,10 +1,8 @@
 # Solver Validation Harness Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Establish that the solver is arithmetically correct and that known coefficient changes produce known results, before any further modelling layer is added.
 
-**Architecture:** Two new flat modules beside the existing ones — `atisim/verification.py` for checks that depend on no aircraft data at all, and `atisim/validation.py` for checks against analytic laws and published worked examples. A Jupyter notebook is a thin front end that imports both and plots; it contains no arithmetic, and is executed by `nbval` as a required gate so it cannot drift. Design spec: `docs/superpowers/specs/2026-08-11-solver-validation-design.md`.
+**Architecture:** Two new flat modules beside the existing ones — `atisim/verification.py` for checks that depend on no aircraft data at all, and `atisim/validation.py` for checks against analytic laws and published worked examples. A Jupyter notebook is a thin front end that imports both and plots; it contains no arithmetic, and is executed by `nbval` as a required gate so it cannot drift. Design spec: `docs/design/specs/2026-08-11-solver-validation-design.md`.
 
 **Tech Stack:** Python 3.10, JAX (float64 via `atisim/__init__.py`), NumPy, SciPy, pytest, Jupyter + nbval.
 
@@ -163,7 +161,6 @@ from atisim.aircraft import CRUISE, REGISTRY
 # and pass on an extraction that changed the arithmetic.
 PRE_REFACTOR_VEL_HASH = "PASTE_THE_HASH_FROM_STEP_1_HERE"
 
-
 def _fixed_control_rollout(dt, n_steps, d_elevator=0.02):
     """747 at cruise trim with the elevator off trim, so something happens."""
     ac = REGISTRY["boeing747"]
@@ -173,7 +170,6 @@ def _fixed_control_rollout(dt, n_steps, d_elevator=0.02):
     controls = trim.trimmed_controls(x[1] + d_elevator, x[2])
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
     return integrate.rollout(sim, controls, jnp.array(dt), ac, n_steps)
-
 
 def test_extracting_rk4_step_did_not_move_a_single_bit():
     """Bit-identity against a hash taken before the refactor.
@@ -281,7 +277,6 @@ of the value.
 """
 
 import numpy as np
-
 
 def fitted_order(dts, errors):
     """Observed order of accuracy: the slope of log(error) against log(dt).
@@ -613,7 +608,6 @@ _I1, _I2, _I3 = 1420.0, 4070.0, 4780.0
 # m = 0.4928, rate = 0.5782 rad/s, and a1, a3 equal to 0.6 and 0.9 exactly.
 _OMEGA0 = np.array([0.6, 0.0, 0.9])
 
-
 def test_the_analytic_torque_free_solution_solves_eulers_equations():
     """Check the reference before using it as one.
 
@@ -629,14 +623,12 @@ def test_the_analytic_torque_free_solution_solves_eulers_equations():
     euler = -np.cross(w.T, (I * w).T).T / I
     np.testing.assert_allclose(dwdt[:, 5:-5], euler[:, 5:-5], atol=1e-6)
 
-
 def test_the_analytic_solution_rejects_the_wrong_branch():
     """The domain guard, exercised. Without it this returns silent NaN."""
     with pytest.raises(ValueError, match="separatrix"):
         verification.torque_free_omega(
             _I1, _I2, _I3, np.array([0.9, 0.0, 0.05]), np.array([0.0, 1.0])
         )
-
 
 def test_the_integrator_reproduces_torque_free_rotation():
     """Conservation is not correctness.
@@ -732,7 +724,6 @@ from atisim.dynamics import derivatives
 from atisim.state import Controls, State, euler_to_quat
 from atisim.units import FT2M
 
-
 def longitudinal_matrix(ac, alpha, elevator, throttle, V, H):
     """Body-axis plant matrix in [u, w, q, theta], by jacfwd of the real dynamics.
 
@@ -759,7 +750,6 @@ def longitudinal_matrix(ac, alpha, elevator, throttle, V, H):
 
     return np.asarray(jax.jacfwd(f)(jnp.array([u0, w0, 0.0, alpha])))
 
-
 def to_stability_axes(A, alpha):
     """Rotate a [u, w, q, theta] plant matrix from body to stability axes.
 
@@ -778,7 +768,6 @@ def to_stability_axes(A, alpha):
                   [0.0, 0.0, 1.0, 0.0],
                   [0.0, 0.0, 0.0, 1.0]])
     return T @ A @ np.linalg.inv(T)
-
 
 def to_imperial_matrix(A):
     """A [u, w, q, theta] plant matrix from SI into ft/s-rad units.
@@ -801,12 +790,10 @@ def to_imperial_matrix(A):
         out[i, j] *= FT2M
     return out
 
-
 def modes_from_matrix(A):
     """(wn, zeta) for every oscillatory root, sorted low-to-high wn."""
     eig = np.linalg.eigvals(A)
     return sorted((abs(lam), -lam.real / abs(lam)) for lam in eig if lam.imag > 1e-9)
-
 
 def longitudinal_modes(ac, alpha, elevator, throttle, V, H):
     """Phugoid and short-period (wn, zeta), sorted low-to-high wn."""
@@ -858,12 +845,10 @@ from atisim.units import FT2M
 # against Caughey run at Caughey's speed.
 CAUGHEY_V = 279.1 * FT2M
 
-
 def _approach_trim(V=CAUGHEY_V):
     ac = REGISTRY["boeing747_approach"]
     x, res = trim.trim(jnp.array(V), jnp.array(0.0), ac)
     return ac, float(x[0]), float(x[1]), float(x[2]), res
-
 
 def _approach_A(imperial=True):
     ac, alpha, de, thr, _ = _approach_trim()
@@ -871,7 +856,6 @@ def _approach_A(imperial=True):
         validation.longitudinal_matrix(ac, alpha, de, thr, CAUGHEY_V, 0.0), alpha
     )
     return validation.to_imperial_matrix(A) if imperial else A
-
 
 def test_the_stability_axis_transform_is_a_similarity_transform():
     """Every element moves; no eigenvalue does.
@@ -953,7 +937,6 @@ class Reference(NamedTuple):
 
     value: float
     source: str
-
 
 # D. A. Caughey, "Introduction to Aircraft Stability and Control", Cornell
 # MAE 5070 course notes, Chapter 5. Its Eq. (5.48)-(5.50) cite Heffley & Jewell,
@@ -1054,7 +1037,6 @@ def test_the_plant_matrix_matches_caugheys_where_the_model_has_the_terms():
     assert A[1, 3] == pytest.approx(0.0, abs=1e-9)
     assert A[3, 2] == pytest.approx(1.0, abs=1e-12)
 
-
 def test_the_omitted_alpha_dot_terms_are_recoverable():
     """Section 5's attribution, turned from a claim into arithmetic.
 
@@ -1087,7 +1069,6 @@ def test_the_omitted_alpha_dot_terms_are_recoverable():
 
     assert A[2, 1] + Mwdot * C[1, 1] == pytest.approx(C[2, 1], rel=0.05)
     assert A[2, 2] + Mwdot * C[1, 2] == pytest.approx(C[2, 2], rel=0.05)
-
 
 def test_the_approach_modes_match_caugheys_published_roots():
     """The end-to-end statement: units, trim, dynamics and jacfwd in four numbers."""
@@ -1201,7 +1182,6 @@ Append to `atisim/validation.py`:
 ```python
 TRIM_RESIDUAL_LIMIT = 1e-9
 
-
 def sweep(ac, field, values, quantity, V, H):
     """Vary one coefficient and report a scalar per value.
 
@@ -1274,10 +1254,8 @@ The review request read literally: change a coefficient, get a known result. The
 def _sp_wn(a, alpha, de, thr):
     return validation.longitudinal_modes(a, alpha, de, thr, CAUGHEY_V, 0.0)[-1][0]
 
-
 def _ph_zeta(a, alpha, de, thr):
     return validation.longitudinal_modes(a, alpha, de, thr, CAUGHEY_V, 0.0)[0][1]
-
 
 def test_the_phugoid_frequency_follows_the_lanchester_law():
     """Tier 1: a relation with no aerodynamic coefficient in it at all.
@@ -1298,7 +1276,6 @@ def test_the_phugoid_frequency_follows_the_lanchester_law():
     lanchester = np.sqrt(2.0) * float(G0) / CAUGHEY_V
     assert lanchester / ph_wn == pytest.approx(1.22, rel=0.03)
 
-
 def test_the_phugoid_damping_follows_the_lift_to_drag_law():
     """Lanchester again: zeta = 1 / (sqrt(2) L/D).
 
@@ -1311,7 +1288,6 @@ def test_the_phugoid_damping_follows_the_lift_to_drag_law():
     L_over_D = R["747pa_CL"].value / R["747pa_CD"].value
     lanchester = 1.0 / (np.sqrt(2.0) * L_over_D)
     assert lanchester / ph_zeta == pytest.approx(4.9, rel=0.06)
-
 
 def test_worsening_the_drag_polar_damps_the_phugoid_as_the_law_says():
     """The sweep itself: change one coefficient, get the predicted change.
@@ -1359,7 +1335,6 @@ def test_reducing_pitch_stiffness_lowers_the_short_period_frequency():
     assert np.all(np.diff(wns) < 0), f"wn must fall as Cma -> 0, got {wns}"
     assert wns[0] / wns[-1] == pytest.approx(np.sqrt(base / -0.1), rel=0.35)
 
-
 def test_the_roll_time_constant_tracks_one_over_Clp():
     """tau_roll = -1/L_p, and L_p is proportional to Clp, so tau * |Clp| is flat."""
     ac, _, _, _, _ = _approach_trim()
@@ -1373,7 +1348,6 @@ def test_the_roll_time_constant_tracks_one_over_Clp():
     assert product.max() / product.min() < 1.05, (
         f"tau_roll * |Clp| should be constant, got {product}"
     )
-
 
 def test_the_dutch_roll_frequency_rises_with_weathercock_stability():
     """wn_dutch is dominated by sqrt(N_beta), but NOT proportional to it.

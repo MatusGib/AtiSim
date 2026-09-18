@@ -913,7 +913,7 @@ y = para(fig, y, "R. C. Wingrove and R. E. Bach, Severe Turbulence and Maneuveri
 y = heading(fig, y - 0.006, "Project documents")
 y = para(fig, y, "docs/PROJECT.md section 4 for measured checks and frozen baselines. "
                  "docs/ASSUMPTIONS.md section E2 for the point-aircraft assumption and its bound. "
-                 "docs/superpowers/specs/2026-08-14-wind-shear-fidelity-design.md for the source "
+                 "docs/design/specs/2026-08-14-wind-shear-fidelity-design.md for the source "
                  "verification and the design reasoning, including the two errors found in "
                  "Stengel and the self-consistency test that found them.")
 

@@ -1,7 +1,5 @@
 # Closing the verification gaps — plan and handover
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax.
-
 **Goal:** close the gaps session 11's verification pass identified, in the order their
 consequences bite, and leave the assumption register (`docs/ASSUMPTIONS.md`) true.
 
@@ -37,7 +35,7 @@ Age was the wrong axis. Every tier-2 check is **closed-loop against a document's
 arithmetic**: if CR-2144's derivatives were 10% away from the real aeroplane, the solver
 must *still* reproduce CR-2144's own transfer-function factors from CR-2144's own
 derivatives. The design spec ranks every check by how much it depends on any source at all
-(`docs/superpowers/specs/2026-08-11-solver-validation-design.md`, "Source qualification").
+(`docs/design/specs/2026-08-11-solver-validation-design.md`, "Source qualification").
 
 The real risks are in `ASSUMPTIONS.md`, and the largest is that CR-2144's §IX data is the
 **flexible** airframe against a rigid-body model — a mismatch that matters far more than
@@ -244,7 +242,6 @@ def test_trim_reports_a_physically_absurd_solution():
 # a run outside it "is not evidence of anything". 15 deg is a little beyond the
 # amber band, so a legitimate trim is never rejected.
 ALPHA_LIMIT = math.radians(15.0)
-
 
 def is_physical(x: Array) -> bool:
     """Is a trim solution a flight condition, as opposed to merely converged?

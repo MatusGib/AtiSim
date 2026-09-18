@@ -1,14 +1,12 @@
 # Free-air flying interface — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Turn the live flying path into a basic-T cockpit with a flight-test overlay, flyable through a cited wind field, with a proportional stick and working pitch trim.
 
 **Architecture:** Two new sensor groups in `sensors.py` fed by a factored `dynamics.specific_force`; the live cockpit extracted from `viz.py` into `atisim/panel.py` and rebuilt as small instrument units around a `Readout` bundle; `wind_model` threaded through `run_live`/`LiveSim` into `integrate.step`; a ramped `Stick` in the panel and a trim axis in `manual.py`.
 
 **Tech Stack:** Python 3.10, JAX (x64), matplotlib (Agg in tests, TkAgg live), pytest.
 
-**Spec:** `docs/superpowers/specs/2026-08-06-free-air-flying-interface-design.md`
+**Spec:** `docs/design/specs/2026-08-06-free-air-flying-interface-design.md`
 
 **Run everything from the project root**, not from the worktree, or the editable install resolves to the main checkout (PROJECT.md §10). Test command throughout:
 
@@ -81,7 +79,6 @@ def test_specific_force_matches_the_forces_in_all_three_axes(test_aircraft):
     )
     assert got == pytest.approx(expected, abs=1e-12)
 
-
 def test_load_factor_is_the_negated_z_component_of_specific_force(test_aircraft):
     """The wrapper must not quietly change sign or scale."""
     s = level_state(u=60.0, altitude=2000.0)._replace(omega=jnp.array([0.1, 0.2, -0.05]))
@@ -136,7 +133,6 @@ def specific_force(
     d = derivatives(state, controls, ac, wind_ned, omega_gust)
     gravity_body = quat_to_dcm(state.quat).T @ jnp.array([0.0, 0.0, G0])
     return (d.vel_body - gravity_body + jnp.cross(state.omega, state.vel_body)) / G0
-
 
 def load_factor(
     state: State,
@@ -200,7 +196,6 @@ def test_vertical_speed_is_inertial_and_matches_the_ned_velocity(trimmed):
     assert float(air.vertical_speed) == pytest.approx(-float(vel_ned[2]), abs=1e-12)
     assert float(air.vertical_speed) != pytest.approx(-float(climbing.vel_body[2]), abs=1e-3)
 
-
 def test_vertical_speed_ignores_the_wind_because_a_baro_vsi_would(trimmed):
     """It is INERTIAL. An updraft that carries the aircraft up changes its
     geometric height, and that is what the instrument sees -- but the wind
@@ -209,7 +204,6 @@ def test_vertical_speed_ignores_the_wind_because_a_baro_vsi_would(trimmed):
     still = sense(state, jnp.zeros(3))
     blown = sense(state, jnp.array([0.0, 0.0, -12.0]))
     assert float(blown.vertical_speed) == pytest.approx(float(still.vertical_speed), abs=1e-12)
-
 
 def test_accelerometers_report_the_specific_force_with_load_factor_sign(trimmed):
     state, controls = trimmed
@@ -258,7 +252,6 @@ Add the import and the field:
 from atisim.dynamics import relative_velocity, specific_force
 from atisim.state import State, quat_to_dcm, quat_to_euler
 
-
 class AirData(NamedTuple):
     """One sensor set. Air-relative where a real sensor would be, inertial elsewhere."""
 
@@ -302,7 +295,6 @@ class Accelerations(NamedTuple):
     n_x: Array  # g, positive FORWARD
     n_y: Array  # g, positive RIGHT
     n_z: Array  # g, positive UP-ish: +1 in level flight
-
 
 def accelerometers(
     state: State,
@@ -456,7 +448,6 @@ def test_a_live_run_through_a_wind_field_differs_from_still_air(trimmed, targets
     still = fly(wind_mod.zero_wind)
 
     assert abs(blown[-1, 2] - still[-1, 2]) > 1.0  # metres of altitude
-
 
 def test_the_live_loop_in_still_air_is_untouched_by_the_wind_plumbing(live):
     """Mirrors PROJECT.md section 4's zero-strength-wind row: adding the hook
@@ -682,7 +673,6 @@ class FieldRange(NamedTuple):
     closing: float  # m/s, rate of change of `distance`
     bearing: float | None  # rad, None for a line vortex
 
-
 class Readout(NamedTuple):
     """One frame's worth of everything the panel shows.
 
@@ -757,7 +747,6 @@ def readout_at(**overrides):
         base["air"] = overrides["air"]
     return panel_mod.Readout(**base)
 
-
 def test_the_vsi_needle_moves_up_in_a_climb_and_down_in_a_descent(targets):
     p = panel_mod.Panel(targets, window=20.0, fps=20.0, aircraft_name="boeing747")
     air = readout_at().air
@@ -770,7 +759,6 @@ def test_the_vsi_needle_moves_up_in_a_climb_and_down_in_a_descent(targets):
     assert climbing > 0.0 > descending
     assert climbing == pytest.approx(-descending)
 
-
 def test_the_alpha_band_turns_red_past_the_declared_ceiling(targets):
     p = panel_mod.Panel(targets, window=20.0, fps=20.0, aircraft_name="boeing747")
     air = readout_at().air
@@ -781,7 +769,6 @@ def test_the_alpha_band_turns_red_past_the_declared_ceiling(targets):
     assert p.alpha_gauge.state() == "marginal"
     p.alpha_gauge.update(readout_at(air=air._replace(alpha=jnp.deg2rad(14.0))))
     assert p.alpha_gauge.state() == "invalid"
-
 
 def test_the_load_factor_gauge_holds_the_peak_excursion(targets):
     p = panel_mod.Panel(targets, window=20.0, fps=20.0, aircraft_name="boeing747")
@@ -931,7 +918,6 @@ class VSI:
 
 ```python
 SLIP_SPAN = 0.30  # g of lateral specific force at full ball deflection. Declared.
-
 
 class SlipBall:
     """Lateral specific force, drawn where a PFD puts it: under the roll pointer.
@@ -1215,13 +1201,11 @@ def test_a_one_step_tap_gives_less_than_full_deflection(live):
     live.panel.stick.step(live.dt)
     assert 0.0 < live.panel.pilot_input().pitch < 1.0
 
-
 def test_holding_a_key_reaches_full_travel(live):
     press(live.panel, "up")
     for _ in range(int(1.0 / live.dt)):
         live.panel.stick.step(live.dt)
     assert live.panel.pilot_input().pitch == pytest.approx(1.0)
-
 
 def test_releasing_springs_the_stick_back_to_centre(live):
     press(live.panel, "up")
@@ -1231,7 +1215,6 @@ def test_releasing_springs_the_stick_back_to_centre(live):
     for _ in range(int(1.0 / live.dt)):
         live.panel.stick.step(live.dt)
     assert live.panel.pilot_input().pitch == pytest.approx(0.0)
-
 
 def test_the_stick_ramps_per_physics_step_not_per_frame(trimmed, targets):
     """Same total physics steps, different frame grouping, same stick position.
@@ -1275,7 +1258,6 @@ In `atisim/panel.py`:
 # it is a property of the input device, not of the aircraft -- manual.manual
 # stays a pure function of stick position.
 STICK_RATE = 2.5  # per second
-
 
 class Stick:
     """Three ramped surface axes. Held keys ramp toward the demand, released
@@ -1377,14 +1359,12 @@ def test_trim_moves_where_a_released_stick_settles():
     released, ms = man.manual(ms, man.NEUTRAL, MGAINS, AC, jnp.array(0.02))
     assert float(released.elevator) == pytest.approx(float(ms.reference.elevator), abs=1e-9)
 
-
 def test_trim_respects_the_elevator_limit():
     state, controls = trimmed()
     ms = man.take_control(controls)
     for _ in range(20000):
         _, ms = man.manual(ms, PilotInput(trim=1.0), MGAINS, AC, jnp.array(0.02))
     assert float(ms.reference.elevator) <= float(AC.elevator_limit) + 1e-12
-
 
 def test_trim_here_snaps_the_reference_to_the_live_deflections():
     state, controls = trimmed()
@@ -1630,7 +1610,6 @@ def vortex_range(array, *, label: str):
         )
 
     return ranged
-
 
 def updraft_range(column, *, label: str):
     """Range and bearing to an UpdraftColumn, which IS a point and so has both."""

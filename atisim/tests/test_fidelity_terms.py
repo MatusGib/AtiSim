@@ -1,6 +1,6 @@
 """The sideslip-drag and angle-of-attack-rate terms added after the JSBSim work.
 
-Design: docs/superpowers/specs/2026-08-20-model-fidelity-improvements-design.md
+Design: docs/design/specs/2026-08-20-model-fidelity-improvements-design.md
 
 Both fields default to neutral, so the whole point of this file is that the
 terms are inert until an aircraft asks for them AND the flight condition

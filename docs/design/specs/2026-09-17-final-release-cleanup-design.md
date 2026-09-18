@@ -48,16 +48,16 @@ was already scheduled for the PDFs.
 | `CLAUDE.md` at the root | **DONE, day 1.** → `docs/DEVELOPMENT.md`, 36 cross-references updated |
 | No licence, `license: null` on a public repo | **DONE, day 1.** MIT |
 | Repo description "Jax based vortex flight simulator ", no topics | **DONE, day 1.** Both set |
-| `docs/superpowers/` — the directory name | **Phase 4c.** → `docs/design/`. **Deferred deliberately**: three unmerged branches modify files under it, so a rename now conflicts with all three |
-| `docs/SESSION_27_REPORT.md` | **Phase 4c.** Its closing section states the validation claim more plainly than anything else in the repository. **Harvest that prose into the docs site, then delete the file** — not the other way round |
-| `PROJECT.md` §9, 32 session entries | **Phase 4c.** Becomes `CHANGELOG.md` keyed to **capabilities, not sessions** — the frame, the CAT validation, the sensitivity study, the compressibility work. §9 itself is kept, moved behind the docs site as the provenance appendix |
+| `docs/superpowers/` — the directory name | **DONE, phase 4** → `docs/design/`: references updated in 21 files, the code ones comment-only. ~~**Phase 4c.** → `docs/design/`.~~ **Deferred deliberately**: three unmerged branches modify files under it, so a rename now conflicts with all three |
+| `docs/SESSION_27_REPORT.md` | **DONE, phase 4** — its closing verdict harvested into the site's *Validation* page, brought up to date, then the file deleted. ~~**Phase 4c.** Its closing section states the validation claim more plainly than anything else in the repository. **Harvest that prose into the docs site, then delete the file** — not the other way round~~ |
+| `PROJECT.md` §9, 32 session entries | **DONE, phase 4** — `CHANGELOG.md` groups the release by capability, and §9 stays whole behind it as the provenance. ~~**Phase 4c.** Becomes `CHANGELOG.md` keyed to **capabilities, not sessions** — the frame, the CAT validation, the sensitivity study, the compressibility work. §9 itself is kept, moved behind the docs site as the provenance appendix~~ |
 | `PROJECT.md` §0, a work-in-progress inventory | **Phase 7.** Empty at the release, or every remaining row justified. §0 going empty *is* the finished signal |
-| README's "I asked claude to add test", "23 scripts" (there are 42) | **Phase 4b** |
+| README's "I asked claude to add test", "23 scripts" (there are 42) | **DONE, phase 4** — rewritten; and all 44 scripts are now in §10, nine of them for the first time ~~**Phase 4b**~~ |
 | No release, no tag | **Phase 7.** `v1.0.0` |
 
 **One ordering consequence.** Structural renames conflict with unmerged branches, so the rule is:
 **delete freely what nothing else touches, and defer every rename until after Phase 2.** Day 1's
-moves were all checked against all seven substantial branches first; `docs/superpowers/` failed
+moves were all checked against all seven substantial branches first; `docs/design/` failed
 that check and waits.
 
 **Why not Doxygen, since it was asked for.** `atisim` is 31,632 lines of Python carrying

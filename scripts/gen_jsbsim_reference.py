@@ -18,7 +18,7 @@ recovers the 747 entry and scripts/gen_jsbsim_vortex_reference.py freezes the
 vortex encounters. There are exactly three, all of them under scripts/, and all
 of them freeze their output so nothing under atisim/ ever imports jsbsim.
 
-Design: docs/superpowers/specs/2026-08-20-jsbsim-737-verification-design.md
+Design: docs/design/specs/2026-08-20-jsbsim-737-verification-design.md
 
 Two rules govern everything here, and both come from measurements made before
 the design was written:

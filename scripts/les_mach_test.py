@@ -101,6 +101,8 @@ def main() -> None:
     ap.add_argument("--baseline", action="store_true",
                     help="fly the UNCORRECTED 747, to reproduce the number "
                          "being tested in this tree before changing anything")
+    ap.add_argument("--dataset", type=str, default=None,
+                    help="root of the Yoshimura figshare download; forwarded to les_flight.py")
     args = ap.parse_args()
 
     print("atisim imported from:", atisim.__file__)
@@ -137,6 +139,8 @@ def main() -> None:
     sys.argv = ["les_flight.py", "--domain", args.domain,
                 "--flights", str(args.flights), "--aircraft", name,
                 "--outdir", args.outdir]
+    if args.dataset:
+        sys.argv += ["--dataset", args.dataset]
     les_main()
 
 

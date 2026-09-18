@@ -9,7 +9,7 @@ rather than as a mysterious change in test results.
 Both the tests and the report read through this one parser, so a schema change
 breaks in a single place instead of two.
 
-Design: docs/superpowers/specs/2026-08-20-jsbsim-737-verification-design.md
+Design: docs/design/specs/2026-08-20-jsbsim-737-verification-design.md
 """
 
 import xml.etree.ElementTree as ET

@@ -160,7 +160,7 @@ FD2e §3.4 (printed p. 216) gives the body-axis wind-shear/rate equivalences:
 
 A rigid rotation gives `v = rx − pz`, hence `∂v/∂z = −p`. Equation 3.4-49 is
 inconsistent with 3.4-48 within the book's own framing. **Confirmed: the book is
-wrong.** The project's `docs/superpowers/specs/2026-08-14-...` records this
+wrong.** The project's `docs/design/specs/2026-08-14-...` records this
 independently; this audit re-derived it rather than transcribing the claim.
 
 ### 7.5 FD2e eq. 3.4-55 is wrong by a factor of −2

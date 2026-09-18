@@ -1,7 +1,5 @@
 # Phase 3 — Close Every Open Item: Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** At the end of Wed 23 September, every open item in `docs/PROJECT.md` §5, §7 and §8 carries one explicit terminal status with its evidence, and §0 holds nothing but the work that is deliberately parked.
 
 **Architecture:** Mostly a record-keeping phase with three cheap measurements. Day 1 corrects the record — stale rows, one error of mine from Phase 2, and a status table over every open item. Days 2–3 run the measurements that are genuinely cheap and genuinely new, each with its expected result sealed *before* it runs. Anything not reached by the hard stop becomes a FUTURE WORK row naming its route.
@@ -14,7 +12,7 @@
 
 ## Read this first — what the inventory found
 
-The plan in `docs/superpowers/specs/2026-09-17-final-release-cleanup-design.md` gave Phase 3 one day, sized on what §7 *says* is open. **Reading each item against the code and against §4 changed that list materially.**
+The plan in `docs/design/specs/2026-09-17-final-release-cleanup-design.md` gave Phase 3 one day, sized on what §7 *says* is open. **Reading each item against the code and against §4 changed that list materially.**
 
 **1. An error of mine from Phase 2, corrected first.** I wrote that "`ASSUMPTIONS.md` A1 and A2 stay open on `main`" — in §9 twice, in the spec, and in PR #9's description. **A2 is not open on `main`.** The compressibility branch merged in session 28 already models `g(z) = g₀(R/(R+z))²` (`atisim/dynamics.py:31`), and `ASSUMPTIONS.md` marks **A2 and A3 both retired**. Only **A1** — flat, non-rotating Earth — stays open. What the WGS-84 union would add beyond `main` is gravity's *latitude* variation (0.53%) and the centrifugal term, which `main`'s A2 already lists as still assumed. Task 1.
 
@@ -126,7 +124,7 @@ This is the table Task 3 inserts at the head of §5. **It is the phase's main de
 | File | Change | Task |
 |---|---|---|
 | `docs/PROJECT.md` | §0, §5, §6, §7, §8, §9 — supersede in place, never delete | 1–6, 12 |
-| `docs/superpowers/specs/2026-09-17-final-release-cleanup-design.md` | correct the A2 claim | 1 |
+| `docs/design/specs/2026-09-17-final-release-cleanup-design.md` | correct the A2 claim | 1 |
 | `atisim/predictions.py` | seal one new prediction; settle it | 7 |
 | `atisim/cr2144_mach.py` | add `automated_curves()`, `CrossCheck`, `crosscheck()` beside the existing `curves()` | 7 |
 | `atisim/tests/test_cr2144_crosscheck.py` | new | 7 |
@@ -160,7 +158,7 @@ Expected: a path ending `worktrees\new-session-943052\atisim\__init__.py`. **If 
 
 ### Task 1: Correct my A2 error, everywhere it was written
 
-**Files:** Modify `docs/PROJECT.md` (the two §9 sentences), `docs/superpowers/specs/2026-09-17-final-release-cleanup-design.md` (Phase 2 amendment). PR #9's description on GitHub.
+**Files:** Modify `docs/PROJECT.md` (the two §9 sentences), `docs/design/specs/2026-09-17-final-release-cleanup-design.md` (Phase 2 amendment). PR #9's description on GitHub.
 
 - [ ] **Step 1: Confirm the three places**
 
@@ -402,16 +400,13 @@ from atisim import cr2144_mach
 GOOD = ("cl_alpha", "cd_alpha", "cm_alpha", "cm_m")   # README confidence: good
 BAND_PCT_FS = 2.0
 
-
 @pytest.fixture(scope="module")
 def rows():
     return cr2144_mach.crosscheck()
 
-
 def test_every_hand_curve_finds_its_automated_counterpart(rows):
     compared = {(r.quantity, r.altitude) for r in rows}
     assert compared == set(cr2144_mach.curves()) - {("cm_q", a) for a in ("SL", "20K", "40K")}
-
 
 @pytest.mark.parametrize("quantity", GOOD)
 def test_the_two_readings_agree_on_the_good_panels(rows, quantity):
@@ -419,7 +414,6 @@ def test_the_two_readings_agree_on_the_good_panels(rows, quantity):
         assert r.median_pct_fs <= BAND_PCT_FS, (
             f"{quantity} {r.altitude}: median disagreement {r.median_pct_fs:.2f}% "
             f"of full scale over {r.n} points")
-
 
 @pytest.mark.parametrize("quantity", GOOD)
 def test_each_good_curve_sits_on_its_own_altitude(rows, quantity):
@@ -450,7 +444,6 @@ AUTO_NAME = {"cl_alpha": "p220_CL_alpha", "cd_alpha": "p220_CD_alpha",
              "cl_m": "p222_CL_M", "cd_m": "p222_CD_M", "cm_m": "p222_Cm_M"}
 AUTO_ALT = {"SL": "SL", "20K": "20000ft", "40K": "40000ft"}
 
-
 def automated_curves(csv_dir: Path = AUTO_DIR) -> dict:
     """{(quantity, altitude): (mach, value)} from the automated pp. 218-228
     trace, for the curves the hand reading also has. Lines starting '#' are the
@@ -468,7 +461,6 @@ def automated_curves(csv_dir: Path = AUTO_DIR) -> dict:
             out[(q, alt)] = (data[order, 0], data[order, 1])
     return out
 
-
 class CrossCheck(NamedTuple):
     quantity: str
     altitude: str
@@ -478,7 +470,6 @@ class CrossCheck(NamedTuple):
     median_px: float       # the same median, in the hand sheet's own pixels
     bias_pct_fs: float     # signed median (hand - automated), % of full scale
     best_altitude: str     # the automated altitude these hand points sit closest to
-
 
 def crosscheck(max_gap: float = 0.01, csv_dir: Path = AUTO_DIR) -> list:
     """Every hand-placed point, against the automated trace at the same Mach.
@@ -541,7 +532,6 @@ CONFIDENCE = {"cl_alpha": "good", "cd_alpha": "good", "cm_alpha": "good",
               "cm_m": "good", "cd_m": "fair", "cl_m": "poor",
               "cm_alpha_dot": "poor"}
 
-
 def main():
     print(f"{'quantity':14}{'alt':>5}{'conf':>6}{'n':>5}{'med %FS':>9}"
           f"{'max %FS':>9}{'med px':>8}{'bias %FS':>10}  sits on")
@@ -550,7 +540,6 @@ def main():
         print(f"{r.quantity:14}{r.altitude:>5}{CONFIDENCE[r.quantity]:>6}{r.n:>5}"
               f"{r.median_pct_fs:>9.2f}{r.max_pct_fs:>9.2f}{r.median_px:>8.1f}"
               f"{r.bias_pct_fs:>+10.2f}  {r.best_altitude}{swap}")
-
 
 if __name__ == "__main__":
     main()
@@ -733,7 +722,6 @@ from vortex_diagnose import _state_and_controls  # noqa: E402
 
 STILL = Path(atisim.__file__).parent / "tests" / "data" / "jsbsim_still_air_reference.xml"
 
-
 def main():
     enc = jsbsim_vortex_ref.load(STILL).encounters[("mehta", "mehta")]  # keyed (case, radius_source)
     state, controls = _state_and_controls(enc, enc.values["matched_altitude"])
@@ -759,7 +747,6 @@ def main():
 peak-to-peak n_z, still air:  JSBSim {np.ptp(js_nz):.4f} g   "
           f"AtiSim {np.ptp(at_nz):.4f} g")
     print(f"max |d theta|: {np.max(np.abs(at_th - js_th)) * RAD2DEG:.4f} deg")
-
 
 if __name__ == "__main__":
     main()

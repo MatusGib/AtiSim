@@ -2,15 +2,13 @@
 
 > **STATUS: COMPLETE through Task 13.** Tasks 1–5 were executed in a terminal session; Tasks 6–11 and 13 in a follow-up. **Task 12 is a stop-and-ask checkpoint and is still open** — see the end of this document. Three corrections were applied during execution and each is recorded inline where it applies: the cycle check (Task 1), the curvature normalisation (Task 7), and the gust incidence sign (Task 9).
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Replace the single-point wind sample plus CG-tangent gradient with a distributed sample across the airframe, so the model can carry flow fields whose scale approaches a wingspan — and make every constant's provenance machine-checkable.
 
 **Architecture:** Three phases, each ending in working, tested, committed software. Phase 1 builds a provenance ledger enforced by a test. Phase 2 (A1) replaces the tangent with a least-squares fit over the airframe, which introduces no new aerodynamic data and must reduce identically to today's model for linear fields. Phase 3 (A2) adds strip force integration, which is what actually captures curvature, calibrated so a rigid roll rate reproduces the tabulated `Clp`.
 
 **Tech Stack:** Python 3.10+, JAX (float64, `jax_debug_nans` on in tests), NumPy, pytest.
 
-**Design document:** `docs/superpowers/specs/2026-08-14-wind-shear-fidelity-design.md`. Read §2 before touching any sign convention — two equations in the source text are wrong and the design records which.
+**Design document:** `docs/design/specs/2026-08-14-wind-shear-fidelity-design.md`. Read §2 before touching any sign convention — two equations in the source text are wrong and the design records which.
 
 **Python interpreter for every command below:**
 `C:/Users/mateusz/UROP/Claude_Flight_Sim/.venv/Scripts/python.exe`
@@ -81,7 +79,6 @@ import pytest
 from atisim import provenance
 from atisim.provenance import LEDGER, Entry
 
-
 def test_every_entry_uses_one_of_the_four_categories():
     """Four categories, mutually exclusive. A fifth would mean the distinction
     review asked for has been blurred."""
@@ -90,7 +87,6 @@ def test_every_entry_uses_one_of_the_four_categories():
             f"{name} has category {entry.category!r}, "
             f"which is not one of {provenance.CATEGORIES}"
         )
-
 
 def test_sourced_and_declared_entries_carry_a_usable_detail():
     """A SOURCED entry without document, table and page is not sourced, it is
@@ -101,7 +97,6 @@ def test_sourced_and_declared_entries_carry_a_usable_detail():
         if entry.category in ("SOURCED", "DECLARED"):
             assert len(entry.detail) > 20, f"{name} has no usable detail"
 
-
 def test_derived_and_calibrated_entries_name_inputs_that_exist():
     """A DERIVED value is only as good as what it was derived from, so its
     inputs must themselves be in the ledger and reachable."""
@@ -110,7 +105,6 @@ def test_derived_and_calibrated_entries_name_inputs_that_exist():
             assert entry.inputs, f"{name} is {entry.category} but names no inputs"
             for dep in entry.inputs:
                 assert dep in LEDGER, f"{name} depends on {dep}, which is not in the ledger"
-
 
 def test_the_dependency_graph_has_no_cycles():
     """A cycle would let two numbers justify each other with nothing underneath.
@@ -123,7 +117,6 @@ def test_the_dependency_graph_has_no_cycles():
             assert current not in seen, f"{name} has a cyclic dependency via {current}"
             seen.add(current)
             stack.extend(LEDGER[current].inputs)
-
 
 def test_an_entry_with_an_unknown_category_is_rejected():
     """The rules must be able to fail. A test that can only pass demonstrates
@@ -174,7 +167,6 @@ from typing import NamedTuple
 
 CATEGORIES = ("SOURCED", "DERIVED", "CALIBRATED", "DECLARED")
 
-
 class Entry(NamedTuple):
     """One constant's provenance.
 
@@ -188,7 +180,6 @@ class Entry(NamedTuple):
     category: str
     detail: str
     inputs: tuple[str, ...] = ()
-
 
 LEDGER: dict[str, Entry] = {}
 ```
@@ -230,7 +221,6 @@ def test_the_747_reference_geometry_is_sourced_from_cr2144():
         assert LEDGER[name].category == "SOURCED"
         assert "IX-3" in LEDGER[name].detail, f"{name} must cite its table"
 
-
 def test_the_effective_tail_arm_is_derived_and_never_sourced():
     """It is a ratio of two tabulated derivatives, not a measured dimension.
     Quoting it as 747 geometry would be a category error -- design section 7d."""
@@ -238,14 +228,12 @@ def test_the_effective_tail_arm_is_derived_and_never_sourced():
     assert entry.category == "DERIVED"
     assert set(entry.inputs) == {"b747.Cmq", "b747.CLq", "b747.c"}
 
-
 def test_the_loading_shape_is_declared_and_carries_its_sensitivity():
     """Taper ratio is not in CR-2144 and is not recoverable from S, b and cbar
     (design section 3f), so the shape is a choice and must be reported as one."""
     entry = LEDGER["strip.loading_shape"]
     assert entry.category == "DECLARED"
     assert "sensitivit" in entry.detail.lower()
-
 
 def test_the_calibrated_lift_slope_names_the_number_it_is_pinned_to():
     """A calibrated value with no stated target is just a number."""
@@ -399,14 +387,12 @@ from atisim import airframe
 from atisim.aircraft import REGISTRY
 from atisim.units import FT2M
 
-
 def test_the_derived_tail_arm_matches_the_hand_computation():
     """CR-2144 FC9 gives CLq = 5.9450 and Cmq = -23.9232, so -Cmq/CLq = 4.0241
     chords. Asserted as a value so a change to either derivative shows up here
     rather than silently moving every sampled gradient."""
     ac = REGISTRY["boeing747"]
     assert float(airframe.effective_tail_arm(ac)) == pytest.approx(4.0241, rel=1e-4)
-
 
 def test_the_derived_tail_arm_lands_on_the_real_aircraft_geometry():
     """THE justification for the whole relation. The 747-100's centre of gravity
@@ -417,7 +403,6 @@ def test_the_derived_tail_arm_lands_on_the_real_aircraft_geometry():
     ac = REGISTRY["boeing747"]
     arm_ft = float(airframe.effective_tail_arm(ac) * ac.c) / FT2M
     assert 100.0 <= arm_ft <= 110.0, f"derived arm {arm_ft:.1f} ft is outside the real aircraft's"
-
 
 def test_only_the_two_747_configurations_pass_the_plausibility_gate():
     """The gate must be able to fire, and it fires on half the registry.
@@ -447,7 +432,6 @@ def test_only_the_two_747_configurations_pass_the_plausibility_gate():
         "cessna172": False,
         "cherokee": False,
     }, f"gate outcome changed: {passes}"
-
 
 def test_the_derived_arms_take_their_recorded_values():
     """Asserted per aircraft so a change to any CLq or Cmq surfaces here rather
@@ -507,7 +491,6 @@ from atisim.aircraft import Aircraft
 # sets whose CLq and Cmq disagree about what aircraft they describe.
 TAIL_ARM_BAND = (2.0, 6.0)
 
-
 def effective_tail_arm(ac: Aircraft) -> Array:
     """Distance from the CG to the effective tail centre of pressure, in chords.
 
@@ -528,7 +511,6 @@ def effective_tail_arm(ac: Aircraft) -> Array:
     a tail. Do not re-attempt it; see design section 3d.
     """
     return -ac.Cmq / ac.CLq
-
 
 def tail_arm_is_plausible(ac: Aircraft) -> bool:
     """Whether this aircraft's derivative set is self-consistent enough to sample.
@@ -581,7 +563,6 @@ def test_span_stations_cover_the_whole_span_symmetrically():
     assert span.max() == pytest.approx(float(ac.b) / 2.0)
     assert np.allclose(span, -span[::-1]), "span stations must be symmetric about the centreline"
 
-
 def test_longitudinal_stations_run_from_the_tail_to_the_cg():
     """Body x is positive forward, so the tail is at NEGATIVE x. Pitch damping
     comes overwhelmingly from the tail, so the fit is taken over the CG-to-tail
@@ -593,7 +574,6 @@ def test_longitudinal_stations_run_from_the_tail_to_the_cg():
     arm = float(airframe.effective_tail_arm(ac) * ac.c)
     assert lon.min() == pytest.approx(-arm)
     assert lon.max() == pytest.approx(0.0)
-
 
 def test_station_counts_are_configurable_for_the_convergence_study():
     """The count is DECLARED and needs a refinement study, so it must be a knob."""
@@ -624,7 +604,6 @@ from typing import NamedTuple
 N_SPAN = 9
 N_LON = 9
 
-
 class Stations(NamedTuple):
     """Body-axis offsets from the CG at which the wind field is evaluated.
 
@@ -637,7 +616,6 @@ class Stations(NamedTuple):
 
     span: Array  # (N,) m, body y, positive right
     longitudinal: Array  # (M,) m, body x, positive forward
-
 
 def stations(ac: Aircraft, n_span: int = N_SPAN, n_lon: int = N_LON) -> Stations:
     """Sample stations for an aircraft.
@@ -686,7 +664,6 @@ Append to `atisim/tests/test_wind.py`:
 ```python
 # --- A1: sampled gradients ---------------------------------------------------
 
-
 def _level_state(north=0.0, altitude=11278.0, u=236.0):
     """Wings-level, heading north, at altitude."""
     from atisim.state import State, euler_to_quat
@@ -697,7 +674,6 @@ def _level_state(north=0.0, altitude=11278.0, u=236.0):
         quat=euler_to_quat(jnp.array(0.0), jnp.array(0.0), jnp.array(0.0)),
         omega=jnp.zeros(3),
     )
-
 
 def test_a_uniform_field_produces_exactly_zero_sampled_rates():
     """Reduction property 1. A uniform field has no gradient, and a symmetric
@@ -713,7 +689,6 @@ def test_a_uniform_field_produces_exactly_zero_sampled_rates():
 
     rates = wind.sampled_rates(s.pos_ned, s.quat, field, st)
     assert np.array_equal(np.asarray(rates), np.zeros(3))
-
 
 def test_a_linear_field_reproduces_the_analytic_gradient_exactly():
     """Reduction property 2, and the one that makes A1 safe to adopt: a
@@ -735,7 +710,6 @@ def test_a_linear_field_reproduces_the_analytic_gradient_exactly():
     analytic = wind.gust_rates(s.pos_ned, s.quat, field)
     assert np.allclose(np.asarray(sampled), np.asarray(analytic), rtol=1e-9, atol=1e-12)
 
-
 def test_the_vortex_core_gives_the_same_pitch_rate_as_the_tangent():
     """Inside a Rankine core the vertical gust is LINEAR along track, so the
     secant and the tangent must agree exactly. This is the strength of this
@@ -754,7 +728,6 @@ def test_the_vortex_core_gives_the_same_pitch_rate_as_the_tangent():
     sampled = wind.sampled_rates(s.pos_ned, s.quat, field, st)
     analytic = wind.gust_rates(s.pos_ned, s.quat, field)
     assert float(sampled[1]) == pytest.approx(float(analytic[1]), rel=1e-9)
-
 
 def test_a_curved_field_makes_the_secant_differ_from_the_tangent():
     """The test that gives A1 a reason to exist. A quadratic gust profile has a
@@ -807,7 +780,6 @@ def _slope(coords: Array, values: Array) -> Array:
     """
     centred = coords - coords.mean()
     return (centred * (values - values.mean())).sum() / (centred * centred).sum()
-
 
 def sampled_rates(pos_ned: Array, quat: Array, field, stations) -> Array:
     """Body-axis (p, q, r) gust rates from a fit across the airframe.
@@ -971,7 +943,6 @@ def test_the_sampled_wind_model_matches_the_contract():
     assert omega_gust.shape == (3,)
     assert np.array_equal(np.asarray(out_key), np.asarray(key))
 
-
 def test_the_curvature_correction_across_the_parks_core_is_measured():
     """ASSUMPTIONS.md section E2 carries a scale ratio -- the Parks core is
     2.30-3.07 wingspans -- but has never carried a measured CONSEQUENCE. This
@@ -1108,7 +1079,6 @@ def test_the_elliptic_chord_integrates_to_the_sourced_wing_area():
     chord = np.asarray(airframe.elliptic_chord(jnp.asarray(y), ac))
     assert np.trapezoid(chord, y) == pytest.approx(float(ac.S), rel=1e-4)
 
-
 def test_the_calibrated_lift_slope_reproduces_the_sourced_Clp():
     """The calibration target, asserted directly. For elliptic loading the strip
     integral gives Clp_hat = -a0/8 (derived in the airframe.py docstring), so
@@ -1125,7 +1095,6 @@ def test_the_calibrated_lift_slope_reproduces_the_sourced_Clp():
     # strip theory and a cranked swept wing. A value near 6.28 would mean the
     # calibration had NOT absorbed those and would be the surprising outcome.
     assert a0 == pytest.approx(2.8014, rel=1e-3)
-
 
 def test_the_strip_integral_reproduces_stengels_closed_form_for_a_rectangular_wing():
     """Independent cross-check on the integration machinery, separate from the
@@ -1181,7 +1150,6 @@ def elliptic_chord(y: Array, ac: Aircraft) -> Array:
     c0 = 4.0 * ac.S / (jnp.pi * ac.b)
     normalised = 2.0 * y / ac.b
     return c0 * jnp.sqrt(jnp.maximum(1.0 - normalised * normalised, 0.0))
-
 
 def calibrated_lift_slope(ac: Aircraft) -> Array:
     """Effective section lift slope, pinned so the strip integral returns Clp.
@@ -1242,7 +1210,6 @@ Append to `atisim/tests/test_wind.py`:
 ```python
 # --- A2: strip integration ---------------------------------------------------
 
-
 def test_a_rigid_roll_rate_through_the_strip_integral_returns_the_sourced_Clp():
     """The calibration target, asserted end to end through the real integral
     rather than through the closed form it was derived from. This is validation
@@ -1256,7 +1223,6 @@ def test_a_rigid_roll_rate_through_the_strip_integral_returns_the_sourced_Clp():
     clp = wind.strip_clp_from_rate(ac, st, p_hat)
     assert clp / p_hat == pytest.approx(float(ac.Clp), rel=1e-3)
 
-
 def test_a_uniform_vertical_gust_produces_no_rolling_moment():
     """A gust that is the same at both tips cannot roll the aircraft. If this
     fails, the integration weights are asymmetric."""
@@ -1269,7 +1235,6 @@ def test_a_uniform_vertical_gust_produces_no_rolling_moment():
     s = _level_state()
     moment = wind.strip_roll_moment(s.pos_ned, s.quat, field, ac, st, 236.0)
     assert abs(float(moment)) < 1e-9
-
 
 def test_a_linear_gust_gradient_matches_the_equivalent_rate_answer():
     """The bridge between A1 and A2. For a gust varying linearly across the
@@ -1292,7 +1257,6 @@ def test_a_linear_gust_gradient_matches_the_equivalent_rate_answer():
     p_equivalent = -gradient
     equivalent = float(wind.strip_clp_from_rate(ac, st, p_equivalent * float(ac.b) / (2.0 * V)))
     assert strip == pytest.approx(equivalent, rel=1e-6)
-
 
 def test_a_curved_gust_profile_makes_the_strip_integral_differ_from_the_rate():
     """The reason Phase 3 exists. A cubic spanwise profile has the same
@@ -1348,7 +1312,6 @@ def _strip_rolling_coefficient(ac: Aircraft, stations, incidence: Array) -> Arra
     integrand = y * chord * a0 * incidence
     return -jnp.trapezoid(integrand, y) / (ac.S * ac.b)
 
-
 def strip_clp_from_rate(ac: Aircraft, stations, p_hat: Array) -> Array:
     """Rolling-moment coefficient produced by a rigid roll rate.
 
@@ -1359,7 +1322,6 @@ def strip_clp_from_rate(ac: Aircraft, stations, p_hat: Array) -> Array:
     """
     incidence = 2.0 * p_hat * stations.span / ac.b
     return _strip_rolling_coefficient(ac, stations, incidence)
-
 
 def strip_roll_moment(
     pos_ned: Array, quat: Array, field, ac: Aircraft, stations, airspeed: Array
@@ -1442,7 +1404,6 @@ def test_all_three_loading_shapes_enclose_the_same_wing_area():
             f"shape {name!r} does not enclose the sourced wing area"
         )
 
-
 def test_the_loading_shape_sensitivity_is_measured_and_recorded():
     """The spread across defensible shapes, on the hardest field the project
     holds. This number must be quoted with any strip result -- it is the cost
@@ -1514,7 +1475,6 @@ _SENSITIVITY_TAPER = 0.3
 
 _active_shape = "elliptic"
 
-
 @contextlib.contextmanager
 def loading_shape(name: str):
     """Temporarily select a spanwise loading shape, for the sensitivity sweep.
@@ -1533,7 +1493,6 @@ def loading_shape(name: str):
         yield
     finally:
         _active_shape = previous
-
 
 def chord_distribution(y: Array, ac: Aircraft, name: str | None = None) -> Array:
     """Spanwise chord for the named shape, scaled to the sourced wing area."""
@@ -1742,7 +1701,7 @@ In `atisim/provenance.py`, extend the `strip.loading_shape` detail with the meas
    **The three gust-rate signs are correct and independently verified** against
    Stengel eqs. 3.4-48, 3.4-50 and 3.4-52. Two equations in that source are
    wrong — eq. 3.4-49's sign, and eq. 3.4-55 by a factor of −2 — and
-   `docs/superpowers/specs/2026-08-14-wind-shear-fidelity-design.md` §2 records
+   `docs/design/specs/2026-08-14-wind-shear-fidelity-design.md` §2 records
    which, with the self-consistency test that found them. Read it before
    changing any sign here.
 ```

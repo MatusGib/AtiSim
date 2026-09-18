@@ -6,8 +6,9 @@ __pycache__/
 *.egg-info/
 runs/
 
-# Tooling scratch folders, not project content.
+# Tooling and editor folders, not project content.
 .impeccable/
+.claude/
 
 # Third-party reference PDFs. Kept on disk because several open questions can
 # only be closed by reading them, and deliberately kept out of history: they
@@ -60,3 +61,7 @@ Reference_papers/**/*.zip
 # check the trace against the scan. Derived data from a US Government source.
 # Session 32 found it UNTRACKED in the main checkout, which is rule 1b again.
 !Reference_papers/CR-2144/verification.pdf
+
+# The documentation site: build output, and the stub pages autosummary generates.
+docs/_build/
+docs/api/generated/

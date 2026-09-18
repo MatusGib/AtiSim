@@ -19,7 +19,7 @@ aircraft._boeing_737's docstring.
 Nothing here imports jsbsim. The reference is frozen in
 atisim/tests/data/jsbsim_737_reference.xml by scripts/gen_jsbsim_reference.py.
 
-Design: docs/superpowers/specs/2026-08-20-jsbsim-737-verification-design.md
+Design: docs/design/specs/2026-08-20-jsbsim-737-verification-design.md
 """
 
 import numpy as np

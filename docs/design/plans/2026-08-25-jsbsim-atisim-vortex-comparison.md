@@ -1,7 +1,5 @@
 # JSBSim / AtiSim Vortex-Encounter Comparison — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Fly AtiSim and JSBSim through the *same* Kelvin–Helmholtz vortex field and report where the two engines' load-factor and pitch responses agree, disagree, and diverge from Wingrove & Bach 1994's own measured numbers.
 
 **Architecture:** JSBSim is driven per-step through `atmosphere/wind-{north,east,down}-fps` from `atisim.wind.vortex_wind`, evaluated at JSBSim's own reported position, with fixed controls. The results are frozen to a checked-in XML by a generator that runs under a *separate* interpreter, exactly as the existing 737 verification does; the test suite and the report read the frozen file and never import jsbsim. AtiSim is then flown through the identical field and the two time histories are compared inside the core window.
@@ -368,7 +366,6 @@ CASES = [
 # argued. "wingrove" is Fig. 4's; "parks" is wind.py's incumbent.
 RADIUS_SOURCES = ("wingrove", "parks")
 
-
 def rankine(north, down, core_north, core_down, r0, v0):
     """Parks Eqs. (3)-(6), in plain numpy.
 
@@ -388,7 +385,6 @@ def rankine(north, down, core_north, core_down, r0, v0):
         w_up = -v0 * r0 * along / r2
     return np.array([w_h, 0.0, -w_up])   # NED, z down
 
-
 def trimmed(model, altitude_m, mach):
     fdm = jsbsim.FGFDMExec(None)
     fdm.set_debug_level(0)
@@ -406,7 +402,6 @@ def trimmed(model, altitude_m, mach):
     fdm["simulation/gravity-model"] = 0      # constant g, matching atisim
     fdm.set_dt(DT)
     return fdm
-
 
 def run_case(case, model, mach, radius_source, seconds_pad=6.0):
     """Fly one case with fixed controls and per-step wind injection.
@@ -474,7 +469,6 @@ def run_case(case, model, mach, radius_source, seconds_pad=6.0):
     return entry, samples, {"r0": r0, "v0": v0, "core_north": core_north,
                             "altitude": altitude, "duration": duration}
 
-
 def main():
     root = ET.Element("jsbsim_vortex_reference")
     prov = ET.SubElement(root, "provenance")
@@ -510,7 +504,6 @@ def main():
     ET.indent(root)
     OUT.write_text(ET.tostring(root, encoding="unicode"), encoding="utf-8")
     print(f"\nwrote {OUT}")
-
 
 if __name__ == "__main__":
     main()
@@ -555,7 +548,6 @@ import pytest
 
 from atisim import jsbsim_vortex_ref
 
-
 def test_reference_has_all_six_encounters():
     ref = jsbsim_vortex_ref.load()
     keys = set(ref.encounters)
@@ -565,12 +557,10 @@ def test_reference_has_all_six_encounters():
         ("morton", "wingrove"), ("morton", "parks"),
     }
 
-
 def test_cimarron_flew_the_737_and_hannibal_the_747():
     ref = jsbsim_vortex_ref.load()
     assert ref.encounters[("cimarron", "wingrove")].model == "737"
     assert ref.encounters[("hannibal", "wingrove")].model == "B747"
-
 
 def test_every_encounter_actually_saw_the_vortex():
     """A run where the wind never reached the aero is the silent failure here."""
@@ -614,7 +604,6 @@ import numpy as np
 
 REFERENCE = Path(__file__).parent / "tests" / "data" / "jsbsim_vortex_reference.xml"
 
-
 class Sample(NamedTuple):
     t: float
     north: float        # m, along-track from the start point
@@ -627,7 +616,6 @@ class Sample(NamedTuple):
     vtrue: float        # m/s
     elevator: float     # rad
 
-
 class Encounter(NamedTuple):
     case: str
     model: str          # JSBSim's model name
@@ -637,7 +625,6 @@ class Encounter(NamedTuple):
     values: dict        # mass, S, b, c, Iyy, density, airspeed, r0, v0, ...
     samples: list
 
-
 class Reference(NamedTuple):
     jsbsim_version: str
     dt: float
@@ -645,7 +632,6 @@ class Reference(NamedTuple):
     lead_in_radii: float
     gradient_injected: bool
     encounters: dict    # (case, radius_source) -> Encounter
-
 
 def load(path: Path = REFERENCE) -> Reference:
     root = ET.parse(path).getroot()

@@ -17,8 +17,13 @@ ui = ["dash", "plotly", "pyarrow"]
 # Same reasoning as `ui`: scripts/gen_jsbsim_reference.py is the ONLY file that
 # imports jsbsim, the tests read the frozen XML instead, and the suite must stay
 # runnable without a compiled extension. See
-# docs/superpowers/specs/2026-08-20-jsbsim-737-verification-design.md.
+# docs/design/specs/2026-08-20-jsbsim-737-verification-design.md.
 ref = ["jsbsim"]
+# The documentation site, built by Sphinx from docs/. MyST lets the existing
+# Markdown records -- PROJECT.md, ASSUMPTIONS.md, DEVELOPMENT.md -- render as
+# pages unchanged, so the site cannot drift from them. A separate extra for
+# the same reason as `ui`: nothing at runtime needs it.
+docs = ["sphinx>=7", "myst-parser>=2", "furo"]
 
 [build-system]
 requires = ["setuptools"]

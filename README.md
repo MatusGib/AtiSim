@@ -1,133 +1,139 @@
-# AtiSim ✈️
+# AtiSim
 
-**A Flight dynamics simulator focused on CAT**
+**A six-degree-of-freedom fixed-wing flight dynamics core in JAX, built to study how aircraft
+respond to clear-air turbulence — and validated by rebuilding real encounters from NASA flight
+records and flying the model through them.**
 
-![the panel](docs/summary/panel.png)
+![The AtiSim cockpit panel](docs/summary/panel.png)
 
----
+Quaternion state, fixed-step RK4, `lax.scan` rollouts, `jit` and `vmap` over ensembles, float64
+throughout. Wind enters only through the air-relative velocity, so any wind field — a vortex
+array identified from a flight recorder, a Dryden ensemble, a microburst, a mountain lee wave —
+drops into the same integrator.
 
-## The pitch
+## What it does
 
-Six degrees of freedom, quaternions, RK4, all of it JIT-compiled and vectorised Validated by taking real 
-CAT encounters out of old NASA papers rebuilding the wind field, and comparing the models response to 
-the real measured aircraft response.
+The headline test is the **Hannibal, Missouri encounter of 3 April 1981**: a DC-10 at 37,000 ft
+flew through a row of clear-air-turbulence vortices, and NASA identified the wind field from its
+flight recorder (Parks et al. 1985; Mehta 1987). AtiSim rebuilds that field, flies a Boeing 747
+through it, and compares the response with the recorded load.
 
-## Try it
+The simulated load reaches **75.3% of the recorded peak-to-peak** — and the documentation
+explains the shortfall rather than tuning it away. The model also reproduces the ordering and
+mechanism of NASA TM-102186's three-aircraft comparison, and the linear modes of its source data.
+The documentation's *Validation* page states the claim, the envelope it holds in, and the status
+of every known gap.
+
+## What it cannot do — read this first
+
+**AtiSim is a comparative and mechanistic tool, not a load calculator.** It will tell you which
+encounter is worse and why, and get the ordering right. It will not tell you "the load will be
+2.3 g": the recorded encounter was flown by a DC-10 at an unrecorded weight, and no DC-10
+derivative set is published.
+
+It is validated only inside this envelope:
+
+- 747-class transports, Mach 0.70–0.90, 35,000–45,000 ft
+- longitudinal response — lateral fields exist, lateral validation does not
+- angle of attack below about 10° — **the lift model has no stall**
+- gusts larger than about three wingspans
+- a flat, non-rotating Earth — a rotating WGS-84 model is complete on the `wgs84-earth` branch
+
+## Install
+
+Python 3.10 or later.
 
 ```bash
-git clone https://github.com/MatusGib/Atisim.git && cd Atisim
+git clone https://github.com/MatusGib/AtiSim.git
+cd AtiSim
 python -m venv .venv
 .venv/Scripts/python.exe -m pip install -e .
 ```
 
-Four dependencies. `jax`, `numpy`, `scipy`, `matplotlib`. That's the whole runtime.
-(++ — `.[dev]` for tests, `.[ui]` for the Dash app, `.[ref]` for comparisons with JSBSim) 
+On Linux and macOS use `.venv/bin/python`. The runtime needs four packages — `jax`, `numpy`,
+`scipy`, `matplotlib`. Extras: `.[dev]` for the tests and notebooks, `.[ui]` for the analysis
+app, `.[docs]` for the documentation site, `.[ref]` for regenerating the JSBSim comparison data.
 
-**Basic Sanity Checks:**
+## Quick start
+
+**The sanity ladder** — twelve cases from degenerate inputs upward, each expected value derived
+by hand and printed beside the model's answer:
 
 ```bash
 .venv/Scripts/python.exe scripts/sanity.py
 ```
 
-Twelve basic tests. Zero the wind, does it fly straight?
-Zero a coefficient so a motion becomes physically impossible, does the motion stop? Then
-signs, then numbers I worked out by hand and printed next to the model's answer so you can
-just... look at them. This is the "why should I believe any of this" script.
-
-**Then go fly it:**
-
-```bash
-.venv/Scripts/python.exe scripts/fly.py --aircraft cherokee
-```
-
-Arrow keys are the stick (up is stick *forward*, so up pitches you *down* — it's a stick,
-not a mouse). `,` `.` rudder. `-` `=` throttle. `[` `]` trim. `a` gives up and hands it to
-the autopilot.
-
-**If you want to fly it into a vortex:**
-
-```bash
-.venv/Scripts/python.exe scripts/fly.py --wind hannibal
-```
-
-That's the vortex array from the Hannibal, Missouri encounter. Good luck :)
-
-## The actually-interesting bit
+**Fly the Hannibal encounter** and draw the analysis figure:
 
 ```bash
 .venv/Scripts/python.exe scripts/vortex.py --case hannibal --png runs/v.png
 ```
 
-Mehta 1987 identified a five-vortex field from a real DC-10 encounter. I rebuilt it and
-flew my 747 through:
+**Fly it by hand**, with a cockpit display — arrow keys are the stick, `a` hands over to the
+autopilot:
 
-- gust peak lands on **−86.8 ft/s**, which is exactly the `V₀` the paper identified — that's
-  the Rankine core signature falling out on its own, I didn't tune it
-- load factor **−0.398 to +1.441 g** against the recorded **−1.0 to +1.7 g**. Inside the
-  band, about two thirds of the way across it
-- σ_n of **0.64 g**, where "severe" starts at 0.3
+```bash
+.venv/Scripts/python.exe scripts/fly.py --wind hannibal
+```
 
+**Explore a run** in the analysis app, where clicking any time series moves every panel —
+including the 3-D wind field with the trajectory through it — to that instant:
 
-## Limitations (for now :) )
+```bash
+.venv/Scripts/python.exe scripts/vortex.py --artifacts runs/analysis
+.venv/Scripts/python.exe -m atisim.apps.sweep runs/analysis
+```
 
-**This is a comparative tool, not a load calculator.** It'll tell you *which* encounter is
-worse and *why*, and it'll get the ordering right. It will not tell you "the load will be
-2.3 g." Absolute agreement is structurally out of reach, eg. I'm comparing a 747 to a DC-10 at
-0.8× the wing loading for one of the tests. I also have some smaller aircrafts but they are not very accurate 
-more as a fun thing to fy.
+Every one of the 44 scripts is described in the documentation's *Running it* page.
 
-It's only validated for:
-
-- 747-class transports, Mach 0.70–0.90, 35–45k ft
-- 737 validated at cruise using JSBsim
-- |α| under about 10° — **there is no stall in the aero model**, it'll happily fly you to 40°
-  and report nonsense with a straight face
-- gusts bigger than ~3 wingspans
-- longitudinal response. Lateral fields exist now, lateral *validation* doesn't
-  
-
-
-## References
-
-Every number in this repo has a paper behind it. `provenance.py` tracks whether a constant
-was SOURCED, DERIVED, CALIBRATED or just DECLARED, and there's a test that won't let a
-derived value point at something that doesn't exist. `docs/ASSUMPTIONS.md` is everything I
-*assumed*; `docs/PROJECT.md` is everything I *measured*, and I supersede rows rather than
-delete them so I can't quietly lose an inconvenient result.
-
- `predictions.py` I wrote down what I think would happen *before* some runs then use it 
- as a bit check to see if results are resonable
-
-
-**811 tests, ~12 minutes:**
-(I asked claude to add test make sure the code works...)
+## Tests
 
 ```bash
 .venv/Scripts/python.exe -m pytest -q
 ```
 
-## There's a UI too
+Over 900 tests, asserting bands and orderings rather than exact values. The count and runtime of
+the last full run are recorded in [`docs/PROJECT.md`](docs/PROJECT.md) §10. If you work in more
+than one checkout, first confirm which one Python imports:
 
 ```bash
-.venv/Scripts/python.exe -m atisim.apps.sweep runs/analysis
+.venv/Scripts/python.exe -c "import atisim; print(atisim.__file__)"
 ```
 
-Dash app. Click anywhere on a time series and every other panel — including the 3D wind
-field with the trajectory threaded through it — jumps to that same instant. Useful for
-"okay but *what* was the air doing when that happened."
+## Documentation
 
-## Poking around
+```bash
+.venv/Scripts/python.exe -m pip install -e .[docs]
+.venv/Scripts/python.exe -m sphinx -b html docs docs/_build/html
+```
 
-- [`docs/PROJECT.md`](docs/PROJECT.md) — the big one. What exists, what's measured, what's
-  broken, what's next. §10 lists all 23 scripts
-- [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md) — every assumption with a bound on it
-- [`docs/summary/atisim-summary.pdf`](docs/summary/atisim-summary.pdf) — 14 pages, plain
-  English, if you'd rather not read code
-- `Reference_papers/` — the actual sources
+The site covers getting started, what the model may be used for, every script, and the API
+reference generated from the source.
+
+- [`docs/PROJECT.md`](docs/PROJECT.md) — the standing record: what exists, what is measured and
+  to what tolerance, what is known to be wrong, and what is left
+- [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md) — every modelling assumption, each with a measured
+  bound
+- [`CHANGELOG.md`](CHANGELOG.md) — what this release contains, by capability
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — how to extend it without breaking the record
+
+## Why there is so much documentation
+
+Every number in AtiSim carries the table it came from, and `atisim/provenance.py` records whether
+each constant was sourced, derived, calibrated or declared — a test fails if a derived value
+points at something that does not exist. Every result is a row in `docs/PROJECT.md` beside the
+tolerance it was measured to. Superseded results are struck through rather than deleted, so an
+inconvenient finding cannot quietly disappear, and claims about untested cases are sealed in
+`atisim/predictions.py` *before* the run that decides them. It is more paperwork than a flight
+simulator usually carries; it is what lets the validation claim be checked rather than taken on
+trust.
+
+## Sources
+
+The reference documents are listed, with checksums and permanent locators, in
+[`Reference_papers/SOURCES.md`](Reference_papers/SOURCES.md). US Government documents are
+included; publisher-held papers are cited, not redistributed.
 
 ## License
 
 MIT — see [`LICENSE`](LICENSE), with [`NOTICE`](NOTICE) for what it does and does not cover.
-The reference documents the project reads are not
-redistributed; [`Reference_papers/SOURCES.md`](Reference_papers/SOURCES.md) lists each one with
-its licence basis and where to obtain it.
