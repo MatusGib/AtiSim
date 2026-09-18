@@ -43,6 +43,12 @@ Scripts that read a PDF all take a `--pdf`-style path argument for exactly this 
 | `Ger/schultz-2012-multiple-vortex-ring-model-of-the-dfw-microburst.pdf` | `26631f9d…2fcf` | Printed: "and is not subject to copyright protection in the United States" | Microburst vortex-ring structure |
 | `Xiao_ger/19910009769.pdf` — NASA, NTRS 19910009769 | `0f817b5d…6408` | NASA, US Government work | Background reading |
 
+## Regulations — public, read online, not stored
+
+| Document | Amendment | Where | What the project reads |
+|---|---|---|---|
+| **14 CFR 25.341**, *Gust and turbulence loads* | **Amdt. 25-141**, 80 FR 4762, 29 Jan 2015 | eCFR, `https://www.ecfr.gov/current/title-14/section-25.341`; read session 32 through Cornell LII's rendering, because ecfr.gov returned a bot check | **Nothing quantitative.** Assessed in session 32 as an independent check on MIL-F-8785C Fig. 7 and found not commensurable: `Uσref` is a design limit with no exceedance probability, constant above 24,000 ft. `PROJECT.md` §7 has the reasoning |
+
 ## Removed from the repository — fetch these yourself
 
 | Document | md5 | Held by | Where to get it |
