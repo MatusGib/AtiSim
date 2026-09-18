@@ -836,6 +836,68 @@ spacing from a free parameter into a cited one.
 
 Every figure below is measured, with the tolerance the test asserts.
 
+### Two readings of CR-2144 pp. 220–222, compared — and the hand reading is the better one — session 32
+
+**Session 30 read CR-2144 printed pp. 220–222 by hand** (295 Engauge points,
+`atisim/data/cr2144_p220_222_digitised.csv`), and every error estimate it made — interpolation,
+leave-one-out, a pixel Monte Carlo, the Table IX-4 residuals — was **internal to that one
+reading.** An **automated trace of pp. 218–228** (`Reference_papers/CR-2144/csv/`, RANSAC tick
+calibration at 300 dpi) was found untracked in session 32. A second trace of the same ink prices
+the first from outside. `scripts/cr2144_digitisation_crosscheck.py`; `atisim.cr2144_mach.crosscheck`.
+
+**Sealed first.** `cr2144_two_readings_agree_on_the_good_panels` was committed at `c41888a`,
+together with the script, while `crosscheck` did not exist — so no run could precede it. It
+predicted agreement within **2% of full scale** on the four panels the automated trace's own
+README rates *good*, 2% being that README's stated accuracy.
+
+**Measured: the prediction is WRONG, on one panel of four.** Median |hand − automated| as % of the
+panel's full scale, over the hand-placed points:
+
+| panel | confidence | SL | 20K | 40K |
+|---|---|---|---|---|
+| `CL_α` | good | 0.23 | 0.29 | 0.74 |
+| `CD_α` | good | 0.55 | 0.52 | 0.30 |
+| `Cm_α` | good | 0.27 | 0.22 | 0.56 |
+| **`Cm_M`** | good | 1.32 | **2.40** | **2.02** |
+| `CD_M` | fair | — | 1.80 | 9.08 |
+| `CL_M` | poor | 12.12 | 12.75 | 21.82 |
+| `Cm_α̇` | poor | 7.32 | 11.20 † | 0.91 † |
+
+† the hand 20K and 40K points sit closest to the automated **SL** curve: one of the two readings
+has the altitudes mislabelled on that panel, which the automated README warns is "partly
+interpretive". All twelve *good* curves sit on their own altitude. **`Cm_M` is biased the same way
+at all three altitudes** — a systematic offset, not scatter.
+
+**A disagreement does not say which reading is wrong, so both were scored against the same
+reference**: the value Table IX-4 implies at each circled flight condition through Appendix A,
+`cr2144_mach.backsolve` — the check session 30 used. RMS of reading − table:
+
+| | n | hand | automated | closer |
+|---|---|---|---|---|
+| **`Cm_M`** — declared on `boeing747` | 7 | **0.0063** | 0.0146 | **hand, 2.3×** |
+| **`CL_M`** — declared | 6 | **0.0358** | 0.1764 | **hand, 4.9×** |
+| **`CD_M`** — declared | 3 | **0.0054** | 0.0073 | **hand** |
+| `Cm_α̇` | 8 | 0.0674 | 0.6376 | hand, 9.5× |
+| `CD_α` | 8 | 0.0101 | 0.0368 | hand |
+| `Cm_α` | 6 | 0.0061 | 0.0076 | hand |
+| `CL_α` | 8 | 0.0354 | **0.0136** | **automated** |
+
+**What this establishes.** The `Cm_M` failure is the **automated trace's** bias. On all three
+speed derivatives the shipped 747 declares, the session-30 hand reading is the better-anchored of
+the two independent readings — so **this check supports the declared values rather than weakening
+them**, which is the first time they have been checked from outside their own reading. The
+automated `CL_M` stays within ±0.03 where the table implies values from −0.23 to +0.32 — it has
+traced the wrong line — and its `Cm_α̇` misses FC4 by 1.41, a wrong curve, exactly the two panels its
+README rates *poor*.
+
+**What it does not establish, and one thing it corrects.** On `CL_α` the automated trace is the
+closer one, so the hand reading carries an RMS error there of 0.035, about 0.8% of the value; no
+entry declares `CL_α` from it. **§7 had pointed at the automated `p221_Cm_adot` curve as the route
+to a Mach schedule for `Cmα̇`. It is 9.5× further from Table IX-4 than the hand reading, and must
+not be used for that** — §7's row is corrected. The pinned test marks `Cm_M`'s band as a strict
+`xfail` rather than widening it (`atisim/tests/test_cr2144_crosscheck.py`); a corrected automated
+trace would surface as an XPASS.
+
 ### What session 29's `mass` row measures — and what it does not — session 31
 
 **Asked directly: "the sensitivity analysis shows mass to have a huge impact, but the results
@@ -5303,7 +5365,7 @@ phase-1 gate, and touches no longitudinal claim and nothing in §1.
 | Build `boeing787_yoshimura` | **CLOSED**, session 27 — the row was stale; superseded in place |
 | Frozen-`C_Lα` LES test | **CLOSED**, session 27 — the row was stale; superseded in place |
 | Run the LES limb | **FUTURE WORK** — a 20% residual attributable to neither aircraft nor Mach, with the field reader shown sound |
-| Compare the two CR-2144 digitisations | *decided this phase* — Task 7, sealed as a prediction before it runs |
+| Compare the two CR-2144 digitisations | **MEASURED**, session 32 — the sealed prediction was WRONG on `Cm_M`, and the adjudication against Table IX-4 shows the automated trace is the biased one; the hand reading the 747 declares from is better-anchored on all three speed derivatives (§4) |
 | The α̇ derivatives | *decided this phase* — Task 10 reviews the rule-3 question, then parks the branch as **FUTURE WORK** |
 | Hannibal inventory items 2–6 | **FUTURE WORK** — each has its script already named in the inventory table below |
 | 14 CFR 25.341 | *decided this phase* — Task 8 |
@@ -6133,8 +6195,8 @@ disk. Session 26 received four more papers and closed items 3, 4 and 5 outright.
 | ~~**CR-2144 printed pp. 220–222**, the 747's derivative-vs-Mach curves~~ | **DONE session 30** — `scripts/cr2144_speed_derivatives.py`, checked against Table IX-4 at eight conditions; §4 has the entry. Session 28 called this the highest-value item on the list. **What is left from it is a DECISION rather than work**: whether `boeing747` declares the FC9 speed set, which moves the shipped phugoid, the Fig. 8 pins and the CAT headline |
 | ~~**TM-102186 Fig. 6**, the recorded g trace~~ | **DONE session 27** — `scripts/digitise_tm102186_fig6.py`; and it moved two numbers, see §4 |
 | ~~747 buffet onset boundary~~ | **DONE session 26** — `aircraft.buffet_cl` |
-| **compare the two independent digitisations of CR-2144 pp. 220–222** | **NEW, session 32, and it is the cheapest item on this list.** Session 30 read pp. 220–222 by hand through Engauge (`atisim/data/cr2144_dig/`, 295 placed points). `Reference_papers/CR-2144/`, found untracked this session, read pp. 218–228 automatically at 300 dpi with per-panel RANSAC tick calibration. **Neither has been compared with the other.** §4's session-30 entry prices the hand reading by interpolation, leave-one-out, a pixel Monte Carlo and the Table IX-4 residuals — all of which are *internal* to one reading. A second independent trace of the same ink prices it from **outside**, which nothing else on this list can do, and it needs no new source and no new method. Read the automated set's own confidence column first: it marks `CL_M` **poor** |
-| **the α̇ derivatives — `Cm_adot` from p.221, and the `Zwd` sign** | **NEW, session 32.** Two routes now exist and they should be run together. `claude/engine-validity-presentation-1408e8` (§0) restores Table IX-4's `Mwd` as `Cmadot` and argues `CLadot`'s sign is unsettleable from IX-4 or IX-5; `Reference_papers/CR-2144/csv/p221_Cm_adot_*.csv` is the printed **curve** for the same derivative, across Mach. The curve cannot settle the `Zwd` sign either — it is `Cm_adot`, not `CL_adot` — but it is what would turn a single tabulated value into a Mach schedule, and **its own README marks that panel `poor`**: the three altitude curves print within a line width of each other |
+| ~~**compare the two independent digitisations of CR-2144 pp. 220–222**~~ | **MEASURED, session 32 — §4, "Two readings of CR-2144".** The sealed prediction was WRONG on `Cm_M` (2.40% of full scale at 20K), but scored against Table IX-4 the automated trace is the biased one: **on all three declared speed derivatives the hand reading is the better-anchored**, `Cm_M` by 2.3×, `CL_M` by 4.9×. The first check of the declared values from outside their own reading, and it supports them. *Was:* **NEW, session 32, and it is the cheapest item on this list.** Session 30 read pp. 220–222 by hand through Engauge (`atisim/data/cr2144_dig/`, 295 placed points). `Reference_papers/CR-2144/`, found untracked this session, read pp. 218–228 automatically at 300 dpi with per-panel RANSAC tick calibration. **Neither has been compared with the other.** §4's session-30 entry prices the hand reading by interpolation, leave-one-out, a pixel Monte Carlo and the Table IX-4 residuals — all of which are *internal* to one reading. A second independent trace of the same ink prices it from **outside**, which nothing else on this list can do, and it needs no new source and no new method. Read the automated set's own confidence column first: it marks `CL_M` **poor** |
+| **the α̇ derivatives — `Cm_adot` from p.221, and the `Zwd` sign** | **NEW, session 32.** Two routes now exist and they should be run together. `claude/engine-validity-presentation-1408e8` (§0) restores Table IX-4's `Mwd` as `Cmadot` and argues `CLadot`'s sign is unsettleable from IX-4 or IX-5; ~~`Reference_papers/CR-2144/csv/p221_Cm_adot_*.csv` is the printed **curve** for the same derivative, across Mach.~~ **CORRECTED, session 32: the automated `Cm_adot` curve must not be used for this.** Scored against Table IX-4 it is 9.5× further off than the hand reading (RMS 0.638 against 0.067) and misses FC4 by 1.41 — a wrong curve. **The hand reading in `atisim/data/cr2144_p220_222_digitised.csv` carries `cm_alpha_dot` and is the one to schedule from.** The curve cannot settle the `Zwd` sign either — it is `Cm_adot`, not `CL_adot` — but it is what would turn a single tabulated value into a Mach schedule, and **its own README marks that panel `poor`**: the three altitude curves print within a line width of each other |
 | **the Hannibal flight record** (operator, tail, weight) | **FLIGHT IDENTIFIED, session 31 — weight still not found.**
 - **The flight is United Airlines Flight 12**, DC-10, Los Angeles → Newark, 3 April 1981, near Hannibal, MO. 20 passengers and 9 crew were injured, and it diverted to O'Hare. Source: NTSB Safety Recommendation letter A-84-108. NASA-CR-203832 (Lester & Chan 1996, the Ames incident table) lists it as "4/81 UA012 … DC-10 … 37,000".
 - ~~**NOT found: registration, variant (−10 or −30) and gross weight.**~~ **Registration and variant FOUND, later in session 31; weight still not found.**
@@ -8869,6 +8931,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/digitise_tm102186_fig6.py --outdir runs/cat` | **The recorded g trace (session 27).** Reads TM-102186 Fig. 6's G LOAD panel out of `Reference_papers/19890016606.pdf` at 600 dpi, column by column, as the top and bottom of the ink — nothing fitted, nothing smoothed. Prints the three checks (the paper's own band, a **negative control** on the vertical-wind panel, and the gust spacing) and writes `10-tm102186-fig6.png` plus `tm102186-fig6-gload.csv`. §4 has what it found. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/digitise_mil_f_8785c_fig7.py --outdir runs/cat --pdf refs/MIL-F-8785C.pdf` | **The severe-turbulence σ_w chart (session 27).** Digitises all nine curves of Fig. 7 from printed p. 49, flagging where two share **one stroke of ink** rather than reading a number out of a merge. Settles `mil_f_8785c_sigma_w_exceeds_the_mehta_ceiling`. Writes `11-mil-f-8785c-fig7.png` and `mil-f-8785c-fig7-lines.csv`. **`--pdf` is required from a worktree** — `refs/` is gitignored and lives only in the main checkout. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cr2144_speed_derivatives.py --dig-dir <folder> --csv-dir <folder> [--headline]` | **CR-2144's speed derivatives, digitised (session 30).** What it does, in order: (1) re-extracts the hand-placed points from the eight Engauge `.dig` files and compares them with the tracked CSV (`--write` regenerates it); (2) audits Engauge's own CSV exports; (3) checks every curve against Table IX-4 through Appendix A; (4) declares the FC9 set on a copy of the 747 and retests all four modes against Table IX-5; (5) prices the hand reading — interpolation, leave-one-out, a pixel Monte Carlo and the check residuals. `--headline` also flies Mehta's field with the set declared. Sections 3–5 run without either folder. **The eight `.dig` originals are tracked in `atisim/data/cr2144_dig/`**, which is where a bare `--dig-dir` looks. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cr2144_digitisation_crosscheck.py` | **CR-2144 pp. 220–222 read twice, compared (session 32).** Session 30's hand reading against the automated trace in `Reference_papers/CR-2144/csv/`: median disagreement per curve in % of full scale and in the hand sheet's pixels, plus which altitude each hand curve actually sits on. Then scores **both** against Table IX-4 at every circled condition through `cr2144_mach.backsolve`, which is what says which reading is off. Settles `cr2144_two_readings_agree_on_the_good_panels`. Seconds; reads no PDF. **The `PYTHONPATH` is not optional** — without it the script imports the main checkout. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/digitise_hannibal_horizontal_wind.py --pdf <Reference_papers/19890016606.pdf> --outdir runs/cat [--overlay] [--write]` | **The Hannibal horizontal wind, digitised (session 30).** Reads TM-102186 Fig. 7 (printed p. 3-5) at 300 dpi. It separates the solid MODEL line from the dotted ACTUAL curve by shape and calibrates through the printed labels and tick marks. Then it prints three checks: the vertical-panel calibration control, the sign test (as built against every core flipped), and ACTUAL minus AtiSim by stretch. `--overlay` writes `tm102186-fig7-classified.png`; `--write` regenerates the tracked `atisim/data/tm102186_fig7_winds.csv`. **`--pdf` is required from a worktree.** |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/digitise_parks_fig6_altitude.py --pdf <Reference_papers/parks-1985-identification-of-vortex-induced-clear-air-turbulence-JA22-2.pdf> --outdir runs/cat [--overlay] [--write]` | **The DC-10's altitude through the Hannibal encounter (session 30).** Reads Parks et al. 1985 Fig. 6 (printed p. 127) at 300 dpi and calibrates each panel on its own ticks, because the scan is skewed. It separates the measured (barometric) altitude from the dashed inertial estimate and reads the load, vertical-wind and airspeed panels for timing. It prints three checks (the paper's load band, its cruise altitude, one clock across panels), then the DC-10's altitude at each of Mehta's cores under both readings of the distance scale. Writes `parks-fig6-altitude.png`; `--overlay` writes `parks-fig6-classified.png`; `--write` regenerates the tracked `atisim/data/parks1985_fig6_altitude.csv`. **`--pdf` is required from a worktree.** |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/hannibal_along_track_wind.py --outdir runs/cat` | **What the along-track wind does to the 747 (session 30).** Reads the tracked CSV, so it needs no PDF. It flies seven fields (A as flown … G replayed plus the recorded miss) on the bare and shipped 747, and prints load, pitch, airspeed and each core-passage height. Writes `hannibal-along-track.json` and figures h1–h7. §4 has the table, and the double-counting finding it produced. Several minutes: 14 flights. |

@@ -229,6 +229,20 @@ PREDICTIONS: tuple[Prediction, ...] = (
         ),
         sealed_at="1091fc7",
         digest="72262a936af4ab7e",
+        status="SETTLED",
+        outcome=(
+            "WRONG, on one panel of four. Ten of the twelve good-panel curves "
+            "agree to 0.22-1.32% of full scale (CL_alpha 0.23/0.29/0.74, "
+            "CD_alpha 0.30/0.52/0.55, Cm_alpha 0.22/0.27/0.56, Cm_M SL 1.32), "
+            "but Cm_M reads 2.40% at 20K and 2.02% at 40K, biased the same way "
+            "at all three altitudes. The altitude half of the claim holds: "
+            "every good curve sits on its own altitude. Scored against Table "
+            "IX-4 at the circled conditions, the AUTOMATED trace is the one "
+            "that is off -- Cm_M RMS 0.0146 against the hand reading's 0.0063 "
+            "-- so the hand reading the shipped 747 declares its speed "
+            "derivatives from is the better-anchored of the two. Run: "
+            "scripts/cr2144_digitisation_crosscheck.py, session 32."
+        ),
     ),
 )
 

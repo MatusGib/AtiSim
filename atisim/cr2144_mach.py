@@ -110,6 +110,87 @@ def value(quantity: str, altitude: str, mach: float, scheme: str = "linear",
     raise ValueError(f"unknown scheme {scheme!r}")
 
 
+AUTO_DIR = Path(__file__).parent.parent / "Reference_papers" / "CR-2144" / "csv"
+
+# The automated trace names files by printed symbol and altitude in feet; the
+# hand reading uses snake_case quantities and SL / 20K / 40K. cm_q is absent
+# from the hand reading, so it is not mapped.
+AUTO_NAME = {"cl_alpha": "p220_CL_alpha", "cd_alpha": "p220_CD_alpha",
+             "cm_alpha": "p221_Cm_alpha", "cm_alpha_dot": "p221_Cm_adot",
+             "cl_m": "p222_CL_M", "cd_m": "p222_CD_M", "cm_m": "p222_Cm_M"}
+AUTO_ALT = {"SL": "SL", "20K": "20000ft", "40K": "40000ft"}
+
+
+def automated_curves(csv_dir: Path = AUTO_DIR) -> dict:
+    """{(quantity, altitude): (mach, value)} from the automated pp. 218-228
+    trace, for the curves the hand reading also has. Lines starting '#' are the
+    file's provenance header and are skipped."""
+    out = {}
+    for q, stem in AUTO_NAME.items():
+        for alt, suffix in AUTO_ALT.items():
+            p = Path(csv_dir) / f"{stem}_{suffix}.csv"
+            if not p.exists():
+                continue
+            lines = [ln for ln in p.read_text(encoding="utf-8").splitlines()
+                     if ln and not ln.startswith("#")]
+            data = np.array([[float(x) for x in ln.split(",")] for ln in lines[1:]])
+            order = np.argsort(data[:, 0], kind="stable")
+            out[(q, alt)] = (data[order, 0], data[order, 1])
+    return out
+
+
+class CrossCheck(NamedTuple):
+    quantity: str
+    altitude: str
+    n: int                 # hand points compared
+    median_pct_fs: float   # median |hand - automated|, % of the panel's full scale
+    max_pct_fs: float
+    median_px: float       # the same median, in the hand sheet's own pixels
+    bias_pct_fs: float     # signed median (hand - automated), % of full scale
+    best_altitude: str     # the automated altitude these hand points sit closest to
+
+
+def crosscheck(max_gap: float = 0.01, csv_dir: Path = AUTO_DIR) -> list:
+    """Every hand-placed point, against the automated trace at the same Mach.
+
+    A point is compared only where the automated trace has a sample within
+    `max_gap` Mach on BOTH sides. Its README records short gaps where curves
+    cross; interpolating across one would compare the hand reading against a
+    straight line the automated trace never drew.
+    """
+    hand, auto = curves(), automated_curves(csv_dir)
+
+    def residual(c: Curve, am: np.ndarray, av: np.ndarray) -> np.ndarray:
+        i = np.clip(np.searchsorted(am, c.mach), 1, len(am) - 1)
+        inside = (c.mach >= am[0]) & (c.mach <= am[-1])
+        near = (c.mach - am[i - 1] <= max_gap) & (am[i] - c.mach <= max_gap)
+        ok = inside & near
+        return c.value[ok] - np.interp(c.mach[ok], am, av)
+
+    rows = []
+    for (q, alt), c in sorted(hand.items()):
+        if (q, alt) not in auto:
+            continue
+        r = residual(c, *auto[(q, alt)])
+        if r.size == 0:
+            continue
+        nearest = {}
+        for a in AUTO_ALT:
+            if (q, a) in auto:
+                ra = residual(c, *auto[(q, a)])
+                if ra.size:
+                    nearest[a] = float(np.median(np.abs(ra)))
+        fs = c.value_span
+        rows.append(CrossCheck(
+            q, alt, int(r.size),
+            100.0 * float(np.median(np.abs(r))) / fs,
+            100.0 * float(np.max(np.abs(r))) / fs,
+            float(np.median(np.abs(r))) / c.value_per_px,
+            100.0 * float(np.median(r)) / fs,
+            min(nearest, key=nearest.get)))
+    return rows
+
+
 def perturbed(c: Curve, rng: np.random.Generator, sigma_px: float) -> Curve:
     """One Monte Carlo re-reading of a curve, in the sheet's own pixels.
 

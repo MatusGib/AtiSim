@@ -69,7 +69,7 @@ locator is worth more than 31 MB in a clone.
 | NASA TM-4745, Burcham 1996, *MD-11 augmented thrust-only flight control* | `c9458148…5d491` | 19960047451 | Not assessed |
 | NASA TM-1998-206552, Burcham, *MD-11/B-747 engine thrust emergency control* | `8e3f1eb3…f9fc` | 19980148010 | Not assessed |
 | Taylor 1978, *DC-10 derivatives: winglet and long-duct nacelle aero development* | `8524299a…1451` | 19780021106 | Not assessed |
-| `CR-2144/` — NASA CR-2144 page scans, digitised points and a verification sheet, 3.6 MB | see `CR-2144/manifest.csv` | — | The 747's derivative source. **The digitised points that matter are tracked** in `atisim/data/cr2144_dig/` and `atisim/data/cr2144_p220_222_digitised.csv`, so the scans are not needed to reproduce anything |
+| `CR-2144/` — NASA CR-2144 page scans, digitised points and a verification sheet, 3.6 MB | see `CR-2144/manifest.csv` | — | The 747's derivative source. **The digitised points that matter are tracked** in `atisim/data/cr2144_dig/` and `atisim/data/cr2144_p220_222_digitised.csv`, so the scans are not needed to reproduce anything. **The automated trace in `CR-2144/csv/` was scored against Table IX-4 in session 32** (`PROJECT.md` §4, "Two readings of CR-2144"): **do not use its `CL_M` or `Cm_adot`** — 4.9× and 9.5× worse than the hand reading, wrong curves — and prefer the hand reading for `Cm_M`. It is the better reading of `CL_alpha` only |
 
 Also on disk and gitignored since before this audit: `refs/` — NASA CR-2144, NASA CR-114494
 (Hanke & Nordwall, Boeing D6-30643), Caughey MAE 5070, Doyle et al. 2011, Oseguera & Bowles
