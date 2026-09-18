@@ -71,10 +71,10 @@ locator is worth more than 31 MB in a clone.
 | Document | md5 | NTRS ID | Status in the project |
 |---|---|---|---|
 | NASA CR-3677, Shollenberger et al. 1983, *Results of winglet development studies for DC-10 derivatives* | `a984a78c…b160c0` | 19850002628 | **PARTLY closes the DC-10 acquisition** (§7). Has Fig. 23 tail-off C_L vs α at M 0.82, Fig. 5 C_mCL vs Mach, Figs. 7–9 C_m vs α, Figs. 10/14/17 C_lβ/C_nβ/C_Yβ. **Lacks** C_mq, C_mα̇, the cruise drag polar, mass, inertias, CG and the reference S and c̄. Rigid model at model Reynolds number, no aeroelastic correction. **Not digitised; nothing flown** |
-| NASA CR-3748, Taylor, *DC-10 winglet flight evaluation* | `f8fb0080…c8708` | 19870008261 | Not assessed |
-| NASA TM-4745, Burcham 1996, *MD-11 augmented thrust-only flight control* | `c9458148…5d491` | 19960047451 | Not assessed |
-| NASA TM-1998-206552, Burcham, *MD-11/B-747 engine thrust emergency control* | `8e3f1eb3…f9fc` | 19980148010 | Not assessed |
-| Taylor 1978, *DC-10 derivatives: winglet and long-duct nacelle aero development* | `8524299a…1451` | 19780021106 | Not assessed |
+| NASA CR-3748, Taylor, *DC-10 winglet flight evaluation* | `f8fb0080…c8708` | 19870008261 | **Assessed, session 31**: weights, a buffet boundary (Fig. 32) and column-force static stability (Figs. 33–34). **No lift slope or derivatives.** Sources the DC-10-10 MTOW, 430,000 lb (p. 57) |
+| NASA TM-4745, Burcham 1996, *MD-11 augmented thrust-only flight control* | `c9458148…5d491` | 19960047451 | **Assessed, session 32: no derivative set.** MD-11 propulsion-controlled flight — phugoid and thrust-line principles, qualitatively, and flight time histories. No derivatives, mass, inertia or reference geometry |
+| NASA TM-1998-206552, Burcham, *MD-11/B-747 engine thrust emergency control* | `8e3f1eb3…f9fc` | 19980148010 | **Assessed, session 32: no derivative set.** As TM-4745, for the MD-11 and the 747-400 |
+| Taylor 1978, *DC-10 derivatives: winglet and long-duct nacelle aero development* | `8524299a…1451` | 19780021106 | **Assessed, session 32: no stability derivatives.** "Derivatives" means derivative *aircraft* — winglets and long-duct nacelles; wing pressure coefficients only |
 | `CR-2144/` — NASA CR-2144 page scans, digitised points and a verification sheet, 3.6 MB | see `CR-2144/manifest.csv` | — | The 747's derivative source. **The digitised points that matter are tracked** in `atisim/data/cr2144_dig/` and `atisim/data/cr2144_p220_222_digitised.csv`, so the scans are not needed to reproduce anything. **The automated trace in `CR-2144/csv/` was scored against Table IX-4 in session 32** (`PROJECT.md` §4, "Two readings of CR-2144"): **do not use its `CL_M` or `Cm_adot`** — 4.9× and 9.5× worse than the hand reading, wrong curves — and prefer the hand reading for `Cm_M`. It is the better reading of `CL_alpha` only |
 
 Also on disk and gitignored since before this audit: `refs/` — NASA CR-2144, NASA CR-114494
