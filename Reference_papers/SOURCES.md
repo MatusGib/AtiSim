@@ -1,6 +1,6 @@
 # Reference documents — what they are, and where to get them
 
-Every number in AtiSim carries the table it came from (`CLAUDE.md` rule 2, and
+Every number in AtiSim carries the table it came from (`docs/DEVELOPMENT.md` rule 2, and
 `atisim/provenance.py`). This file is the index of the documents those tables live in: what
 each one is, what the project reads from it, its md5 so you can confirm you have the same
 copy, and **where to fetch it**.
@@ -27,7 +27,7 @@ rather than the citation** — every result is a `PROJECT.md` §4 row naming the
 from.
 
 Scripts that read a PDF all take a `--pdf`-style path argument for exactly this reason
-(`CLAUDE.md` rule 5), so they work against a copy you fetch yourself, wherever you put it.
+(`docs/DEVELOPMENT.md` rule 5), so they work against a copy you fetch yourself, wherever you put it.
 
 ---
 
