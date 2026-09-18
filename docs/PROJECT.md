@@ -6836,6 +6836,29 @@ the lateral rows, which are recorded stale beside §6(h).
 crosscheck's eight, and the one xfail is `Cm_M`'s band, marked strict where the sealed prediction
 failed. §10's row is re-measured, not incremented.
 
+**10. Phase 4 — the documentation.** A Sphinx site in `docs/`, themed with Furo: **74 pages, zero
+warnings, built green by CI on a clean Linux runner** (`.github/workflows/docs.yml`, run
+35364436940, with warnings as errors). **Its narrative pages include sections of this file
+verbatim** through MyST's `{include}` — the *Running it* page is §10, the *Validation* page is §1's
+claim plus the §5 status table — so the site cannot carry a number the record does not. The API
+reference is generated from the docstrings, and a hook in `docs/conf.py` renders their plain-prose
+maths and aligned tables as written: the first build showed 26 of them as red error text.
+
+**What it changed besides adding pages.** `docs/superpowers/` became `docs/design/`, and the
+agent-tooling header was stripped from every plan in it. `SESSION_27_REPORT.md`'s verdict was
+harvested into the *Validation* page, brought up to date, and the file deleted. `CHANGELOG.md`
+groups the release by capability; checking it against `main`'s code corrected three of its own
+statements before they shipped. The README was rewritten — its quoted results predated session 30
+— and `CONTRIBUTING.md` added. **Checking the changelog's "44 scripts, each documented in §10" found
+nine that were not**, now all listed; two of them, `les_flight.py` and `les_compare.py`, hard-coded
+the maintainer's path to the LES dataset and could not run for anyone else. Both now take
+`--dataset` or `ATISIM_LES_ROOT`, with the old path as the default.
+
+**What phase 4 did NOT do:** enable GitHub Pages — it cannot publish from a private repository on a
+free plan, and the workflow's deploy job switches on by itself when the repository goes public; or
+add a test-suite workflow, which is phase 5's, because session 29 recorded two platform bit-pins
+failing on Linux and a red badge for a known platform difference would mislead.
+
 *The paragraph below was written at the end of phase 2 and is kept as written; point 9 above
 supersedes it where they differ — the α̇ work is now reviewed.*
 
@@ -8962,6 +8985,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 |---|---|
 | `.venv/Scripts/python.exe -m pytest -q` | **926 passed, 1 skipped, 1 xfailed, 0 failed, 1,561 s** (end of session 32's phase 3, on the tree `atisim.__file__` confirmed: the 918 below plus 8 of the 9 tests in `test_cr2144_crosscheck.py`. **The one xfail is deliberate and strict** — `Cm_M`'s band in that file, where a sealed prediction was measured WRONG and the band was marked rather than widened, §4. 928 collected). Before that **918 passed, 1 skipped, 0 failed, 1,092 s** (end of session 32, measured on the merged triage tree: the 906 below, plus 12 in `test_figures.py` from the panel-chrome fix applied across the rename. 919 collected. **Zero failures** — the 2 platform bit-pins that failed through session 29 are green here). Before that **906 passed, 1 skipped, 1,534 s** (end of session 30, after merging `main`'s session 29: 863 plus its 43). Before that **863 passed, 1 skipped, 1,716 s** (end of session 30: the arm moved to 5.70 ft and the Hannibal headline switched to the replayed field, with 2 new tests). Before that **861 passed, 1 skipped, 1,000 s** (session 30, after `boeing747` declared CR-2144's thrust line: 859 plus 2 in `test_cr2144_speed_derivatives.py`, with 9 existing tests re-pointed or re-captured — §4's thrust-line entry says which). Before that **859 passed, 1 skipped, 1,673 s** (session 30, after the Parks Fig. 6 altitude: 852 plus 7 in `test_parks_fig6_altitude.py`). Before that **852 passed, 1 skipped, 1,295 s** (the 844 below plus the 8 tests in `test_hannibal_horizontal_wind.py`). Before that, **844 passed, 1 skipped, 887 s** (measured session 30 after `boeing747` declared CR-2144's speed derivatives: 23 tests in `test_cr2144_speed_derivatives.py`, and 17 existing tests re-captured, moved onto the undeclared entry, split, or fixed — §4's session-30 entry, item 7, says which. Earlier the same session measured **843** before the declaration, which was 821 + 22 with nothing else moved. The wall clock is machine load, not the suite). Previously **821 passed, 1 skipped, 34m37s** at session 28 after the compressibility merge; 812 before it, same session; 811 at session 26; 807 at session 25; it was 788 at session 24 and **758 measured session 23b**; the 626 this row claimed was stale by five sessions, and the 322 before that by several more — this row has now been wrong twice, so re-measure it rather than trusting it). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. |
 | `.venv/Scripts/python.exe scripts/sanity.py` | **The ladder, for a reader who does not yet trust the model.** Twelve cases from degenerate inputs upward — zero the wind, zero a coefficient so a motion becomes impossible, then signs, then hand-computable numbers, then structural properties. Every expected value is derived by hand in the source and printed beside the model's answer, so it is read rather than trusted. Ends with the item 08 convention probe, which is a measurement rather than a pass/fail. |
+| `.venv/Scripts/python.exe -m sphinx -b html -W --keep-going docs docs/_build/html` | **Builds the documentation site (phase 4).** Needs the `docs` extra. The site's narrative pages `{include}` sections of this file verbatim — the *Running it* page **is** this section, the *Validation* page is §1's claim plus the §5 status table — so editing the record updates the site and nothing can drift. `-W` makes a warning an error, which is how CI runs it (`.github/workflows/docs.yml`); it builds clean with zero warnings. `docs/conf.py` carries a hook that renders the package's plain-prose docstrings as written. |
 | `.venv/Scripts/python.exe -m pytest --nbval-lax notebooks/ -q` | **The second gate.** Executes `notebooks/solver-validation.ipynb` so it cannot rot. Needs the `dev` extra (`jupyter`, `nbval`). Deliberately *not* in `testpaths` and `--nbval-lax` is deliberately *not* in `addopts`: that would make every `pytest` run fail with "unrecognized arguments" wherever nbval is absent. **Run it from a worktree with an ABSOLUTE `PYTHONPATH`** — nbval starts the kernel with its cwd in `notebooks/`, so a relative `PYTHONPATH=.` resolves to the wrong directory and `atisim` silently loads from the main checkout. |
 | `.venv/Scripts/python.exe scripts/checkpoint.py` | 747 only, no flags. Trim residuals, 60 s fixed-control hold, longitudinal modes against CR-2144 Table IX-5. |
 | `.venv/Scripts/python.exe scripts/tune.py --aircraft cherokee` | Autopilot step responses for one aircraft. Exits non-zero on failure, so it is usable as a gate. |
