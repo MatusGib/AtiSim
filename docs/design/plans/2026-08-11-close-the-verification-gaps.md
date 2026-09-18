@@ -1,7 +1,5 @@
 # Closing the verification gaps — plan and handover
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax.
-
 **Goal:** close the gaps session 11's verification pass identified, in the order their
 consequences bite, and leave the assumption register (`docs/ASSUMPTIONS.md`) true.
 
@@ -244,7 +242,6 @@ def test_trim_reports_a_physically_absurd_solution():
 # a run outside it "is not evidence of anything". 15 deg is a little beyond the
 # amber band, so a legitimate trim is never rejected.
 ALPHA_LIMIT = math.radians(15.0)
-
 
 def is_physical(x: Array) -> bool:
     """Is a trim solution a flight condition, as opposed to merely converged?

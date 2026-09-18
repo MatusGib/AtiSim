@@ -1,7 +1,5 @@
 # Wiring Strip Loads Into The 6-DOF — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Let strip-integrated aerodynamic loads reach the equations of motion, so the model can actually *fly* flow fields whose scale approaches a wingspan instead of only measuring the error in treating them as a point.
 
 **Architecture:** One additive seam. `dynamics.derivatives` gains an optional coefficient increment that is summed into the aero coefficients at the same place wind already enters; `integrate.step` computes it from an optional strip model and threads it through. The increment defaults to zeros, so a run that does not ask for strip loads is **bit-identical** to today. The point path is retained as both the default and the fallback for aircraft failing the tail-arm gate.
@@ -94,7 +92,6 @@ import pytest
 import atisim  # noqa: F401  -- enables x64 before any array is made
 from atisim import loads
 
-
 def test_the_zero_increment_is_all_zeros_and_correctly_shaped():
     """Every field must be a jnp array, not a Python float. integrate.batch_sim
     broadcasts every leaf of the carry and a Python scalar has no .shape, which
@@ -104,14 +101,12 @@ def test_the_zero_increment_is_all_zeros_and_correctly_shaped():
         assert hasattr(value, "shape"), f"{name} is not a jnp array"
         assert float(value) == 0.0, f"{name} is not zero"
 
-
 def test_the_increment_names_the_four_coefficients_it_carries():
     """Named, not positional. Lift, roll, pitch, yaw -- the four a spanwise and
     longitudinal load distribution can produce that this model has channels for.
     Side force and drag are omitted deliberately: strip theory over a spanwise
     incidence distribution does not produce them at first order."""
     assert loads.CoeffIncrement._fields == ("CL", "Cl", "Cm", "Cn")
-
 
 def test_increments_add():
     """Superposition. Two fields acting at once contribute independently, the
@@ -127,7 +122,6 @@ def test_increments_add():
     assert float(total.Cl) == pytest.approx(0.0)
     assert float(total.Cm) == pytest.approx(0.3)
     assert float(total.Cn) == pytest.approx(0.5)
-
 
 def test_adding_zero_changes_nothing_exactly():
     """Not approximately. This is what makes the default path bit-identical."""
@@ -180,7 +174,6 @@ from typing import NamedTuple
 import jax.numpy as jnp
 from jax import Array
 
-
 class CoeffIncrement(NamedTuple):
     """Additions to the aerodynamic coefficients, body/wind axes as `aero.py`."""
 
@@ -188,7 +181,6 @@ class CoeffIncrement(NamedTuple):
     Cl: Array
     Cm: Array
     Cn: Array
-
 
 def zero_increment() -> CoeffIncrement:
     """The default. Every field is a jnp array, not a Python float.
@@ -200,7 +192,6 @@ def zero_increment() -> CoeffIncrement:
     return CoeffIncrement(
         CL=jnp.array(0.0), Cl=jnp.array(0.0), Cm=jnp.array(0.0), Cn=jnp.array(0.0)
     )
-
 
 def add(a: CoeffIncrement, b: CoeffIncrement) -> CoeffIncrement:
     """Sum two increments. Superposition, the same property that licenses
@@ -276,7 +267,6 @@ def test_a_zero_increment_is_bit_identical_to_not_passing_one(test_aircraft):
         assert np.array_equal(
             np.asarray(getattr(without, field)), np.asarray(getattr(with_zero, field))
         ), f"{field} differs between omitting the increment and passing zero"
-
 
 def test_a_rolling_increment_produces_a_rolling_acceleration(test_aircraft):
     """The increment must actually reach the equations of motion, and reach the
@@ -471,7 +461,6 @@ def test_the_strip_increment_carries_roll_only_for_now():
     assert float(inc.Cm) == 0.0
     assert float(inc.Cn) == 0.0
 
-
 def test_the_strip_increment_uses_air_relative_speed_not_ground_speed():
     """The incidence a strip sees is set by the speed of the air over it. Using
     inertial speed would reintroduce exactly the error the whole air-relative
@@ -518,7 +507,6 @@ from atisim.aero import air_data
 from atisim.aircraft import Aircraft
 from atisim.dynamics import relative_velocity
 from atisim.state import State
-
 
 def strip_increment(state: State, field, ac: Aircraft, stations) -> CoeffIncrement:
     """Coefficient increment from integrating a wind field across the airframe.
@@ -612,7 +600,6 @@ def test_omitting_the_load_model_is_bit_identical_to_today(test_aircraft):
         np.asarray(plain.state.pos_ned), np.asarray(explicit.state.pos_ned)
     )
     assert np.array_equal(np.asarray(plain.state.quat), np.asarray(explicit.state.quat))
-
 
 def test_the_applied_increment_is_cached_on_the_sim_state(test_aircraft):
     """Same reason wind_ned and omega_gust are cached: a recorder or controller
@@ -783,7 +770,6 @@ def test_the_strip_model_refuses_an_aircraft_that_fails_the_tail_arm_gate():
         with pytest.raises(ValueError, match="tail arm"):
             loads.strip_model(lambda p: p * 0.0, ac)
 
-
 def test_the_strip_model_accepts_both_747_configurations():
     from atisim import loads
     from atisim.aircraft import REGISTRY
@@ -898,7 +884,6 @@ def test_flying_the_parks_vortex_with_strip_loads_changes_the_trajectory():
     print(f"\nParks core traverse, {steps} steps:")
     print(f"  position difference, point vs strip: {d_pos:.6f} m")
     assert np.isfinite(d_pos)
-
 
 def test_the_rigid_rotation_structure_diagnostic_is_reported_per_field():
     """Gate 7. The current point model is exactly equivalent to assuming the

@@ -48,7 +48,7 @@ was already scheduled for the PDFs.
 | `CLAUDE.md` at the root | **DONE, day 1.** → `docs/DEVELOPMENT.md`, 36 cross-references updated |
 | No licence, `license: null` on a public repo | **DONE, day 1.** MIT |
 | Repo description "Jax based vortex flight simulator ", no topics | **DONE, day 1.** Both set |
-| `docs/design/` — the directory name | **Phase 4c.** → `docs/design/`. **Deferred deliberately**: three unmerged branches modify files under it, so a rename now conflicts with all three |
+| `docs/superpowers/` — the directory name | **DONE, phase 4** → `docs/design/`: references updated in 21 files, the code ones comment-only. ~~**Phase 4c.** → `docs/design/`.~~ **Deferred deliberately**: three unmerged branches modify files under it, so a rename now conflicts with all three |
 | `docs/SESSION_27_REPORT.md` | **Phase 4c.** Its closing section states the validation claim more plainly than anything else in the repository. **Harvest that prose into the docs site, then delete the file** — not the other way round |
 | `PROJECT.md` §9, 32 session entries | **Phase 4c.** Becomes `CHANGELOG.md` keyed to **capabilities, not sessions** — the frame, the CAT validation, the sensitivity study, the compressibility work. §9 itself is kept, moved behind the docs site as the provenance appendix |
 | `PROJECT.md` §0, a work-in-progress inventory | **Phase 7.** Empty at the release, or every remaining row justified. §0 going empty *is* the finished signal |

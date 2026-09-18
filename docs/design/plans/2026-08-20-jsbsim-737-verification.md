@@ -1,7 +1,5 @@
 # JSBSim 737 Cross-Code Verification — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
 **Goal:** Verify AtiSim's aero build-up, trim solver, linearisation and integrator against JSBSim 1.3.1 by driving both engines with the same coefficients at the same conditions, and report the result as a PDF.
 
 **Architecture:** A generator script drives JSBSim and freezes its outputs into a reference XML. Tests read only that XML, so the suite never imports `jsbsim`. A `_boeing_737()` registry entry is built from derivatives recovered by finite-differencing the running engine — not read from `737.xml`, because JSBSim applies forces at the AERORP and takes moments about the CG, which changes `Cma` from −0.6 to −1.064.
@@ -52,7 +50,6 @@ Append to `atisim/tests/test_aero.py`:
 def test_mach_ram_defaults_to_neutral(test_aircraft):
     """A fixture built without mach_ram must behave exactly as before."""
     assert float(test_aircraft.mach_ram) == 0.0
-
 
 def test_mach_ram_raises_thrust_with_mach():
     """thrust = throttle * Fmax * (rho/rho0)^n * (1 + mach_ram * M^2)."""
@@ -177,7 +174,6 @@ import numpy as np
 
 REFERENCE = Path(__file__).parent / "tests" / "data" / "jsbsim_737_reference.xml"
 
-
 class Condition(NamedTuple):
     name: str
     altitude_m: float        # what JSBSim was run at
@@ -188,7 +184,6 @@ class Condition(NamedTuple):
     mass: float              # kg
     inertia: np.ndarray      # (3,3) kg m^2
 
-
 class Trim(NamedTuple):
     mode: str
     alpha: float
@@ -197,7 +192,6 @@ class Trim(NamedTuple):
     thrust: float            # N, total
     bank: float
 
-
 class SweepPoint(NamedTuple):
     alpha: float
     beta: float
@@ -205,13 +199,11 @@ class SweepPoint(NamedTuple):
     controls: np.ndarray     # (3,) rad: elevator, aileron, rudder
     coefficients: np.ndarray  # (6,) CL, CD, CY, Cl, Cm, Cn
 
-
 class Linearization(NamedTuple):
     A: np.ndarray            # (12,12)
     B: np.ndarray            # (12,4)
     x0: np.ndarray
     u0: np.ndarray
-
 
 class TrajectorySample(NamedTuple):
     t: float
@@ -221,7 +213,6 @@ class TrajectorySample(NamedTuple):
     altitude: float          # m
     controls: np.ndarray     # (3,) rad
     thrust: float            # N
-
 
 class Reference(NamedTuple):
     jsbsim_version: str
@@ -236,10 +227,8 @@ class Reference(NamedTuple):
     tolerances: dict[str, float]
     tolerance_derivations: dict[str, str]
 
-
 def _floats(text: str) -> np.ndarray:
     return np.array([float(v) for v in text.split()])
-
 
 def load(path: Path = REFERENCE) -> Reference:
     root = ET.parse(path).getroot()
@@ -424,7 +413,6 @@ def test_737_matches_reference_derivatives():
         if not hasattr(ac, name):
             continue
         assert float(getattr(ac, name)) == pytest.approx(expected, rel=1e-9), name
-
 
 def test_737_zeroes_the_derivatives_jsbsim_lacks():
     ac = REGISTRY["boeing737"]
