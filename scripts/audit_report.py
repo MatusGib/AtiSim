@@ -1,7 +1,6 @@
 """Generate the audit PDF FROM AUDIT.md.
 
-`AUDIT_PROMPT.md` requires the report to be *generated from* the markdown, not
-written directly, so that the PDF cannot drift from the document the findings
+The report is *generated from* the markdown, never written directly, so that the PDF cannot drift from the document the findings
 actually live in. This script is the only thing that writes the PDF, and it
 reads nothing else.
 

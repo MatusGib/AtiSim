@@ -60,6 +60,7 @@ Run: PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/les_flight.
 """
 
 import argparse
+import os
 from pathlib import Path
 from typing import NamedTuple
 
@@ -78,9 +79,13 @@ from atisim.units import RAD2DEG
 PALETTE = {"model": "#1D5D77", "reference": "#A9501C", "wind": "#3E6A48",
            "muted": "#7E8D93", "grid": "#D6DCD8"}
 
-LES_DIR = Path("C:/Users/mateusz/UROP/yoshimura-figshare-21152203/les")
-WORK = Path("C:/Users/mateusz/UROP/yoshimura-figshare-21152203/unpacked/"
-            "flightsim-data/work")
+# The Yoshimura et al. 2023 figshare dataset (21152203, CC BY 4.0; 17.9 GB), held
+# OUTSIDE the repository. Its root is the directory holding `les/` and
+# `unpacked/`. Pass --dataset, or set ATISIM_LES_ROOT; the default is where the
+# maintainer's copy lives. docs/DEVELOPMENT.md rule 5: a script that reads data
+# the repository does not hold takes its location as an argument.
+DATASET = Path(os.environ.get("ATISIM_LES_ROOT",
+                              "C:/Users/mateusz/UROP/yoshimura-figshare-21152203"))
 
 # The four nested domains, and the flightsim output directory each one drove.
 DOMAINS = {"D01": "500m", "D02": "250m", "D03": "70m", "D04": "35m"}
@@ -483,6 +488,8 @@ def _highpass(x, dt, f_cut):
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--outdir", type=Path, default=Path("runs/cat"))
+    ap.add_argument("--dataset", type=Path, default=DATASET,
+                    help="root of the Yoshimura figshare download (or ATISIM_LES_ROOT)")
     ap.add_argument("--domain", default="D03", choices=sorted(DOMAINS))
     ap.add_argument("--flights", type=int, default=24)
     ap.add_argument("--dt", type=float, default=0.02)
@@ -494,8 +501,9 @@ def main() -> None:
     args.outdir.mkdir(parents=True, exist_ok=True)
 
     res = DOMAINS[args.domain]
-    ctl = parse_ctl(LES_DIR / args.domain / "grads_file.ctl")
-    flightsim = WORK / f"results-1000_mand_{res}.nc-2D"
+    ctl = parse_ctl(args.dataset / "les" / args.domain / "grads_file.ctl")
+    flightsim = (args.dataset / "unpacked" / "flightsim-data" / "work"
+                 / f"results-1000_mand_{res}.nc-2D")
 
     print("=" * 78)
     print(f"ATISIM THROUGH YOSHIMURA'S LES FIELD -- {args.domain} ({res} grid)")

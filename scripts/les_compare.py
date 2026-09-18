@@ -25,6 +25,7 @@ Run: PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/les_compare
 """
 
 import argparse
+import os
 import csv
 import glob
 from pathlib import Path
@@ -35,8 +36,14 @@ import numpy as np
 PALETTE = {"model": "#1D5D77", "reference": "#A9501C", "wind": "#3E6A48",
            "muted": "#7E8D93", "grid": "#D6DCD8"}
 
-WORK = Path("C:/Users/mateusz/UROP/yoshimura-figshare-21152203/unpacked/"
-            "flightsim-data/work")
+# The Yoshimura et al. 2023 figshare dataset (21152203, CC BY 4.0; 17.9 GB), held
+# OUTSIDE the repository. Its root is the directory holding `les/` and
+# `unpacked/`. Pass --dataset, or set ATISIM_LES_ROOT; the default is where the
+# maintainer's copy lives. docs/DEVELOPMENT.md rule 5: a script that reads data
+# the repository does not hold takes its location as an argument.
+DATASET = Path(os.environ.get("ATISIM_LES_ROOT",
+                              "C:/Users/mateusz/UROP/yoshimura-figshare-21152203"))
+WORK = DATASET / "unpacked" / "flightsim-data" / "work"
 DOMAINS = [("D01", "500m", 500.0), ("D02", "250m", 250.0),
            ("D03", "70m", 70.0), ("D04", "35m", 35.0)]
 YOSH_DT = 0.0078125
@@ -109,7 +116,11 @@ def atisim(outdir, domain, res, dt=0.02):
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--outdir", type=Path, default=Path("runs/cat"))
+    ap.add_argument("--dataset", type=Path, default=DATASET,
+                    help="root of the Yoshimura figshare download (or ATISIM_LES_ROOT)")
     args = ap.parse_args()
+    global WORK
+    WORK = args.dataset / "unpacked" / "flightsim-data" / "work"
 
     rows = []
     print("=" * 78)
