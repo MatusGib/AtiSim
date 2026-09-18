@@ -67,4 +67,6 @@ record and the site follows. The build should finish with no warnings.
 ## Pull requests
 
 Describe what was measured and what changed, and say what you did **not** do and why — negative
-results and abandoned approaches are findings too. Run the full suite and state its result.
+results and abandoned approaches are findings too. Run the full suite and state its result. CI
+runs the suite and executes both notebooks (`pytest --nbval-lax notebooks/`) on every pull
+request, so a notebook that stops running fails it.

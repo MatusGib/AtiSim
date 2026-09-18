@@ -60,6 +60,9 @@ the tolerance it was measured to.
   against an independent trace of the same pages.
 - A sensitivity study that differentiates the model in its own coefficients.
 - Sealed predictions, committed before the run that decides them (`atisim/predictions.py`).
+- Two executed notebooks: `notebooks/validation-ladder.ipynb` re-runs the evidence behind the
+  validation claim, from hand-derived checks to the recorded encounter and the published
+  orderings; `notebooks/solver-validation.ipynb` verifies the solver.
 
 ### Analysis and tooling
 
@@ -67,6 +70,8 @@ the tolerance it was measured to.
   with a shared time cursor across every panel.
 - 44 scripts, each documented in [`docs/PROJECT.md`](docs/PROJECT.md) §10, and a Sphinx
   documentation site built from the same record.
+- Continuous integration on a clean Linux runner: the full test suite and both notebooks on
+  every pull request, and the documentation site built with warnings treated as errors.
 
 ### Known issues
 

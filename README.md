@@ -56,8 +56,17 @@ app, `.[docs]` for the documentation site, `.[ref]` for regenerating the JSBSim 
 
 ## Quick start
 
-**The sanity ladder** — twelve cases from degenerate inputs upward, each expected value derived
-by hand and printed beside the model's answer:
+**Walk the validation ladder** — one notebook that re-runs the evidence behind the validation
+claim, from answers you can work out by hand up to the recorded encounter and the published
+orderings, asserting each as it goes. It needs the `dev` extra and takes a few minutes:
+
+```bash
+.venv/Scripts/python.exe -m pip install -e .[dev]
+.venv/Scripts/python.exe -m jupyter lab notebooks/validation-ladder.ipynb
+```
+
+**The sanity checks** on their own — eleven cases from degenerate inputs upward, each expected
+value derived by hand and printed beside the model's answer:
 
 ```bash
 .venv/Scripts/python.exe scripts/sanity.py
@@ -93,8 +102,15 @@ Every one of the 44 scripts is described in the documentation's *Running it* pag
 ```
 
 Over 900 tests, asserting bands and orderings rather than exact values. The count and runtime of
-the last full run are recorded in [`docs/PROJECT.md`](docs/PROJECT.md) §10. If you work in more
-than one checkout, first confirm which one Python imports:
+the last full run are recorded in [`docs/PROJECT.md`](docs/PROJECT.md) §10. The notebooks are a
+second gate, executed cell by cell:
+
+```bash
+.venv/Scripts/python.exe -m pytest --nbval-lax notebooks/
+```
+
+CI runs both on every pull request. If you work in more than one checkout, first confirm which
+one Python imports:
 
 ```bash
 .venv/Scripts/python.exe -c "import atisim; print(atisim.__file__)"
