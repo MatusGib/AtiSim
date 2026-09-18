@@ -5218,6 +5218,81 @@ of them stale. If one moves, the derivative chain or the integrator changed.
 > happens, with a measured bound on each. Two of its entries are load-bearing enough to be
 > repeated here.
 
+### Status of every open item, at the release — session 32
+
+**Every open item in §5, §7 and §8 carries exactly one of four statuses.** This table is the
+index; the entry below it, or the section it names, is the evidence. Read this first if you
+want to know what the model can and cannot be used for, and what is left to do.
+
+| Status | Means |
+|---|---|
+| **CLOSED / MEASURED / BOUNDED** | answered — by a measurement in §4, a bound with its size, or a guard in code |
+| **IMPOSSIBLE WITH SOURCES HELD** | cannot be answered from any document the project holds, and the row names which source failed and why (`docs/DEVELOPMENT.md` rule 2) |
+| **FUTURE WORK** | a named, credible route exists and this release does not take it. **Not** a defect in the release; the list a successor starts from |
+| **OUT OF SCOPE** | deliberately outside what the model is for, and declared |
+
+**Established by reading each item against the code and against §4, not against its own
+wording** — which is how five of them were found already closed (§9, session 32).
+
+#### §5 — attributed gaps and structural impossibilities
+
+| # | Item | Status | Evidence / route |
+|---|---|---|---|
+| 5.1 | Vortex core 2.3–3.1 spans, gust sampled at a point | **BOUNDED** | point-gust cost ≤ 4.4% on the headline (5.19); the strip path exists since session 24 |
+| 5.2 | No wind varied across the span | **CLOSED**, session 24 | the lateral phase |
+| 5.3 | No frequency-domain comparison | **CLOSED** (capability), session 25 · **IMPOSSIBLE WITH SOURCES HELD** (an in-band published curve) | HICAT is 45–70 kft against this project's 33–41 kft |
+| 5.4 | Gravity constant | **CLOSED** by session 28's merge — `g(z)` modelled | latitude (0.53%) and centrifugal stay DECLARED; `wgs84-earth` retires them (§0) |
+| 5.5 | Phugoid / short-period offsets | Mach content **CLOSED**, session 30 · `Ṁw` **FUTURE WORK** · `Żw` sign **IMPOSSIBLE WITH SOURCES HELD** | `Ṁw`: the α̇ branch, reviewed and parked (§0). `Żw`: IX-4 and IX-5 cannot arbitrate its sign |
+| 5.6 | CR-2144 derivatives are the flexible airframe | **BOUNDED**, session 23 | the constant-Mach, two-altitude argument |
+| 5.7 | `trim` converges to absurd roots for degenerate coefficients | **BOUNDED** — guarded | the 15° bound, non-binding on the registry's 0.01°–5.62° |
+| 5.8 | Drag polar away from its fitted point | **BOUNDED** | residuals 0.004 / 0.014 / 0.006, quantified |
+| 5.9 | Vortex parameter uncertainty | first layer **MEASURED** (8.45%) · second layer **IMPOSSIBLE WITH SOURCES HELD** | NASA's DC-10 aerodynamic model is unpublished (TM-102186 §2) |
+| 5.10 | Lee wave has no horizontal perturbation | **IMPOSSIBLE WITH SOURCES HELD** | Doyle et al. give neither N nor cross-mountain U at 12 km |
+| 5.11 | Lee-wave wavelength declared | **BOUNDED** — declared, cross-checked | Lester et al. 1989 measure ~22 km, 12% from the declared 25 |
+| 5.12 | 747 cannot fly a microburst | **CLOSED**, session 10 | |
+| 5.13 | FAA windshear thresholds are jet-only | **CLOSED** | physical verdict `F > (T−D)/W`; `σ_n` for altitude |
+| 5.14 | Approach 747 below minimum-drag speed | **OUT OF SCOPE** | flown open loop, stated |
+| 5.15 | No ground | **OUT OF SCOPE** | runs cut at one wingspan |
+| 5.16 | Two errors in the sources | **CLOSED** — documented | take microburst geometry from Schultz Table 2 |
+| 5.17 | Hannibal dated two ways | **CLOSED**, session 31 | NTSB CHI81DA042: 3 April 1981 |
+| 5.18 | ±g asymmetry | buffet boundary **CLOSED**, session 26 · nonlinear lift curve **IMPOSSIBLE WITH SOURCES HELD** | CR-114494 draws `CL_BASIC` as straight lines |
+| 5.19 | Absolute agreement with recorded g-loads | **IMPOSSIBLE WITH SOURCES HELD** · route **FUTURE WORK** | aircraft identified (N1809U, DC-10-10); the weight on the day is not found. Routes: the NTSB docket, the NTSB pre-1982 database (39 MB Access file, not tried), and the 1982 SFTE paper by Parks, Bach & Wingrove |
+| 5.20 | Half the Fig. 8 load band unreachable | **IMPOSSIBLE WITH SOURCES HELD** — structural | linear aero; the same ceiling as 5.18 |
+
+#### §7 — the plan's open rows
+
+| Row | Status |
+|---|---|
+| DC-10 cruise derivative set | *decided this phase* — Task 9 of the phase-3 plan reads the three papers not yet assessed. CR-3677 lacks `Cmq`, `Cmα̇`, mass, inertias, S, c̄; CR-3748 has no derivatives (session 31) |
+| Hannibal flight record | flight and aircraft **CLOSED**, session 31 · weight as 5.19 |
+| Build `boeing787_yoshimura` | **CLOSED**, session 27 — the row was stale; superseded in place |
+| Frozen-`C_Lα` LES test | **CLOSED**, session 27 — the row was stale; superseded in place |
+| Run the LES limb | **FUTURE WORK** — a 20% residual attributable to neither aircraft nor Mach, with the field reader shown sound |
+| Compare the two CR-2144 digitisations | *decided this phase* — Task 7, sealed as a prediction before it runs |
+| The α̇ derivatives | *decided this phase* — Task 10 reviews the rule-3 question, then parks the branch as **FUTURE WORK** |
+| Hannibal inventory items 2–6 | **FUTURE WORK** — each has its script already named in the inventory table below |
+| 14 CFR 25.341 | *decided this phase* — Task 8 |
+| NASA TP-2469, Sharman et al. 2014, MIL-STD-1797A | **FUTURE WORK** |
+| Sensitivity study: C3's α axis, interaction terms | **FUTURE WORK** — both are declared limits of the study |
+
+#### §8 — open questions
+
+| Question | Status |
+|---|---|
+| Where would Fig. 8's pitch axis fail? | **IMPOSSIBLE WITH SOURCES HELD** — needs a nonlinear lift curve, which no held source publishes |
+| Why do the two engines choose different cores on the array? | **FUTURE WORK** — §8 names the discriminator (a still-air run of the same length from the same state); JSBSim 1.3.1 is installed on the reference interpreter to run it |
+| Units of Mehta's cost `J`, and `N` | **IMPOSSIBLE WITH SOURCES HELD** — Mehta 1987 never labels `J`. The 4.46 m/s ceiling stands unconditionally; the 2.11 m/s split does not |
+| Cost of the `PARKS_CASES` hybrid | **CLOSED** — moot since session 26, verified in code session 32 |
+
+#### The one sealed prediction
+
+`dc10_does_not_close_the_hannibal_gap` stays **SEALED and unedited** (`atisim/predictions.py`,
+rule 1). It is **IMPOSSIBLE WITH SOURCES HELD** to settle: it needs a DC-10 built from a
+published derivative set. The 747's peak-to-peak has moved since it was sealed — 1.8385 g then,
+about 2.03 g now (75.3% of 2.70 g) — but its band is absolute, **[1.563, 2.114] g**, so it
+remains decidable exactly as written.
+
+
 **Attributed — understood, documented, not bugs:**
 
 - **The Parks vortex core is 2.3–3.1 wingspans, and the gust field is sampled at a point.**
