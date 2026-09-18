@@ -1,0 +1,39 @@
+name: tests
+
+# The full test suite, then the executed notebooks, on a clean Linux runner.
+# Runs on pull requests and on main rather than on every push: the suite takes
+# the better part of half an hour, and the notebooks re-run real flights.
+# JSBSim is not installed -- the suite reads the frozen reference XML and never
+# imports it (pyproject.toml, the `ref` extra).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+      - name: Install the package with the test and analysis extras
+        run: python -m pip install -e .[dev,ui]
+      - name: Confirm which tree is under test
+        run: python -c "import atisim; print(atisim.__file__)"
+      - name: Test suite
+        run: python -m pytest -q -p no:cacheprovider --durations=15
+      - name: Executed notebooks
+        run: python -m pytest --nbval-lax notebooks/ -q -p no:cacheprovider
