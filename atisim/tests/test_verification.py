@@ -97,7 +97,15 @@ def test_extracting_rk4_step_did_not_move_a_single_bit():
     """
     _, traj = _fixed_control_rollout(0.02, 500)
     got = hashlib.sha256(np.asarray(traj.vel_body).tobytes()).hexdigest()
-    assert got == PRE_REFACTOR_VEL_HASH
+    # The bits depend on the arithmetic environment as well as the code: the
+    # JAX and NumPy versions (PROJECT.md section 4), and OpenBLAS's kernels,
+    # which it picks by CPU. On a host with AVX-512 it rounds differently, and
+    # OPENBLAS_CORETYPE=Haswell reproduces this pin there (measured on ten CI
+    # runners). CI sets it; a local run on such a host needs it too.
+    assert got == PRE_REFACTOR_VEL_HASH, (
+        "rollout bits moved. If no model code changed, check the environment: "
+        "JAX 0.6.2 and NumPy 2.2.6, and OPENBLAS_CORETYPE=Haswell on an AVX-512 host"
+    )
 
 
 def test_rk4_is_fourth_order_on_a_problem_with_a_closed_form():
