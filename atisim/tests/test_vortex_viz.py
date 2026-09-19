@@ -291,6 +291,37 @@ def test_the_figure_builds_with_every_panel_and_does_not_display(encounter):
     plt.close(figure)
 
 
+def test_the_provenance_footer_overprints_no_panel(encounter):
+    """The footer is drawn in figure coordinates, so nothing keeps it clear of
+    the panels except the space reserved for it.
+
+    Seven lines, as `scripts/vortex.py` writes. Until that space was reserved,
+    the first line ran through the Fig. 8 panel's x-axis label.
+    """
+    array_cores = [(0.0, H), (SPACING, H)]
+    array = wind.VortexArray(
+        north=jnp.array([0.0, SPACING]), down=jnp.array([-H, -H]),
+        r0=jnp.array(R0), v0=jnp.array(V0),
+    )
+    provenance = "\n".join(["provenance " * 18] * 7)
+    figure = vortex_viz.figure(
+        [encounter], field=lambda p: wind.vortex_wind(p, array),
+        array_cores=array_cores, core_radius=R0, peak_tangential=V0,
+        provenance=provenance, title="test",
+    )
+    figure.canvas.draw()
+    renderer = figure.canvas.get_renderer()
+    (footer,) = [t for t in figure.texts if t.get_text() == provenance]
+    footer_box = footer.get_window_extent(renderer)
+    overprinted = [
+        ax.get_xlabel() or ax.get_ylabel() or ax.get_title()
+        for ax in figure.axes
+        if ax.get_tightbbox(renderer).overlaps(footer_box)
+    ]
+    plt.close(figure)
+    assert overprinted == []
+
+
 def test_the_discriminator_panel_renders_with_a_single_category_present(encounter):
     """Partial progress must not crash the deliverable.
 
