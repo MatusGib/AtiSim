@@ -2110,10 +2110,18 @@ tests that assert **exact bit equality**, and both differ in the 13th significan
 
 **Neither tolerance was touched and neither should be** — `docs/DEVELOPMENT.md` rule 3, and these are
 doing precisely their job: they detect that the arithmetic environment changed. The reading
-is that **a rollout of 10⁴–10⁵ steps is bit-reproducible only within one platform**, while
-the linearisation path is stable across platforms to five decimals (row B). The test count
+is that ~~**a rollout of 10⁴–10⁵ steps is bit-reproducible only within one platform**~~ **a
+rollout of 10⁴–10⁵ steps is bit-reproducible only within one set of library versions** (session
+32, below), while the linearisation path is stable across platforms to five decimals (row B). The test count
 is 781 rather than session 28's 813 because `pyarrow`/`plotly`/`dash` are absent here, so
 `test_artifact.py` and `test_figures.py` do not collect.
+
+**Session 32: it is the library versions, not the platform.** CI's Linux runner resolves Python
+3.10 to JAX 0.6.2, NumPy 2.2.6 and SciPy 1.15.3 — the versions of §10's Windows `.venv` — and
+there **every bit-exact pin passes**, both of these included (run 35370419455: 926 passed, 1
+skipped, 1 xfailed, the Windows count exactly). The failures above were at JAX 0.10.2 and NumPy
+2.4.6. `pyproject.toml` pins no versions, so an interpreter that resolves newer ones can still
+fail the two pins — which is them doing their job, as above.
 
 ### Why the agreement "got worse": the reference class changed, not the model — session 28
 
@@ -3034,6 +3042,12 @@ nothing asserts against these):
    led by 0.039 on the same tree. The declaration narrows the reversal and does not undo it.
    (The other five rows above were not touched by the declaration; where today's run differs
    from them in the third figure, that predates session 30.)
+
+   **Session 32, on the current tree** (the thrust line at 5.70 ft), as
+   `notebooks/validation-ladder.ipynb` computes it: the 747 pitches **7.01°** with an `n_z`
+   minimum of **−0.372**, the 737 **7.49°** and **−0.364**. Both orderings hold; the reversal's
+   margin is **0.008 g**. The notebook asserts the pitch and `n_z`-minimum orderings between
+   the Cherokee and the 747 — the paper's two filled slots — not the 747–737 margin.
 3. **The mechanism itself is monotonic, six for six.** *Incidence gain* is the α that
    actually reached the wing divided by the α a rigidly-held attitude would have seen
    (`atan(max|w_up|/V)`). Against `trav/T_sp` it falls **1.49 → 1.00 → 0.56 → 0.54 → 0.21
@@ -3041,6 +3055,9 @@ nothing asserts against these):
    it, the aircraft pitches away and sheds the gust. Peak-to-peak pitch does **not**
    collapse as cleanly, because it also scales with how large the gust is in incidence
    terms, and that varies fourfold across the fleet through airspeed alone.
+   **Session 32:** 1.55 → 0.98 → 0.57 → 0.55 → 0.21 → 0.18 on the current tree, still
+   monotone — and now asserted, by the validation notebook; until then nothing did (§9,
+   session 32, point 11).
 
 **Every run stays inside the 10° linear band — and the mechanism is why.** A Cherokee at
 50 m/s meets a gust worth 25.6° of incidence at a frozen attitude and sees 5.44°, because
@@ -6857,7 +6874,60 @@ the maintainer's path to the LES dataset and could not run for anyone else. Both
 **What phase 4 did NOT do:** enable GitHub Pages — it cannot publish from a private repository on a
 free plan, and the workflow's deploy job switches on by itself when the repository goes public; or
 add a test-suite workflow, which is phase 5's, because session 29 recorded two platform bit-pins
-failing on Linux and a red badge for a known platform difference would mislead.
+failing on Linux and a red badge for a known platform difference would mislead. *(Point 11: at
+the `.venv`'s library versions they pass on Linux.)*
+
+**11. Phase 5 — the validation notebook, and the suite in CI.** `notebooks/validation-ladder.ipynb`
+walks §1's claim in four rungs, computing every number as it runs and asserting bands and
+orderings only:
+- `scripts/sanity.py`;
+- CR-2144's modes (Tables IX-5, IX-9 and IX-10) and drag polar (Fig. IX-6), and the JSBSim
+  737's trim and modes;
+- the Hannibal headline, with its envelope checked on the run (`checks.recovery_band`,
+  `checks.alpha_band`);
+- TM-102186 Fig. 8's fleet ordering and mechanism, and Wingrove & Bach Fig. 8's
+  vortex < updraft < manoeuvre ordering.
+
+Published values and tolerances are imported from the tests that assert them, not retyped. **Its
+first cell asserts that `atisim` is imported from the checkout the notebook sits in**, and was
+shown to refuse a run from this worktree with no `PYTHONPATH` — rule 4 and §10's launch table,
+enforced rather than described. `.github/workflows/tests.yml` runs the suite, then
+`pytest --nbval-lax notebooks/`, on every pull request and on `main`. Its first run, 35370419455:
+**926 passed, 1 skipped, 1 xfailed in 1,566 s**, and the solver notebook's 13 cells green. On
+the final commit, run 35390817171: **926 passed, 1 skipped, 1 xfailed in 1,672 s**, then **24
+passed in 113 s** — both notebooks, every cell.
+
+**Four things it found.**
+
+1. **`scripts/sanity.py` had been reporting 8/11, and nothing ran it.** All three failures were
+   the model changing under a hand-derived expectation, not a regression. Each expectation is
+   derived by hand again, with no tolerance touched:
+   - **[2]**, free fall, expected `G0`. Gravity has varied with height since session 23; at
+     cruise it is 9.76922. The script now derives `g(h)` from R = 6,371 km.
+   - **[5]**, "Cm = 0 gives no pitch acceleration", read 0.0073 rad/s². 99% of that is the
+     thrust line the 747 has declared since session 30, 5.70 ft below the CG. The other 1% is
+     `Cm_M`, because the check's 12 m/s sideslip moves the Mach off 0.80. Zeroing both, and
+     `Cmadot`, gives exactly 0.
+   - **[10]**, trimmed `n_z`, expected cos α. The lift holds up the *local* g, but `n_z` is
+     counted in standard g, so the answer is cos α · g(h)/G0. `load_factor`'s docstring made
+     the same claim and is corrected.
+
+   The script now reads 11/11. The README and the site called it "twelve cases"; the script has
+   eleven, and both now say so. The notebook runs it in CI, so it cannot go stale unseen again.
+2. **The platform bit-pins pass on Linux.** Session 29 measured its two failures at JAX 0.10.2 and
+   NumPy 2.4.6. CI resolves Python 3.10 to the `.venv`'s own JAX 0.6.2 and NumPy 2.2.6, and every
+   pin passes, so the dependence is on library versions rather than the OS. §4's "What does not
+   reproduce on another platform" is corrected.
+3. **TM-102186 Fig. 8's fleet ordering and its six-for-six mechanism, which §1 cites, were
+   asserted by no test.** They lived in `scripts/cat_validation.py`'s printout and §4's table.
+   The notebook's rung 4 now asserts them and CI runs it, so they have a gate. But the notebook
+   is that gate on its own, which departs from `ASSUMPTIONS.md`'s notebook protocol: the protocol
+   puts the computation in the package and the assertion in the suite. That means moving
+   `fly_mehta`, `excursion` and `traverse_ratio` out of a script. **Not done here**, and the
+   protocol's section says so. §4 now carries the current tree's numbers beside the table.
+4. **`test_jsbsim_737_layers.py`'s layer-3 docstring still describes the 6.58% phugoid gap**
+   that session 24 closed to +0.45%. The notebook reads 0.0526 against JSBSim's 0.0524 rad/s. The
+   test passes. Its docstring is noticed and left alone.
 
 *The paragraph below was written at the end of phase 2 and is kept as written; point 9 above
 supersedes it where they differ — the α̇ work is now reviewed.*
@@ -8983,10 +9053,10 @@ several sessions, which is the drift §4's rules exist to prevent.
 
 | Command | What it does |
 |---|---|
-| `.venv/Scripts/python.exe -m pytest -q` | **926 passed, 1 skipped, 1 xfailed, 0 failed, 1,561 s** (end of session 32's phase 3, on the tree `atisim.__file__` confirmed: the 918 below plus 8 of the 9 tests in `test_cr2144_crosscheck.py`. **The one xfail is deliberate and strict** — `Cm_M`'s band in that file, where a sealed prediction was measured WRONG and the band was marked rather than widened, §4. 928 collected). Before that **918 passed, 1 skipped, 0 failed, 1,092 s** (end of session 32, measured on the merged triage tree: the 906 below, plus 12 in `test_figures.py` from the panel-chrome fix applied across the rename. 919 collected. **Zero failures** — the 2 platform bit-pins that failed through session 29 are green here). Before that **906 passed, 1 skipped, 1,534 s** (end of session 30, after merging `main`'s session 29: 863 plus its 43). Before that **863 passed, 1 skipped, 1,716 s** (end of session 30: the arm moved to 5.70 ft and the Hannibal headline switched to the replayed field, with 2 new tests). Before that **861 passed, 1 skipped, 1,000 s** (session 30, after `boeing747` declared CR-2144's thrust line: 859 plus 2 in `test_cr2144_speed_derivatives.py`, with 9 existing tests re-pointed or re-captured — §4's thrust-line entry says which). Before that **859 passed, 1 skipped, 1,673 s** (session 30, after the Parks Fig. 6 altitude: 852 plus 7 in `test_parks_fig6_altitude.py`). Before that **852 passed, 1 skipped, 1,295 s** (the 844 below plus the 8 tests in `test_hannibal_horizontal_wind.py`). Before that, **844 passed, 1 skipped, 887 s** (measured session 30 after `boeing747` declared CR-2144's speed derivatives: 23 tests in `test_cr2144_speed_derivatives.py`, and 17 existing tests re-captured, moved onto the undeclared entry, split, or fixed — §4's session-30 entry, item 7, says which. Earlier the same session measured **843** before the declaration, which was 821 + 22 with nothing else moved. The wall clock is machine load, not the suite). Previously **821 passed, 1 skipped, 34m37s** at session 28 after the compressibility merge; 812 before it, same session; 811 at session 26; 807 at session 25; it was 788 at session 24 and **758 measured session 23b**; the 626 this row claimed was stale by five sessions, and the 322 before that by several more — this row has now been wrong twice, so re-measure it rather than trusting it). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. |
-| `.venv/Scripts/python.exe scripts/sanity.py` | **The ladder, for a reader who does not yet trust the model.** Twelve cases from degenerate inputs upward — zero the wind, zero a coefficient so a motion becomes impossible, then signs, then hand-computable numbers, then structural properties. Every expected value is derived by hand in the source and printed beside the model's answer, so it is read rather than trusted. Ends with the item 08 convention probe, which is a measurement rather than a pass/fail. |
+| `.venv/Scripts/python.exe -m pytest -q` | **926 passed, 1 skipped, 1 xfailed, 0 failed, 1,672 s on Linux in CI** (`.github/workflows/tests.yml`, run 35390817171 on phase 5's final commit, and 1,566 s on its first, run 35370419455: the same count as Windows, at the same library versions — §4, "What does not reproduce on another platform"). On Windows, **926 passed, 1 skipped, 1 xfailed, 0 failed, 1,561 s** (end of session 32's phase 3, on the tree `atisim.__file__` confirmed: the 918 below plus 8 of the 9 tests in `test_cr2144_crosscheck.py`. **The one xfail is deliberate and strict** — `Cm_M`'s band in that file, where a sealed prediction was measured WRONG and the band was marked rather than widened, §4. 928 collected). Before that **918 passed, 1 skipped, 0 failed, 1,092 s** (end of session 32, measured on the merged triage tree: the 906 below, plus 12 in `test_figures.py` from the panel-chrome fix applied across the rename. 919 collected. **Zero failures** — the 2 platform bit-pins that failed through session 29 are green here). Before that **906 passed, 1 skipped, 1,534 s** (end of session 30, after merging `main`'s session 29: 863 plus its 43). Before that **863 passed, 1 skipped, 1,716 s** (end of session 30: the arm moved to 5.70 ft and the Hannibal headline switched to the replayed field, with 2 new tests). Before that **861 passed, 1 skipped, 1,000 s** (session 30, after `boeing747` declared CR-2144's thrust line: 859 plus 2 in `test_cr2144_speed_derivatives.py`, with 9 existing tests re-pointed or re-captured — §4's thrust-line entry says which). Before that **859 passed, 1 skipped, 1,673 s** (session 30, after the Parks Fig. 6 altitude: 852 plus 7 in `test_parks_fig6_altitude.py`). Before that **852 passed, 1 skipped, 1,295 s** (the 844 below plus the 8 tests in `test_hannibal_horizontal_wind.py`). Before that, **844 passed, 1 skipped, 887 s** (measured session 30 after `boeing747` declared CR-2144's speed derivatives: 23 tests in `test_cr2144_speed_derivatives.py`, and 17 existing tests re-captured, moved onto the undeclared entry, split, or fixed — §4's session-30 entry, item 7, says which. Earlier the same session measured **843** before the declaration, which was 821 + 22 with nothing else moved. The wall clock is machine load, not the suite). Previously **821 passed, 1 skipped, 34m37s** at session 28 after the compressibility merge; 812 before it, same session; 811 at session 26; 807 at session 25; it was 788 at session 24 and **758 measured session 23b**; the 626 this row claimed was stale by five sessions, and the 322 before that by several more — this row has now been wrong twice, so re-measure it rather than trusting it). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. |
+| `.venv/Scripts/python.exe scripts/sanity.py` | **The ladder, for a reader who does not yet trust the model.** ~~Twelve cases~~ Eleven checks, **11/11** since session 32 (it read 8/11 before — §9, session 32, point 11), from degenerate inputs upward — zero the wind, zero a coefficient so a motion becomes impossible, then signs, then hand-computable numbers, then structural properties. Every expected value is derived by hand in the source and printed beside the model's answer, so it is read rather than trusted. Ends with the item 08 convention probe, which is a measurement rather than a pass/fail. |
 | `.venv/Scripts/python.exe -m sphinx -b html -W --keep-going docs docs/_build/html` | **Builds the documentation site (phase 4).** Needs the `docs` extra. The site's narrative pages `{include}` sections of this file verbatim — the *Running it* page **is** this section, the *Validation* page is §1's claim plus the §5 status table — so editing the record updates the site and nothing can drift. `-W` makes a warning an error, which is how CI runs it (`.github/workflows/docs.yml`); it builds clean with zero warnings. `docs/conf.py` carries a hook that renders the package's plain-prose docstrings as written. |
-| `.venv/Scripts/python.exe -m pytest --nbval-lax notebooks/ -q` | **The second gate.** Executes `notebooks/solver-validation.ipynb` so it cannot rot. Needs the `dev` extra (`jupyter`, `nbval`). Deliberately *not* in `testpaths` and `--nbval-lax` is deliberately *not* in `addopts`: that would make every `pytest` run fail with "unrecognized arguments" wherever nbval is absent. **Run it from a worktree with an ABSOLUTE `PYTHONPATH`** — nbval starts the kernel with its cwd in `notebooks/`, so a relative `PYTHONPATH=.` resolves to the wrong directory and `atisim` silently loads from the main checkout. |
+| `.venv/Scripts/python.exe -m pytest --nbval-lax notebooks/ -q` | **The second gate.** Executes ~~`notebooks/solver-validation.ipynb`~~ both notebooks — `solver-validation.ipynb` and, since session 32, `validation-ladder.ipynb`, which walks §1's claim — so they cannot rot: **24 passed, 157 s** locally and **113 s** in CI (run 35390817171). CI runs it after the suite (`.github/workflows/tests.yml`). Needs the `dev` extra (`jupyter`, `nbval`). Deliberately *not* in `testpaths` and `--nbval-lax` is deliberately *not* in `addopts`: that would make every `pytest` run fail with "unrecognized arguments" wherever nbval is absent. **Run it from a worktree with an ABSOLUTE `PYTHONPATH`** — nbval starts the kernel with its cwd in `notebooks/`, so a relative `PYTHONPATH=.` resolves to the wrong directory and `atisim` silently loads from the main checkout. |
 | `.venv/Scripts/python.exe scripts/checkpoint.py` | 747 only, no flags. Trim residuals, 60 s fixed-control hold, longitudinal modes against CR-2144 Table IX-5. |
 | `.venv/Scripts/python.exe scripts/tune.py --aircraft cherokee` | Autopilot step responses for one aircraft. Exits non-zero on failure, so it is usable as a gate. |
 | `.venv/Scripts/python.exe scripts/fly.py --aircraft cherokee --save runs/a.npz` | Interactive flight, basic-T cockpit plus a flight-test overlay. |

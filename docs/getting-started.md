@@ -43,13 +43,26 @@ mean. {doc}`running` has the full table of which launch method resolves where.
 The suite asserts **bands and orderings, not exact values**, for the reason {doc}`validation`
 gives. The count and runtime of the last full run are recorded in {doc}`running`.
 
-## Before you believe the model: the sanity ladder
+## Before you believe the model: the validation ladder
+
+```bash
+.venv/Scripts/python.exe -m pip install -e .[dev]
+.venv/Scripts/python.exe -m jupyter lab notebooks/validation-ladder.ipynb
+```
+
+One notebook re-runs the evidence behind the validation claim, in four rungs, each resting on
+the one below: answers you can work out by hand; the model's own source data and an independent
+engine fed the same coefficients; a recorded encounter; and the published orderings with the
+mechanism behind them. Every number is computed as it runs, and each rung asserts what the
+claim says and no more. `notebooks/solver-validation.ipynb` does the same for the solver.
+
+The first rung is also a script:
 
 ```bash
 .venv/Scripts/python.exe scripts/sanity.py
 ```
 
-Twelve cases from degenerate inputs upward. Zero the wind: does it fly straight? Zero a
+Eleven checks from degenerate inputs upward. Zero the wind: does it fly straight? Zero a
 coefficient so a motion becomes physically impossible: does the motion stop? Then signs, then
 numbers derived by hand in the script and printed beside the model's answer, so they can be
 read rather than trusted.
