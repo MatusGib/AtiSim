@@ -14,6 +14,8 @@ later session that disagrees with the shape should disagree with the answers.
 | **Amended, later on day 1:** repository visibility | **Private now, public when done.** Going private immediately closes the copyright exposure; the Phase 6 history rewrite **still happens**, because the copyrighted PDFs are in history and going public again would re-expose them |
 | **Amended:** history strategy | **Clean up in place.** Keep `MatusGib/AtiSim`, its 183 commits and its PR record. A fresh repository was offered and declined |
 | **Amended:** `CLAUDE.md` | **Moved to `docs/DEVELOPMENT.md`.** Off the front page entirely. The cost was stated before the choice and is recorded in the file itself: automated tooling no longer loads it, so rules 1 and 1b lose continuous enforcement |
+| **Amended, Phase 6:** where the rewritten history goes | **A new `MatusGib/AtiSim`; the current repository is renamed `AtiSim-archive` and kept private.** "Clean up in place" was chosen before it was known that GitHub's read-only pull-request refs keep the old commits reachable after a force-push, and that GitHub Support declines to remove non-sensitive data. The new repository keeps every commit; the pull-request pages stay with the archive. `PROJECT.md` §9, session 32, point 12 |
+| **Amended, Phase 6:** the size gate | **Met by also taking out the two largest redistributable PDFs, which nothing reads** — HICAT and NTRS 19910009769, 9.1 MB — rather than by moving the gate. The dry run measured 20.8 MiB |
 
 ### Amendment, day 1: the repository must read as *finished*
 

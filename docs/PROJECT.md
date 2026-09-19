@@ -6929,6 +6929,44 @@ passed in 113 s** — both notebooks, every cell.
    that session 24 closed to +0.45%. The notebook reads 0.0526 against JSBSim's 0.0524 rad/s. The
    test passes. Its docstring is noticed and left alone.
 
+**12. Phase 6 — the history rewrite, prepared and dry-run.** `git filter-repo` runs in a fresh
+bare clone, never in a working checkout. It does two things:
+- it strips from every commit the seven publisher-held PDFs that `SOURCES.md` lists as removed;
+- it rewords eighteen commit subjects that named a working session, a WIP state or the tooling
+  ("prompts", "agent-tooling", `docs/superpowers`). Commit bodies are left as written.
+
+**The dry run, verified:**
+- none of the seven PDFs' blobs survives under any path, and no commit touches their paths;
+- the tip trees of `main` and `wgs84-earth` are byte-identical to before, so the suite's inputs
+  have not changed;
+- no commit was emptied or lost.
+
+**Three things the dry run found, and what was decided.**
+
+1. **A force-push cannot remove the PDFs from GitHub.** Every pull request keeps a read-only
+   `refs/pull/N/head`, and all of them reach the initial commit, which carries the PDFs. GitHub's
+   documentation says only its Support can dereference them, and that Support "won't remove
+   non-sensitive data". The spec planned the rewrite in place without knowing this. **Decided:
+   the rewritten history goes to a new `MatusGib/AtiSim`.** The current repository is renamed
+   `AtiSim-archive` and kept private. Every commit survives; the pull-request pages stay with the
+   archive.
+2. **Ten commits on `main` carried a tool's author and committer identity rather than the
+   maintainer's**, with co-author trailers to match. They are the sensitivity study, 10–16
+   September, made in a remote container. The rewrite corrects the identity with a mailmap and
+   drops the trailers.
+3. **The size gate fails as the spec set it: 20.8 MiB against 15 MiB.** Most of what is left is
+   PDFs ruled redistributable. **Decided: the two largest, which nothing reads, leave the
+   repository too.** They are HICAT (DTIC AD878415) and NTRS 19910009769, 9.1 MB between them.
+   Both move to `SOURCES.md`'s fetch-it-yourself table with their locators.
+
+**The order is decided too: the rewrite runs after the two open branches merge** — the
+vortex-figure fix and the Fig. 8 suite test. A branch made on the old history and merged after
+the rewrite would bring every stripped PDF back.
+
+**Commit IDs change throughout**, including every `sealed_at` in `atisim/predictions.py`. The
+rewrite's old-to-new map is committed beside the result, so every ID quoted in this file stays
+resolvable, and no sealed entry is edited.
+
 *The paragraph below was written at the end of phase 2 and is kept as written; point 9 above
 supersedes it where they differ — the α̇ work is now reviewed.*
 
