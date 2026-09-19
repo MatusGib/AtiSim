@@ -6916,6 +6916,27 @@ passed in 113 s** — both notebooks, every cell.
 
    The script now reads 11/11. The README and the site called it "twelve cases"; the script has
    eleven, and both now say so. The notebook runs it in CI, so it cannot go stale unseen again.
+
+   **Checked later in phase 5 against the suite, check by check. The notebook is the only gate
+   on four of the eleven.**
+   - **[2], [3], [4], [5]:** nothing in `atisim/tests/` asserts them. `test_dynamics.py`'s
+     free-fall test runs at 1,000 m against `G0` with atol 5e-3, and g(1,000 m) is only 3.1e-3
+     below `G0`, so it cannot separate the two. No test zeroes the rolling or pitching terms on
+     a registry aircraft, which is why the thrust line moved [5] in session 30 without failing
+     anything.
+   - **[11]:** asserted for longitudinal wind fields (`test_lateral.py`, `test_checks.py`),
+     never for an elevator input.
+   - **[10]:** its test takes g(h)/G0 from `dynamics.gravity` itself. Its only independent check
+     is a pin of 0.9930 ± 1e-4, where the script asks for 1e-6.
+   - **[1], [6], [7], [8], [9]:** equivalents exist, at looser tolerances than the script's.
+
+   **Not closed here.** Closing it means asserting [2]–[5] and an elevator-input [11] at the
+   script's own tolerances, against hand-derived expressions rather than pinned numbers.
+   `ASSUMPTIONS.md`'s protocol section records it as the second exception. **The Wingrove & Bach
+   cell had the same shape and is not a gap:** `test_vortex_viz.py` asserts the full
+   vortex < updraft < manoeuvre ordering. Its only difference from `scripts/vortex.py` is a
+   pinned 8.926° elevator where the script bisects to 8.9227°, and that pinned step is held
+   within 0.01 g of the band.
 2. **The platform bit-pins pass on Linux.** Session 29 measured its two failures at JAX 0.10.2 and
    NumPy 2.4.6. CI resolves Python 3.10 to the `.venv`'s own JAX 0.6.2 and NumPy 2.2.6, and every
    pin passes, so the dependence is on library versions rather than the OS. §4's "What does not
