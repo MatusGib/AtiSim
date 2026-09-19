@@ -12,15 +12,15 @@ of their publishers.
 Reference documents
 -------------------
 
-Third-party documents are NOT redistributed in this repository. Seven are kept
+Third-party documents are NOT redistributed in this repository. Five are kept
 because each is a US Government work, or prints the Title 17 statement that no
 copyright is asserted in the United States, or states that it is not subject to
 US copyright protection. The basis for each is recorded beside it in
 `.gitignore`.
 
 `Reference_papers/SOURCES.md` is the index: every document the project uses,
-with its md5, its licence basis, and a permanent locator (DOI or NTRS ID) for
-the ones not held here. Scripts that read a PDF take a `--pdf` path argument, so
+with its md5, its licence basis, and a permanent locator (DOI, NTRS or DTIC
+ID) for the ones not held here. Scripts that read a PDF take a `--pdf` path argument, so
 they work against a copy you obtain yourself.
 
 Digitised data

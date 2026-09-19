@@ -39,9 +39,7 @@ Scripts that read a PDF all take a `--pdf`-style path argument for exactly this 
 | `parks-1985-identification-of-vortex-induced-clear-air-turbulence-JA22-2.pdf` — Parks et al., *J. Aircraft* **22**(2) 124–129, DOI 10.2514/3.45095 | `43e8bc0e…ed8` | Printed: "U.S. Government and therefore is in the public domain" | r₀ = 600 ft, V₀ = 85 ft/s, spacing 3500 ft (`ASSUMPTIONS.md` E12); **Fig. 6** the DC-10's altitude, pitch and true airspeed. Read by `digitise_parks_fig6_altitude.py` |
 | `mehta-2012-modeling-clear-air-turbulence-with-vortices-using-parameter-identification-techniques.pdf` — Mehta, 1987 (copyright 1986) | `5a2f2409…521e` | Printed: "no copyright is asserted in the United States under Title 17, U.S. Code" | The five-vortex Hannibal field; the 2-vortex fit, p. 29; Eq. (A3)'s cost, which becomes the wind residual in `cat_uncertainty.py` |
 | `bach-parks-1987-angle-of-attack-estimation-JA24-11.pdf` — Bach & Parks, *J. Aircraft* **24**(11) | `d8ee89b8…2858` | Printed: "No copyright is asserted in the United States under Title 17, U.S. Code" | The error budget: Eq. (2) shows `m` and `S` enter only as `m/S`; Eq. (4) gives ~0.05° of α per 1% of `C_L` |
-| `AFFDL-TR-70-101-Ashburn-Waco-Melvin-1970-HICAT-AD878415.pdf` — HICAT, measured RMS gust exceedances from U-2 flights | `79935dc8…6e5b` | Printed: "Approved for public release, distribution unlimited". USAF | The published exceedance data. **Band mismatch is the catch**: 45,000–70,000 ft against this project's 33,000–41,000 |
 | `Ger/schultz-2012-multiple-vortex-ring-model-of-the-dfw-microburst.pdf` | `26631f9d…2fcf` | Printed: "and is not subject to copyright protection in the United States" | Microburst vortex-ring structure |
-| `Xiao_ger/19910009769.pdf` — NASA, NTRS 19910009769 | `0f817b5d…6408` | NASA, US Government work | Background reading |
 
 ## Regulations — public, read online, not stored
 
@@ -65,11 +63,15 @@ Scripts that read a PDF all take a `--pdf`-style path argument for exactly this 
 ## Never in the repository — on disk, listed for completeness
 
 These are US Government works and could be redistributed, but they are large, permanently
-available from NTRS, and **nothing is digitised from them yet** (`PROJECT.md` §7). The
-locator is worth more than 31 MB in a clone.
+available from NTRS or DTIC, and **nothing is digitised from them yet** (`PROJECT.md` §7). The
+locator is worth more than 31 MB in a clone. **HICAT and NTRS 19910009769 were in the repository until the
+release** and were taken out of its history then, for the same reason: 9.1 MB that nothing
+reads.
 
 | Document | md5 | NTRS ID | Status in the project |
 |---|---|---|---|
+| AFFDL-TR-70-101, Ashburn, Waco & Melvin 1970, *HICAT* — measured RMS gust exceedances from U-2 flights. USAF, printed "Approved for public release, distribution unlimited" | `79935dc8…6e5b` | DTIC AD878415 | The published exceedance data. **Band mismatch is the catch**: 45,000–70,000 ft against this project's 33,000–41,000. Nothing reads it |
+| NASA, NTRS 19910009769 | `0f817b5d…6408` | 19910009769 | Background reading. Nothing reads it |
 | NASA CR-3677, Shollenberger et al. 1983, *Results of winglet development studies for DC-10 derivatives* | `a984a78c…b160c0` | 19850002628 | **PARTLY closes the DC-10 acquisition** (§7). Has Fig. 23 tail-off C_L vs α at M 0.82, Fig. 5 C_mCL vs Mach, Figs. 7–9 C_m vs α, Figs. 10/14/17 C_lβ/C_nβ/C_Yβ. **Lacks** C_mq, C_mα̇, the cruise drag polar, mass, inertias, CG and the reference S and c̄. Rigid model at model Reynolds number, no aeroelastic correction. **Not digitised; nothing flown** |
 | NASA CR-3748, Taylor, *DC-10 winglet flight evaluation* | `f8fb0080…c8708` | 19870008261 | **Assessed, session 31**: weights, a buffet boundary (Fig. 32) and column-force static stability (Figs. 33–34). **No lift slope or derivatives.** Sources the DC-10-10 MTOW, 430,000 lb (p. 57) |
 | NASA TM-4745, Burcham 1996, *MD-11 augmented thrust-only flight control* | `c9458148…5d491` | 19960047451 | **Assessed, session 32: no derivative set.** MD-11 propulsion-controlled flight — phugoid and thrust-line principles, qualitatively, and flight time histories. No derivatives, mass, inertia or reference geometry |
