@@ -2110,9 +2110,10 @@ tests that assert **exact bit equality**, and both differ in the 13th significan
 
 **Neither tolerance was touched and neither should be** — `docs/DEVELOPMENT.md` rule 3, and these are
 doing precisely their job: they detect that the arithmetic environment changed. The reading
-is that ~~**a rollout of 10⁴–10⁵ steps is bit-reproducible only within one platform**~~ **a
-rollout of 10⁴–10⁵ steps is bit-reproducible only within one set of library versions** (session
-32, below), while the linearisation path is stable across platforms to five decimals (row B). The test count
+is that ~~**a rollout of 10⁴–10⁵ steps is bit-reproducible only within one platform**~~ ~~**a
+rollout of 10⁴–10⁵ steps is bit-reproducible only within one set of library versions**~~ **a
+rollout of 10⁴–10⁵ steps is bit-reproducible only within one set of library versions and one
+family of OpenBLAS kernels** (session 32, below), while the linearisation path is stable across platforms to five decimals (row B). The test count
 is 781 rather than session 28's 813 because `pyarrow`/`plotly`/`dash` are absent here, so
 `test_artifact.py` and `test_figures.py` do not collect.
 
@@ -2122,6 +2123,31 @@ there **every bit-exact pin passes**, both of these included (run 35370419455: 9
 skipped, 1 xfailed, the Windows count exactly). The failures above were at JAX 0.10.2 and NumPy
 2.4.6. `pyproject.toml` pins no versions, so an interpreter that resolves newer ones can still
 fail the two pins — which is them doing their job, as above.
+
+**Later in session 32: the versions are not the whole of it.** After two merges, `main`'s CI
+failed `test_extracting_rk4_step_did_not_move_a_single_bit` with **the same library versions**,
+while the pull-request run of the same tree had passed. The failing hash was identical in both
+failing runs, so the difference was deterministic per machine. **GitHub's runners are a mix,
+and some expose AVX-512.** Measured with two throwaway diagnostic workflows, 18 runner jobs in
+all; the last two columns come from the second, on ten:
+
+| Hosts | Default | NumPy's AVX-512 paths off | OpenBLAS held to its Haswell kernels |
+|---|---|---|---|
+| no AVX-512 — AMD EPYC 7763, EPYC 9V74 as some VMs expose it; locally, AMD Ryzen 5 7535HS | the pin | the pin | the pin |
+| AVX-512 — AMD EPYC 9V45, EPYC 9V74 as other VMs expose it, Intel Xeon Platinum 8573C | `031b8db0…` | `031b8db0…` | **the pin** |
+
+**So the cause is OpenBLAS**, the linear-algebra library under NumPy and SciPy, which chooses
+its kernels by CPU at run time; NumPy's own SIMD dispatch changes nothing, and neither does
+capping XLA's code generation at AVX2 (tried first, on two AVX-512 hosts). The model is the
+same: the two kernel families round differently in the last bits, and a 500-step rollout
+carries that into the hash. The same CPU model can land in either row, because a VM may hide
+AVX-512 — the host's feature flags decide, not the model name. The other bit-exact pin,
+`FIG8_VORTEX`, passed on the AVX-512 hosts.
+
+**Fixed in CI's environment, not in the pin:** `tests.yml` sets `OPENBLAS_CORETYPE=Haswell`,
+which makes every runner the environment the pin was captured in, and records each runner's CPU
+in the log. The pin keeps its single value, and its failure message now names the three things
+that move it — the JAX version, the NumPy version and, on an AVX-512 host, the OpenBLAS kernels.
 
 ### Why the agreement "got worse": the reference class changed, not the model — session 28
 
@@ -6948,8 +6974,10 @@ passed in 113 s** — both notebooks, every cell.
    within 0.01 g of the band.
 2. **The platform bit-pins pass on Linux.** Session 29 measured its two failures at JAX 0.10.2 and
    NumPy 2.4.6. CI resolves Python 3.10 to the `.venv`'s own JAX 0.6.2 and NumPy 2.2.6, and every
-   pin passes, so the dependence is on library versions rather than the OS. §4's "What does not
-   reproduce on another platform" is corrected.
+   pin passes, ~~so the dependence is on library versions rather than the OS~~. §4's "What does
+   not reproduce on another platform" is corrected. **Incomplete, found in phase 6:** those runs happened to land on hosts
+   without AVX-512. On a host with it, OpenBLAS's kernels move the rollout pin at the same
+   library versions; CI now holds them to Haswell. §4 has the measurement.
 3. **TM-102186 Fig. 8's fleet ordering and its six-for-six mechanism, which §1 cites, were
    asserted by no test.** They lived in `scripts/cat_validation.py`'s printout and §4's table.
    The notebook's rung 4 now asserts them and CI runs it, so they have a gate. But the notebook
@@ -7031,6 +7059,14 @@ the rewrite would bring every stripped PDF back.
 **Commit IDs change throughout**, including every `sealed_at` in `atisim/predictions.py`. The
 rewrite's old-to-new map is committed beside the result, so every ID quoted in this file stays
 resolvable, and no sealed entry is edited.
+
+**One more change before the rewrite: `main`'s CI went red, and the cause is the runner's
+CPU.** `test_extracting_rk4_step_did_not_move_a_single_bit` failed on two runs at the same
+library versions that had passed before. OpenBLAS picks its kernels by CPU, some of GitHub's
+runners expose AVX-512, and on those the rollout's last bits move. CI now sets
+`OPENBLAS_CORETYPE=Haswell`, measured to reproduce the pin on every runner type seen. No
+tolerance and no pinned value changed. §4, "What does not reproduce on another platform", has
+the measurement, and point 11, item 2 is corrected.
 
 *The paragraph below was written at the end of phase 2 and is kept as written; point 9 above
 supersedes it where they differ — the α̇ work is now reviewed.*
