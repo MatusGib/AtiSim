@@ -15,6 +15,11 @@ useless. What the digest buys is that tampering shows up as a diff on a line
 whose only purpose is to be stable, next to a SHA that dates the claim. It
 makes dishonesty visible rather than impossible. Read it that way.
 
+The release rewrote this repository's history to remove publisher-held PDFs, so every
+`sealed_at` below addresses a commit id that changed. The entries are NOT edited -- rule 1
+below -- and `docs/design/commit-map.txt` translates each one. PROJECT.md section 9, session
+32, point 12.
+
 THE RULES, which are the whole value of the exercise:
 
   1. A SEALED entry is never edited. Not to fix a number, not to widen an
