@@ -1,8 +1,8 @@
-"""Vortex-analysis progress figure.
+"""Vortex encounter analysis figure.
 
 Flies the 747 through the Parks 1985 vortex array, through the Wingrove & Bach
-updraft column, and through an elevator pushdown, then draws one figure showing
-where the turbulence work currently stands against the papers' own numbers.
+updraft column, and through an elevator pushdown, then draws one figure setting
+the model's results against the papers' own numbers.
 Those are Wingrove & Bach Fig. 8's three categories, and the point of having all
 three is that the discriminator is a claim about ORDERING, which two clusters
 cannot test.
@@ -274,7 +274,7 @@ figure = vortex_viz.figure(
     core_radius=r0,
     peak_tangential=v0,
     provenance=provenance,
-    title=f"vortex analysis progress -- {args.aircraft}, Parks case '{args.case}'",
+    title=f"Vortex encounter analysis -- {args.aircraft}, Parks case '{args.case}'",
 )
 if args.png:
     args.png.parent.mkdir(parents=True, exist_ok=True)

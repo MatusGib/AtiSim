@@ -1654,9 +1654,16 @@ the corresponding test, then add a notebook cell that calls it. Never the other 
 **The second notebook, `notebooks/validation-ladder.ipynb`,** walks the validation claim rather
 than the solver — hand-derived checks, the source data's own modes and drag polar, the JSBSim
 cross-check, the Hannibal encounter, and the two published orderings — and keeps the same
-division of labour with one exception. Its published values, tolerances and the drag
+division of labour with one exception, **now closed**. Its published values, tolerances and the drag
 computation are imported from the tests that assert them; the Hannibal flights come from
-`scripts/cat_validation.py`. **But nothing in `atisim/tests/` flies TM-102186 Fig. 8's
+~~`scripts/cat_validation.py`~~ `atisim.vortex_viz`. ~~**But nothing in `atisim/tests/` flies TM-102186 Fig. 8's
 six-aircraft fleet**, so the notebook's assertions on that ordering and its mechanism are the
 only gate on them, run by CI. Moving that computation into the package and asserting it in the
-suite is the route above, and it has not been taken (`docs/PROJECT.md` §9, session 32).
+suite is the route above, and it has not been taken (`docs/PROJECT.md` §9, session 32).~~
+**The route above has since been taken.** `fly_mehta`, `excursion`, `traverse_ratio` and
+`MECHANISM_FLEET` moved from `scripts/cat_validation.py` into `atisim/vortex_viz.py`, and the
+script imports them with its printout unchanged. `atisim/tests/test_cat_validation.py` flies
+TM-102186 Fig. 8's six-aircraft fleet and asserts the four things rung 4 does, all as
+orderings: the Cherokee pitches more than the 747, its `n_z` minimum is milder, incidence gain
+falls strictly with traverse ratio, and every run peaks inside the linear band. Rung 4 calls
+the same functions (`docs/PROJECT.md` §9, session 32, point 11).

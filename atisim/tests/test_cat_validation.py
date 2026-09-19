@@ -1465,3 +1465,55 @@ def test_the_fig8_ordering_survives_a_sourced_random_layer():
         pitch_v = vortex_viz.fig8_point(vortex)[0]
         pitch_u = vortex_viz.fig8_point(updraft)[0]
         assert pitch_v < pitch_u, f"seed {seed}: {pitch_v:.3f} !< {pitch_u:.3f}"
+
+
+# ---------------------------------------------------------------------------
+# TM-102186 Fig. 8 -- the three-aircraft ordering and the six-for-six mechanism
+# PROJECT.md section 1 cites. The validation notebook's rung 4 asserted them
+# alone until the flights moved into `vortex_viz`; it now calls the same
+# functions. Orderings, not values: section 4 carries the numbers.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def fig8_fleet():
+    """Every aircraft in `MECHANISM_FLEET` through Mehta's field, at its own
+    cruise altitude and at the step section 4's table and the notebook use."""
+    from atisim import vortex_viz
+
+    fleet = {}
+    for name in vortex_viz.MECHANISM_FLEET:
+        enc, meta = vortex_viz.fly_mehta(name, dt=0.01)
+        fleet[name] = dict(vortex_viz.excursion(enc, meta["V"]),
+                           ratio=vortex_viz.traverse_ratio(name, meta["r0"]))
+    return fleet
+
+
+def test_the_slow_aircraft_pitches_more_than_the_fast_one(fig8_fleet):
+    """The Cherokee stands in for the paper's RPV and the 747 for its airliner.
+    The executive jet has no stand-in in the registry and is left out."""
+    assert fig8_fleet["cherokee"]["pitch_ptp"] > fig8_fleet["boeing747"]["pitch_ptp"]
+
+
+def test_the_slow_aircraft_pulls_the_milder_minimum_load(fig8_fleet):
+    """The counter-intuitive half: the aircraft that pitches more pulls the
+    milder load, because it pitches into the flow."""
+    assert fig8_fleet["cherokee"]["g_min"] > fig8_fleet["boeing747"]["g_min"]
+
+
+def test_incidence_gain_falls_strictly_as_the_core_crossing_lengthens(fig8_fleet):
+    """The paper's stated mechanism: the more of its own short periods a core
+    crossing lasts, the more of the gust the aircraft sheds. No inversions."""
+    ordered = sorted(fig8_fleet.items(), key=lambda kv: kv[1]["ratio"])
+    gains = [r["incidence_gain"] for _, r in ordered]
+    assert all(a > b for a, b in zip(gains, gains[1:])), \
+        [(k, round(r["ratio"], 3), round(r["incidence_gain"], 3)) for k, r in ordered]
+
+
+def test_every_fleet_run_stays_inside_the_linear_aerodynamics(fig8_fleet):
+    """And the mechanism is why the slow runs can be believed at all: a frozen
+    attitude would meet several times the incidence they see (section 4)."""
+    from atisim.panel import ALPHA_LINEAR_DEG
+
+    peaks = {k: r["alpha_peak"] for k, r in fig8_fleet.items()}
+    assert all(p < ALPHA_LINEAR_DEG for p in peaks.values()), peaks

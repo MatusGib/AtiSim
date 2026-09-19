@@ -16,6 +16,7 @@ re-evaluating the model at each logged state -- exact for a deterministic
 position-dependent field, which is all this module currently handles.
 """
 
+import math
 from functools import partial
 from typing import NamedTuple
 
@@ -25,12 +26,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Circle
 
-from atisim import dynamics, integrate, loads, trim, viz, wind
+from atisim import dynamics, integrate, loads, trim, validation, viz, wind
 from atisim.aero import air_data
-from atisim.aircraft import Aircraft
+from atisim.aircraft import CRUISE, REGISTRY, Aircraft
 from atisim.atmosphere import density
 from atisim.state import Controls, State, quat_to_dcm, quat_to_euler
-from atisim.units import RAD2DEG
+from atisim.units import FT2M, RAD2DEG
 
 # Wingrove & Bach 1994 Fig. 8, "maximum negative changes" per category. These
 # are DC-10/L-1011-class records; the sim flies a 747 at a different altitude
@@ -542,6 +543,126 @@ def fig8_point(enc: Encounter) -> tuple[float, float]:
     )
 
 
+# ---------------------------------------------------------------------------
+# TM-102186 Fig. 8 -- NOT Wingrove & Bach's Fig. 8 above. Six aircraft through
+# Mehta's field: the three-aircraft ordering, and the mechanism behind it.
+# Moved here from scripts/cat_validation.py so that test_cat_validation.py can
+# assert what the script prints and the validation notebook shows.
+# ---------------------------------------------------------------------------
+
+# Every aircraft that can be trimmed and flown, for the MECHANISM test. This one
+# does not need matched speeds -- it tests the paper's stated reason rather than
+# its three particular results -- so the whole registry is fair game.
+MECHANISM_FLEET = (
+    "cherokee", "cessna172", "boeing737_approach",
+    "boeing747_approach", "boeing737", "boeing747",
+)
+
+
+def fly_mehta(aircraft: str, dt: float, lead_r0: float = 12.0, replayed: bool = False):
+    """Fly one aircraft through Mehta's five-vortex field at its own altitude.
+
+    The field is placed at the aircraft's own cruise altitude rather than at
+    Mehta's 37,000 ft for every aircraft, because a Cherokee cannot be trimmed
+    at 37,000 ft. The VORTICES ARE IDENTICAL either way -- `vortex_wind` is a
+    velocity field with no density in it -- so what differs between aircraft is
+    the air they fly through, which is a confound and is reported as one.
+
+    The 747 is flown at Mehta's own 37,000 ft, so the headline case has no such
+    confound at all.
+
+    `replayed` evaluates the field on the path it was identified along
+    (`wind.on_identified_path`), whatever the aircraft's own climb. It is the
+    HEADLINE form since session 30, and used for the 747 headline only: flown at
+    its own altitude the fixed-control 747 climbed over cores 3 and 4 and met the
+    opposite horizontal wind to the DC-10, which Parks 1985 Fig. 6 shows held its
+    altitude through them. It is NOT used for the fleet ordering. The replay is
+    justified by the DC-10's record, and pinning a slow aircraft's field to a
+    fixed altitude holds it inside a core it would fly out of -- the Cherokee
+    reaches |alpha| 102 deg that way. PROJECT.md section 4 has both forms.
+    """
+    ac = REGISTRY[aircraft]
+    V = CRUISE[aircraft]["airspeed"]
+    H = (wind.MEHTA_HANNIBAL_ALTITUDE if aircraft == "boeing747"
+         else CRUISE[aircraft]["altitude"])
+    array = wind.mehta_hannibal_array(H)
+    field = lambda p: wind.vortex_wind(p, array)  # noqa: E731
+    if replayed:
+        field = wind.on_identified_path(field, H)
+
+    r0 = float(array.r0)
+    x0, x1 = float(array.north.min()), float(array.north.max())
+    start = x0 - lead_r0 * r0
+    seconds = (x1 + lead_r0 * r0 - start) / V
+
+    enc = fly_in_moving_air(
+        ac, field, V, H,
+        label=f"{aircraft} through Mehta 1987",
+        start_north=start, seconds=seconds, dt=dt,
+        window=(x0 - 2.0 * r0, x1 + 2.0 * r0),
+        window_name="the identified array, plus 2 r0 either side",
+    )
+    return enc, dict(ac=ac, V=V, H=H, array=array, field=field, r0=r0)
+
+
+def excursion(enc, V: float):
+    """Pitch, load and incidence over the window -- plus how much gust got through.
+
+    `incidence_gain` is the mechanism TM-102186 states, reduced to one number:
+
+        frozen  = atan(max|w_up| / V)   the alpha a RIGIDLY HELD attitude sees
+        gain    = max|alpha - alpha_trim| / frozen
+
+    A gain below 1 means the aircraft pitched into the flow and shed part of the
+    gust before it reached the wing. A gain ABOVE 1 means its own motion added
+    incidence rather than removing it -- which is not a contradiction and not a
+    bug: after the first core the aircraft carries a vertical velocity and a
+    pitch rate into the second, and a fast crossing puts those in phase with the
+    next gust instead of against it.
+
+    Preferred over peak-to-peak pitch as the mechanism test, because pitch also
+    scales with how large the gust is in incidence terms, and `frozen` varies by
+    a factor of four across this fleet purely through airspeed.
+
+    `frozen` is built from the gust the aircraft ACTUALLY met, not from V0.
+    Superposing five cores can and does exceed the single-core peak, so using V0
+    would quietly understate the denominator.
+    """
+    w = enc.window
+    th = enc.theta[w] * RAD2DEG
+    nz = enc.n_z[w]
+    a = enc.alpha_air[w] * RAD2DEG
+    a_trim = float(enc.alpha_air[0] * RAD2DEG)
+    w_peak = float(np.abs(enc.w_up[w]).max())
+    frozen = math.degrees(math.atan(w_peak / V))
+    return dict(
+        pitch_ptp=float(th.max() - th.min()),
+        pitch_max=float(th.max()), pitch_min=float(th.min()),
+        g_max=float(nz.max()), g_min=float(nz.min()),
+        alpha_min=float(a.min()), alpha_max=float(a.max()),
+        alpha_peak=float(max(abs(a.min()), abs(a.max()))),
+        w_peak_fts=w_peak / FT2M,
+        frozen_deg=frozen,
+        incidence_gain=float(max(abs(a.max() - a_trim), abs(a.min() - a_trim))
+                             / frozen),
+    )
+
+
+def traverse_ratio(aircraft: str, r0: float) -> float:
+    """Core traverse time divided by the aircraft's own short period.
+
+    TM-102186's stated mechanism, as a number: "These variations are dependent
+    upon the relationship between the time span of the vortex traverse and the
+    aircraft's short oscillatory period."
+    """
+    ac = REGISTRY[aircraft]
+    V, H = CRUISE[aircraft]["airspeed"], CRUISE[aircraft]["altitude"]
+    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
+    a, e, t = (float(v) for v in x)
+    _, (wn, _) = validation.longitudinal_modes(ac, a, e, t, V, H)
+    return (2.0 * r0 / V) / (2.0 * math.pi / wn)
+
+
 def figure(
     encounters: list[Encounter],
     *,
@@ -560,7 +681,15 @@ def figure(
     primary = encounters[0]
     fig = plt.figure(figsize=(15.0, 9.5))
     fig.suptitle(title)
-    grid = fig.add_gridspec(3, 2, width_ratios=(1.5, 1.0), hspace=0.45, wspace=0.18)
+    # The footer sits in figure coordinates, below the panels, so the panels end
+    # where it begins: its height by its own line count (matplotlib's default
+    # 1.2 line spacing), plus room for the bottom row's tick and axis labels.
+    footer_size = 6.5
+    footer_inches = (provenance.count("\n") + 1) * footer_size * 1.2 / 72.0
+    grid = fig.add_gridspec(
+        3, 2, width_ratios=(1.5, 1.0), hspace=0.45, wspace=0.18,
+        bottom=(footer_inches + 0.7) / fig.get_figheight(),
+    )
 
     _field_panel(
         fig.add_subplot(grid[0, 0]), primary, field, array_cores,
@@ -570,7 +699,7 @@ def figure(
     _discriminator_panel(fig.add_subplot(grid[2, 0]), encounters)
     _trace_stack(fig, grid[:, 1], primary)
 
-    fig.text(0.01, 0.004, provenance, fontsize=6.5, family="monospace", color="0.35")
+    fig.text(0.01, 0.004, provenance, fontsize=footer_size, family="monospace", color="0.35")
     return fig
 
 
