@@ -7068,6 +7068,32 @@ runners expose AVX-512, and on those the rollout's last bits move. CI now sets
 tolerance and no pinned value changed. §4, "What does not reproduce on another platform", has
 the measurement, and point 11, item 2 is corrected.
 
+**The rewrite ran, and this repository is its result.** `main` was `ff6562f` before it and is
+`39ca6f6` after. Verified on the pushed result, re-cloned:
+- **the nine PDFs are gone from every commit**, checked by object id rather than by path, so a
+  copy under another name could not survive;
+- **317 commits**, none emptied or lost; 244 of them on `main`;
+- **the tip trees of `main` and `wgs84-earth` are byte-identical to the pre-rewrite ones**, so
+  the suite's inputs did not move;
+- **every author and committer is the maintainer's**, or GitHub's own for merges made on the
+  website. The ten commits made in a remote container carried a tool's identity and two
+  attribution trailers; a mailmap corrects the identity and the trailers are gone;
+- **18 subjects reworded**, none naming a session, a WIP state or the tooling. Bodies are
+  untouched, so the `claude/*` branch names they record as history remain, as §0 does;
+- **a clean clone is 13.16 MiB**, against the spec's 15 MiB gate and 49.3 MiB before.
+
+**Where the old repository went.** `MatusGib/AtiSim` is this one, new. The pre-rewrite
+repository is `MatusGib/AtiSim-archive`, private, and keeps the nineteen pull-request pages —
+including the read-only `refs/pull/*` that made an in-place force-push insufficient (point 12's
+first finding).
+
+**Commit IDs before the rewrite** — every one quoted in this file, and every `sealed_at` in
+`atisim/predictions.py` — address the pre-rewrite history. `docs/design/commit-map.txt` is
+`filter-repo`'s own old-to-new map, committed here so each one stays resolvable. Two limits
+worth stating: commits on branches deleted before the rewrite are not in it, because they were
+not in the repository it read, and they live only in the archive; and no sealed entry was
+edited to follow the rewrite, which is rule 1 of `predictions.py` and the reason the map exists.
+
 *The paragraph below was written at the end of phase 2 and is kept as written; point 9 above
 supersedes it where they differ — the α̇ work is now reviewed.*
 
