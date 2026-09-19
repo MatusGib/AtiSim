@@ -666,7 +666,7 @@ changed that.
 | **`checks.py`** | **tier 3 — RUN checks**: `quaternion_norm`, `field_divergence`, `energy_closure`, `energy_residual_profile`, `trimmed_start`, `alpha_band`, `lateral_symmetry`, `recorded_wind_matches_field`, `run_checks` | `verification`/`validation` ask whether the MODEL is right, once, in the suite. This asks whether ONE RUN is sensible, every time one is flown. Each check carries a `kind`: **gate** (can and does fail), **tripwire** (has never fired — renders as a number and the word, never a green tick), **report** (a number with no honest threshold). Every check has a **negative control** in `test_checks.py` |
 | **`analysis/`** | `artifact.py` (run artifacts: Parquet + `meta.json` + `checks.json`, and `rebuild_field`), `series.py` (every plotted channel), `figures.py` (pure Plotly figures) | needs the **`ui` extra**. Imports `atisim`, never the reverse. Nothing in `atisim/` proper imports it, so the simulator and every script keep working without it |
 | **`apps/`** | `sweep.py` — the Dash analysis UI | **the only package that imports Dash, and it computes nothing.** It never runs the simulator either: `n_steps` is a `static_argname`, so every distinct dt pays a fresh 0.6–0.9 s compile and a panel whose contents depend on machine warmth is not a check |
-| `vortex_viz.py` | encounter analysis and the Fig. 8 figure | air-relative throughout; deliberately separate from `viz.py`. `fly` for a wind field with fixed controls, `manoeuvre` for an elevator schedule at zero wind; both go through `_measure`, so the three Fig. 8 points cannot drift apart |
+| `vortex_viz.py` | encounter analysis and the Fig. 8 figure | air-relative throughout; deliberately separate from `viz.py`. `fly` for a wind field with fixed controls, `manoeuvre` for an elevator schedule at zero wind; both go through `_measure`, so the three Fig. 8 points cannot drift apart. **TM-102186's** Fig. 8, a different figure: `MECHANISM_FLEET`, `fly_mehta`, `excursion` and `traverse_ratio`, moved from `scripts/cat_validation.py` in phase 5 so the suite can assert the fleet ordering |
 | **`response.py`** | **tier 3 — RUN statistics**: `spectrum`, `peak_frequency`, `exceedance` | added session 25 (phase 2). A run as a SPECTRUM and as a RATE, rather than as a peak. Numpy, takes a sampled history, same standing as `checks.py` — nothing here is jitted or differentiated. Note the name collision worth keeping straight: `wind.dryden_spectrum` is an INPUT spectrum, this is the RESPONSE. Every unit check in `test_response.py` is against a signal whose answer is closed-form |
 | **`sensitivity.py`** | **the derivative of a RESULT with respect to a COEFFICIENT**: `implicit_trim_jacobian`, `longitudinal_matrix_jnp`/`lateral_matrix_jnp`, `plant_matrix_sensitivity`, `eigenvalue_sensitivity`, `eigenvalue_separation`, `mode_sensitivity`, `elasticity` | added session 29 (phases S0/S1). Everything else here measures the model against a SOURCE; this measures it against ITSELF. Reports **elasticity** `(∂Q/∂p)(p/Q)`, never a raw gradient, because a per-radian derivative and a mass are not otherwise rankable. Carries `INDEPENDENT_FIELDS` and `COUPLED_FIELDS`: **`Aircraft` is NOT a set of independent parameters** — `inertia_inv` is the inverse of `inertia` and `AR` is b²/S — so a naive `jacfwd` over the whole tuple is wrong, and those five fields are refused rather than screened. `mode_sensitivity` returns roots UNSORTED, because sorting is what makes a swept mode discontinuous where two cross |
 
@@ -3047,7 +3047,8 @@ nothing asserts against these):
    `notebooks/validation-ladder.ipynb` computes it: the 747 pitches **7.01°** with an `n_z`
    minimum of **−0.372**, the 737 **7.49°** and **−0.364**. Both orderings hold; the reversal's
    margin is **0.008 g**. The notebook asserts the pitch and `n_z`-minimum orderings between
-   the Cherokee and the 747 — the paper's two filled slots — not the 747–737 margin.
+   the Cherokee and the 747 — the paper's two filled slots — not the 747–737 margin. Later in
+   phase 5, `test_cat_validation.py` asserts the same two orderings.
 3. **The mechanism itself is monotonic, six for six.** *Incidence gain* is the α that
    actually reached the wing divided by the α a rigidly-held attitude would have seen
    (`atan(max|w_up|/V)`). Against `trav/T_sp` it falls **1.49 → 1.00 → 0.56 → 0.54 → 0.21
@@ -3057,7 +3058,8 @@ nothing asserts against these):
    terms, and that varies fourfold across the fleet through airspeed alone.
    **Session 32:** 1.55 → 0.98 → 0.57 → 0.55 → 0.21 → 0.18 on the current tree, still
    monotone — and now asserted, by the validation notebook; until then nothing did (§9,
-   session 32, point 11).
+   session 32, point 11). Later in phase 5 the suite asserts it too, in
+   `test_cat_validation.py`.
 
 **Every run stays inside the 10° linear band — and the mechanism is why.** A Cherokee at
 50 m/s meets a gust worth 25.6° of incidence at a frozen attitude and sees 5.44°, because
@@ -6923,11 +6925,44 @@ passed in 113 s** — both notebooks, every cell.
    The notebook's rung 4 now asserts them and CI runs it, so they have a gate. But the notebook
    is that gate on its own, which departs from `ASSUMPTIONS.md`'s notebook protocol: the protocol
    puts the computation in the package and the assertion in the suite. That means moving
-   `fly_mehta`, `excursion` and `traverse_ratio` out of a script. **Not done here**, and the
-   protocol's section says so. §4 now carries the current tree's numbers beside the table.
+   `fly_mehta`, `excursion` and `traverse_ratio` out of a script. ~~**Not done here**, and the
+   protocol's section says so.~~ §4 now carries the current tree's numbers beside the table.
+
+   **Done later in phase 5.** The three functions and `MECHANISM_FLEET` moved into
+   `atisim/vortex_viz.py`, and `scripts/cat_validation.py` imports them. Its printout at
+   `--dt 0.01` is identical before and after the move, and so are its four figures, byte for
+   byte. `test_cat_validation.py` flies the fleet at dt 0.01, the step §4's table and the
+   notebook use, and asserts rung 4's four things as orderings (rule 6):
+   - the Cherokee's pitch peak-to-peak exceeds the 747's;
+   - its `n_z` minimum is above the 747's;
+   - incidence gain falls strictly when the fleet is sorted by traverse ratio;
+   - every |α| peak is under `panel.ALPHA_LINEAR_DEG`.
+
+   Each assertion was shown to fail when its ordering is broken, including a tie in the gains.
+   Rungs 3 and 4 now call `vortex_viz`, and the notebook no longer imports the script.
+   `ASSUMPTIONS.md`'s protocol section records the exception as closed. The suite reads **931
+   passed, 1 skipped, 1 xfailed, 0 failed** on Windows, with pull request #14 below (§10), and
+   the notebooks **24 passed**.
 4. **`test_jsbsim_737_layers.py`'s layer-3 docstring still describes the 6.58% phugoid gap**
    that session 24 closed to +0.45%. The notebook reads 0.0526 against JSBSim's 0.0524 rad/s. The
    test passes. Its docstring is noticed and left alone.
+
+**Two changes landed on `phase-5` after pull request #13 had merged it.**
+- **Pull request #14, `vortex-figure-layout`, merged into `phase-5` at 14:52 UTC on 19
+  September, 40 minutes after #13 took `phase-5` into `main`.** So it reached neither `main` nor
+  the `phase-6` branch, and this file did not mention it. It changes no number:
+  - `scripts/vortex.py`'s figure was titled "vortex analysis progress". It is the finished
+    analysis, so the title and the script's docstring now read "Vortex encounter analysis".
+  - The seven-line provenance footer is drawn in figure coordinates, and nothing reserved room
+    for it: its first line ran through the Wingrove & Bach Fig. 8 panel's x-axis label.
+    `vortex_viz.figure` now ends the panels above the footer, sized by the footer's own line
+    count, and `test_vortex_viz.py::test_the_provenance_footer_overprints_no_panel` asserts that
+    it overlaps no axes.
+  - In `validation-ladder.ipynb` only the Wingrove & Bach cell's figure changed. Every other
+    output is identical, checked cell by cell.
+- **Item 3's follow-up**, rebased onto it.
+
+Both reach `main` through a second pull request from `phase-5`.
 
 *The paragraph below was written at the end of phase 2 and is kept as written; point 9 above
 supersedes it where they differ — the α̇ work is now reviewed.*
@@ -9053,7 +9088,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 
 | Command | What it does |
 |---|---|
-| `.venv/Scripts/python.exe -m pytest -q` | **926 passed, 1 skipped, 1 xfailed, 0 failed, 1,672 s on Linux in CI** (`.github/workflows/tests.yml`, run 35390817171 on phase 5's final commit, and 1,566 s on its first, run 35370419455: the same count as Windows, at the same library versions — §4, "What does not reproduce on another platform"). On Windows, **926 passed, 1 skipped, 1 xfailed, 0 failed, 1,561 s** (end of session 32's phase 3, on the tree `atisim.__file__` confirmed: the 918 below plus 8 of the 9 tests in `test_cr2144_crosscheck.py`. **The one xfail is deliberate and strict** — `Cm_M`'s band in that file, where a sealed prediction was measured WRONG and the band was marked rather than widened, §4. 928 collected). Before that **918 passed, 1 skipped, 0 failed, 1,092 s** (end of session 32, measured on the merged triage tree: the 906 below, plus 12 in `test_figures.py` from the panel-chrome fix applied across the rename. 919 collected. **Zero failures** — the 2 platform bit-pins that failed through session 29 are green here). Before that **906 passed, 1 skipped, 1,534 s** (end of session 30, after merging `main`'s session 29: 863 plus its 43). Before that **863 passed, 1 skipped, 1,716 s** (end of session 30: the arm moved to 5.70 ft and the Hannibal headline switched to the replayed field, with 2 new tests). Before that **861 passed, 1 skipped, 1,000 s** (session 30, after `boeing747` declared CR-2144's thrust line: 859 plus 2 in `test_cr2144_speed_derivatives.py`, with 9 existing tests re-pointed or re-captured — §4's thrust-line entry says which). Before that **859 passed, 1 skipped, 1,673 s** (session 30, after the Parks Fig. 6 altitude: 852 plus 7 in `test_parks_fig6_altitude.py`). Before that **852 passed, 1 skipped, 1,295 s** (the 844 below plus the 8 tests in `test_hannibal_horizontal_wind.py`). Before that, **844 passed, 1 skipped, 887 s** (measured session 30 after `boeing747` declared CR-2144's speed derivatives: 23 tests in `test_cr2144_speed_derivatives.py`, and 17 existing tests re-captured, moved onto the undeclared entry, split, or fixed — §4's session-30 entry, item 7, says which. Earlier the same session measured **843** before the declaration, which was 821 + 22 with nothing else moved. The wall clock is machine load, not the suite). Previously **821 passed, 1 skipped, 34m37s** at session 28 after the compressibility merge; 812 before it, same session; 811 at session 26; 807 at session 25; it was 788 at session 24 and **758 measured session 23b**; the 626 this row claimed was stale by five sessions, and the 322 before that by several more — this row has now been wrong twice, so re-measure it rather than trusting it). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. |
+| `.venv/Scripts/python.exe -m pytest -q` | **931 passed, 1 skipped, 1 xfailed, 0 failed, 1,327 s** on Windows (later in phase 5, on the tree `atisim.__file__` confirmed: the 926 below, plus pull request #14's footer test in `test_vortex_viz.py`, plus the 4 TM-102186 Fig. 8 fleet tests in `test_cat_validation.py`, whose shared fixture takes 50–64 s. 933 collected. Not yet run in CI). Before that **926 passed, 1 skipped, 1 xfailed, 0 failed, 1,672 s on Linux in CI** (`.github/workflows/tests.yml`, run 35390817171 on phase 5's final commit, and 1,566 s on its first, run 35370419455: the same count as Windows, at the same library versions — §4, "What does not reproduce on another platform"). On Windows, **926 passed, 1 skipped, 1 xfailed, 0 failed, 1,561 s** (end of session 32's phase 3, on the tree `atisim.__file__` confirmed: the 918 below plus 8 of the 9 tests in `test_cr2144_crosscheck.py`. **The one xfail is deliberate and strict** — `Cm_M`'s band in that file, where a sealed prediction was measured WRONG and the band was marked rather than widened, §4. 928 collected). Before that **918 passed, 1 skipped, 0 failed, 1,092 s** (end of session 32, measured on the merged triage tree: the 906 below, plus 12 in `test_figures.py` from the panel-chrome fix applied across the rename. 919 collected. **Zero failures** — the 2 platform bit-pins that failed through session 29 are green here). Before that **906 passed, 1 skipped, 1,534 s** (end of session 30, after merging `main`'s session 29: 863 plus its 43). Before that **863 passed, 1 skipped, 1,716 s** (end of session 30: the arm moved to 5.70 ft and the Hannibal headline switched to the replayed field, with 2 new tests). Before that **861 passed, 1 skipped, 1,000 s** (session 30, after `boeing747` declared CR-2144's thrust line: 859 plus 2 in `test_cr2144_speed_derivatives.py`, with 9 existing tests re-pointed or re-captured — §4's thrust-line entry says which). Before that **859 passed, 1 skipped, 1,673 s** (session 30, after the Parks Fig. 6 altitude: 852 plus 7 in `test_parks_fig6_altitude.py`). Before that **852 passed, 1 skipped, 1,295 s** (the 844 below plus the 8 tests in `test_hannibal_horizontal_wind.py`). Before that, **844 passed, 1 skipped, 887 s** (measured session 30 after `boeing747` declared CR-2144's speed derivatives: 23 tests in `test_cr2144_speed_derivatives.py`, and 17 existing tests re-captured, moved onto the undeclared entry, split, or fixed — §4's session-30 entry, item 7, says which. Earlier the same session measured **843** before the declaration, which was 821 + 22 with nothing else moved. The wall clock is machine load, not the suite). Previously **821 passed, 1 skipped, 34m37s** at session 28 after the compressibility merge; 812 before it, same session; 811 at session 26; 807 at session 25; it was 788 at session 24 and **758 measured session 23b**; the 626 this row claimed was stale by five sessions, and the 322 before that by several more — this row has now been wrong twice, so re-measure it rather than trusting it). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. |
 | `.venv/Scripts/python.exe scripts/sanity.py` | **The ladder, for a reader who does not yet trust the model.** ~~Twelve cases~~ Eleven checks, **11/11** since session 32 (it read 8/11 before — §9, session 32, point 11), from degenerate inputs upward — zero the wind, zero a coefficient so a motion becomes impossible, then signs, then hand-computable numbers, then structural properties. Every expected value is derived by hand in the source and printed beside the model's answer, so it is read rather than trusted. Ends with the item 08 convention probe, which is a measurement rather than a pass/fail. |
 | `.venv/Scripts/python.exe -m sphinx -b html -W --keep-going docs docs/_build/html` | **Builds the documentation site (phase 4).** Needs the `docs` extra. The site's narrative pages `{include}` sections of this file verbatim — the *Running it* page **is** this section, the *Validation* page is §1's claim plus the §5 status table — so editing the record updates the site and nothing can drift. `-W` makes a warning an error, which is how CI runs it (`.github/workflows/docs.yml`); it builds clean with zero warnings. `docs/conf.py` carries a hook that renders the package's plain-prose docstrings as written. |
 | `.venv/Scripts/python.exe -m pytest --nbval-lax notebooks/ -q` | **The second gate.** Executes ~~`notebooks/solver-validation.ipynb`~~ both notebooks — `solver-validation.ipynb` and, since session 32, `validation-ladder.ipynb`, which walks §1's claim — so they cannot rot: **24 passed, 157 s** locally and **113 s** in CI (run 35390817171). CI runs it after the suite (`.github/workflows/tests.yml`). Needs the `dev` extra (`jupyter`, `nbval`). Deliberately *not* in `testpaths` and `--nbval-lax` is deliberately *not* in `addopts`: that would make every `pytest` run fail with "unrecognized arguments" wherever nbval is absent. **Run it from a worktree with an ABSOLUTE `PYTHONPATH`** — nbval starts the kernel with its cwd in `notebooks/`, so a relative `PYTHONPATH=.` resolves to the wrong directory and `atisim` silently loads from the main checkout. |
