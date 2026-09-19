@@ -15,7 +15,7 @@ path, where only cos(31 deg) = 0.857 of it lies.
 Five fields, each flown by the 747 with its Mach-derivative seam SHUT (the
 airframe before session 30, thrust through the CG) and as SHIPPED (CR-2144's
 speed derivatives and thrust line declared), through Mehta's array at 37,000 ft with fixed controls, dt 0.01 and
-`cat_validation.py`'s window:
+`vortex_viz.fly_mehta`'s window:
 
   A  as flown           `wind.vortex_wind`, unchanged
   B  projected          horizontal perturbation x cos(psi)
