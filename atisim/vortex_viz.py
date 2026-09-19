@@ -560,7 +560,15 @@ def figure(
     primary = encounters[0]
     fig = plt.figure(figsize=(15.0, 9.5))
     fig.suptitle(title)
-    grid = fig.add_gridspec(3, 2, width_ratios=(1.5, 1.0), hspace=0.45, wspace=0.18)
+    # The footer sits in figure coordinates, below the panels, so the panels end
+    # where it begins: its height by its own line count (matplotlib's default
+    # 1.2 line spacing), plus room for the bottom row's tick and axis labels.
+    footer_size = 6.5
+    footer_inches = (provenance.count("\n") + 1) * footer_size * 1.2 / 72.0
+    grid = fig.add_gridspec(
+        3, 2, width_ratios=(1.5, 1.0), hspace=0.45, wspace=0.18,
+        bottom=(footer_inches + 0.7) / fig.get_figheight(),
+    )
 
     _field_panel(
         fig.add_subplot(grid[0, 0]), primary, field, array_cores,
@@ -570,7 +578,7 @@ def figure(
     _discriminator_panel(fig.add_subplot(grid[2, 0]), encounters)
     _trace_stack(fig, grid[:, 1], primary)
 
-    fig.text(0.01, 0.004, provenance, fontsize=6.5, family="monospace", color="0.35")
+    fig.text(0.01, 0.004, provenance, fontsize=footer_size, family="monospace", color="0.35")
     return fig
 
 
