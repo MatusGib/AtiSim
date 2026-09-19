@@ -1654,7 +1654,7 @@ the corresponding test, then add a notebook cell that calls it. Never the other 
 **The second notebook, `notebooks/validation-ladder.ipynb`,** walks the validation claim rather
 than the solver — hand-derived checks, the source data's own modes and drag polar, the JSBSim
 cross-check, the Hannibal encounter, and the two published orderings — and keeps the same
-division of labour with ~~one exception, **now closed**~~ two exceptions, one now closed. Its published values, tolerances and the drag
+division of labour with ~~one exception, **now closed**~~ ~~two exceptions, one now closed~~ two exceptions, **both now closed**. Its published values, tolerances and the drag
 computation are imported from the tests that assert them; the Hannibal flights come from
 ~~`scripts/cat_validation.py`~~ `atisim.vortex_viz`. ~~**But nothing in `atisim/tests/` flies TM-102186 Fig. 8's
 six-aircraft fleet**, so the notebook's assertions on that ordering and its mechanism are the
@@ -1668,7 +1668,7 @@ orderings: the Cherokee pitches more than the 747, its `n_z` minimum is milder, 
 falls strictly with traverse ratio, and every run peaks inside the linear band. Rung 4 calls
 the same functions (`docs/PROJECT.md` §9, session 32, point 11).
 
-**The second exception is rung 1, found afterwards and still open.** Rung 1 runs
+**The second exception is rung 1, found afterwards** ~~**and still open.**~~ **and since closed.** Rung 1 runs
 `scripts/sanity.py` and asserts its count. For four of its eleven checks, `atisim/tests/`
 asserts nothing equivalent:
 - [2] and [3]: free fall at the local g(h), straight down;
@@ -1679,3 +1679,7 @@ For [11], an elevator input exciting nothing lateral, the suite asserts only the
 case. The notebook is the only gate on these. The Wingrove & Bach cell is not an exception:
 `test_vortex_viz.py` asserts the same vortex < updraft < manoeuvre ordering on the same flights
 (`docs/PROJECT.md` §9, session 32, point 11).
+
+**Closed:** `atisim/tests/test_sanity.py` asserts [2] to [5] and the elevator case of [11] on
+the same trimmed 747 at the script's own tolerances, each against an expression derived by hand
+in the test, so rung 1 no longer gates anything the suite does not.

@@ -10,7 +10,7 @@ per cent of each.
 THE RUN IS THE HEADLINE RUN, unchanged: `boeing747` through Mehta's five-core
 Hannibal array at 37,000 ft, started in moving air at a 12 r0 lead, measured over
 the array plus 2 r0 either side -- the same configuration
-`scripts/cat_validation.py:fly_mehta` flies.
+`atisim.vortex_viz.fly_mehta` flies.
 
 WHAT A PEAK-TO-PEAK DERIVATIVE IS, AND IS NOT. `max - min` is differentiable
 almost everywhere and not everywhere: its gradient is the gradient of the two
@@ -45,7 +45,7 @@ EXCURSIONS = (0.01, 0.05, 0.10, 0.25)
 
 
 def mehta_setup(dt: float = 0.01, lead_r0: float = 12.0):
-    """The headline run's configuration, read off `cat_validation.fly_mehta`."""
+    """The headline run's configuration, read off `vortex_viz.fly_mehta`."""
     ac = REGISTRY["boeing747"]
     V = CRUISE["boeing747"]["airspeed"]
     H = wind.MEHTA_HANNIBAL_ALTITUDE
