@@ -98,11 +98,15 @@ Every one of the 44 scripts is described in the documentation's *Running it* pag
 ## Tests
 
 ```bash
+.venv/Scripts/python.exe -m pip install -e .[dev,ui]
 .venv/Scripts/python.exe -m pytest -q
 ```
 
 Over 900 tests, asserting bands and orderings rather than exact values. The count and runtime of
-the last full run are recorded in [`docs/PROJECT.md`](docs/PROJECT.md) §10. The notebooks are a
+the last full run are recorded in [`docs/PROJECT.md`](docs/PROJECT.md) §10. **The `ui` extra is
+there for a reason:** the artifact and figure tests skip themselves at import when `pyarrow` and
+`plotly` are absent, so `.[dev]` alone gives a green run with 50 of them missing rather than
+failing. The notebooks are a
 second gate, executed cell by cell:
 
 ```bash
