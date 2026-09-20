@@ -122,13 +122,17 @@ one Python imports:
 
 ## Documentation
 
+**[matusgib.github.io/AtiSim](https://matusgib.github.io/AtiSim/)** — getting started, what the
+model may be used for, every script, and the API reference generated from the source. Its
+narrative pages include sections of [`docs/PROJECT.md`](docs/PROJECT.md) verbatim, so the site
+cannot state a result the record does not.
+
+To build it yourself:
+
 ```bash
 .venv/Scripts/python.exe -m pip install -e .[docs]
 .venv/Scripts/python.exe -m sphinx -b html docs docs/_build/html
 ```
-
-The site covers getting started, what the model may be used for, every script, and the API
-reference generated from the source.
 
 - [`docs/PROJECT.md`](docs/PROJECT.md) — the standing record: what exists, what is measured and
   to what tolerance, what is known to be wrong, and what is left
