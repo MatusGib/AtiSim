@@ -17,7 +17,7 @@ On Linux and macOS the interpreter is `.venv/bin/python`. Optional extras:
 | Extra | For |
 |---|---|
 | `.[dev]` | the test suite and the executed notebooks |
-| `.[ui]` | the Dash analysis app |
+| `.[ui]` | the Dash analysis app — **and the artifact and figure tests**, 50 of them, which skip themselves at import without it |
 | `.[ref]` | regenerating the JSBSim comparison data — the suite itself never needs JSBSim |
 | `.[docs]` | building this site |
 
@@ -37,11 +37,16 @@ mean. {doc}`running` has the full table of which launch method resolves where.
 ## Run the tests
 
 ```bash
+.venv/Scripts/python.exe -m pip install -e .[dev,ui]
 .venv/Scripts/python.exe -m pytest -q
 ```
 
 The suite asserts **bands and orderings, not exact values**, for the reason {doc}`validation`
 gives. The count and runtime of the last full run are recorded in {doc}`running`.
+
+**Install `ui` as well as `dev` to run all of it.** `test_artifact.py` and `test_figures.py`
+call `importorskip` at module level, so without `pyarrow` and `plotly` they do not collect at
+all: 887 tests instead of 937, green either way and silent about the difference.
 
 ## Before you believe the model: the validation ladder
 

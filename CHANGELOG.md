@@ -6,7 +6,12 @@ was measured, what was wrong, and what was corrected — is kept in full in
 [`docs/PROJECT.md`](docs/PROJECT.md) §9, and every result named here is a §4 entry there with
 the tolerance it was measured to.
 
-## [1.0.0] — unreleased
+The repository's history was rewritten before this release, to take publisher-held reference
+documents out of every commit. No code, result or record entry changed;
+[`docs/design/commit-map.txt`](docs/design/commit-map.txt) maps the commit ids quoted in the
+record to the ones that exist now.
+
+## [1.0.0] — 2026-09-20
 
 ### Flight dynamics core
 
