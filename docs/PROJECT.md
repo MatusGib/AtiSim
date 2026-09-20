@@ -117,7 +117,7 @@ is struck through or marked merged and is kept as the record of how it was found
 | Still live | Where it is, after the history rewrite |
 |---|---|
 | **The WGS-84 union, `wgs84-earth`** | **In this repository**, rewritten with the rest of the history. `main` is a flat, non-rotating Earth — `ASSUMPTIONS.md` A1, and the README says so before the install instructions — and the union is one branch away, measured and banked rather than merged. §9, session 32, point 8 has the measurement and the decision; the row below has the address |
-| **The α̇ derivatives, `claude/engine-validity-presentation-1408e8`** | **Not in this repository.** The branch was never pushed, and the rewrite did not carry it, so it exists on the maintainer's machine and in `MatusGib/AtiSim-archive`. §5's status table records what it would close and what it costs; §9, point 9 records the review that parked it |
+| **The α̇ derivatives** | **Not in this repository.** The branch was never pushed while the release was prepared, and the rewrite did not carry it — so when the local branches were cleaned up it turned out to be a **single copy, on one machine**, which this row had already claimed was also in the archive. It now is: pushed to `MatusGib/AtiSim-archive` as **`alphadot-derivatives-parked`** at `6148cd8`, renamed on the way out because a `claude/*` name is not pushed anywhere. Locally it is still `claude/engine-validity-presentation-1408e8`, checked out in `.claude/worktrees/project-md-restructure-95b7b8`. §5's status table records what it would close and what it costs; §9, point 9 records the review that parked it |
 
 **Commit ids below predate the rewrite.** `docs/design/commit-map.txt` translates them, except
 for branches deleted before it, which live only in the archive.
