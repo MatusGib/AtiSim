@@ -454,6 +454,15 @@ def test_layer3_longitudinal_modes_match():
     one of them -- "a slow drag-and-thrust energy exchange" is the DAMPING half
     and says nothing about the frequency, which is the larger error.
 
+    **THE FREQUENCY HALF BELOW IS CLOSED, AND THE TEXT IS KEPT AS THE RECORD OF
+    WHAT CLOSED IT.** Session 24 read `Cmde`'s Mach schedule out of 737.xml and
+    supplied the mechanism this paragraph says a constant-coefficient model
+    cannot carry -- see test_atisims_speed_derivative_of_pitching_moment_is_the
+    _cmde_mach_schedule below, which measures 6.58% -> 0.45%. Measured again at
+    the 1.0.0 release: phugoid frequency +0.45%, damping -1.46%, short period
+    -0.06% and +0.06%. Read the two paragraphs below as the diagnosis they were
+    when the gap was open, not as the state of the model.
+
       frequency, 6.58%: M_u, the pitching moment due to speed. atisim has none
       beyond an alphadot coupling; JSBSim's Cmde is a Mach table, -1.20 at M 0
       and -0.30 at M 2, and delta_e times that 0.45 slope accounts for 90.5% of
