@@ -1141,6 +1141,181 @@ def dryden_spectrum(omega: Array, sigma_w: float, L_w: float = DRYDEN_LW) -> Arr
     return sigma_w**2 * (L_w / jnp.pi) * (1.0 + 3.0 * u2) / (1.0 + u2) ** 2
 
 
+def sinusoidal_vertical_field(amplitude: float, wavelength: float,
+                              phase: float = 0.0):
+    """A single-frequency frozen vertical gust, as a position-only field.
+
+    `w_up(N) = amplitude * cos(2 pi N / wavelength + phase)`, positive UP.
+
+    WHY A SPECTRUM'S WORTH OF MACHINERY IS NOT USED HERE. This is the input to
+    the ONE experiment in this project that has an exact answer -- the transfer
+    function verification of `atisim/gust.py`, design phase V1 -- and a
+    single sinusoid is the only input for which "the answer" is a single
+    complex number rather than an integral. `dryden_vertical_field` with one
+    component would do the same arithmetic, but its amplitude is set by the
+    spectrum and the caller could not choose it, and choosing it is exactly
+    what keeps a V1 run inside the linear regime it is verifying.
+
+    Composes with `superpose` and is analytically differentiable, so
+    `field_model`'s `jacfwd` produces the exact gradient and `stage_sampled`
+    applies -- which matters here more than anywhere else, since a held wind
+    would cost the integrator three orders and V1 would then be measuring the
+    integrator instead of the response.
+    """
+    k = 2.0 * jnp.pi / wavelength
+
+    def field(pos_ned: Array) -> Array:
+        w_up = amplitude * jnp.cos(k * pos_ned[0] + phase)
+        # NED z is DOWN; an updraft is negative. Same convention as LeeWave.
+        return jnp.array([0.0, 0.0, -w_up])
+
+    return field
+
+
+def gaussian_vertical_field(
+    sigma_w: float,
+    seed: int,
+    *,
+    L_w: float = DRYDEN_LW,
+    n_components: int = 400,
+    wavelength_min: float = 20.0,
+    wavelength_max: float = 40_000.0,
+):
+    """`dryden_vertical_field`'s Gaussian CONTROL: random amplitudes too.
+
+    Same spectrum, same grid, same variance in expectation -- and a genuinely
+    Gaussian process, which `dryden_vertical_field` is not.
+
+    **WHY A CONTROL IS NEEDED AT ALL, which is design phase V5's whole point.**
+    The Shinozuka construction gives every component a FIXED amplitude
+    `sqrt(2 Phi dOmega)` and a random phase. That reproduces the target PSD
+    exactly -- `test_cat_validation.py::test_a_dryden_realisation_has_the_
+    variance_it_claims` measures it -- and it does NOT reproduce a Gaussian
+    process's higher moments: each realisation's amplitude spectrum has zero
+    variance across the ensemble. Every peak, exceedance and load-factor claim
+    this project makes rests on statistics that construction is not guaranteed
+    to get right, and none of them had been measured.
+
+    Here each component carries independent `a_k cos + b_k sin` with
+    `a_k, b_k ~ N(0, A_k^2/2)`, so the sum is Gaussian by construction, its
+    variance is the same `sum A_k^2/2`, and the ONLY difference from the
+    Shinozuka field is the thing under test. Comparing the two isolates the
+    construction rather than the spectrum, which comparing either against a
+    textbook peak-factor formula could not do -- the asymptotic
+    `sqrt(2 ln(nu T))` does not apply at these record lengths.
+
+    NOT a replacement for `dryden_vertical_field` and not to be flown for a
+    result. It is the null hypothesis, and using it for anything else would
+    make the comparison it exists for circular.
+    """
+    omega, amplitude, _ = dryden_vertical_components(
+        sigma_w, seed, L_w=L_w, n_components=n_components,
+        wavelength_min=wavelength_min, wavelength_max=wavelength_max,
+    )
+    # A SEPARATE key stream from the Shinozuka field's, so that seed k of one is
+    # not a re-phasing of seed k of the other. Sharing it would correlate the
+    # two ensembles member for member and understate the difference between
+    # them -- which is the one quantity the whole comparison is about.
+    ka, kb = jax.random.split(jax.random.PRNGKey(seed + 1_000_003), 2)
+    scale = amplitude / jnp.sqrt(2.0)
+    a = scale * jax.random.normal(ka, (n_components,))
+    b = scale * jax.random.normal(kb, (n_components,))
+
+    def field(pos_ned: Array) -> Array:
+        x = pos_ned[0]
+        w_up = jnp.sum(a * jnp.cos(omega * x) + b * jnp.sin(omega * x))
+        # NED z is DOWN; an updraft is negative. Same convention as LeeWave.
+        return jnp.array([0.0, 0.0, -w_up])
+
+    return field
+
+
+def one_minus_cosine_gust(peak: float, gradient_distance: float,
+                          start_north: float = 0.0):
+    """The certification discrete gust, as a position-only field.
+
+        w_up(s) = (peak/2) (1 - cos(pi s / H))   for 0 <= s <= 2H
+                = 0                              outside
+
+    with `s = north - start_north` and `H = gradient_distance` -- the distance
+    from the gust's start to its peak, which is the convention NACA Report 1206
+    and every airworthiness code since state it in. The gust is therefore 2H
+    long and its maximum is `peak` at s = H.
+
+    Pratt & Walker fitted the alleviation factor `K_g` for H = 12.5 mean chords,
+    which is what makes `gust.pratt_walker` comparable against a run through
+    this field and only this field. `scripts/discrete_gust.py` sweeps H around
+    that value precisely so the comparison is not read off one point.
+
+    C1 BUT NOT C2, and that is worth knowing before a convergence study is run
+    on it. The slope `(peak pi / 2H) sin(pi s / H)` vanishes at both ends, so
+    the wind and its gradient are continuous everywhere; the CURVATURE jumps at
+    s = 0 and s = 2H. That is two points in a run, not a region, and it is why
+    this field is legitimate to fly while `wind.vortex_wind`'s Rankine core --
+    whose SLOPE jumps -- makes an order study non-monotone (ASSUMPTIONS E9).
+    """
+    half = 0.5 * peak
+    k = jnp.pi / gradient_distance
+
+    def field(pos_ned: Array) -> Array:
+        s = pos_ned[0] - start_north
+        inside = (s >= 0.0) & (s <= 2.0 * gradient_distance)
+        # `jnp.where` on a SAFE argument, not on the result: the cosine is
+        # finite everywhere so this is only a mask, but keeping the pattern
+        # identical to the rest of this module costs nothing and means no
+        # future edit has to rediscover which branch jacfwd differentiates.
+        w_up = jnp.where(inside, half * (1.0 - jnp.cos(k * s)), 0.0)
+        # NED z is DOWN; an updraft is negative. Same convention as LeeWave.
+        return jnp.array([0.0, 0.0, -w_up])
+
+    return field
+
+
+def dryden_vertical_components(
+    sigma_w: float,
+    seed: int,
+    *,
+    L_w: float = DRYDEN_LW,
+    n_components: int = 400,
+    wavelength_min: float = 20.0,
+    wavelength_max: float = 40_000.0,
+):
+    """The (omega, amplitude, phase) triple `dryden_vertical_field` sums.
+
+    Split out of that function -- which now calls it and is bit-identical to
+    what it was -- because a Shinozuka realisation's response variance has an
+    EXACT closed form in terms of these three arrays, and no caller could reach
+    them while they lived inside a closure.
+
+    The exact form is the whole of design phase V2. For a sum of sinusoids with
+    FIXED amplitudes A_k and random phases, driven through a transfer function
+    H, the response variance over a long record is
+
+        sigma_response^2 = sum_k |H(omega_k)|^2 A_k^2 / 2
+
+    with no approximation at all -- not a Riemann sum of an integral, but the
+    variance this particular realisation actually has. Comparing a flown run
+    against THAT separates the model's response from the realisation's own
+    discretisation, which comparing against the continuous integral cannot do.
+    `atisim/gust.py::realisation_mean_square_ratio` is the caller.
+
+    Returns jax arrays, since that is what the field closure consumes.
+    """
+    key = jax.random.PRNGKey(seed)
+    omega = jnp.geomspace(
+        2.0 * jnp.pi / wavelength_max, 2.0 * jnp.pi / wavelength_min, n_components
+    )
+    # Trapezoidal widths on a log grid: each component owns half the gap to
+    # each neighbour, and the two ends own their single half-gap.
+    edges = jnp.concatenate([
+        omega[:1], jnp.sqrt(omega[1:] * omega[:-1]), omega[-1:]
+    ])
+    d_omega = edges[1:] - edges[:-1]
+    amplitude = jnp.sqrt(2.0 * dryden_spectrum(omega, sigma_w, L_w) * d_omega)
+    phase = jax.random.uniform(key, (n_components,), maxval=2.0 * jnp.pi)
+    return omega, amplitude, phase
+
+
 def dryden_vertical_field(
     sigma_w: float,
     seed: int,
@@ -1167,18 +1342,10 @@ def dryden_vertical_field(
     makes the realised variance sum(Phi dOmega) -- a Riemann sum of the integral
     that defines sigma_w^2.
     """
-    key = jax.random.PRNGKey(seed)
-    omega = jnp.geomspace(
-        2.0 * jnp.pi / wavelength_max, 2.0 * jnp.pi / wavelength_min, n_components
+    omega, amplitude, phase = dryden_vertical_components(
+        sigma_w, seed, L_w=L_w, n_components=n_components,
+        wavelength_min=wavelength_min, wavelength_max=wavelength_max,
     )
-    # Trapezoidal widths on a log grid: each component owns half the gap to
-    # each neighbour, and the two ends own their single half-gap.
-    edges = jnp.concatenate([
-        omega[:1], jnp.sqrt(omega[1:] * omega[:-1]), omega[-1:]
-    ])
-    d_omega = edges[1:] - edges[:-1]
-    amplitude = jnp.sqrt(2.0 * dryden_spectrum(omega, sigma_w, L_w) * d_omega)
-    phase = jax.random.uniform(key, (n_components,), maxval=2.0 * jnp.pi)
 
     def field(pos_ned: Array) -> Array:
         w_up = jnp.sum(amplitude * jnp.cos(omega * pos_ned[0] + phase))

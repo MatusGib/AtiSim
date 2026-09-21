@@ -370,7 +370,7 @@ longer unconditional:
 - **|α| past ~10–12° still reports lift the sources deny** — for the linear entries. The 737
   matches its source to better than 1e-9 across the full ±26° table.
 
-### C2. Aerodynamics are quasi-steady: no α̇ or unsteady lag
+### C2. Aerodynamics are quasi-steady on the aircraft's OWN motion: no α̇
 
 **Where:** `aero.coefficients` takes instantaneous `vel_rel` and `omega_rel` only.
 
@@ -402,6 +402,15 @@ says nothing else is contributing.** Pinned by
 
 **Verdict: sound and bounded, now at two conditions and in both directions.** This is the
 best-characterised assumption in the project.
+
+**SCOPE CORRECTED, SESSION 33 — this entry was titled "no α̇ *or unsteady lag*" and every
+number in it is about α̇.** α̇ is the lag on the aircraft's **own** motion, which `Cmadot`
+carries and which both bounds above measure. The lag on the **gust's** arrival is a
+different physical effect — Sears' problem rather than Theodorsen's — and this entry never
+bounded it, while its title claimed it did. `Sears`, `Küssner`, `Wagner` and `Theodorsen`
+appeared nowhere in the tree, verified by grep across `*.py` and `*.md` on 21 September
+2026. The gust half is now **C12**, with its own measurement. Nothing in the bounds above
+changes; what changes is that they are no longer read as covering twice what they do.
 
 ### C3. Stability derivatives are constant across the whole flight envelope
 
@@ -800,6 +809,58 @@ rate estimate and checks it against a band. It rejects both light aircraft, but 
 rather than by design — requiring the two routes to **agree** as well as to fall in band
 would reject them for the actual reason. That changes which aircraft may enter the strip
 path, so it is a scoped modelling change with its own re-measurement, not a repair.
+
+### C12. The gust's arrival is instantaneous — no Sears attenuation, no Küssner lag
+
+**Where:** `aero.coefficients` converts the air-relative velocity into an incidence and an
+instantaneous lift. A gust pattern convecting past the wing produces its full quasi-steady
+lift the moment it arrives, with no build-up and no phase lag.
+
+**Split out of C2 in session 33.** C2's title claimed this half and its bounds never
+touched it. The distinction is not pedantic: α̇ is the aerofoil moving in still air
+(Theodorsen), and this is the aerofoil held still while the air pattern moves past it
+(Sears). They are different boundary-value problems with different answers, and the model
+carries a derivative for the first and nothing for the second.
+
+**Bound, measured session 33 — `atisim.gust.sears`, `scripts/gust_lag_bound.py`.**
+Sears' function `S(k) = [J₀(k) − iJ₁(k)]C(k) + iJ₁(k)` with `C(k)` the Theodorsen function
+and `k = ωc̄/2V` the semichord reduced frequency, at the 747 at M 0.80 / 37,000 ft:
+
+| forcing | ω (rad/s) | k | \|S\| | ∠S | lift lost |
+|---|---|---|---|---|---|
+| Dryden scale length, V/L_w | 0.4425 | 0.00780 | 0.9870 | −2.19° | **1.30%** |
+| **short period** | 1.0317 | 0.01819 | 0.9689 | −4.15° | **3.11%** |
+| Dryden peak response, 0.187 Hz | 1.1775 | 0.02076 | 0.9644 | −4.56° | **3.56%** |
+| **Parks core passage, V/r₀** | 1.2908 | 0.02276 | 0.9610 | −4.87° | **3.90%** |
+| shortest realised component, 20 m | 74.159 | 1.3075 | 0.3437 | +35.08° | 65.63% |
+
+**Integrated over the whole Dryden band rather than quoted at a frequency**, applying
+`|S|` to `|H|` inside `∫|H|²Φ_w dΩ` reduces **σ_nz by 6.78%**.
+
+**THE SIGN IS THE REASON THIS IS WORTH RAISING.** The attenuation is a loss, so including
+it would make the simulated load **smaller**. `PROJECT.md` §5 records the model falling
+short of the Hannibal encounter; this term therefore **widens** that shortfall rather than
+explaining it. A newly-identified term that happened to close the project's headline gap
+would deserve far more scepticism than one that does not.
+
+**Scale, for comparison.** E2 prices the point-gust approximation at 4.4% on the same
+encounter and calls it the model's largest self-approximation. This one is the same order
+and was unbounded.
+
+**What the bound is NOT.** `|S|` is thin-aerofoil theory for a single lifting surface in
+an incompressible sinusoidal gust. This is a whole aircraft with a tail meeting the same
+gust a tail-arm later, at M 0.80. So the numbers above say the **size and the sign** of a
+term the model omits; they are not a correction that could be applied to recover the right
+answer, and applying them as one would be a fabrication of the kind rule 2 exists to stop.
+The 65.63% row is inside the wavelength band `dryden_vertical_field` realises and outside
+the band where a point-sampled gust means anything at all (E2) — it is there to show where
+the approximation stops being small, not as a usable figure.
+
+**Verdict: bounded, unmodelled, and pointing the wrong way for the project's story.**
+Modelling it needs an indicial or state-space Küssner approximation in `aero.py` and a
+re-measurement of every §4 turbulence row, which is a scoped change and not a repair.
+Pinned by `test_gust.py::test_v4_the_gust_lag_is_the_same_order_as_the_point_gust_cost`
+and `..._widens_the_hannibal_shortfall_rather_than_closing_it`.
 
 ---
 

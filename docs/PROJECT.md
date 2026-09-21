@@ -662,7 +662,7 @@ changed that.
 | `units.py` | conversion constants only | no logic; factors are never inlined elsewhere |
 | `verification.py` | **tier 0** — `fitted_order`, `oscillator_refinement`, `fixed_control_refinement`, `newton_residual_history`, `torque_free_omega`, `without_aerodynamics`, `free_fall_through_a_swinging_wind` | takes **no aircraft data as a reference**; a failure here is a defect in the core. Every check lives here rather than inside its test, so the notebook runs the same code the suite asserts on |
 | **`cr2144_mach.py`** | **CR-2144's 747 Mach sheets, digitised, and what checks them**: `curves`, `value`, `perturbed`, Tables IX-3/IX-4 at FC3–10, `backsolve` (Appendix A inverted), `mach_increment`, `modes`, `errors_vs_ix5` | added session 30. Reads `atisim/data/cr2144_p220_222_digitised.csv` — the hand-placed points only, never extrapolated. **No model code imports it.** It is the evidence behind `Aircraft.CL_M/CD_M/Cm_M` and the instrument that prices them |
-| `validation.py` | **tiers 1–2** — `longitudinal_matrix`, `to_stability_axes`, `to_imperial_matrix`, `longitudinal_modes`, `lateral_modes`, `Reference`/`REFERENCES`, `CAUGHEY_A`, `sweep`, `affine_fit` | the linearisation lives here, not in `tests/modes.py`, which is now a re-export. Every reference number carries its citation as a `Reference.source` field, enforced by a test |
+| `validation.py` | **tiers 1–2** — `longitudinal_matrix`, `to_stability_axes`, `to_imperial_matrix`, `longitudinal_modes`, `lateral_modes`, `Reference`/`REFERENCES`, `CAUGHEY_A`, `sweep`, `affine_fit` | the linearisation lives here, not in `tests/modes.py`, which is now a re-export. Every reference number carries its citation as a `Reference.source` field, enforced by a test. **`longitudinal_matrix` is the 4-state, constant-density model** — right for comparing against CR-2144's own published matrices, which are constant-density too, and **not the system this simulator integrates**: §5.21 and `gust._linearise` |
 | **`docs/ASSUMPTIONS.md`** | not code — the **assumption register**: what the model assumes, why, and a measured bound on each | this document records what has been *measured*; that one records what has been *assumed*. Read it before quoting any result to better than ~0.5%, before flying far from a trim point, and before adding a wind field whose scale approaches a wingspan |
 | **`provenance.py`** | the **ledger**: a constant's category and citation, as data — SOURCED / DERIVED / CALIBRATED / DECLARED | `test_provenance.py` enforces the entries' internal consistency; coverage is enforced separately and only over five modules' module-level constants — see §2's point 4, which corrects what this row used to claim. Answers "which numbers are bulletproof?" as a query rather than a memory |
 | **`airframe.py`** | where on the airframe the field is sampled: derived tail arm, sample stations, spanwise loading | the tail arm is DERIVED from `Cmq`/`CLq`, never sourced; the loading shape is DECLARED and carries a measured sensitivity |
@@ -671,8 +671,8 @@ changed that.
 | `aero.py` | coefficient build-up; `thrust_force` and `thrust_moment` along the aircraft's thrust line | **takes `vel_rel`/`omega_rel` only; never sees inertial velocity**. The thrust line (`Aircraft.thrust_arm`, `thrust_incidence`) defaults to body x through the CG; `boeing747` declares CR-2144's since session 30 |
 | `dynamics.py` | 6-DOF Newton-Euler, `load_factor`, `f_factor`, `average_f_factor`, `thrust_authority` | wind enters here and nowhere else |
 | `predictions.py` | sealed predictions | the register of claims made BEFORE their answer is available. Not imported by any model code and deliberately not a source of numbers: nothing here may be quoted as evidence FOR the model. `test_predictions.py` enforces the rules |
-| `wind.py` | wind fields and composition | vortex array, updraft column, lee wave, microburst, `superpose`, `field_model`, `along_track_shear` |
-| `integrate.py` | RK4 `step`, `rollout`, batched rollout | wind sampled once per step, held across the four stages |
+| `wind.py` | wind fields and composition | vortex array, updraft column, lee wave, microburst, `superpose`, `field_model`, `along_track_shear`. Session 33 adds three verification fields — `sinusoidal_vertical_field` (V1), `one_minus_cosine_gust` (V3) and `gaussian_vertical_field` (V5's Gaussian control) — and exposes `dryden_vertical_components`, the triple `dryden_vertical_field` sums, so a realisation's exact response variance can be computed rather than approximated |
+| `integrate.py` | RK4 `step`, `rollout`, batched rollout | wind sampled once per step and held across the four stages **by default** — `stage_sampled=True` re-evaluates it per stage and buys back three orders, and until session 33 no `vortex_viz` caller could ask for it (§6(i)) |
 | `aircraft.py` | three aircraft + `REGISTRY`/`CRUISE`; `boeing747_without_thrust_line()` rebuilds the pre-line 747 exactly, for before/after measurement | every derivative cites its source table; `FlightCondition` + `from_dimensional_*` do the conversions |
 | `sensors.py` | `AirData`, `sense(state, wind_ned)` | **the only supported way to ask what the aircraft is doing**; air-relative where a real sensor is |
 | `trim.py` | Newton solve for steady level flight | still-air by construction, and must stay so |
@@ -685,6 +685,7 @@ changed that.
 | **`apps/`** | `sweep.py` — the Dash analysis UI | **the only package that imports Dash, and it computes nothing.** It never runs the simulator either: `n_steps` is a `static_argname`, so every distinct dt pays a fresh 0.6–0.9 s compile and a panel whose contents depend on machine warmth is not a check |
 | `vortex_viz.py` | encounter analysis and the Fig. 8 figure | air-relative throughout; deliberately separate from `viz.py`. `fly` for a wind field with fixed controls, `manoeuvre` for an elevator schedule at zero wind; both go through `_measure`, so the three Fig. 8 points cannot drift apart. **TM-102186's** Fig. 8, a different figure: `MECHANISM_FLEET`, `fly_mehta`, `excursion` and `traverse_ratio`, moved from `scripts/cat_validation.py` in phase 5 so the suite can assert the fleet ordering |
 | **`response.py`** | **tier 3 — RUN statistics**: `spectrum`, `peak_frequency`, `exceedance` | added session 25 (phase 2). A run as a SPECTRUM and as a RATE, rather than as a peak. Numpy, takes a sampled history, same standing as `checks.py` — nothing here is jitted or differentiated. Note the name collision worth keeping straight: `wind.dryden_spectrum` is an INPUT spectrum, this is the RESPONSE. Every unit check in `test_response.py` is against a signal whose answer is closed-form |
+| **`gust.py`** | **tier 1 — CLOSED-FORM GUST RESPONSE**: `gust_transfer` (H(Ω) from vertical gust to n_z), `mean_square_ratio`, `realisation_mean_square_ratio`, `sears`/`theodorsen`/`kussner_attenuation`, `pratt_walker`/`mass_ratio`/`alleviation_factor`, `measure_gust_transfer`, `fit_at_frequency`, `steady_state_seed` | added session 33 (phases V1–V4). `wind.py` builds gust FIELDS and `response.py` analyses the series a run produces; **nothing between them said what the load SHOULD be.** It differentiates the same `dynamics.derivatives` the simulator integrates, so it is **not an independent aerodynamic model and must never be quoted as one** — what it is independent of is the whole time-domain path, which is what V1 falsifies. Its linearisation carries **five** states: height is a real state here because `dynamics` reads `density(altitude)` afresh (§5.21). Scipy for the Bessel and Hankel functions; no JAX in the closed-form half |
 | **`sensitivity.py`** | **the derivative of a RESULT with respect to a COEFFICIENT**: `implicit_trim_jacobian`, `longitudinal_matrix_jnp`/`lateral_matrix_jnp`, `plant_matrix_sensitivity`, `eigenvalue_sensitivity`, `eigenvalue_separation`, `mode_sensitivity`, `elasticity` | added session 29 (phases S0/S1). Everything else here measures the model against a SOURCE; this measures it against ITSELF. Reports **elasticity** `(∂Q/∂p)(p/Q)`, never a raw gradient, because a per-radian derivative and a mass are not otherwise rankable. Carries `INDEPENDENT_FIELDS` and `COUPLED_FIELDS`: **`Aircraft` is NOT a set of independent parameters** — `inertia_inv` is the inverse of `inertia` and `AR` is b²/S — so a naive `jacfwd` over the whole tuple is wrong, and those five fields are refused rather than screened. `mode_sensitivity` returns roots UNSORTED, because sorting is what makes a swept mode discontinuous where two cross |
 
 ### The two interfaces turbulence depends on
@@ -765,7 +766,7 @@ rigid-rotation self-consistency test that found them. **Read it before changing 
 | **Wingrove, Bach & Schultz 1989**, NASA TM-102186 | the Hannibal encounter's **measured** normal acceleration (+1.7 to −1.0 g, gusts ~5 s apart); the vortex-array model in words (1,000 ft diameter, 87 ft/s, 3,400 ft spacing); **Fig. 8's three-aircraft simulation** at V = 150 / 700 / 800 ft/s and the mechanism it states | Fig. 8's exact wind field is not recoverable from the paper, so only orderings and excursion ratios can be compared. **Quotes Schultz 1990's Table 1 *initial estimates* as if they were his converged DFW results** — see §5 |
 | **Lester, Sen & Bach 1989**, *Mon. Wea. Rev.* 117 1103–1107 | **Table 1: the RMS error of a DFDR-plus-radar wind reconstruction** (2.449 m/s horizontal, 2.236 m/s vertical at V = 250 m/s); a **B-747** mountain-wave encounter at 33,000 ft, +2.7/−1.0 g, 1,000 ft altitude gain; a **measured 22 km lee-wave wavelength** ~1 km above the tropopause | one case, over Greenland rather than the Sierra Nevada that `LEE_WAVE_AMPLITUDE` comes from; no ATC radar fixes, so the track was initialised from the pilot's log and a six-minute mean was removed from the derived vertical velocity |
 | **Bach & Parks 1987**, J. Aircraft **24**(11) 789–792 — **HELD, session 26**, `Reference_papers/bach-parks-1987-angle-of-attack-estimation-JA24-11.pdf` | **the error budget on the identification this project's fields rest on.** Eq. (2) gives `C_L` from body-axis accelerations and thrust over `QS`, so **mass and wing area enter only as the ratio `m/S`**. Eq. (4)'s error analysis: the AOA estimate moves **about 0.05° for a 1% error in acceleration**, and "also about 0.05 deg for a 1% error in the lift coefficient" | **contains no DC-10.** Its two validation cases are an **L-1011** and a **B-747SP**, so it does not help §7's acquisition #1. It bounds the input, not the airframe |
-| **Ashburn, Waco & Melvin 1970**, AFFDL-TR-70-101 (HICAT), AD878415 — **HELD, session 26**, `Reference_papers/AFFDL-TR-70-101-Ashburn-Waco-Melvin-1970-HICAT-AD878415.pdf` | **measured** high-altitude turbulence: probability densities and **exceedance curves of RMS gust velocity**, from U-2 flights | **its band is 45,000–70,000 ft and this project flies 33,000–41,000.** Against MIL-F-8785C Fig. 7 in that band it is an *extrapolated* check, and possibly not an independent one — the report compares itself against **MIL-A-8861A** and against **Steiner's NASA U-2** data, so the high-altitude end of Fig. 7 may descend from the same aircraft. Settling that needs the spec's Background Information and User Guide (ADA119421), which is ~~**not held**~~ **HELD, session 31** (`refs/ADA119421-MIL-F-8785C-background-user-guide-Moorhouse-Woodcock-1982.pdf`, Internet Archive copy, md5 `e410411a…`). **It does not settle the question; it moves it back one report.** The guide never mentions HICAT or the U-2. Its intensities combine Av.P. 970's time-in-turbulence fraction P₁(h) (its Ref. 20, reproduced as its Fig. 34) with one Rayleigh σ distribution (Pritchard, in Chalk et al. AFFDL-TR-69-72, 1969: mode 2.3 ft/s, mean 2.8 ft/s), taken as constant with altitude for clear-air turbulence. Independence from HICAT now needs AFFDL-TR-69-72 or Av.P. 970, neither held |
+| **Ashburn, Waco & Melvin 1970**, AFFDL-TR-70-101 (HICAT), AD878415 — **HELD, session 26**, `Reference_papers/AFFDL-TR-70-101-Ashburn-Waco-Melvin-1970-HICAT-AD878415.pdf` | **measured** high-altitude turbulence: probability densities and **exceedance curves of RMS gust velocity**, from U-2 flights | **its band is 45,000–70,000 ft and this project flies 35,000–45,000** (corrected session 33; it said 33,000–41,000, which matched neither aircraft's declared band)**.** Against MIL-F-8785C Fig. 7 in that band it is an *extrapolated* check, and possibly not an independent one — the report compares itself against **MIL-A-8861A** and against **Steiner's NASA U-2** data, so the high-altitude end of Fig. 7 may descend from the same aircraft. Settling that needs the spec's Background Information and User Guide (ADA119421), which is ~~**not held**~~ **HELD, session 31** (`refs/ADA119421-MIL-F-8785C-background-user-guide-Moorhouse-Woodcock-1982.pdf`, Internet Archive copy, md5 `e410411a…`). **It does not settle the question; it moves it back one report.** The guide never mentions HICAT or the U-2. Its intensities combine Av.P. 970's time-in-turbulence fraction P₁(h) (its Ref. 20, reproduced as its Fig. 34) with one Rayleigh σ distribution (Pritchard, in Chalk et al. AFFDL-TR-69-72, 1969: mode 2.3 ft/s, mean 2.8 ft/s), taken as constant with altitude for clear-air turbulence. Independence from HICAT now needs AFFDL-TR-69-72 or Av.P. 970, neither held |
 | **Misaka, Obayashi & Endo 2008**, *J. Aircraft* 45(4) 1217–1229 | **the RMS normal load severity index** — `σ_n` over a moving 5 s average, moderate 0.2–0.3 g, severe ≥ 0.3 g (attributed there to Hamilton & Proctor). Defined at cruise altitude, which the F-factor thresholds are not | its own Figs. 26–27 show `σ_n` tracks the *trend* of measured acceleration and misses the peaks, by construction of the 5 s window |
 | **Yoshimura et al. 2022**, *J. Appl. Meteor. Climatol.* 61 503–519 | Tables A2/A3/A5: a **third CR-2144 747 flight condition** — M 0.8 at 6,096 m — with a complete non-dimensional longitudinal set including `C_mα̇`, the flight condition, and the short-period pair (`ω_n` 1.29, `ζ` 0.57) | **not an independent dataset** — Table A2 is attributed to Heffley & Jewell, i.e. CR-2144 again. Same standing as Caughey. Its own conclusion misreads Table A5's `s⁻¹` as `Hz` — see §5 |
 
@@ -854,6 +855,141 @@ spacing from a free parameter into a cited one.
 ## 4. Evidence ledger
 
 Every figure below is measured, with the tolerance the test asserts.
+
+### Gust response against closed-form theory — phases V1–V4 — session 33
+
+**`docs/validation.md` names the project's largest remaining risk as the absence of a
+time-history comparison. It is not the only hole, and this is the other one:** every
+turbulence figure above was a comparison against a **document**; none was a comparison
+against an **exact answer**. `test_verification.py` checks the integrator against a
+closed-form solution and measures RK4's order at 3.99982, and nothing did the equivalent
+for the response to a gust. Design:
+`docs/design/specs/2026-09-21-turbulence-response-validation-design.md`.
+
+New code: `atisim/gust.py`, `wind.sinusoidal_vertical_field`,
+`wind.one_minus_cosine_gust`, `wind.gaussian_vertical_field`,
+`wind.dryden_vertical_components`. Tests: `atisim/tests/test_gust.py` (18).
+Scripts: `gust_transfer_sweep.py`, `gust_psd_identity.py`, `gust_lag_bound.py`,
+`discrete_gust.py`.
+
+All four phases are at **`boeing747`, M 0.80, 37,000 ft** — inside `valid_mach` [0.70,
+0.90] and `valid_altitude` [35, 45] kft, and the condition every CAT run above is flown
+at. V = 236.056 m/s, ρ = 0.349430 kg/m³.
+
+#### V1 — the flown gust response against its own linearisation. PASSES, by 116×
+
+`H(Ω) = C(iωI − A)⁻¹B + D` from the linearised plant, against twelve single-frequency
+gusts flown through the full nonlinear path and fitted in amplitude **and phase**. Phase
+is not an extra: an amplitude-only comparison passes with the sign of `Cmq` reversed.
+
+| f (Hz) | \|H\| measured | \|H\| theory | amplitude error | phase error |
+|---|---|---|---|---|
+| 0.0100 | 0.011002 | 0.011002 | −0.00004% | −0.00028° |
+| 0.0231 | 0.000954 | 0.000954 | +0.00333% | +0.00171° |
+| 0.0534 | 0.009202 | 0.009202 | +0.00061% | −0.00020° |
+| 0.1233 | 0.037870 | 0.037870 | −0.00002% | +0.00016° |
+| **0.1874** | **0.057662** | **0.057663** | **−0.00074%** | **−0.00071°** |
+| 0.4329 | 0.042460 | 0.042462 | −0.00430% | −0.00053° |
+| 1.0000 | 0.038562 | 0.038564 | −0.00411% | −0.00016° |
+
+**Worst over all twelve: 0.00430% in amplitude against a 0.5% gate, 0.00171° in phase.**
+The 0.0231 Hz row is a near-null of the transfer function — \|H\| is 60× smaller there
+than at the peak — and it agrees to the same relative precision, which is the row that
+says the match is not an artefact of a large signal.
+
+**Amplitude independence, so the answer is the model's and not the gust's.** Swept over
+2.0, 0.5, 0.125 and 0.03125 m/s at the short period the error reads −0.00089%, −0.00005%,
+−0.00000%, +0.00000% — **falling as the square of the gust**, which is the aerodynamic
+nonlinearity's signature and nothing else's. At the 0.5 m/s used throughout it is five
+parts in ten million.
+
+**V1 had to find two defects before it could pass, and both are recorded separately.** It
+did not pass on its first run and the failures were not in the gust path:
+
+| what was wrong | what it cost V1 | where it is recorded |
+|---|---|---|
+| `vortex_viz.fly` could not turn on per-stage wind sampling | 0.81% at the short period, first order in dt | **§6(i)**, new |
+| the linearisation held altitude fixed, as `validation.longitudinal_matrix` does | 6–26% on the free response over 20 s | **§5.21**, which this closes |
+
+#### V2 — the PSD identity. Three errors separated, not summed
+
+`σ_nz² = ∫|H|²Φ_w dΩ`, against N = 24 flights of 1200 s each through
+`wind.dryden_vertical_field` at σ_w = 4.4588 m/s (`wind.mehta_residual_ceiling`).
+
+| | value | against | |
+|---|---|---|---|
+| Ā = √(∫\|H\|²Φ dΩ) | 0.034992 g per (m/s) | — | |
+| predicted σ_nz = Ā σ_w | 0.156026 g | — | |
+| **flown σ_nz, N = 24** | **0.155665 ± 0.000279 g** | −0.231% | **1.29 se** |
+| flown σ_nz/σ_w,record | 0.035544 ± 0.000117 | vs **the realisation's exact ratio** 0.035573 | **−0.081%, 0.24 se** |
+| the same, vs the continuous Ā | | +1.577% | 4.70 se |
+
+**The factor of two would have been +41.4% and is absent.** Reading
+`wind.dryden_spectrum` as two-sided gives 0.220654 g against a flown 0.155665.
+
+**The 400-component log grid carries 1.634% less variance than σ_w names** — 4.385976
+against 4.458840 m/s — so a realisation cannot deliver the intensity its argument asks
+for, and charging that to the model would be wrong. `gust.realisation_mean_square_ratio`
+computes what a given realisation exactly contains; against **that**, the identity holds
+to **0.081%, 0.24 standard errors**. Against the continuous integral it holds to 0.231%
+(1.29 se) — looser, and only because the grid's shortfall enters the input and the output
+nearly proportionally and cancels in the product. That cancellation is pinned by a test so
+a future change to the grid cannot break it silently.
+
+#### V4 — the gust lag, bounded for the first time
+
+`ASSUMPTIONS` **C2** was titled *"no α̇ **or unsteady lag**"* and every number in it is
+about α̇ — the lag on the aircraft's **own** motion, which `Cmadot` carries. The lag on the
+**gust's** arrival is Sears' problem, not Theodorsen's, and `Sears`, `Küssner`, `Wagner`
+and `Theodorsen` appeared nowhere in the tree. **C2 is now split; the gust half is
+`ASSUMPTIONS` C12**, which carries the table.
+
+| forcing | k | \|S\| | ∠S | lift lost |
+|---|---|---|---|---|
+| short period | 0.01819 | 0.9689 | −4.15° | **3.11%** |
+| Parks core passage, V/r₀ | 0.02276 | 0.9610 | −4.87° | **3.90%** |
+
+**Integrated over the whole Dryden band rather than quoted at a frequency, applying \|S\|
+inside V2's integral reduces σ_nz by 6.78%.**
+
+**The sign is why it is worth raising.** The attenuation is a loss, so this term makes the
+simulated load **smaller** — it **widens** §5's 32% Hannibal shortfall rather than
+explaining it. A newly-found term that happened to close the project's headline gap would
+deserve much more scepticism than one that does not. For scale, `ASSUMPTIONS` E2 prices
+the point-gust approximation at 4.4% on the same encounter and calls it the model's
+largest self-approximation; this one is the same order and was unbounded.
+
+#### V3 — Pratt & Walker. **The design's predicted sign was WRONG, and the reason is V4**
+
+NACA Report 1206 Eq. (5) with Eq. (7)'s alleviation factor. μ = **78.5974**, K_g =
+**0.824408** — reproducing the design's own pre-computed values. Flown through
+`wind.one_minus_cosine_gust` from level trim, fixed controls, peak load increment:
+
+| H/c̄ | flown Δn (g) | Δn / Δn_PW | \|S\| at that gust's frequency |
+|---|---|---|---|
+| 5.0 | 0.037967 | **+25.18%** | 0.6262 |
+| 8.0 | 0.036806 | +21.35% | 0.7231 |
+| **12.5 — Pratt & Walker's own** | **0.035660** | **+17.57%** | **0.8029** |
+| 20.0 | 0.033825 | +11.52% | 0.8688 |
+| 30.0 | 0.031210 | +2.90% | 0.9103 |
+| 50.0 | 0.026034 | −14.17% | 0.9459 |
+| 80.0 | 0.019674 | −35.14% | 0.9664 |
+
+**The design said the model must UNDERSHOOT the formula by about the Sears factor. It
+overshoots it, by 17.57% at the gradient distance K_g was fitted at.** That is recorded as
+a wrong prediction rather than smoothed over.
+
+**The physical reasoning underneath the prediction survives, and the miss is what makes it
+interesting.** The model's own alleviation factor is **0.9693** against K_g's 0.8244: it
+does shed load, by pitching into the gust, but it recovers only 3.1% of the 17.6% the
+empirical fit contains. The rest of the fit is the unsteady lag, which V4 prices at 19.7%
+at that gust's frequency — and **0.8029 × 1.1757 = 0.9439**, turning a +17.6% overshoot
+into a −5.6% undershoot. One missing term of the right size and sign accounts for most of
+a discrepancy the design got backwards.
+
+Linear in U_de (0.035649–0.035709 over a 16× range) and converged in dt at 0.01
+(0.035660 at dt = 0.01 and 0.005), so neither the amplitude nor the step size is what is
+being read.
 
 ### Two readings of CR-2144 pp. 220–222, compared — and the hand reading is the better one — session 32
 
@@ -5396,7 +5532,7 @@ wording** — which is how five of them were found already closed (§9, session 
 |---|---|---|---|
 | 5.1 | Vortex core 2.3–3.1 spans, gust sampled at a point | **BOUNDED** | point-gust cost ≤ 4.4% on the headline (5.19); the strip path exists since session 24 |
 | 5.2 | No wind varied across the span | **CLOSED**, session 24 | the lateral phase |
-| 5.3 | No frequency-domain comparison | **CLOSED** (capability), session 25 · **IMPOSSIBLE WITH SOURCES HELD** (an in-band published curve) | HICAT is 45–70 kft against this project's 33–41 kft |
+| 5.3 | No frequency-domain comparison | **CLOSED** (capability), session 25 · **IMPOSSIBLE WITH SOURCES HELD** (an in-band published curve) | HICAT is 45–70 kft against this project's ~~33–41~~ **35–45 kft** — band corrected session 33, verdict **NOT** revisited; see the note below the table |
 | 5.4 | Gravity constant | **CLOSED** by session 28's merge — `g(z)` modelled | latitude (0.53%) and centrifugal stay DECLARED; `wgs84-earth` retires them (§0) |
 | 5.5 | Phugoid / short-period offsets | Mach content **CLOSED**, session 30 · `Ṁw` ~~**FUTURE WORK**~~ **CLOSED, release 1.1** — declared as `Cmadot`, short-period damping −11.5% → **+0.6%** · `Żw` sign **IMPOSSIBLE WITH SOURCES HELD** | `Ṁw`: the α̇ branch, reviewed and parked (§0). `Żw`: IX-4 and IX-5 cannot arbitrate its sign |
 | 5.6 | CR-2144 derivatives are the flexible airframe | **BOUNDED**, session 23 | the constant-Mach, two-altitude argument |
@@ -5414,11 +5550,32 @@ wording** — which is how five of them were found already closed (§9, session 
 | 5.18 | ±g asymmetry | buffet boundary **CLOSED**, session 26 · nonlinear lift curve **IMPOSSIBLE WITH SOURCES HELD** | CR-114494 draws `CL_BASIC` as straight lines |
 | 5.19 | Absolute agreement with recorded g-loads | **IMPOSSIBLE WITH SOURCES HELD** · route **FUTURE WORK** | aircraft identified (N1809U, DC-10-10); the weight on the day is not found. Routes: the NTSB docket, the NTSB pre-1982 database (39 MB Access file, not tried), and the 1982 SFTE paper by Parks, Bach & Wingrove |
 | 5.20 | Half the Fig. 8 load band unreachable | **IMPOSSIBLE WITH SOURCES HELD** — structural | linear aero; the same ceiling as 5.18 |
-| 5.21 | The reported phugoid (4-state) is not the flown one — altitude couples through density | **FUTURE WORK** — the 4-state is the correct CR-2144 comparator; re-measure the flown one on the shipped 747 | measured on an unmerged branch at +20.5% ωn / −50.6% ζ, on the pre-session-30 747, so not quotable for the shipped one |
+| 5.21 | The reported phugoid (4-state) is not the flown one — altitude couples through density | ~~**FUTURE WORK**~~ **MEASURED ON THE SHIPPED 747, session 33** (phase V1, `gust._linearise`): adding height as a fifth state moves the phugoid **ωn +12.61%, ζ −42.57%** at M 0.80 / 37,000 ft and **+13.30% / −41.56%** at `CRUISE`. The short period moves **+0.024% / +0.018%** — untouched, which is what says the effect is the slow height–density exchange and not a change of plant. The 4-state stays the correct CR-2144 comparator | the unmerged branch's +20.5% / −50.6% on the pre-session-30 747 is corroborated in sign and order and superseded in place. Free-response check: the 4-state matrix mispredicts the flown Δn by **6–26% over 20 s**, the 5-state by **0.1–1.4%**. Pinned by `test_gust.py::test_the_altitude_state_moves_the_phugoid_by_more_than_a_tenth` |
 
 **§6 carries the one open latent bug, (h): the strip load path counts the gust's rolling moment
 twice.** Measured this session; it supersedes §4's lateral strip result and the finishing plan's
 phase-1 gate, and touches no longitudinal claim and nothing in §1.
+
+> **§5.3's stated altitude band was wrong and is corrected — session 33. THE VERDICT IS
+> DELIBERATELY NOT REVISITED.** The row read *"HICAT is 45–70 kft against this project's
+> 33–41 kft"*, and **33–41 matches neither aircraft**: `boeing747` declares
+> **35,000–45,000 ft** (`aircraft.py:780`) and `_boeing_747_jsbsim` declares
+> **35,000–41,000** (`aircraft.py:1816`). The README's "35,000–45,000 ft" agrees with the
+> code. The 41 appears to come from the cross-code entry and the 33 from neither — most
+> likely from the Wingrove Cimarron case at 33,000 ft, which §4 flies with the **737**, not
+> the 747.
+>
+> **What the correction does to the argument, stated rather than acted on.** The two bands
+> no longer sit 4,000 ft apart: 45,000 ft is `boeing747`'s declared ceiling and HICAT's
+> declared floor, so **they abut at a shared endpoint**. That is a materially weaker version
+> of the band objection than the row has been carrying, and the same objection was used to
+> disqualify NASA/TM-2003-212666 (design phase S1) at 33,000 ft — 2,000 ft below the floor,
+> where it is still sound. **Whether an abutting band changes 5.3's `IMPOSSIBLE` verdict is
+> a decision for the record's owner and not an incidental one** — §8's precedent, *"a
+> decision, not a measurement"*. This session corrected the number, states the consequence,
+> and changed no verdict. The stale figure survives in two places on purpose: a struck-through
+> completed task row in §7 and a session-9 entry, both of which record what was believed at
+> the time.
 
 #### §7 — the plan's open rows
 
@@ -6016,9 +6173,9 @@ remains decidable exactly as written.
   WORK:** re-measure on the shipped 747; the branch's `full_matrix` and `constant_altitude` are
   the instrument, recoverable from its SHA (§0).
 
-## 6. Latent bugs — (a)–(d) fixed in session 5, (e) in session 7, (f) in session 29, (g) in session 32; (h) OPEN
+## 6. Latent bugs — (a)–(d) fixed in session 5, (e) in session 7, (f) in session 29, (g) in session 32; (h) and (i) OPEN
 
-Seven are closed; **(h) is open**, measured and deliberately not fixed before the release. Kept here rather than deleted because the *shape* of (a) and (b) is
+Seven are closed; **(h) and (i) are open** — (h) measured and deliberately not fixed before the release, (i) found by phase V1 in session 33 and fixed as an API while its default is deliberately left alone. Kept here rather than deleted because the *shape* of (a) and (b) is
 the thing worth remembering: both survived three sessions and a 209-test suite because
 every test in the project was still air, and still air cannot distinguish airspeed from
 groundspeed.
@@ -6268,6 +6425,54 @@ from an uncommitted worktree at the session-28 audit and sat unreviewed on
 `claude/zen-maxwell-1ad0a4` for three weeks — so the bug was found, fixed and then nearly
 lost, which is rule 1b's case in one line.
 
+**(i) `wind.field_model`'s `stage_sampled` mark was never read by anything, and
+`vortex_viz.fly` had no way to pass the flag.** OPEN as a default; the API gap is FIXED.
+Found by design phase V1, session 33 — the first thing in this project to compare a flown
+run against an exact answer.
+
+`integrate.step` takes a `stage_sampled` argument and re-evaluates the wind at each RK4
+stage when it is true, which `ASSUMPTIONS` E4 measures as the difference between first and
+fourth order through a spatially varying field. `wind.field_model` sets
+`model.stage_sampled = True` on its output to mark it safe, with a comment saying *"this
+attribute is read at trace time"*. **It is not read anywhere.** `step` gates on its own
+argument; a `getattr` on the model would have closed the loop and there is none.
+`test_verification.py` asserts the mark **exists**, which is why nothing went red.
+
+**So every run ever flown through `vortex_viz.fly`, `fly_in_moving_air` or
+`fly_from_state` took the first-order path, and the remedy E4's own closing paragraph
+points at was unreachable from the harness that flies every §4 turbulence result.** Only
+`scripts/sensitivity_assumptions.py` and `verification.fixed_control_refinement` ever
+passed the flag, and both take it as an argument of their own.
+
+**What it costs, measured two ways that agree.** V1 measured it on the gust transfer
+function at the short period; E4 had measured it on the in-core Fig-8 Δθ. Different
+quantities, different step sizes, the same ladder:
+
+| | halving dt → | | | |
+|---|---|---|---|---|
+| **V1, \|H\| error at 0.1686 Hz** (dt 0.119 → 0.0148) | **+3.20%** | **+1.62%** | **+0.81%** | **+0.41%** |
+| **E4, in-core Δθ** (dt 0.02 → 0.005) | — | −1.62% | −0.82% | −0.41% |
+| V1, the same run stage-sampled | +0.00022% | −0.00013% | −0.00015% | −0.00015% |
+
+Halving with dt is first order and is the hold's signature; the stage-sampled column does
+not move at all. **V1 could not pass its 0.5% gate on the held path and passes it by 116×
+on the sampled one.**
+
+**Fixed as an API, NOT as a default.** `fly`, `fly_in_moving_air` and `fly_from_state` now
+take `stage_sampled`, defaulting to **False**, so every §4 baseline flown through them is
+bit-identical to what it was. Flipping the default would move every deterministic-field
+result in the document at once, which is a decision for the record's owner and not an
+incidental repair — §5's precedent, *"a decision, not a measurement"*. What changes today
+is that the cost is a **declared** choice with a reachable alternative rather than an
+invisible one. `atisim/gust.py` passes True for every run compared against a closed-form
+answer, and only there.
+
+**No published number moves.** E4 already priced the hold at −0.82% on the headline Δθ at
+the published dt and already says the last two digits of 2.240° are scheme-dependent. This
+entry does not change that price; it records that the escape hatch E4 offers was welded
+shut. Pinned by
+`test_gust.py::test_v1_fails_on_the_held_wind_and_passes_on_the_stage_sampled_one`.
+
 ## 7. Plan
 
 > **THE ORIGINAL TEN-STEP PLAN IS BELOW AND IS ESSENTIALLY COMPLETE.** The plan the
@@ -6297,11 +6502,11 @@ T2, build T3's foundation on the way*.
 |---|---|---|
 | 1 | a **DC-10 cruise derivative set** | **STILL OPEN — the only genuine acquisition, and now worth twice as much.** Parks identifies *both* cases as DC-10s, so one set serves Hannibal **and** Morton. Weight Morton lower: Parks calls its fit "not as good as case 1" and blames mountain-wave contamination of the short-period pattern. **But check §5's sign first** — at 1.3× wing loading the load falls to 56.4% of the record, so if the DC-10 is the heavier-loaded aircraft this acquisition makes the shortfall worse, not better |
 | 2 | **747 buffet onset / nonlinear C_L** | **SPLIT, session 25 — half of it was already held.** The buffet-onset BOUNDARY is on `refs/NASA-CR-114494.pdf` p. 2.0-38, the same sheet session 21 digitised `C_Lmax` from, with revised data in its §19: not an acquisition, a digitisation. The nonlinear lift curve is not published there or anywhere reachable, so the ±g asymmetry stays structurally impossible. **Acquire nothing; digitise the second curve** |
-| 3 | **MIL-F-8785C Fig. 7**, digitised | **DOCUMENT HELD** (`refs/MIL-F-8785C.pdf`, session 25); Fig. 7 confirmed on printed p. 49. The digitisation is still to do. **Session 26 adds a caution about the check:** AFFDL-TR-70-101 (HICAT) is now held and measures the same quantity, but its band is 45,000–70,000 ft against this project's 33,000–41,000, and it compares itself against MIL-A-8861A and Steiner's NASA U-2 data — so Fig. 7's high-altitude end may descend from the same aircraft and would not be an independent check. Settling that needs ADA119421, ~~not held~~ **held session 31, and it points back to AFFDL-TR-69-72 and Av.P. 970 without naming HICAT (§3's HICAT row)** |
+| 3 | **MIL-F-8785C Fig. 7**, digitised | **DOCUMENT HELD** (`refs/MIL-F-8785C.pdf`, session 25); Fig. 7 confirmed on printed p. 49. The digitisation is still to do. **Session 26 adds a caution about the check:** AFFDL-TR-70-101 (HICAT) is now held and measures the same quantity, but its band is 45,000–70,000 ft against this project's 35,000–45,000 (**corrected session 33**), and it compares itself against MIL-A-8861A and Steiner's NASA U-2 data — so Fig. 7's high-altitude end may descend from the same aircraft and would not be an independent check. Settling that needs ADA119421, ~~not held~~ **held session 31, and it points back to AFFDL-TR-69-72 and Av.P. 970 without naming HICAT (§3's HICAT row)** |
 | 3 | **Yoshimura 2023 figshare dataset (21152203)** | **HELD session 25, verified** — CC BY 4.0, `data.tar`, 17,942,056,960 B, md5 `d23cbb3c77b3940653a0b643147d71c3` matching figshare's stated checksum, in `UROP/yoshimura-figshare-21152203/` outside the repo with a `PROVENANCE.txt` beside it. Five nested bz2 archives: the four LES domains (2.3, 3.6, 4.0 and **7.5 GB** for dx = 500/250/70/**35** m) and **`flightsim-data.tar.bz2`, only 561 MB** — Yoshimura's own 2-D B787 simulation code and its outputs, i.e. the SIMULATED half of their Fig. 6. That last one is the cheap one and supports a cross-code response-spectrum comparison the way JSBSim serves the vortex work. A published LES CAT wind field: the first field in this project not identified from the aircraft's own accelerations. **It does NOT carry a recorded acceleration history** — the three onboard records and the PIREP are withheld under confidentiality — so it does not unblock the observed half of the spectral protocol, which is what this row used to claim |
 | 4 | **Bach & Parks 1987**, J. Aircraft 24(11) | **HELD, session 26 — and it does NOT help #1.** Its two validation cases are an L-1011 and a B-747SP; no DC-10. What it does give is the error budget: Eq. (2) shows `m` and `S` enter only as `m/S`, and Eq. (4) gives ~0.05° of α per 1% of `C_L`, which is what sets the tolerance on #2 |
 | 5 | **Parks et al. 1985**, J. Aircraft 22(2) | **HELD, session 26 — §8's open question CLOSED.** r₀ = 600 ft with V₀ 85 and spacing 3500, and an abstract giving core *diameters* 900–1200 ft that removes radius-versus-diameter entirely. Reversed the 500 ft this project flew from session 22 to 25 and deleted the hybrid; `ASSUMPTIONS.md` E12 carries the four lineages. Cost 4.26% of the headline load, downward |
-| 6 | **AFFDL-TR-70-101** (HICAT), Ashburn, Waco & Melvin 1970 | **HELD, session 26.** Measured RMS gust exceedances from U-2 flights — the published exceedance data phase 2 lacked. **Band mismatch is the catch**: 45,000–70,000 ft against this project's 33,000–41,000, so any comparison is extrapolated, and it may share its U-2 lineage with Fig. 7 |
+| 6 | **AFFDL-TR-70-101** (HICAT), Ashburn, Waco & Melvin 1970 | **HELD, session 26.** Measured RMS gust exceedances from U-2 flights — the published exceedance data phase 2 lacked. **Band mismatch is the catch**: 45,000–70,000 ft against this project's 35,000–45,000 (**corrected session 33 — the two now ABUT at 45,000 ft rather than being separated by 4,000**), so any comparison is extrapolated, and it may share its U-2 lineage with Fig. 7 |
 
 **~~Phase 3 is entirely acquisition and this project cannot do the acquiring.~~ Sessions 25
 and 26 emptied most of it, and almost none of what was left was an acquisition.** Session 25
@@ -6349,7 +6554,7 @@ disk. Session 26 received four more papers and closed items 3, 4 and 5 outright.
 
 | Document | What it would close | Status here |
 |---|---|---|
-| ~~**14 CFR 25.341**, at the amendment in force~~ | **READ, session 32 — and it cannot do what this row hoped.** Current text, **Amdt. 25-141, 80 FR 4762, 29 Jan 2015**. **(a) Discrete gust:** reference velocity **56.0 ft/s EAS** at sea level, linear to **44.0** at 15,000 ft, linear to **20.86** at 60,000 ft — a **peak**, in **EAS**. **(b) Continuous turbulence:** `Uσref` **90 fps TAS** at sea level, linear to **79 fps TAS** at 24,000 ft, then **constant at 79 fps to 60,000 ft** — an RMS in TAS, which is Fig. 7's statistic, but a **regulatory design limit** that enters a load through a transfer factor, **with no exceedance probability and no altitude variation anywhere in 33–41 kft**. So it cannot be placed against Fig. 7's severe curve (σ = 4.80 m/s at 37 kft; `Uσref` is 24.08 m/s, a different quantity), and **it cannot test Fig. 7's U-2 lineage. IMPOSSIBLE WITH SOURCES HELD for that purpose**; settling the lineage still needs ADA119421. **The discrepancy this row warned of dissolves on arithmetic**: the current law evaluates to **26.0 ft/s EAS at 50,000 ft** — the "older" figure quoted — so the two texts are one linear law extended in 2015, not two values. The older text itself was not re-read. Read from Cornell LII's rendering of the eCFR; ecfr.gov redirected to a bot check, which was not bypassed. *Was:* **Turbulence intensity against altitude, tabulated to 60,000 ft.** The plan calls it "the one fully-open document" for t… |
+| ~~**14 CFR 25.341**, at the amendment in force~~ | **READ, session 32 — and it cannot do what this row hoped.** Current text, **Amdt. 25-141, 80 FR 4762, 29 Jan 2015**. **(a) Discrete gust:** reference velocity **56.0 ft/s EAS** at sea level, linear to **44.0** at 15,000 ft, linear to **20.86** at 60,000 ft — a **peak**, in **EAS**. **(b) Continuous turbulence:** `Uσref` **90 fps TAS** at sea level, linear to **79 fps TAS** at 24,000 ft, then **constant at 79 fps to 60,000 ft** — an RMS in TAS, which is Fig. 7's statistic, but a **regulatory design limit** that enters a load through a transfer factor, **with no exceedance probability and no altitude variation anywhere in 35–45 kft (band corrected session 33; the conclusion is unchanged, since 79 fps is constant from 24,000 ft to 60,000)**. So it cannot be placed against Fig. 7's severe curve (σ = 4.80 m/s at 37 kft; `Uσref` is 24.08 m/s, a different quantity), and **it cannot test Fig. 7's U-2 lineage. IMPOSSIBLE WITH SOURCES HELD for that purpose**; settling the lineage still needs ADA119421. **The discrepancy this row warned of dissolves on arithmetic**: the current law evaluates to **26.0 ft/s EAS at 50,000 ft** — the "older" figure quoted — so the two texts are one linear law extended in 2015, not two values. The older text itself was not re-read. Read from Cornell LII's rendering of the eCFR; ecfr.gov redirected to a bot check, which was not bypassed. *Was:* **Turbulence intensity against altitude, tabulated to 60,000 ft.** The plan calls it "the one fully-open document" for t… |
 | **NASA TP-2469**, Campbell | von Kármán rational-filter validity — i.e. whether the Dryden form this project uses is defensible where a von Kármán spectrum is the better model | **Not recorded anywhere.** NTRS, so free |
 | **Sharman et al. 2014** | The **EDR-to-σ bridge**. EDR is the operational turbulence metric; this project reports σ_w and `σ_n`, and has no route between them. That is why no result here can be stated in the units an airline or a forecaster uses | **Not recorded anywhere.** This is a *capability* gap, not a data gap, and it is the one that would make the model's output comparable to operational practice |
 | **MIL-STD-1797A** | The military alternative to 14 CFR 25.341 for the same table | **Not recorded anywhere.** Limited distribution — which is exactly why 25.341 is worth trying first |

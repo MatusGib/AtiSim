@@ -101,6 +101,7 @@ def fly(
     window_name: str,
     strip: bool = False,
     load_model=None,
+    stage_sampled: bool = False,
 ) -> Encounter:
     """Fly the trimmed aircraft through `field` with fixed controls.
 
@@ -143,6 +144,7 @@ def fly(
         ac, field, state, controls,
         label=label, seconds=seconds, dt=dt, window=window,
         window_name=window_name, load_model=load_model,
+        stage_sampled=stage_sampled,
     )
 
 
@@ -159,6 +161,7 @@ def fly_in_moving_air(
     window: tuple[float, float],
     window_name: str,
     load_model=None,
+    stage_sampled: bool = False,
 ) -> Encounter:
     """`fly`, but starting in equilibrium WITH the wind already at the start point.
 
@@ -211,6 +214,7 @@ def fly_in_moving_air(
         ac, field, state, controls,
         label=label, seconds=seconds, dt=dt, window=window,
         window_name=window_name, load_model=load_model,
+        stage_sampled=stage_sampled,
     )
 
 
@@ -227,6 +231,7 @@ def fly_from_state(
     window_name: str,
     load_model=None,
     wind_model=None,
+    stage_sampled: bool = False,
 ) -> Encounter:
     """`fly`, but from a state and controls the caller already has.
 
@@ -244,6 +249,31 @@ def fly_from_state(
     needs a TRANSLATION-ONLY model for its like-for-like arm, because JSBSim has
     no writable gust-rate input and therefore carries no gradient at all; the
     default model would give atisim a term the other engine cannot have.
+
+    *** `stage_sampled` AND WHY IT DEFAULTS TO FALSE -- session 33, phase V1. ***
+
+    `integrate.step` holds one wind sample across all four RK4 stages unless
+    told otherwise, which is an O(h) perturbation of the right-hand side and
+    makes the scheme FIRST ORDER through a spatially varying field
+    (`ASSUMPTIONS` E4; PROJECT.md §4 measured 1.05 held against 4.06
+    re-sampled). `wind.field_model` MARKS its output as safe to re-evaluate --
+    and **that mark was never read by anything.** `step` gates on its own
+    `stage_sampled` ARGUMENT, and this function did not have one to pass, so
+    every run ever flown through here took the first-order path while the
+    machinery to avoid it sat one keyword away. Phase V1 found it by being the
+    first thing in the project to compare a flown run against an exact answer.
+    At the short period the held run disagrees by +3.20%, +1.62%, +0.81% and
+    +0.41% as dt is halved from 0.119 s, while the same run stage-sampled sits
+    at 0.0002% and does not move at all. HALVING WITH dt is not what a
+    fourth-order scheme does. PROJECT.md §6(i).
+
+    It defaults to False so that every §4 baseline flown through here is
+    bit-identical to what it was, which is the same reason `integrate.step`
+    defaults to the hold. **That default is now a declared cost rather than an
+    invisible one.** Pass True for any run whose answer is compared against a
+    closed-form result, and only for a field that is a pure function of
+    position -- re-drawing a stochastic field per stage would make the
+    realisation depend on step size.
     """
     model = wind.field_model(field) if wind_model is None else wind_model
     n = int(round(seconds / dt))
@@ -253,6 +283,7 @@ def fly_from_state(
     _, log = integrate.logged_rollout(
         integrate.init_sim(state, jax.random.PRNGKey(0)),
         controls, jnp.array(dt), ac, n, wind_model=model, load_model=load_model,
+        stage_sampled=stage_sampled,
     )
     hist = log.state
     controls_hist = jax.tree.map(lambda v: jnp.full(n, v), controls)

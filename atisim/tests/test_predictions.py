@@ -112,9 +112,19 @@ def test_settling_cannot_rewrite_what_was_predicted():
     assert digest_of(reshaped) != p.digest
 
 
+# Every commit an entry in this register has been sealed against. A new seal
+# adds a line here; a typo in a `sealed_at` does not.
+SEAL_COMMITS = {"0c72200", "2837ddd", "1091fc7", "db4eadf"}
+
 SOURCE_GATED = {
     # Settled only by a document PROJECT.md section 5 names as not held here.
     "dc10_does_not_close_the_hannibal_gap",
+    # Session 33. NASA/TM-2012-217337 Table 1 is a NASA work and redistributable,
+    # so this one is source-gated by AVAILABILITY rather than by copyright: the
+    # PDF is not in this repository, `Reference_papers/` is gitignored, and NTRS
+    # was unreachable from the container that sealed it. PROJECT.md section 0
+    # carries the acquisition.
+    "the_model_peak_factor_lands_below_tpaws",
 }
 RUN_GATED = {
     # Settled by a run in this repository. Admissible ONLY because the seal
@@ -135,6 +145,12 @@ RUN_GATED = {
     # entry's claim fields are never edited, so the test below looks in both.
     "mil_f_8785c_sigma_w_exceeds_the_mehta_ceiling": (
         "scripts/digitise_mil_f_8785c_fig7.py"
+    ),
+    # Session 33. Sealed at db4eadf, which is the commit that added the design
+    # document and nothing else -- so the seal provably precedes the script
+    # named here, which is the rule this class exists to protect.
+    "the_shinozuka_realisation_is_peak_poor": (
+        "scripts/dryden_realisation_audit.py"
     ),
 }
 
@@ -185,7 +201,16 @@ def test_every_open_prediction_is_declared_and_classified():
             # A source-gated entry cannot be settled here by definition, so a
             # SETTLED one means a document arrived and section 3 should say so.
             assert p.status == "SEALED", p.name
-            assert p.sealed_at == "0c72200", p.name
+            # WIDENED IN SESSION 33, and this is a correction rather than a
+            # loosening. The line read `== "0c72200"` because that was the only
+            # seal commit a source-gated entry had ever carried -- it was
+            # pinning an accident of history, not a rule. What the register
+            # actually requires is that the seal is DATED, which
+            # `test_every_claim_carries_numbers_and_a_dated_seal` already
+            # enforces for every entry; this keeps the stronger statement that
+            # the commit is one of the ones this file knows about, so a typo
+            # still fails.
+            assert p.sealed_at in SEAL_COMMITS, p.name
 
 
 def test_the_dc10_claim_contradicts_the_projects_own_current_story():

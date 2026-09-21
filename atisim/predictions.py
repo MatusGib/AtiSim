@@ -249,6 +249,126 @@ PREDICTIONS: tuple[Prediction, ...] = (
             "scripts/cr2144_digitisation_crosscheck.py, session 32."
         ),
     ),
+    # -----------------------------------------------------------------------
+    # Sealed session 33, against tree db4eadf -- BEFORE
+    # `scripts/dryden_realisation_audit.py` had ever been run and before any
+    # peak factor had been computed anywhere in this project. Design phases V5
+    # and S2, in
+    # docs/design/specs/2026-09-21-turbulence-response-validation-design.md.
+    #
+    # The two are SEPARATE because they can disagree: the construction could be
+    # biased low and the model still land inside TPAWS' band, and what that
+    # would mean is worth being unable to fudge afterwards.
+    #
+    # The second CANNOT BE SETTLED by the session that sealed it -- the document
+    # is not in this container and NTRS answered 403 to every request from it --
+    # and it is sealed anyway, because a bet made while the answer is out of
+    # reach is the only kind worth anything. PROJECT.md section 0 carries the
+    # acquisition it waits on.
+    # -----------------------------------------------------------------------
+    Prediction(
+        name="the_shinozuka_realisation_is_peak_poor",
+        claim=(
+            "Over a matched ensemble of boeing747 flights through "
+            "wind.dryden_vertical_field and wind.gaussian_vertical_field "
+            "at wind.MEHTA_HANNIBAL_ALTITUDE -- same sigma_w, same "
+            "spectrum, same component grid, same record length, "
+            "differing ONLY in whether each component's amplitude is "
+            "fixed or drawn -- the ensemble-mean n_z peak factor max(n_z "
+            "- mean)/sigma_nz of the Shinozuka (fixed-amplitude) field "
+            "will be LOWER than the Gaussian control's."
+        ),
+        falsified_if=(
+            "the Shinozuka ensemble mean lands at or above the Gaussian "
+            "control's, over at least 48 members per arm. The comparison "
+            "settles nothing in either direction unless the difference "
+            "clears 2 standard errors of that difference; a smaller gap "
+            "is reported as NOT SETTLED at the N run, never as "
+            "agreement."
+        ),
+        reasoning=(
+            "wind.dryden_vertical_field gives every component the fixed "
+            "amplitude sqrt(2 Phi dOmega) and a random phase. That "
+            "reproduces the target PSD exactly -- test_cat_validation.py "
+            "measures it -- and it makes each realisation's amplitude "
+            "spectrum identical to every other's: zero variance across "
+            "the ensemble, where a true Gaussian process has "
+            "Rayleigh-distributed component amplitudes. Measured before "
+            "sealing, on the FIELD and not on the response: four "
+            "Shinozuka seeds realise rms 3.9309 to 3.9390 m/s, a spread "
+            "of 0.2%, against the control's 3.909 to 4.038, a spread of "
+            "3.3%. A large excursion needs several components to align "
+            "AND to be large at once; the second half is unavailable to "
+            "a fixed-amplitude sum, so its extremes should sit closer to "
+            "its own rms. WHY THIS MATTERS RATHER THAN BEING A "
+            "CURIOSITY: PROJECT.md section 4's response spectra and "
+            "response.exceedance are both downstream of this "
+            "construction, and every peak and exceedance claim the "
+            "project makes rests on statistics it is not guaranteed to "
+            "get right. Nothing had measured that. The prediction is "
+            "UNCOMFORTABLE for the project: if it is right, the model's "
+            "peak loads are biased low for a reason that has nothing to "
+            "do with aerodynamics, and section 5's 32% shortfall gains a "
+            "contributor that no derivative set can fix."
+        ),
+        settled_by=(
+            "scripts/dryden_realisation_audit.py, limb B"
+        ),
+        sealed_at="db4eadf",
+        digest="3bdc9e15c075460c",
+    ),
+    Prediction(
+        name="the_model_peak_factor_lands_below_tpaws",
+        claim=(
+            "The ensemble-mean n_z peak factor of boeing747 through "
+            "wind.dryden_vertical_field will land BELOW 2.386 -- the "
+            "mean Delta_n_max/sigma of the 51 encounters tabulated in "
+            "NASA/TM-2012-217337 Table 1 (TPAWS, NTRS 20120003172), "
+            "whose population standard deviation is 0.506."
+        ),
+        falsified_if=(
+            "the ensemble mean lands at or above 2.386. Landing inside "
+            "the population band 2.386 +/- 0.506 while still below the "
+            "mean does NOT falsify it: the claim is about the central "
+            "value, because a band 42% wide is met by almost anything "
+            "and would make the prediction unable to be wrong."
+        ),
+        reasoning=(
+            "Two reasons pointing the same way, and they are "
+            "independent. First, whatever the companion prediction "
+            "the_shinozuka_realisation_is_peak_poor says: a "
+            "fixed-amplitude sum should not reach as far from its own "
+            "rms as a Gaussian process does. Second, and pushing the "
+            "OTHER way: n_z is the output of a lightly damped resonance "
+            "-- zeta = 0.414 at this condition -- driven by a broadband "
+            "input, and a narrowband response has a HIGHER peak factor "
+            "than its input. The bet is that the construction wins. THE "
+            "COMPARISON HAS A DEFINITIONAL HAZARD THAT MUST BE SETTLED "
+            "FIRST AND IS NOT ASSUMED HERE: TPAWS computes sigma over a "
+            "5 s window, which at the 757's short period is about 1.5 "
+            "cycles, so this is not the asymptotic Gaussian peak factor "
+            "and sqrt(2 ln(nu T)) does not apply. Whether Delta_n_max is "
+            "the peak within that same window or over the whole "
+            "encounter must be READ OFF THE DOCUMENT. If it cannot be "
+            "established from the document, this prediction is abandoned "
+            "rather than settled either way, and that is the result."
+        ),
+        settled_by=(
+            "NASA/TM-2012-217337 Table 1, ingested as a data file under "
+            "atisim/data/ (design phase S0), against the ensemble of "
+            "scripts/dryden_realisation_audit.py. NOT SETTLEABLE by the "
+            "session that sealed it: the document is not in this "
+            "repository, Reference_papers/ is gitignored, and "
+            "ntrs.nasa.gov answered 403 to every request from the "
+            "container it was sealed in. The 2.386 and 0.506 above are "
+            "transcribed from the design document's section S2, which "
+            "computed them from the PDF's text layer on 21 September "
+            "2026, and they must be re-derived from the document itself "
+            "before this is settled."
+        ),
+        sealed_at="db4eadf",
+        digest="26331d0af4176504",
+    ),
 )
 
 # The digests above are LITERALS on purpose. An earlier draft computed them at
