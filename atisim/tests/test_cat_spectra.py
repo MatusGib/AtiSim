@@ -90,10 +90,19 @@ def test_the_short_period_is_the_frequency_the_prediction_was_sealed_against():
     # `boeing747` now declares CR-2144's speed derivatives. Same reasoning, same
     # outcome: still inside the sealed [0.131, 0.197] band, the sealed entry is
     # untouched, and rel=1e-3 is not widened.
-    assert float(wn) / (2.0 * np.pi) == pytest.approx(0.16407, rel=1e-3)
+    #
+    # RE-MEASURED AGAIN AT RELEASE 1.1: 0.16407 -> 0.16411 Hz, +0.02%, because
+    # `boeing747` declares Table IX-4's Mwdot as `Cmadot`. Same reasoning and
+    # same outcome once more: the sealed band is [0.131, 0.197] Hz, so a 0.02%
+    # move changes no verdict, the sealed entry is untouched, and rel=1e-3 is
+    # not widened. The DAMPING is the number this declaration actually moves,
+    # below -- alpha-dot damping is what it supplies - and the sealed claim is
+    # about the frequency the response peaks at, which is why it survives.
+    assert float(wn) / (2.0 * np.pi) == pytest.approx(0.16411, rel=1e-3)
     # Same re-measurements, same causes: 0.36455 -> 0.36503 at session 28,
-    # 0.36503 -> 0.36470 at session 30.
-    assert float(zeta) == pytest.approx(0.36470, rel=1e-3)
+    # 0.36503 -> 0.36470 at session 30, and 0.36470 -> 0.41437 at release 1.1,
+    # the last being +13.6% and the whole point of declaring the derivative.
+    assert float(zeta) == pytest.approx(0.41437, rel=1e-3)
 
 
 def test_the_mehta_response_follows_the_airframe_and_not_the_forcing(condition):

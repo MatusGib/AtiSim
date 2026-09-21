@@ -75,7 +75,11 @@ def updraft():
 def pushdown():
     return vortex_viz.manoeuvre(
         AC, V, H, label="manoeuvre",
-        elevator_step=jnp.deg2rad(8.926),
+        # RE-BISECTED, not re-pinned: the angle is an OUTPUT of
+        # `elevator_for_load` against the Fig. 8 band, and with `Cmadot`
+        # declared the old 8.926 deg reaches only -1.822 g. 9.307 deg is what
+        # the same bisection returns now, and it lands on -1.899981 g.
+        elevator_step=jnp.deg2rad(9.307362),
         hold=PUSHDOWN_HOLD, lead_in=PUSHDOWN_LEAD,
         seconds=PUSHDOWN_LEAD + 3.0 * PUSHDOWN_HOLD, dt=0.01,
     )
@@ -131,7 +135,15 @@ def pushdown():
 # And once more: the arm replaced by CR-114494's revised 5.70 ft. d(theta)
 # 2.311468 -> 2.333270, dn -1.244248 -> -1.246266. Previous (10 ft):
 # (2.311468013307627, -1.244247638948896).
-FIG8_VORTEX = (2.3332704114024994, -1.2462664938758317)
+#
+# AND AGAIN, deliberately: `boeing747` declares Table IX-4's Mwdot as `Cmadot`,
+# which damps exactly this response, and `dynamics.derivatives` gains the
+# transport half of the gust's alphadot (section 6(j)). d(theta) 2.333270 ->
+# 1.839705 (-21.2%), dn -1.246266 -> -1.196261 (-4.0%). The alpha-dot moment
+# opposes the pitch rate the core builds, so a smaller excursion is the
+# declaration working rather than drift; PROJECT.md section 4 has what else
+# moved with it. Previous: (2.3332704114024994, -1.2462664938758317).
+FIG8_VORTEX = (1.8397047596317972, -1.19626123006131)
 FIG8_VORTEX_BEFORE_LOGGING = FIG8_VORTEX  # old name, kept for one release
 
 
@@ -267,7 +279,8 @@ def test_the_window_is_what_decides_the_discriminator_coordinate(encounter):
     # SESSION 30: 2.20 -> 2.36. `boeing747` declares CR-2144's speed derivatives
     # and pitches ~5% further in the core; abs=0.15 is unchanged, and the
     # whole-run excursion below is still several times the in-core value.
-    assert in_core == pytest.approx(2.36, abs=0.15)
+    # RE-PINNED with the Cmadot declaration, same tolerance: 2.36 -> 1.84.
+    assert in_core == pytest.approx(1.84, abs=0.15)
     assert whole > 3.0 * in_core  # measured 8.33 vs 2.20
 
 

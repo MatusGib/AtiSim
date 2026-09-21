@@ -95,7 +95,15 @@ B747PA = REGISTRY["boeing747_approach"]
 # thrust line on `boeing747`. The attribution tests in section 3 explain THAT
 # engine's gap to Table IX-5 by the two families it omitted, so they run on it;
 # the mode-error pins run on the shipped entry. Both states stay measurable.
-B747_BARE = boeing747_without_thrust_line()._replace(mach_deriv_ref=jnp.array(-1.0))
+# `Cmadot` is zeroed here for the same reason `mach_deriv_ref` is shut off:
+# section 3's tests attribute the gap by RESTORING the families the entry
+# omitted, and `boeing747` now declares Table IX-4's Mwdot as `Cmadot`. Left in,
+# the restoration would add it on top of itself and the attribution would be
+# measuring a double count. This is the pre-declaration form of the entry, which
+# is what those tests were written against.
+B747_BARE = boeing747_without_thrust_line()._replace(
+    mach_deriv_ref=jnp.array(-1.0), Cmadot=jnp.array(0.0)
+)
 G = 32.174  # ft/s^2, the value CR-2144's own arithmetic uses
 
 
@@ -363,8 +371,13 @@ def _cruise_modes(ac=B747):
 # speed set alone lacked: phugoid_wn +0.0405 -> +0.0169 and phugoid_zeta
 # +0.0345 -> +0.0283. At 10 ft they read -0.0005 / +0.0113. Short period under
 # 0.05 points. abs=0.01 is unchanged.
-MODE_ERRORS_VS_IX5 = {"phugoid_wn": +0.0169, "phugoid_zeta": +0.0283,
-                      "sp_wn": -0.014, "sp_zeta": -0.115}
+# RE-PINNED when `boeing747` declared Table IX-4's Mwdot as `Cmadot`: the
+# alpha-dot family was the attributed cause of the short-period damping error,
+# and supplying it closes that error from -11.5% to +0.6%. Phugoid damping
+# improves with it (+2.83% -> +1.38%); the two frequencies do not move. `abs`
+# is unchanged at 0.01 and only the pinned errors moved.
+MODE_ERRORS_VS_IX5 = {"phugoid_wn": +0.0168, "phugoid_zeta": +0.0138,
+                      "sp_wn": -0.0132, "sp_zeta": +0.0057}
 
 
 @pytest.mark.parametrize("name,expected", sorted(MODE_ERRORS_VS_IX5.items()))
@@ -1072,8 +1085,19 @@ def test_the_wind_hold_costs_the_headline_figure_more_than_E4_bounds_it():
 
     def body(s, _):
         def f(y):
+            # `alphadot_gust` DEFAULTS TO ZERO, and this reference omitted it
+            # until `boeing747` declared `Cmadot`. While that coefficient was
+            # zero the omission was invisible -- the term is multiplied by it --
+            # and the moment it was declared this stopped being a per-stage
+            # version of the same model and became a different one, 21% apart
+            # and not shrinking with dt, which is how it was caught. Supplied
+            # per stage, exactly as `integrate.step` supplies it. The OTHER half
+            # of the gust's alphadot, the transport term, needs nothing here:
+            # `derivatives` forms it from the wind it is handed (section 6(j)).
             return derivatives(y, controls, B747, field(y.pos_ned),
-                               wind.gust_rates(y.pos_ned, y.quat, field))
+                               wind.gust_rates(y.pos_ned, y.quat, field),
+                               alphadot_gust=wind.gust_alphadot(
+                                   y.pos_ned, y.quat, y.vel_body, field))
         ns = rk4_step(f, s, jnp.array(dt))
         ns = ns._replace(quat=quat_normalize(ns.quat))
         return ns, (ns.pos_ned[0], quat_to_euler(ns.quat)[1])
@@ -1095,9 +1119,16 @@ def test_the_wind_hold_costs_the_headline_figure_more_than_E4_bounds_it():
     # per-stage 2.3523 -> 2.3009. At CR-114494's revised 5.70 ft, which is what
     # ships: hold 2.3583, per-stage 2.3228. The scheme cost reads 1.51%, still
     # inside abs=0.004 of 0.0162, so that pin and both tolerances are unchanged.
-    assert held == pytest.approx(2.3583, abs=0.005)
-    assert per_stage == pytest.approx(2.3228, abs=0.005)
-    assert abs(rel) == pytest.approx(0.0162, abs=0.004)
+    # RE-PINNED with the Cmadot declaration, and the tolerances are unchanged.
+    # The pitch excursion itself falls -- 2.3583 -> 1.8559 held -- because the
+    # alpha-dot pitching moment damps exactly this response; that is the
+    # declaration working, not drift. What the test exists to measure is the
+    # SCHEME error, and it is unmoved in magnitude: -1.49% here against -1.51%
+    # before, still ~1% at dt 0.02 and still halving with dt (-0.76% at 0.01,
+    # +0.15% at 0.005, measured on this tree).
+    assert held == pytest.approx(1.8559, abs=0.005)
+    assert per_stage == pytest.approx(1.8282, abs=0.005)
+    assert abs(rel) == pytest.approx(0.0149, abs=0.004)
     assert abs(rel) > 1e-3, (
         "the wind hold now costs less than 0.1% at dt=0.02; ASSUMPTIONS.md E4's "
         "~1e-4 bound may have become correct and this test should be re-measured")

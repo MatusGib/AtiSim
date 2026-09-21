@@ -499,6 +499,12 @@ def test_the_residual_damping_gap_is_the_missing_alpha_dot_term():
         Cma=jnp.array(R["747fl200_Cmalpha"].value),
         Cmq=jnp.array(R["747fl200_Cmq"].value),
         CLq=jnp.array(-R["747fl200_CZq"].value),
+        # ZEROED to keep this test's premise, which is a model with NO
+        # alpha-dot term. `boeing747` declares one now (Table IX-4's Mwdot),
+        # and left in it closes most of the very gap this test attributes.
+        # test_the_declared_alpha_dot_term_closes_most_of_the_fl200_gap_too
+        # measures what the declared value does at this condition.
+        Cmadot=jnp.array(0.0),
     )
     x, _ = trim.trim(jnp.array(V), jnp.array(_FL200_H), swapped)
     a, e, t = (float(v) for v in x)
@@ -741,6 +747,12 @@ def test_restoring_the_alpha_dot_term_closes_the_fl200_damping_gap():
         Cma=jnp.array(R["747fl200_Cmalpha"].value),
         Cmq=jnp.array(R["747fl200_Cmq"].value),
         CLq=jnp.array(-R["747fl200_CZq"].value),
+        # ZEROED to keep this test's premise, which is a model with NO
+        # alpha-dot term. `boeing747` declares one now (Table IX-4's Mwdot),
+        # and left in it closes most of the very gap this test attributes.
+        # test_the_declared_alpha_dot_term_closes_most_of_the_fl200_gap_too
+        # measures what the declared value does at this condition.
+        Cmadot=jnp.array(0.0),
     )
     restored = swapped._replace(Cmadot=jnp.array(R["747fl200_Cmalphadot"].value))
 
@@ -752,6 +764,37 @@ def test_restoring_the_alpha_dot_term_closes_the_fl200_damping_gap():
     ref = R["747fl200_short_period_zeta"].value
     assert abs(zeta(swapped) - ref) / ref == pytest.approx(0.117, abs=0.02)
     assert abs(zeta(restored) - ref) / ref < 0.01
+
+
+def test_the_declared_alpha_dot_term_closes_most_of_the_fl200_gap_too():
+    """The declaration, checked at a condition and against a source it did not
+    come from.
+
+    `boeing747` takes its `Cmadot` from CR-2144 Table IX-4, at M 0.80 and
+    40,000 ft. This is Yoshimura's Table A2 at M 0.80 and 20,000 ft, whose own
+    C_m_alphadot is -5.40 where CR-2144's converts to -6.336. Neither reading
+    knows about the other, so the gap closing here is corroboration rather than
+    arithmetic: the two agree on the term to about 15%, and the residual damping
+    shortfall falls from 11.7% to under 3%.
+    """
+    ac = REGISTRY["boeing747"]
+    R = validation.REFERENCES
+    V = _fl200_speed()
+    swapped = ac._replace(   # `Cmadot` left AS DECLARED, which is the point here
+        CLa=jnp.array(-R["747fl200_CZalpha"].value),
+        Cma=jnp.array(R["747fl200_Cmalpha"].value),
+        Cmq=jnp.array(R["747fl200_Cmq"].value),
+        CLq=jnp.array(-R["747fl200_CZq"].value),
+    )
+    x, _ = trim.trim(jnp.array(V), jnp.array(_FL200_H), swapped)
+    a, e, t = (float(v) for v in x)
+    _, (_, zeta_model) = validation.longitudinal_modes(swapped, a, e, t, V, _FL200_H)
+    ref = R["747fl200_short_period_zeta"].value
+
+    assert abs(zeta_model - ref) / ref < 0.03
+    declared, yoshimura = float(ac.Cmadot), R["747fl200_Cmalphadot"].value
+    assert declared < 0.0 and yoshimura < 0.0, "downwash lag damps, in both readings"
+    assert abs(declared - yoshimura) / abs(yoshimura) < 0.20
 
 
 def test_strip_loads_are_a_no_op_on_a_spanwise_uniform_field():
@@ -1192,10 +1235,14 @@ def test_no_gust_strength_reaches_the_recorded_peak_inside_the_linear_range():
 
     # The bracket -- the sharp form -- and it SURVIVES: both boundaries still
     # fall in one interval. Below the crossing the model is believable and
-    # short; above it the model reaches and is outside its own validity. For the
-    # shipped entry the interval is x3.0 to x3.25 (1.591 g at 8.94 deg; 1.745 g
-    # at 10.32 deg), where before session 30 it was x3.25 to x3.5.
-    enc_hi, (_, hi_hi) = _mehta_run(v0_scale=3.25, replayed=False)
+    # short; above it the model reaches and is outside its own validity.
+    #
+    # THE INTERVAL MOVED BACK with the Cmadot declaration, to x3.25-x3.5
+    # (1.628 g at 9.42 deg; 1.798 g at 10.95 deg) -- which is where it sat
+    # before session 30, the speed derivatives having moved it to x3.0-x3.25.
+    # The alpha-dot moment damps the peak, so more gust is needed to reach the
+    # record, and the incidence crosses 10 deg in the same interval as before.
+    enc_hi, (_, hi_hi) = _mehta_run(v0_scale=3.5, replayed=False)
     assert s_hi3 < recorded and peak_alpha(s_enc3) < 10.0
     assert hi_hi >= recorded and peak_alpha(enc_hi) > 10.0
 
@@ -1211,7 +1258,8 @@ def test_the_replayed_headline_is_not_saturated_and_reaches_the_record_inside_th
     cores, and the peak tracks the gust:
 
         x1.00   n_z max 1.604   |alpha|  8.05 deg   short
-        x1.20   n_z max 1.740   |alpha|  9.01 deg   reaches +1.7, INSIDE
+        x1.20   n_z max 1.700   |alpha|  8.33 deg   0.0003 g short, INSIDE
+        x1.25   n_z max 1.721   |alpha|  8.52 deg   reaches +1.7,   INSIDE
         x3.00   n_z max 2.893   |alpha| 22.2 deg    elasticity +1.07
 
     So a vortex strength 15-20% above Mehta's fit reaches the recorded peak
@@ -1223,7 +1271,11 @@ def test_the_replayed_headline_is_not_saturated_and_reaches_the_record_inside_th
 
     recorded = wind.TM102186_HANNIBAL_NZ[1]
     _, (_, hi0) = _mehta_run()
-    enc12, (_, hi12) = _mehta_run(v0_scale=1.2)
+    # x1.25, not x1.2, since the Cmadot declaration: x1.2 now lands at 1.6997 g
+    # against the recorded 1.7, which is 0.0003 g short. That is a real crossing
+    # having moved, not a tolerance -- the alpha-dot moment damps the peak by
+    # about 4% -- and the claim is the same shape at the new strength.
+    enc12, (_, hi12) = _mehta_run(v0_scale=1.25)
     _, (_, hi3) = _mehta_run(v0_scale=3.0)
     assert hi0 < recorded
     assert hi12 >= recorded

@@ -106,6 +106,16 @@ LEDGER: dict[str, Entry] = {
         "Cmq = Mq * 2 * Iy * U0 / (qS * c^2), CR-2144 Appendix A. Gives -23.9232.",
         inputs=("b747.Mq", "b747.c"),
     ),
+    "b747.Mwd": Entry("SOURCED", f"-0.000116, dimensional. {_CR2144_IX4}"),
+    "b747.Cmadot": Entry(
+        "DERIVED",
+        "Cmadot = Mwd * 2 * Iy * U0^2 / (qS * c^2), the Cmq relation with one "
+        "more U0 because Mwd is per unit wdot and alphadot = wdot/U0. Gives "
+        "-6.3360, and round-trips to Table IX-4's -0.000116. Table IX-4's "
+        "Zwd is NOT taken: it converts to a negative CL_alphadot, which "
+        "downwash lag says is the wrong sign. PROJECT.md section 5.",
+        inputs=("b747.Mwd", "b747.c"),
+    ),
     "b747.Clp": Entry("SOURCED", f"Lp' = -0.465, primed dimensional. {_CR2144_IX8}"),
 
     # -- the one new relation this work introduces --------------------------

@@ -11,6 +11,34 @@ documents out of every commit. No code, result or record entry changed;
 [`docs/design/commit-map.txt`](docs/design/commit-map.txt) maps the commit ids quoted in the
 record to the ones that exist now.
 
+## [1.1.0] — unreleased
+
+### Changed
+
+- **The Boeing 747 declares CR-2144 Table IX-4's angle-of-attack-rate pitching derivative**
+  (`Cmadot` = −6.336, converted from the tabulated `Mwd` and round-tripping to it exactly).
+  Short-period damping against Table IX-5 goes from −11.5% to **+0.6%**, and phugoid damping
+  from +2.83% to +1.38%. The table's `Zwd` is deliberately **not** taken: it converts to a
+  negative `CL_α̇`, and downwash lag makes that derivative positive.
+- **The Hannibal headline falls from 75.3% to 70.2% of the recorded peak-to-peak.** The α̇
+  moment damps the response the encounter excites, so the model moves closer to its own source
+  and further from the record — the same trade the speed derivatives made. `docs/PROJECT.md` §1
+  and §9 record it.
+
+### Fixed
+
+- **The autopilot lurched when engaged with a pitch rate.** `engage` had the wrong sign on its
+  pitch-rate seed, leaving a transient of `2·q_d·q` — zero from trim, which is why every test
+  missed it, and the full surface rate limit when handing over mid-manoeuvre. `PROJECT.md`
+  §6(i).
+- **A uniform wind could change the attitude.** `wind.gust_alphadot` returned only the field's
+  spatial gradient and dropped the transport term of `d(wind_body)/dt`, so a wind constant in
+  NED produced no α̇ while the aircraft rotated under it. Harmless while every aircraft flown in
+  wind had `Cmadot` zero; a Galilean-invariance violation the moment one did not. `PROJECT.md`
+  §6(j).
+- A stale docstring in `test_jsbsim_737_layers.py` still described the 737's phugoid frequency
+  gap as 6.58%; session 24 closed it to +0.45%.
+
 ## [1.0.0] — 2026-09-20
 
 ### Flight dynamics core

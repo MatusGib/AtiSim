@@ -504,8 +504,21 @@ def _boeing_747(thrust_line: bool = True) -> Aircraft:
     # line-by-line re-read against Table IX-4. The transcription slip cost 1.1
     # points of short-period damping match (12.6% -> 11.5% against the reference).
     Xw, Zw, Zq, Mw, Mq, Zde, Mde = 0.0389, -0.317, -5.16, -0.00105, -0.339, -17.9, -1.16
-    # (Xu, Zu, Mu, Zwd, Mwd, Xde also tabulated; the speed and alpha-dot
-    #  derivatives are outside this model's form, which is alpha/q/de only.)
+    # Mwd is Table IX-4's alpha-dot pitching derivative, declared below. The
+    # entry used seven of the table's thirteen and dropped six; this restores
+    # one of them, and it needs no new model structure -- `Aircraft` has carried
+    # `Cmadot` since session 18 and `aero.coefficients` applies it.
+    Mwd = -0.000116
+    # (Xu, Zu and Xde are also tabulated. The speed family is carried through
+    #  the Mach derivatives instead, sourced from printed pp. 220-222.
+    #
+    #  Zwd = +0.00556 IS TABULATED AND IS DELIBERATELY NOT USED. Converted the
+    #  same way it gives a NEGATIVE CL_alphadot, and downwash lag makes that
+    #  derivative positive: a wing whose downwash reaches the tail late sees a
+    #  lift increment in the same sense as the alpha rate. Nothing this project
+    #  holds settles whether the sign is the table's convention or a misprint,
+    #  and rule 2 says flag rather than invent, so it stays out. PROJECT.md
+    #  section 5.)
 
     # -- Table IX-8: lateral dimensional derivatives, body axis, primed --
     Yb, Ydr_star = -43.2, 0.00729
@@ -556,6 +569,11 @@ def _boeing_747(thrust_line: bool = True) -> Aircraft:
     Cma = Mw * Iy * U0 / (qS * c)
     Cmq = Mq * 2.0 * Iy * U0 / (qS * c * c)
     Cmde = Mde * Iy / (qS * c)
+    # Same form as Cmq with one more U0, because Mwd is per unit wdot (1/ft)
+    # where Mq is per unit q (1/s), and alphadot = wdot/U0. Cmadot is referred
+    # to alphadot*c/(2V), which is what `aero.coefficients` applies it to, and
+    # it round-trips back to Table IX-4's -0.000116 exactly. Gives -6.3360.
+    Cmadot = Mwd * 2.0 * Iy * U0 * U0 / (qS * c * c)
 
     # The linear model is referenced to the trimmed condition at alpha0 with zero
     # elevator (the stabiliser carries the trim). There the AERODYNAMIC moment
@@ -653,6 +671,10 @@ def _boeing_747(thrust_line: bool = True) -> Aircraft:
         Cm0=jnp.array(Cm0),
         Cma=jnp.array(Cma),
         Cmq=jnp.array(Cmq),
+        # Table IX-4's Mwd. `Cmq` above is the BARE Mq from the same table, not
+        # one with the alpha-dot effect folded into it, so the two do not double
+        # count -- CR-2144 tabulates them separately and this entry takes both.
+        Cmadot=jnp.array(Cmadot),
         Cmde=jnp.array(Cmde),
         CYb=jnp.array(CYb),
         # CR-2144 does not tabulate CYp or CYr for the 747 in any configuration.

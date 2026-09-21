@@ -129,9 +129,16 @@ def test_the_sims_own_unaugmented_longitudinal_modes_are_the_documented_gap():
     """Locks in today's measured un-augmented figures as a regression guard.
 
     This is the sim exactly as shipped (alpha/q/de aero only, no Xu/Zu/Mu/
-    Zwdot/Mwdot): phugoid wn 0.0554 rad/s (18% low vs CR-2144's 0.0673) and
-    short-period zeta 0.338 (13% low vs CR-2144's 0.387). See the augmented
-    comparison above for why: this is attributed, not a bug.
+    ~~Zwdot/Mwdot~~ Zwdot): phugoid wn 0.0554 rad/s (18% low vs CR-2144's
+    0.0673) and short-period zeta ~~0.338 (13% low vs CR-2144's 0.387)~~
+    0.3895. See the augmented comparison above for why the phugoid is low:
+    that half is attributed, not a bug.
+
+    THE SHORT-PERIOD HALF IS NO LONGER A GAP. `boeing747` declares Table IX-4's
+    Mwdot as `Cmadot`, so the family this figure was pinning the ABSENCE of is
+    half restored, and the damping it guarded is gone by design. Zwdot is still
+    out, and deliberately -- its tabulated sign gives a negative CL_alphadot
+    (aircraft.py says why) -- so the phugoid assertions below are untouched.
     """
     # SESSION 30: THE WORLD CHANGED, NOT THE TOLERANCE. `boeing747` now declares
     # CR-2144's speed derivatives (PROJECT.md section 4), so the shipped entry is
@@ -146,4 +153,10 @@ def test_the_sims_own_unaugmented_longitudinal_modes_are_the_documented_gap():
     assert phugoid[0] == pytest.approx(0.0554, rel=0.05)
     assert phugoid[1] == pytest.approx(0.0559, rel=0.1)
     assert short_period[0] == pytest.approx(0.949, rel=0.03)
-    assert short_period[1] == pytest.approx(0.338, rel=0.05)
+    # RE-PINNED with the Cmadot declaration: 0.338 -> 0.3895, measured on this
+    # same bare entry. THE WORLD CHANGED, NOT THE TOLERANCE -- `rel` is still
+    # 0.05 and only the pinned value moved. Isolating the declaration on this
+    # entry gives 0.3431 without it and 0.3895 with it, and the three
+    # assertions above did not move at all, which is what says the change is
+    # confined to the axis it was made on. CR-2144 Table IX-5 says 0.387.
+    assert short_period[1] == pytest.approx(0.3895, rel=0.05)

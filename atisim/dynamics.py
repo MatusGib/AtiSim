@@ -173,12 +173,37 @@ def derivatives(
     # transport, so O(1e-6) of a term that is itself a correction. If an
     # aircraft ever carries a large CLadot, replace this with the closed-form
     # 1/(1 - B) factor rather than more passes.
-    _, _, accel_open = accelerate(alphadot_gust)
     u_rel, w_rel = vel_rel[0], vel_rel[2]
     denominator = jnp.maximum(u_rel**2 + w_rel**2, V_MIN**2)
+
+    # THE TRANSPORT HALF OF d(wind_body)/dt, formed here rather than in
+    # `wind.gust_alphadot`. That function returns the field's own gradient,
+    # which is the only part that needs a field; this is the body frame turning
+    # under the wind vector, C^T W, which needs only the state being evaluated.
+    #
+    # Two reasons it lives here. It is EXACT PER STAGE even when the wind is
+    # held across an RK4 step, where folding it into the held quantity would
+    # cost three orders of accuracy -- measured 3.99 -> 1.03 on a gradient-free
+    # field. And no caller can forget it: `alphadot_gust` defaults to zero, and
+    # a hand-written wind model that returns four values instead of five gets
+    # zero for the gradient half, but the transport half is not theirs to omit.
+    #
+    # Without it a UNIFORM wind -- gradient identically zero -- produced no
+    # alphadot at all while the aircraft rotated beneath it, so a change of
+    # inertial frame moved the attitude. PROJECT.md section 2 names that error;
+    # section 6(j) records it, and it was invisible until an aircraft flown in
+    # wind carried a non-zero Cmadot.
+    wind_body = dcm.T @ wind_ned
+    transport = jnp.cross(state.omega, wind_body)
+    alphadot_transport = (
+        u_rel * transport[2] - w_rel * transport[0]
+    ) / denominator
+    alphadot_wind = alphadot_gust + alphadot_transport
+
+    _, _, accel_open = accelerate(alphadot_wind)
     alphadot_aircraft = (u_rel * accel_open[2] - w_rel * accel_open[0]) / denominator
 
-    force, moment, accel = accelerate(alphadot_gust + alphadot_aircraft)
+    force, moment, accel = accelerate(alphadot_wind + alphadot_aircraft)
     omega_dot = ac.inertia_inv @ (
         moment - jnp.cross(state.omega, ac.inertia @ state.omega)
     )

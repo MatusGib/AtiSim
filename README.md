@@ -18,7 +18,7 @@ flew through a row of clear-air-turbulence vortices, and NASA identified the win
 flight recorder (Parks et al. 1985; Mehta 1987). AtiSim rebuilds that field, flies a Boeing 747
 through it, and compares the response with the recorded load.
 
-The simulated load reaches **75.3% of the recorded peak-to-peak** — and the documentation
+The simulated load reaches **70.2% of the recorded peak-to-peak** — and the documentation
 explains the shortfall rather than tuning it away. The model also reproduces the ordering and
 mechanism of NASA TM-102186's three-aircraft comparison, and the linear modes of its source data.
 The documentation's *Validation* page states the claim, the envelope it holds in, and the status

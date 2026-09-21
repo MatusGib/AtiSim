@@ -1442,14 +1442,28 @@ def gust_alphadot(pos_ned: Array, quat: Array, vel_body: Array, field) -> Array:
         alphadot = (u_rel * wdot_rel - w_rel * udot_rel) / (u_rel^2 + w_rel^2)
 
     and the gust contributes -(d(wind_body)/dt) to the relative velocity.
+
+    **ONE OF THE TWO TERMS OF THAT DERIVATIVE LIVES HERE.** By the transport
+    theorem
+
+        d(wind_body)/dt = C^T d(wind_ned)/dt - omega x wind_body
+
+    and this function returns the first, which is the field's own gradient and
+    the only part that needs the field. The second is the body frame turning
+    under the wind vector; it needs no field at all, so `dynamics.derivatives`
+    forms it from the wind it was handed and the state it is evaluating at. That
+    split is not cosmetic: the wind is HELD across an RK4 step, and holding a
+    term that varies with attitude and rate would cost the scheme three orders
+    (measured: 3.99 -> 1.03 on a gradient-free field). PROJECT.md section 6(j).
     """
     dcm = quat_to_dcm(quat)  # body -> NED
     vel_ned = dcm @ vel_body
     wind_rate_ned = jax.jacfwd(field)(pos_ned) @ vel_ned
+    wind_body = dcm.T @ field(pos_ned)
     # Relative velocity falls as the wind rises, hence the sign.
     rel_rate_body = -(dcm.T @ wind_rate_ned)
 
-    vel_rel = vel_body - dcm.T @ field(pos_ned)
+    vel_rel = vel_body - wind_body
     u_rel, w_rel = vel_rel[0], vel_rel[2]
     # aero.V_MIN, squared. The SAME constant rather than a second one with the
     # same value: one NaN guard, one provenance entry, and it cannot drift.

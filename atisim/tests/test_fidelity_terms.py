@@ -117,7 +117,12 @@ def test_still_air_produces_exactly_zero_alphadot():
 
 
 def test_a_uniform_wind_produces_no_alphadot():
-    """alphadot comes from the field's GRADIENT, so a constant wind gives none."""
+    """A constant wind gives no alphadot -- AT ZERO BODY RATE, which this is.
+
+    The field's gradient is one of the two terms. The other is the body frame
+    turning under a wind that is constant in NED, and it is what this test's
+    omega = 0 switches off; the pair below asserts it.
+    """
     state = State(pos_ned=jnp.array([0.0, 0.0, -3000.0]),
                   vel_body=jnp.array([60.0, 0.0, 2.0]),
                   quat=euler_to_quat(jnp.array(0.0), jnp.array(0.03), jnp.array(0.0)),
@@ -125,6 +130,46 @@ def test_a_uniform_wind_produces_no_alphadot():
     got = wind.gust_alphadot(state.pos_ned, state.quat, state.vel_body,
                              lambda p: jnp.array([3.0, 0.0, -2.0]))
     assert abs(float(got)) < 1e-12
+
+
+def test_a_uniform_wind_does_not_change_the_pitching_moment_of_the_same_air_state():
+    """The transport term, pinned where it lives: `dynamics.derivatives`.
+
+    A uniform wind is a change of inertial frame. Give one aircraft a ground
+    velocity offset by W and the air-relative state is identical, so every
+    derivative must be too -- including the pitching moment, which reads the
+    angle-of-attack rate through `Cmadot`.
+
+    That holds only because `derivatives` forms the transport half of
+    d(wind_body)/dt, `-omega x wind_body`, from the wind it is handed. The
+    field's gradient -- the half `wind.gust_alphadot` returns -- is identically
+    zero for a uniform wind, so nothing else would supply it and the attitude
+    would move with the frame. PROJECT.md section 6(j).
+
+    Asserted on the 747, which carries a non-zero Cmadot; with a zero one the
+    claim is true for an uninteresting reason.
+    """
+    from atisim import trim
+    from atisim.aircraft import CRUISE, REGISTRY
+    from atisim.dynamics import derivatives
+    from atisim.state import quat_to_dcm
+
+    ac = REGISTRY["boeing747"]
+    assert float(ac.Cmadot) != 0.0, "this test is vacuous on an entry without Cmadot"
+    V, H = CRUISE["boeing747"]["airspeed"], CRUISE["boeing747"]["altitude"]
+    x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
+    controls = trim.trimmed_controls(x[1], x[2])
+    state = trim.trimmed_state(x[0], jnp.array(V), jnp.array(H))._replace(
+        omega=jnp.array([0.01, 0.02, -0.005]))
+
+    W = jnp.array([7.0, -3.0, 0.0])
+    shifted = state._replace(vel_body=state.vel_body + quat_to_dcm(state.quat).T @ W)
+
+    still = derivatives(state, controls, ac, jnp.zeros(3), jnp.zeros(3))
+    blown = derivatives(shifted, controls, ac, W, jnp.zeros(3))
+
+    assert float(blown.omega[1]) == pytest.approx(float(still.omega[1]), rel=1e-12)
+    np.testing.assert_allclose(np.asarray(blown.omega), np.asarray(still.omega), rtol=1e-12)
 
 
 def test_flying_into_a_vertical_gradient_produces_alphadot_of_the_right_sign():
