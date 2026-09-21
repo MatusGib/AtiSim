@@ -42,7 +42,7 @@ import jax.numpy as jnp
 import numpy as np
 
 import atisim  # noqa: F401  -- enables x64
-from atisim import predictions, response, trim, vortex_viz, wind
+from atisim import predictions, trim, vortex_viz, wind
 from atisim.aircraft import REGISTRY
 from atisim.atmosphere import speed_of_sound
 
@@ -70,8 +70,8 @@ def condition():
 # ---------------------------------------------------------------------------
 
 
-def rotational_check(ac, V, H, sigma_w, seed=0, n=200_000, span=400_000.0):
-    """The realised (p_gust, q_gust) against their exact closed form.
+def rotational_check(ac, V, H, sigma_w, seed=0, n=40_000, span=400_000.0):
+    """The realised (p_gust, q_gust) against their EXACT closed form.
 
     For a frozen field varying along north only, with the aircraft wings level
     at pitch attitude theta, `wind.gust_rates` returns
@@ -80,61 +80,74 @@ def rotational_check(ac, V, H, sigma_w, seed=0, n=200_000, span=400_000.0):
         q_gust = -cos^2(theta) d(wind_ned[2])/dN
 
     (derived in `atisim/gust.py`'s header and checked there against a single
-    sinusoid). Applied to a sum of sinusoids the second gives a spectrum
+    sinusoid). `wind.dryden_vertical_components` gives the sum the field is
+    built from, so the derivative is available in closed form too --
 
-        Phi_q(Omega) = cos^4(theta) Omega^2 Phi_w(Omega)
+        q_gust(x) = -cos^2(theta) sum_k A_k Omega_k sin(Omega_k x + phi_k)
 
-    which is what this measures. It is NOT MIL-HDBK-1797's Phi_q, and the
-    comparison the design asked for -- against the specification's own analytic
-    rotational spectra -- IS NOT MADE HERE: neither MIL-F-8785C nor
-    MIL-HDBK-1797 is in this repository (`refs/` is gitignored) and the
-    specification's rotational forms are transcribed nowhere in the tree, so
-    writing them from memory is exactly what `docs/DEVELOPMENT.md` rule 2
-    forbids. PROJECT.md §0 carries it as the acquisition it is.
+    -- and this comparison carries NO DIFFERENCE SCHEME AT ALL. An earlier draft
+    compared against `np.gradient` and read 2.9% at 2 m spacing, which is the
+    central difference's own error on a 20 m shortest wavelength and says
+    nothing about the field. The spectral form of the same statement,
+
+        Phi_q(Omega) = cos^4(theta) Omega^2 Phi_w(Omega),
+
+    is reported as a variance ratio computed from the components rather than
+    from a periodogram, for the same reason: at a 20 m shortest wavelength a
+    periodogram ratio carries more leakage than signal.
+
+    **THE COMPARISON THE DESIGN ASKED FOR IS NOT MADE HERE.** It wanted the
+    realised rotational spectra against MIL-HDBK-1797's analytic `Phi_p` and
+    `Phi_q`. Neither MIL-F-8785C nor MIL-HDBK-1797 is in this repository --
+    `refs/` is gitignored -- and the specification's ROTATIONAL forms are
+    transcribed nowhere in the tree; `wind.py` carries only Phi_u, Phi_v and
+    Phi_w, verbatim from p. 47. Writing the rotational ones from memory is
+    exactly what `docs/DEVELOPMENT.md` rule 2 forbids, so it is recorded as an
+    acquisition in PROJECT.md section 0 instead.
     """
     x, _ = trim.trim(jnp.array(V), jnp.array(H), ac)
     alpha = float(x[0])
     state = trim.trimmed_state(jnp.array(alpha), jnp.array(V), jnp.array(H))
     field = wind.dryden_vertical_field(sigma_w, seed)
+    omega_k, amplitude, phase = wind.dryden_vertical_components(sigma_w, seed)
 
     north = jnp.linspace(0.0, span, n)
 
     def one(x_n):
-        pos = jnp.array([x_n, 0.0, -H])
-        rates = wind.gust_rates(pos, state.quat, field)
-        return jnp.array([rates[0], rates[1], field(pos)[2]])
+        return wind.gust_rates(jnp.array([x_n, 0.0, -H]), state.quat, field)
 
-    rows = np.asarray(jax.lax.map(one, north, batch_size=2048))
-    p_gust, q_gust, w_z = rows[:, 0], rows[:, 1], rows[:, 2]
+    rates = np.asarray(jax.lax.map(one, north, batch_size=1024))
+    p_gust, q_gust = rates[:, 0], rates[:, 1]
 
-    dx = float(span / (n - 1))
-    dw = np.gradient(w_z, dx)
-    exact_q = -np.cos(alpha) ** 2 * dw
+    ok = np.asarray(omega_k, dtype=float)
+    ak = np.asarray(amplitude, dtype=float)
+    ph = np.asarray(phase, dtype=float)
+    xs = np.asarray(north, dtype=float)
+    exact_q = -np.cos(alpha) ** 2 * (
+        ak * ok * np.sin(ok * xs[:, None] + ph)).sum(axis=1)
 
     print("A  the rotational gust the realisation produces")
     print(f"   rolling gust p_gust: max |p| = {np.max(np.abs(p_gust)):.3e} rad/s")
-    print(f"   -- identically zero, and no amount of intensity changes it. The")
-    print(f"      field varies along track only, so every strip of the wing sees")
-    print(f"      the same gust (ASSUMPTIONS E10). A specification Phi_p is")
-    print(f"      non-zero at every frequency, so the realised one cannot match")
-    print(f"      it at ANY scaling -- this is a structural miss, not a small one.")
-    err = np.max(np.abs(q_gust - exact_q)) / np.max(np.abs(exact_q))
-    print(f"   pitching gust q_gust: rms = {np.std(q_gust):.6e} rad/s")
-    print(f"      against its exact form -cos^2(theta) dw_z/dN, worst relative")
-    print(f"      difference {err:.3e} (a central-difference gradient against")
-    print(f"      an analytic one, so this is the DIFFERENCE SCHEME's error)")
-    # Phi_q = cos^4(theta) Omega^2 Phi_w, checked as a ratio at three scales.
-    print(f"   Phi_q / (Omega^2 Phi_w) should be cos^4(theta) = "
-          f"{np.cos(alpha) ** 4:.6f}")
-    f_hz, psd_q = response.spectrum(q_gust, dx)
-    _, psd_w = response.spectrum(w_z, dx)
-    Omega = 2.0 * np.pi * f_hz
-    with np.errstate(divide="ignore", invalid="ignore"):
-        ratio = psd_q / (Omega ** 2 * psd_w)
-    for target_lambda in (10_000.0, 1_000.0, 100.0):
-        i = int(np.argmin(np.abs(Omega - 2.0 * np.pi / target_lambda)))
-        print(f"      at lambda = {target_lambda:8.0f} m: {ratio[i]:.6f}")
-    return float(np.max(np.abs(p_gust)))
+    print("   -- identically zero, and no intensity changes it. The field varies")
+    print("      along track only, so every strip of the wing sees the same gust")
+    print("      (ASSUMPTIONS E10). A specification Phi_p is non-zero at every")
+    print("      frequency, so the realised one cannot match it at ANY scaling:")
+    print("      a STRUCTURAL miss, not a small one.")
+    worst = float(np.max(np.abs(q_gust - exact_q)) / np.max(np.abs(exact_q)))
+    print(f"   pitching gust q_gust: rms = {np.std(q_gust):.6e} rad/s, and it")
+    print(f"      matches -cos^2(theta) sum A_k Omega_k sin(.) to {worst:.2e}")
+    print("      relative -- an EXACT comparison, no difference scheme in it.")
+    power_w = ak ** 2 / 2.0
+    power_q = np.cos(alpha) ** 4 * ok ** 2 * power_w
+    print(f"   variance ratio sigma_q^2 / sigma_w^2 = "
+          f"{power_q.sum() / power_w.sum():.6e} (rad/s per m/s)^2,")
+    print(f"      i.e. Phi_q = cos^4(theta) Omega^2 Phi_w with "
+          f"cos^4(theta) = {np.cos(alpha) ** 4:.6f}")
+    print("   The rotational gust is therefore FULLY DETERMINED by the")
+    print("   translational one here. That is the finding: a real atmosphere's")
+    print("   p and q spectra are independent quantities, and this field has")
+    print("   one degree of freedom where the specification has three.")
+    return float(np.max(np.abs(p_gust))), worst
 
 
 # ---------------------------------------------------------------------------

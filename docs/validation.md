@@ -34,6 +34,13 @@ whole answer.
 - **Predictive discipline.** Claims are sealed before the run that decides them
   (`atisim/predictions.py`). Three have been settled: two right and one wrong, and the wrong one
   is recorded as wrong rather than reworded.
+- **The gust path against exact answers**, added session 33 and the first comparison in the
+  project that is against mathematics rather than a document. The flown response to a gust
+  matches the aircraft's own linearised transfer function to **0.0043% in amplitude and 0.0017°
+  in phase** over two decades of frequency, and the random-process identity
+  `σ_nz² = ∫|H|²Φ dΩ` holds to **0.081%, 0.24 standard errors** at N = 24 (§4, phases V1–V2).
+  It verifies the **path** — trim, the integrator, the three gust channels, the measurement —
+  and not the aerodynamic data, which it shares.
 
 **Measured, and bounded rather than fixed:**
 
@@ -62,6 +69,14 @@ implementations, and which cannot predict an absolute load.*
 **The largest remaining risk:** every comparison against a real encounter is between summary
 numbers — peaks, spacings, orderings — never a time history against a time history. The
 recorded load trace is digitised, which makes that comparison possible; it has not been made.
+
+**Two more, named session 33 and neither previously recorded.** The model has **no unsteady lag
+on the gust's arrival** — no Sears attenuation, no Küssner build-up — which is worth **3–4%** of
+the lift at the frequencies this project forces and **6.78%** of σ_nz across the Dryden band,
+and which makes the simulated load *smaller* rather than larger ({doc}`ASSUMPTIONS` C12). And
+the Dryden field is realised by a **fixed-amplitude sum of sinusoids**, which reproduces the
+target spectrum exactly and is not a Gaussian process — every peak and exceedance figure the
+project quotes sits downstream of that (§4, phase V5).
 
 ## Status of every known gap
 

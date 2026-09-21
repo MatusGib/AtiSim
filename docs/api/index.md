@@ -61,6 +61,7 @@ Importing `atisim` enables float64 in JAX, and it must be imported before any ar
 
    atisim.validation
    atisim.verification
+   atisim.gust
    atisim.checks
    atisim.cr2144_mach
    atisim.jsbsim_ref
