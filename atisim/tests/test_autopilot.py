@@ -55,6 +55,36 @@ def test_engagement_reproduces_the_current_controls_exactly():
         assert float(field) == pytest.approx(float(current), abs=1e-12)
 
 
+@pytest.mark.parametrize("q", [0.005, 0.02, -0.02])
+def test_engagement_with_a_body_rate_is_still_bumpless(q):
+    """Hand-over happens mid-manoeuvre, where the body rate is NOT zero.
+
+    Every other engagement test above starts from trim, and a flat-Earth trim
+    has q identically zero -- which is why a sign error on the seed's rate term
+    survived: it leaves an error of exactly `2*q_d*q`, invisible at q = 0. Taken
+    at 0.02 rad/s it moved the elevator by the full surface rate limit on the
+    first step, which is the lurch `engage` exists to prevent.
+    """
+    state, controls = trimmed()
+    state = state._replace(omega=jnp.array([0.0, q, 0.0]))
+    targets = hold_targets()
+    ap = ap_mod.engage(sense(state), controls, targets, GAINS, AC)
+    out, _ = ap_mod.autopilot(sense(state), ap, targets, GAINS, AC, jnp.array(DT))
+    assert float(out.elevator) == pytest.approx(float(controls.elevator), abs=1e-12)
+
+
+@pytest.mark.parametrize("p", [0.01, -0.01])
+def test_engagement_with_a_roll_rate_is_still_bumpless(p):
+    """The same claim on the axis whose seed was already right, so the pair
+    fixes the sign convention by measurement rather than by reading."""
+    state, controls = trimmed()
+    state = state._replace(omega=jnp.array([p, 0.0, 0.0]))
+    targets = hold_targets()
+    ap = ap_mod.engage(sense(state), controls, targets, GAINS, AC)
+    out, _ = ap_mod.autopilot(sense(state), ap, targets, GAINS, AC, jnp.array(DT))
+    assert float(out.aileron) == pytest.approx(float(controls.aileron), abs=1e-12)
+
+
 def test_engagement_from_a_non_trim_deflection_still_matches():
     """Bumpless transfer must work from any hand-flown position, not just trim."""
     state, _ = trimmed()

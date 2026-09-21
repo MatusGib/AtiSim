@@ -103,19 +103,30 @@ def test_the_engine_linearisation_carries_appendix_a_mach_terms_exactly():
     untouched, so the difference between the two jacfwd plant matrices is the
     Mach content and nothing else -- and it must equal CR-2144 Appendix A's
     terms, built independently in `cr2144_mach.mach_increment`, in all six
-    elements they occupy and zero elsewhere."""
-    x, _ = trim(jnp.array(V), jnp.array(H), BARE)
+    elements they occupy and zero elsewhere.
+
+    ON AN ENTRY WITHOUT `Cmadot`, which release 1.1's declaration makes worth
+    saying. The alpha-dot loop couples to the Mach terms -- the pitching moment
+    reads an alphadot that the Mach content itself changes -- so with it in, the
+    plant-matrix difference is the Mach content PLUS that cross term: 5.2e-3 of
+    relative departure from Appendix A, against 5.7e-14 with it out. Neither
+    derivative family is wrong; the two are simply not exactly separable, and
+    this test is about the arithmetic of one of them. The comparisons elsewhere
+    in this file run on `BARE` as shipped, alpha-dot and all.
+    """
+    bare = BARE._replace(Cmadot=jnp.array(0.0))
+    x, _ = trim(jnp.array(V), jnp.array(H), bare)
     alpha, de, th = (float(v) for v in x)
     a_s = float(speed_of_sound(jnp.array(H)))
-    declared = BARE._replace(mach_deriv_ref=jnp.array(V / a_s), **SET)
+    declared = bare._replace(mach_deriv_ref=jnp.array(V / a_s), **SET)
     x2, _ = trim(jnp.array(V), jnp.array(H), declared)
     assert np.allclose(np.asarray(x2), np.asarray(x), rtol=0.0, atol=1e-10)
 
     dA = (longitudinal_matrix(declared, alpha, de, th, V, H)
-          - longitudinal_matrix(BARE, alpha, de, th, V, H))
+          - longitudinal_matrix(bare, alpha, de, th, V, H))
     expected = cm.mach_increment(
-        alpha, V, float(density(jnp.array(H))), a_s, float(BARE.mass),
-        float(np.asarray(BARE.inertia)[1, 1]), float(BARE.S), float(BARE.c),
+        alpha, V, float(density(jnp.array(H))), a_s, float(bare.mass),
+        float(np.asarray(bare.inertia)[1, 1]), float(bare.S), float(bare.c),
         *(float(SET[k]) for k in ("CL_M", "CD_M", "Cm_M")))
     assert np.count_nonzero(expected) == 6
     assert np.allclose(dA, expected, rtol=1e-9, atol=1e-15), (dA, expected)

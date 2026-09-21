@@ -624,8 +624,8 @@ tested against the aircraft's own linearised dynamics, not against a recorded sp
 because none is held. §5 says what would change that.
 
 **What it does not buy.** Any statement of the form *"the load will be X g"*. The
-headline load comparison reaches ~~**68%**~~ ~~**64.5%**~~ ~~**64.4%**~~ **75.3%** of a recorded peak-to-peak since the end of session
-30 (2.034 g of 2.70), flown with Mehta's field **replayed on the path it was identified along**. Flown at the 747's own altitude, as every figure before that was, it reads 64.5% with the thrust line at 5.70 ft — it was 68.2% until `boeing747` declared CR-2144's speed derivatives,
+headline load comparison reaches ~~**68%**~~ ~~**64.5%**~~ ~~**64.4%**~~ ~~**75.3%**~~ **70.2%** of a recorded peak-to-peak (1.896 g of 2.70), flown with Mehta's field **replayed on the path it was identified along**. It read 75.3% from the end of session
+30 until `boeing747` declared Table IX-4's alpha-dot pitching derivative as `Cmadot`: the term damps exactly this response, so the load falls. **That is the second time a SOURCED derivative has improved agreement with the model's own source and moved this figure away from the record** — the speed derivatives were the first — and it is recorded rather than resolved, because a derivative is not chosen by what it does to the headline. Flown at the 747's own altitude, as every figure before that was, it reads 64.5% with the thrust line at 5.70 ft — it was 68.2% until `boeing747` declared CR-2144's speed derivatives,
 which **improved the model's agreement with its own source's modes and moved this figure
 further from the record**, through a first-order tangent extrapolated across the encounter's
 Mach excursion; §4 has both halves. **It also carries a ~10-point method choice found later in
@@ -5398,7 +5398,7 @@ wording** — which is how five of them were found already closed (§9, session 
 | 5.2 | No wind varied across the span | **CLOSED**, session 24 | the lateral phase |
 | 5.3 | No frequency-domain comparison | **CLOSED** (capability), session 25 · **IMPOSSIBLE WITH SOURCES HELD** (an in-band published curve) | HICAT is 45–70 kft against this project's 33–41 kft |
 | 5.4 | Gravity constant | **CLOSED** by session 28's merge — `g(z)` modelled | latitude (0.53%) and centrifugal stay DECLARED; `wgs84-earth` retires them (§0) |
-| 5.5 | Phugoid / short-period offsets | Mach content **CLOSED**, session 30 · `Ṁw` **FUTURE WORK** · `Żw` sign **IMPOSSIBLE WITH SOURCES HELD** | `Ṁw`: the α̇ branch, reviewed and parked (§0). `Żw`: IX-4 and IX-5 cannot arbitrate its sign |
+| 5.5 | Phugoid / short-period offsets | Mach content **CLOSED**, session 30 · `Ṁw` ~~**FUTURE WORK**~~ **CLOSED, release 1.1** — declared as `Cmadot`, short-period damping −11.5% → **+0.6%** · `Żw` sign **IMPOSSIBLE WITH SOURCES HELD** | `Ṁw`: the α̇ branch, reviewed and parked (§0). `Żw`: IX-4 and IX-5 cannot arbitrate its sign |
 | 5.6 | CR-2144 derivatives are the flexible airframe | **BOUNDED**, session 23 | the constant-Mach, two-altitude argument |
 | 5.7 | `trim` converges to absurd roots for degenerate coefficients | **BOUNDED** — guarded | the 15° bound, non-binding on the registry's 0.01°–5.62° |
 | 5.8 | Drag polar away from its fitted point | **BOUNDED** | residuals 0.004 / 0.014 / 0.006, quantified |
@@ -5430,7 +5430,7 @@ phase-1 gate, and touches no longitudinal claim and nothing in §1.
 | Frozen-`C_Lα` LES test | **CLOSED**, session 27 — the row was stale; superseded in place |
 | Run the LES limb | **FUTURE WORK** — a 20% residual attributable to neither aircraft nor Mach, with the field reader shown sound |
 | Compare the two CR-2144 digitisations | **MEASURED**, session 32 — the sealed prediction was WRONG on `Cm_M`, and the adjudication against Table IX-4 shows the automated trace is the biased one; the hand reading the 747 declares from is better-anchored on all three speed derivatives (§4) |
-| The α̇ derivatives | **FUTURE WORK** — the branch is reviewed: its change to a rule-3 file is a re-capture, not a loosening (§0). Parked rather than merged because it moves the four CR-2144 modes and §1's headline. Schedule `Cmadot` from the **hand** reading, not the automated `p221` curve (§4) |
+| The α̇ derivatives | ~~**FUTURE WORK**~~ **DONE, release 1.1** — `Ṁw` declared on `boeing747` from Table IX-4, re-derived here rather than merged from the parked branch; `Żw` stays out on its sign. §4, "The α̇ pitching derivative, declared". *Was:* **FUTURE WORK** — the branch is reviewed: its change to a rule-3 file is a re-capture, not a loosening (§0). Parked rather than merged because it moves the four CR-2144 modes and §1's headline. Schedule `Cmadot` from the **hand** reading, not the automated `p221` curve (§4) |
 | Hannibal inventory items 2–6 | **FUTURE WORK** — each has its script already named in the inventory table below |
 | 14 CFR 25.341 | **IMPOSSIBLE WITH SOURCES HELD** for the lineage check — read session 32: its continuous-turbulence `Uσref` is a design limit, constant at 79 fps TAS above 24,000 ft, with no exceedance probability, so it is not commensurable with Fig. 7. ADA119421 is still what would settle the lineage |
 | NASA TP-2469, Sharman et al. 2014, MIL-STD-1797A | **FUTURE WORK** |
@@ -6155,6 +6155,65 @@ blurring them would send someone looking for a fix where there is nothing to fix
 **Why it survived**: the same shape as (a) and (b). The suite had no test that asked a
 refused aircraft for stations, and a NaN rms **looks like a result**.
 
+### (i) The autopilot's engage seed had the wrong sign on its pitch-rate term — FIXED, release 1.1
+
+**Found by reading the parked WGS-84 branch, which had fixed it, and confirmed against `main`.**
+`autopilot.engage` promises bumpless transfer: the first output equals the controls the pilot
+was holding. The running loop is
+
+    elevator_raw = -(theta_p*theta_err + theta_i*state - q_d*q)
+
+so at theta_err = 0 the seed must be `(-elevator + q_d*q)/theta_i`. It read `- q_d*q`, leaving
+an engage transient of exactly `2*q_d*q`.
+
+**Why nothing caught it for the life of the project.** Every engagement test starts from trim,
+and a flat-Earth trim has `q` identically zero, so the error is multiplied by zero. The roll
+axis beside it has always carried the correct `+ p_d*p`, which is what the fix is measured
+against. Reachable in the shipped code: `scripts/fly.py` hands over on a key press, at whatever
+rate the aircraft is pitching at the time.
+
+**Measured:** at q = 0.02 rad/s the first elevator output moved by the full surface rate limit,
+6.0e-3 rad in one step, where the promise is zero.
+`test_autopilot.py::test_engagement_with_a_body_rate_is_still_bumpless` asserts it at three
+rates and fails on all three with the old sign; its roll twin passes with the old sign, which
+is what isolates the axis.
+
+### (j) The gust's α̇ dropped the transport term of d(wind_body)/dt — FIXED, release 1.1
+
+**A wind constant in NED is not constant in body axes while the aircraft rotates.** By the
+transport theorem `d(wind_body)/dt = C^T d(wind_ned)/dt - omega x wind_body`, and the function
+returned only the first term, the field's own gradient. So a uniform steady wind — gradient
+identically zero — produced no α̇ at all.
+
+**It was invisible for the same reason (i) was: a zero multiplied it.** Every entry flown in
+wind had `Cmadot` zero until `boeing747` declared one. The moment it did,
+`test_verification.py`'s uniform-wind invariance test failed on 48% of its samples: a uniform
+wind is a change of inertial frame and must not touch the attitude, which is exactly the error
+§2 names, in the one place it could still hide.
+
+**Where the fix went, and why not the obvious place.** Putting the term in
+`wind.gust_alphadot` beside the gradient half works and was tried first. It is wrong for two
+reasons, both measured. The wind is HELD across an RK4 step, and this term varies with attitude
+and rate within the step, so holding it cost the scheme three orders of accuracy: a
+gradient-free field went from **3.99 to 1.03**. And a caller can forget it — `alphadot_gust`
+defaults to zero and a wind model may return four values instead of five — which is precisely
+how it stayed hidden.
+
+So `dynamics.derivatives` forms it, from the wind it is handed and the state it is evaluating
+at. The field's gradient still comes from `wind.gust_alphadot`, because that is the only half
+that needs a field. Per stage even when the wind is held, and impossible to omit.
+
+**Measured after the fix:** the uniform-wind invariance holds to 1e-11 on the ordinary held
+path, with the test's wind model returning four values, which is what a uniform wind should
+return; fourth order is restored on a gradient-free field; and the wind-hold scheme error on
+the Fig. 8 pitch excursion is unchanged in magnitude at ~1% at dt 0.02, halving with dt.
+
+**One more thing it made visible.** The α̇ loop couples to the Mach derivatives: with `Cmadot`
+declared, the plant-matrix difference that isolates CR-2144 Appendix A's Mach terms carries a
+cross term of 5.2e-3 relative, against 5.7e-14 without it. Neither family is wrong; they are
+not exactly separable, and `test_cr2144_speed_derivatives.py` now says so where it asserts the
+separation.
+
 ### (h) The strip load path counts the gust's rolling moment twice — OPEN, measured session 32
 
 **`vortex_viz.fly(strip=True)` adds the strip rolling moment on top of the point path's,
@@ -6703,6 +6762,69 @@ source exactly. A smoother interpolant would agree with the source less.
   touch the core response.
 
 ## 9. Session log
+
+### Release 1.1 — the α̇ derivative declared, and two defects it uncovered
+
+**The question asked was "fix the phugoid gap".** There is no open phugoid gap: the 747 reads
++1.69% in frequency and +2.83% in damping against Table IX-5, and the 737 +0.45% against
+JSBSim's own linearisation. The 6.58% figure that made it look open was stale prose in
+`test_jsbsim_737_layers.py`, left behind when session 24 closed that gap; it is marked
+superseded in place. **The one materially open longitudinal error was short-period damping, at
+−11.5%**, and that is what this work closes.
+
+**1. `boeing747` declares Table IX-4's `Mwd` as `Cmadot` = −6.3360.** The conversion is the
+`Cmq` relation with one more U0, because `Mwd` is per unit `wdot` and α̇ = `wdot`/U0; it
+round-trips to the table's −0.000116 exactly. The model needed no new structure — `Aircraft`
+has carried `Cmadot` since session 18 and `aero.coefficients` applies it — so the only thing
+missing was the number, from the same table the entry's other seven longitudinal derivatives
+come from.
+
+| against CR-2144 Table IX-5 | before | after |
+|---|---|---|
+| short-period ζ | −11.48% | **+0.57%** |
+| phugoid ζ | +2.83% | **+1.38%** |
+| phugoid ω_n | +1.69% | +1.68% |
+| short-period ω_n | −1.32% | −1.32% |
+
+**`Zwd` = +0.00556 is tabulated and is deliberately NOT taken.** Converted the same way it
+gives a negative `CL_α̇`, and downwash lag makes that derivative positive. Nothing the project
+holds settles whether the sign is the table's convention or a misprint, so rule 2 applies:
+flag, never invent.
+
+**Corroborated from two directions that did not know about each other.** Yoshimura's Table A2,
+at a different altitude and from a different author, gives `C_m_α̇` = −5.40 against this
+−6.336, and supplying the declared value closes the FL200 damping shortfall from 11.7% to under
+3%. §4's own digitised reading of the same CR-2144 panels gives −6.44, 1.6% away.
+
+**2. What it costs, stated plainly.** The headline falls from **75.3% to 70.2%** of the
+recorded peak-to-peak: the α̇ moment damps exactly the response the encounter excites. This is
+the second time a SOURCED derivative has improved agreement with the model's own source and
+moved the headline away from the record — the speed derivatives were the first — and it is
+recorded rather than resolved. The gust strength that reaches the recorded peak moves with it,
+from ×1.2 to ×1.25 replayed, and the saturation bracket returns to ×3.25–×3.5, where it sat
+before session 30. TM-102186 Fig. 8's mechanism stays monotone six-for-six; the paper's own
+asserted pair (Cherokee against 747) holds. **The 747 is no longer the fleet's lowest `n_z`
+minimum** — −0.306 against the 737's −0.364 — a margin §4 recorded at 0.008 before this and
+which has now changed sign. The paper does not assert that pair; the record does, and it says
+so.
+
+**3. Two defects surfaced, both live before this work, both invisible because a zero multiplied
+them.** §6(i), the autopilot's engage seed, found by reading the parked WGS-84 branch and
+confirmed on `main`; and §6(j), the gust α̇'s missing transport term, found by this declaration
+and by nothing else. The second is a §2-class error — a change of inertial frame moving the
+attitude — and it had survived every test in the project. Its fix is in
+`dynamics.derivatives` rather than in `wind.gust_alphadot`, because the term varies within an
+RK4 step and holding it costs three orders of accuracy (3.99 → 1.03, measured); putting it
+where the equations are evaluated also makes it impossible for a caller to omit, which is how
+it hid.
+
+**What was NOT done.** The WGS-84 branch stays banked: at this flight condition Coriolis is
+3.5 milli-g and the centrifugal term 2.7 milli-g against a headline shortfall of 24.7%, so it
+cannot move the claim, and merging it means rebasing across 347 changed files. Its `earth.py`
+was read and checked — the WGS-84 constants, Bowring's method, the non-singular altitude
+formula and the J2 acceleration are all correct — with one documentation fault worth fixing if
+it is ever merged: the constants are cited to the JSBSim binary they were recovered from rather
+than to the standard they match.
 
 ### Session 32 — the final month is planned, and the repository is found publishing seven copyrighted papers
 
@@ -9259,7 +9381,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 
 | Command | What it does |
 |---|---|
-| `.venv/Scripts/python.exe -m pytest -q` | **935 passed, 1 skipped, 1 xfailed, 0 failed, 1,118 s** on Windows (later in phase 5, on the tree `atisim.__file__` confirmed: the 931 below plus the 4 in `test_sanity.py`. Not yet run in CI). Before that **931 passed, 1 skipped, 1 xfailed, 0 failed, 1,327 s** on Windows (later in phase 5, on the tree `atisim.__file__` confirmed: the 926 below, plus pull request #14's footer test in `test_vortex_viz.py`, plus the 4 TM-102186 Fig. 8 fleet tests in `test_cat_validation.py`, whose shared fixture takes 50–64 s. 933 collected. Not yet run in CI). Before that **926 passed, 1 skipped, 1 xfailed, 0 failed, 1,672 s on Linux in CI** (`.github/workflows/tests.yml`, run 35390817171 on phase 5's final commit, and 1,566 s on its first, run 35370419455: the same count as Windows, at the same library versions — §4, "What does not reproduce on another platform"). On Windows, **926 passed, 1 skipped, 1 xfailed, 0 failed, 1,561 s** (end of session 32's phase 3, on the tree `atisim.__file__` confirmed: the 918 below plus 8 of the 9 tests in `test_cr2144_crosscheck.py`. **The one xfail is deliberate and strict** — `Cm_M`'s band in that file, where a sealed prediction was measured WRONG and the band was marked rather than widened, §4. 928 collected). Before that **918 passed, 1 skipped, 0 failed, 1,092 s** (end of session 32, measured on the merged triage tree: the 906 below, plus 12 in `test_figures.py` from the panel-chrome fix applied across the rename. 919 collected. **Zero failures** — the 2 platform bit-pins that failed through session 29 are green here). Before that **906 passed, 1 skipped, 1,534 s** (end of session 30, after merging `main`'s session 29: 863 plus its 43). Before that **863 passed, 1 skipped, 1,716 s** (end of session 30: the arm moved to 5.70 ft and the Hannibal headline switched to the replayed field, with 2 new tests). Before that **861 passed, 1 skipped, 1,000 s** (session 30, after `boeing747` declared CR-2144's thrust line: 859 plus 2 in `test_cr2144_speed_derivatives.py`, with 9 existing tests re-pointed or re-captured — §4's thrust-line entry says which). Before that **859 passed, 1 skipped, 1,673 s** (session 30, after the Parks Fig. 6 altitude: 852 plus 7 in `test_parks_fig6_altitude.py`). Before that **852 passed, 1 skipped, 1,295 s** (the 844 below plus the 8 tests in `test_hannibal_horizontal_wind.py`). Before that, **844 passed, 1 skipped, 887 s** (measured session 30 after `boeing747` declared CR-2144's speed derivatives: 23 tests in `test_cr2144_speed_derivatives.py`, and 17 existing tests re-captured, moved onto the undeclared entry, split, or fixed — §4's session-30 entry, item 7, says which. Earlier the same session measured **843** before the declaration, which was 821 + 22 with nothing else moved. The wall clock is machine load, not the suite). Previously **821 passed, 1 skipped, 34m37s** at session 28 after the compressibility merge; 812 before it, same session; 811 at session 26; 807 at session 25; it was 788 at session 24 and **758 measured session 23b**; the 626 this row claimed was stale by five sessions, and the 322 before that by several more — this row has now been wrong twice, so re-measure it rather than trusting it). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. **Install the `ui` extra as well as `dev`:** `test_artifact.py` and `test_figures.py` `importorskip` at module level, so without `pyarrow` and `plotly` they do not collect at all — **887 collected instead of 937**, green either way and silent about the 50 it left out. Measured at the release on a stranger's clone (§9, point 13). |
+| `.venv/Scripts/python.exe -m pytest -q` | **942 passed, 1 skipped, 1 xfailed, 0 failed, 1,100 s** on Windows (release 1.1, on the tree `atisim.__file__` confirmed: the α̇ declaration re-pinned nine figures across six files, each with the argument at the change, and added three tests). Before that **935 passed, 1 skipped, 1 xfailed, 0 failed, 1,118 s** on Windows (later in phase 5, on the tree `atisim.__file__` confirmed: the 931 below plus the 4 in `test_sanity.py`. Not yet run in CI). Before that **931 passed, 1 skipped, 1 xfailed, 0 failed, 1,327 s** on Windows (later in phase 5, on the tree `atisim.__file__` confirmed: the 926 below, plus pull request #14's footer test in `test_vortex_viz.py`, plus the 4 TM-102186 Fig. 8 fleet tests in `test_cat_validation.py`, whose shared fixture takes 50–64 s. 933 collected. Not yet run in CI). Before that **926 passed, 1 skipped, 1 xfailed, 0 failed, 1,672 s on Linux in CI** (`.github/workflows/tests.yml`, run 35390817171 on phase 5's final commit, and 1,566 s on its first, run 35370419455: the same count as Windows, at the same library versions — §4, "What does not reproduce on another platform"). On Windows, **926 passed, 1 skipped, 1 xfailed, 0 failed, 1,561 s** (end of session 32's phase 3, on the tree `atisim.__file__` confirmed: the 918 below plus 8 of the 9 tests in `test_cr2144_crosscheck.py`. **The one xfail is deliberate and strict** — `Cm_M`'s band in that file, where a sealed prediction was measured WRONG and the band was marked rather than widened, §4. 928 collected). Before that **918 passed, 1 skipped, 0 failed, 1,092 s** (end of session 32, measured on the merged triage tree: the 906 below, plus 12 in `test_figures.py` from the panel-chrome fix applied across the rename. 919 collected. **Zero failures** — the 2 platform bit-pins that failed through session 29 are green here). Before that **906 passed, 1 skipped, 1,534 s** (end of session 30, after merging `main`'s session 29: 863 plus its 43). Before that **863 passed, 1 skipped, 1,716 s** (end of session 30: the arm moved to 5.70 ft and the Hannibal headline switched to the replayed field, with 2 new tests). Before that **861 passed, 1 skipped, 1,000 s** (session 30, after `boeing747` declared CR-2144's thrust line: 859 plus 2 in `test_cr2144_speed_derivatives.py`, with 9 existing tests re-pointed or re-captured — §4's thrust-line entry says which). Before that **859 passed, 1 skipped, 1,673 s** (session 30, after the Parks Fig. 6 altitude: 852 plus 7 in `test_parks_fig6_altitude.py`). Before that **852 passed, 1 skipped, 1,295 s** (the 844 below plus the 8 tests in `test_hannibal_horizontal_wind.py`). Before that, **844 passed, 1 skipped, 887 s** (measured session 30 after `boeing747` declared CR-2144's speed derivatives: 23 tests in `test_cr2144_speed_derivatives.py`, and 17 existing tests re-captured, moved onto the undeclared entry, split, or fixed — §4's session-30 entry, item 7, says which. Earlier the same session measured **843** before the declaration, which was 821 + 22 with nothing else moved. The wall clock is machine load, not the suite). Previously **821 passed, 1 skipped, 34m37s** at session 28 after the compressibility merge; 812 before it, same session; 811 at session 26; 807 at session 25; it was 788 at session 24 and **758 measured session 23b**; the 626 this row claimed was stale by five sessions, and the 322 before that by several more — this row has now been wrong twice, so re-measure it rather than trusting it). The first thing to run and the only complete statement of what works. `testpaths` is set in `pyproject.toml`, so the bare command collects `atisim/tests`. **Install the `ui` extra as well as `dev`:** `test_artifact.py` and `test_figures.py` `importorskip` at module level, so without `pyarrow` and `plotly` they do not collect at all — **887 collected instead of 937**, green either way and silent about the 50 it left out. Measured at the release on a stranger's clone (§9, point 13). |
 | `.venv/Scripts/python.exe scripts/sanity.py` | **The ladder, for a reader who does not yet trust the model.** ~~Twelve cases~~ Eleven checks, **11/11** since session 32 (it read 8/11 before — §9, session 32, point 11), from degenerate inputs upward — zero the wind, zero a coefficient so a motion becomes impossible, then signs, then hand-computable numbers, then structural properties. Every expected value is derived by hand in the source and printed beside the model's answer, so it is read rather than trusted. Ends with the item 08 convention probe, which is a measurement rather than a pass/fail. |
 | `.venv/Scripts/python.exe -m sphinx -b html -W --keep-going docs docs/_build/html` | **Builds the documentation site (phase 4).** Needs the `docs` extra. The site's narrative pages `{include}` sections of this file verbatim — the *Running it* page **is** this section, the *Validation* page is §1's claim plus the §5 status table — so editing the record updates the site and nothing can drift. `-W` makes a warning an error, which is how CI runs it (`.github/workflows/docs.yml`); it builds clean with zero warnings. `docs/conf.py` carries a hook that renders the package's plain-prose docstrings as written. |
 | `.venv/Scripts/python.exe -m pytest --nbval-lax notebooks/ -q` | **The second gate.** Executes ~~`notebooks/solver-validation.ipynb`~~ both notebooks — `solver-validation.ipynb` and, since session 32, `validation-ladder.ipynb`, which walks §1's claim — so they cannot rot: **24 passed, 157 s** locally and **113 s** in CI (run 35390817171). CI runs it after the suite (`.github/workflows/tests.yml`). Needs the `dev` extra (`jupyter`, `nbval`). Deliberately *not* in `testpaths` and `--nbval-lax` is deliberately *not* in `addopts`: that would make every `pytest` run fail with "unrecognized arguments" wherever nbval is absent. **Run it from a worktree with an ABSOLUTE `PYTHONPATH`** — nbval starts the kernel with its cwd in `notebooks/`, so a relative `PYTHONPATH=.` resolves to the wrong directory and `atisim` silently loads from the main checkout. |

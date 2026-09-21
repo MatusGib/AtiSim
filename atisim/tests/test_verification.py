@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 
 import atisim  # noqa: F401  -- enables x64 before any array is made
-from atisim import integrate, trim, verification
+from atisim import integrate, trim, verification, wind
 from atisim.aircraft import CRUISE, REGISTRY
 
 # Captured from the integrator BEFORE rk4_step was extracted from `step`. This is
@@ -74,7 +74,14 @@ from atisim.aircraft import CRUISE, REGISTRY
 #                  seam alone was checked first and left this hash unmoved.
 #                  c3578de700859a914644c062c826273f7f615d5bc93c53442333cbc398334a30
 #   session 30c  : the arm replaced by CR-114494's revised 5.70 ft.
-PRE_REFACTOR_VEL_HASH = "97c3b546a3e196829077e7b16a3bfb155ccbf91f236849d86cc83b262b2149e5"
+#                  97c3b546a3e196829077e7b16a3bfb155ccbf91f236849d86cc83b262b2149e5
+#   release 1.1  : `boeing747` declares Table IX-4's Mwdot as `Cmadot`, and
+#                  `wind.gust_alphadot` gains the transport term the uniform-wind
+#                  invariance test caught missing. Both are deliberate model
+#                  changes, so the hash is re-taken rather than the claim
+#                  relaxed -- this rollout carries no wind, so only the first of
+#                  the two can reach it.
+PRE_REFACTOR_VEL_HASH = "d803e38209edc0f1bbeb9f0a5051845036a1aa89ba4f3e9300dd123b3fe4d8b4"
 
 
 def _fixed_control_rollout(dt, n_steps, d_elevator=0.02):
@@ -397,6 +404,15 @@ def test_a_uniform_horizontal_wind_only_translates_the_trajectory():
     """
     W = jnp.array([7.0, -3.0, 0.0])  # m/s NED, horizontal by necessity
 
+    # A FOUR-VALUE MODEL ON PURPOSE, which is the sharp end of this test. The
+    # fifth value is the gradient half of the gust's alphadot, and a uniform
+    # wind has no gradient, so four is right here and `alphadot_gust` defaults
+    # to zero exactly as it should. What must NOT be zero is the transport half
+    # -- the body frame turning under a wind constant in NED -- and
+    # `dynamics.derivatives` forms that from the wind it is handed rather than
+    # from anything this closure returns. Written the other way, with the
+    # transport half folded into the model's fifth value, this test failed on
+    # 48% of its samples the moment `boeing747` declared a `Cmadot`.
     def uniform_wind(wind_state, state, key, dt):
         return W, jnp.zeros(3), wind_state, key
 
