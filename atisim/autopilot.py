@@ -207,8 +207,23 @@ def engage(
 
     # theta_err is zero by that construction, so the integrator carries the
     # whole current elevator deflection.
+    #
+    # THE SIGN ON THE q TERM WAS WRONG, and nothing saw it because every test
+    # engaged from trim, where the body rate is exactly zero. The running loop
+    # computes
+    #
+    #     elevator_raw = -(theta_p*theta_err + theta_i*state - q_d*q)
+    #
+    # so reproducing `controls.elevator` at theta_err = 0 needs
+    # `state = (-elevator + q_d*q)/theta_i`. It read `- gains.q_d * q`, leaving
+    # an engage transient of exactly `2*q_d*q` -- zero at trim, and the full
+    # surface rate limit when the autopilot is taken mid-manoeuvre, which is
+    # what `scripts/fly.py`'s hand-over does. The roll seed below has carried
+    # the correct `+ gains.p_d * p` throughout, which is what the pitch axis is
+    # measured against in
+    # test_autopilot.py::test_engagement_with_a_body_rate_is_still_bumpless.
     theta_i = jnp.clip(
-        (-controls.elevator - gains.q_d * q) / gains.theta_i,
+        (-controls.elevator + gains.q_d * q) / gains.theta_i,
         -ac.elevator_limit / gains.theta_i,
         ac.elevator_limit / gains.theta_i,
     )
