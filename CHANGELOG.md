@@ -11,7 +11,7 @@ documents out of every commit. No code, result or record entry changed;
 [`docs/design/commit-map.txt`](docs/design/commit-map.txt) maps the commit ids quoted in the
 record to the ones that exist now.
 
-## [1.1.0] — unreleased
+## [1.1.0] — 2026-09-21
 
 ### Changed
 
