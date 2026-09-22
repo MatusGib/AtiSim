@@ -28,7 +28,7 @@ and nothing here is tuned to make either come out.** Both limbs below are run
 at several gradient distances precisely so the answer is a trend and not one
 number, per `docs/DEVELOPMENT.md` rule 6.
 
-Run: PYTHONPATH=<abs worktree root> .venv/bin/python scripts/discrete_gust.py
+Run: PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/discrete_gust.py
 """
 
 import argparse

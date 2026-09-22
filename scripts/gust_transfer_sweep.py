@@ -27,7 +27,7 @@ Limbs:
   --refine      the same frequency at four step sizes, with and without the RK4
                 wind hold. This is the limb that found PROJECT.md section 6(i).
 
-Run: PYTHONPATH=<abs worktree root> .venv/bin/python scripts/gust_transfer_sweep.py --sweep
+Run: PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/gust_transfer_sweep.py --sweep
 """
 
 import argparse

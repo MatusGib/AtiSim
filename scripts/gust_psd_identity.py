@@ -32,7 +32,7 @@ and the u component moves n_z too, through dynamic pressure -- a channel H does
 not contain. Feeding it here would compare a three-channel run against a
 one-channel theory and call the difference an error.
 
-Run: PYTHONPATH=<abs worktree root> .venv/bin/python scripts/gust_psd_identity.py
+Run: PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/gust_psd_identity.py
 """
 
 import argparse

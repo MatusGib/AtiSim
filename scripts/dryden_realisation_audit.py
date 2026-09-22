@@ -32,7 +32,7 @@ the reference: the control is a REALISATION, flown through the same aircraft
 over the same record length, so both arms carry the same finite-record bias and
 the difference between them is the construction alone.
 
-Run: PYTHONPATH=<abs worktree root> .venv/bin/python scripts/dryden_realisation_audit.py
+Run: PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/dryden_realisation_audit.py
 """
 
 import argparse

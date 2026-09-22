@@ -129,9 +129,10 @@ adds a third; session 34 pushes it, closes S0 and S2, and leaves S1 as the one o
 | **Worktree** | `.claude/worktrees/email-professors-project-live-d753af`, on the Windows machine. **Its name has nothing to do with this work.** `.venv` lives in the **main checkout** and resolves `atisim` there, so every command in §10 needs `PYTHONPATH` set to the absolute worktree root — rule 4, and it was checked on every run in this session |
 | **State** | **Two commits beyond `c02d1b2`.** Suite on the full tree: **968 passed, 1 skipped, 1 xfailed, NONE FAILED**, 31 min. Docs build clean under `-W --keep-going`. Nothing uncommitted |
 | **Session 33's one failure does NOT reproduce here, and that confirms its diagnosis** | `test_vortex_viz.py::test_logging_the_run_did_not_move_the_headline_numbers` **passes on this machine.** Session 33 saw it fail at 4.4e-14 relative in its container, checked that it failed on the untouched base commit too, and **refused to re-pin it** on the grounds that the pinned value is a Windows capture and re-pinning it to a Linux one would destroy what the pin is for. That call was right: the same pin passes on the Windows machine it was captured on. **The count is not comparable line-for-line with session 33's 909/3/1/1** — different platform and a different optional-dependency set, which is also why 3 skips there are 1 here |
-| **What is DONE** | **S0 and S2.** `atisim/data/tpaws_tm2012_217337_table1.csv` (53 rows, text layer), `scripts/tpaws_table1_ingest.py`, `scripts/tpaws_peak_factor.py`, `atisim/tests/test_tpaws_table1.py` (8 tests), six `provenance` entries, two §3 rows. **`the_model_peak_factor_lands_below_tpaws` is SETTLED** — RIGHT on its claim, WRONG on its mechanism, and the window definition is the whole verdict. §4 has both write-ups |
-| **What is STILL OPEN** | **S1 — and it is an ingest, not an acquisition.** NASA/TM-2003-212666 is held (`refs/…20040021314.pdf`, §3) and **has not been read**. It was left because the handover's ordering put S0 then S2 and because S1's substantive output is a **decision** about §5.3's band, which §8's precedent reserves for the record's owner. **Nothing in this record depends on it** |
-| **Also unblocked, and NOT acted on** | **V5(a)'s specification comparison.** §0 and §4 both recorded MIL-HDBK-1797/MIL-F-8785C's rotational spectra as missing. **`refs/MIL-F-8785C.pdf` has been in the main checkout since session 25** — §3 has said so since then. The gap was a **gitignore artefact**: `refs/` is invisible to a fresh container, and session 33 reported the shelf it could see. Writing Φ_p and Φ_q from that document is a session's work and is not started |
+| **What is DONE** | **S0, S2 and S1.** `atisim/data/tpaws_tm2012_217337_table1.csv` (53 rows) and `atisim/data/stewart_tm2003_212666_table1.csv` (72 rows), both from a text layer; `scripts/tpaws_table1_ingest.py`, `scripts/tpaws_peak_factor.py`, `scripts/stewart_table1_ingest.py`; `test_tpaws_table1.py` (8 tests) and `test_stewart_table1.py` (6); ten `provenance` entries, two §3 rows. **`the_model_peak_factor_lands_below_tpaws` is SETTLED** — RIGHT on its claim, WRONG on its mechanism, and the window definition is the whole verdict. **§7 gains a method section** on making these comparisons capable of failing, which is what the predictive-tool aim actually needs. §4 has every write-up |
+| **S1, DONE and mostly NEGATIVE** | NASA/TM-2003-212666 **read**. Its flight illustration **cannot be a validation target** — altitude, circularity, and the author's own "illustrative purposes" caveat, §4. No figure digitised. **Table 1 ingested instead** (72 rows), which is worth more: a published `C_Nα` against Mach, the first external check on `ASSUMPTIONS` C3. §5.3's verdict untouched — still the owner's decision |
+| **What is STILL OPEN** | **V5(a) only, and it is an acquisition after all**: MIL-HDBK-1797 or MIL-STD-1797A. MIL-F-8785C is held and has **no rotational spectra**. Plus the Stewart Mach comparison, which is specified in §4 and §7 and deliberately **not run** in the session that found the data |
+| ~~**Also unblocked, and NOT acted on** — V5(a)'s specification comparison~~ | **WRONG, and corrected within the session that wrote it.** The claim was that holding `refs/MIL-F-8785C.pdf` unblocks V5(a). **It does not. MIL-F-8785C contains no rotational gust spectra at all** — §3.7 runs printed p. 45 → 47 → 48 and gives three TRANSLATIONAL components and nothing else, read off the page images because the OCR layer is unusable. V5(a) still needs **MIL-HDBK-1797 / MIL-STD-1797A**, which is a different document and is **not held**. §4 has what the reading did produce, which is better than what was being looked for |
 | **The correction that matters most** | **TPAWS Table 1 has 53 rows, not the 51 the design document parsed.** Two rows print a RANGED altitude and were silently dropped. **Neither moves any column's range**, so every printed range in the design is correct and a range check could never have caught it. §4 has the arithmetic and the general lesson |
 
 ### ~~Session 33's own work — the acquisition half, BLOCKED~~ — SUPERSEDED by the block above, kept because it records a container that no longer exists
@@ -788,7 +789,7 @@ rigid-rotation self-consistency test that found them. **Read it before changing 
 | **Doyle, Jiang, Smith & Grubišić 2011**, *Mon. Wea. Rev.* 139, 3–23, DOI 10.1175/2010MWR3466.1 | **the lee-wave amplitudes** — T-REX Gulfstream V over the Sierra Nevada, IOP 4 primary wave, 6 and 12 m/s crest-to-trough | gives a **tropospheric** wavelength band (20–35 km) and says stratospheric ones are shorter **without a number** — see §5 |
 | **Proctor, Hinton & Bowles 2000**, 9th Conf. Aviation Range & Aerospace Meteorology, paper 7.7, 482–487 | **the F-factor** — Eq. (3) `F = U̇ₓ/g − w/Vₐ`, Eq. (4) for the shear term, Eq. (7) for the **1 km average**, the `F > (T−D)/W` thrust criterion, the 0.1/0.13 thresholds, and F = 0.2–0.36 in real accidents | its thresholds are **low-altitude** (§4.1 bounds the threat below 500 m) **and jet-transport only** — it states the scale and threshold "are yet to be determined" for piston aircraft |
 | **Oseguera & Bowles 1988**, NASA TM-100632 | **the microburst** — Eqs. (5)–(6), an axisymmetric stagnation flow satisfying continuity, with four stated constants (r/R = 1.1212, z_m/z* = 0.22, z*/ε = 12.5, u_max = 0.2357λR) | the example's `R` is legible only in a scanned figure, so the downdraft radius is declared inside the 1–4 km band Wilson et al. use to define a microburst |
-| **MIL-F-8785C** — **now held, `refs/MIL-F-8785C.pdf`, session 25** (5 Nov 1980, 95 pp., everyspec.com) | **the Dryden spectral forms, first-hand.** §3.7.1.2 "Turbulence model (Dryden form)", printed p. 47, prints all three components, and both implemented forms match it **verbatim** — including that the spec gives `v` and `w` identical right-hand sides, which this project had inferred from isotropy and now cites. Also `L_w` = 1750 ft above 2000 ft | **σ_w is still un-digitised.** Figure 7, *"Turbulence exceedance probability"*, printed p. 49, is confirmed present — a rotated scan, axes RMS turbulence amplitude σ (ft/sec TAS) against altitude, curves 10⁻¹ to 10⁻⁶ banded LIGHT/MODERATE/SEVERE. **Holding the document closed the FORMS, not the intensity**; every use still sweeps σ_w and reports what value the result implies. §4's σ_w ≈ 4–5 m/s is an implication, not a validated intensity |
+| **MIL-F-8785C** — **now held, `refs/MIL-F-8785C.pdf`, session 25** (5 Nov 1980, 95 pp., everyspec.com) | **the Dryden spectral forms, first-hand.** §3.7.1.2 "Turbulence model (Dryden form)", printed p. 47, prints all three components, and both implemented forms match it **verbatim** — including that the spec gives `v` and `w` identical right-hand sides, which this project had inferred from isotropy and now cites. Also `L_w` = 1750 ft above 2000 ft | **σ_w is still un-digitised.** Figure 7, *"Turbulence exceedance probability"*, printed p. 49, is confirmed present — a rotated scan, axes RMS turbulence amplitude σ (ft/sec TAS) against altitude, curves 10⁻¹ to 10⁻⁶ banded LIGHT/MODERATE/SEVERE. **Holding the document closed the FORMS, not the intensity**; every use still sweeps σ_w and reports what value the result implies. §4's σ_w ≈ 4–5 m/s is an implication, not a validated intensity. **AND IT HAS NO ROTATIONAL SPECTRA AT ALL, confirmed session 34 by reading the pages as images** — §3.7 runs printed pp. 45 → 47 → 48 and both continuous models print Φ_u, Φ_v, Φ_w and nothing else, so `wind.py`'s transcription is complete rather than partial. §3.7.1.3 obtains the **angular** components of the *discrete* gust "by derivation" from the translational ones. **V5(a) is therefore blocked on MIL-HDBK-1797 / MIL-STD-1797A, not on this document.** Its OCR text layer is unusable for equations and must not be transcribed from |
 | **Caughey, *Introduction to Aircraft Stability and Control*, Cornell MAE 5070 notes, Ch. 5** | an **independent implementation** of CR-2144's 747 power-approach case: dimensional derivatives Eq. (5.51), plant matrix Eq. (5.52), characteristic polynomial (5.53), roots (5.54) | **not an independent dataset** — its Eq. (5.48)–(5.50) cite CR-2144, the same document §IX comes from. Same inputs, different code. Also states V = 279.1 ft/s (M 0.25 at sea level) where Table IX-2's header says 165 KTAS = 278.49 ft/s, a 0.2% difference |
 | **Mehta 1987**, *J. Guidance, Control & Dynamics* 10(1) 27–31 (AIAA 84-2083) | **the only wind field in the project that declares nothing**: the converged five-vortex Hannibal solution — five core positions, `r₀` = 500.5 ft, `V₀` = 86.8 ft/s, ψ = 31°, altitude, bias and trend terms. Also the identification method behind Parks, and the cost at each array size | the fit is to DFDR-derived winds, so it inherits their reconstruction error (bounded by Lester below). States the encounter as **July** 1981 where two NASA documents say April |
 | **Wingrove, Bach & Schultz 1989**, NASA TM-102186 | the Hannibal encounter's **measured** normal acceleration (+1.7 to −1.0 g, gusts ~5 s apart); the vortex-array model in words (1,000 ft diameter, 87 ft/s, 3,400 ft spacing); **Fig. 8's three-aircraft simulation** at V = 150 / 700 / 800 ft/s and the mechanism it states | Fig. 8's exact wind field is not recoverable from the paper, so only orderings and excursion ratios can be compared. **Quotes Schultz 1990's Table 1 *initial estimates* as if they were his converged DFW results** — see §5 |
@@ -797,7 +798,7 @@ rigid-rotation self-consistency test that found them. **Read it before changing 
 | **Ashburn, Waco & Melvin 1970**, AFFDL-TR-70-101 (HICAT), AD878415 — **HELD, session 26**, `Reference_papers/AFFDL-TR-70-101-Ashburn-Waco-Melvin-1970-HICAT-AD878415.pdf` | **measured** high-altitude turbulence: probability densities and **exceedance curves of RMS gust velocity**, from U-2 flights | **its band is 45,000–70,000 ft and this project flies 35,000–45,000** (corrected session 33; it said 33,000–41,000, which matched neither aircraft's declared band)**.** Against MIL-F-8785C Fig. 7 in that band it is an *extrapolated* check, and possibly not an independent one — the report compares itself against **MIL-A-8861A** and against **Steiner's NASA U-2** data, so the high-altitude end of Fig. 7 may descend from the same aircraft. Settling that needs the spec's Background Information and User Guide (ADA119421), which is ~~**not held**~~ **HELD, session 31** (`refs/ADA119421-MIL-F-8785C-background-user-guide-Moorhouse-Woodcock-1982.pdf`, Internet Archive copy, md5 `e410411a…`). **It does not settle the question; it moves it back one report.** The guide never mentions HICAT or the U-2. Its intensities combine Av.P. 970's time-in-turbulence fraction P₁(h) (its Ref. 20, reproduced as its Fig. 34) with one Rayleigh σ distribution (Pritchard, in Chalk et al. AFFDL-TR-69-72, 1969: mode 2.3 ft/s, mean 2.8 ft/s), taken as constant with altitude for clear-air turbulence. Independence from HICAT now needs AFFDL-TR-69-72 or Av.P. 970, neither held |
 | **Misaka, Obayashi & Endo 2008**, *J. Aircraft* 45(4) 1217–1229 | **the RMS normal load severity index** — `σ_n` over a moving 5 s average, moderate 0.2–0.3 g, severe ≥ 0.3 g (attributed there to Hamilton & Proctor). Defined at cruise altitude, which the F-factor thresholds are not | its own Figs. 26–27 show `σ_n` tracks the *trend* of measured acceleration and misses the peaks, by construction of the 5 s window |
 | **Hamilton, Proctor & Ahmad 2012**, NASA/TM-2012-217337, *Flight Tests of the Turbulence Prediction and Warning System (TPAWS)*, NTRS 20120003172 — **HELD, session 34**, `refs/NASA-TM-2012-217337-TPAWS-Hamilton-Proctor-Ahmad-20120003172.pdf` (a US Government work, "Public Use Permitted") | **Table 1 entire — 53 in-situ turbulence encounters on NASA Langley's B-757 ARIES**, ingested from the PDF's **text layer** to `atisim/data/tpaws_tm2012_217337_table1.csv`: altitude, **aircraft weight for every row**, TAS, σ_Δn, both Δn extremes, peak vertical wind, reflectivity. And the **σ_Δn definition first-hand** — printed p. 5 makes it a sliding 5 s window subtracting that window's *own* mean (a running standard deviation), printed p. 125 names the tabulated scalar "the peak σ_Δn". **This closes Misaka's attribution above**: the moving-5 s-average metric, and the 0.2 g moderate / 0.3 g severe thresholds, are printed on p. 125 of the document Misaka attributes them to | **its band is 15–35 kft against this project's 35–45.** Three rows sit in band for `boeing747` and a fourth straddles the floor (§4, phase S0). The encounters are **convective** and last "several seconds to a minute" (printed p. 7) against 1200 s of stationary Dryden — a duration mismatch **no reduction removes**, and it is quoted with every use of the peak factor |
-| **Stewart 2003**, NASA/TM-2003-212666, *Description of a Normal-Force In-Situ Turbulence Algorithm for Airplanes*, NTRS 20040021314 — **HELD, session 34**, `refs/NASA-TM-2003-212666-Stewart-normal-force-insitu-turbulence-20040021314.pdf` | design phase **S1's** document, 21 pp.: a severe encounter on the same B-757 at 33,000 ft, M 0.78, with input and response both plotted and a frequency-domain comparison, accelerometer at 50 sps through a 20 Hz anti-alias filter | **ACQUIRED, NOT YET READ.** Nothing in this record is derived from it and §0 carries S1 as the open row. Its 33,000 ft is 2,000 ft below `boeing747`'s floor, so §5.3's band objection applies to it too — the design says so, and says what that does to the verdict is the record owner's call, not a measurement |
+| **Stewart 2003**, NASA/TM-2003-212666, *Description of a Normal-Force In-Situ Turbulence Algorithm for Airplanes*, NTRS 20040021314 — **HELD, session 34**, `refs/NASA-TM-2003-212666-Stewart-normal-force-insitu-turbulence-20040021314.pdf` | **READ, session 34. Table 1, printed pp. 12–13, ingested whole** to `atisim/data/stewart_tm2003_212666_table1.csv` — 72 rows, text layer: `C_Nα`, `C_Nq`, `C_Nδ` against dynamic pressure at 0/10/20/30/40 kft, clean, nominal 180,000 lb. Through the paper's own Eq. (8) each column carries a Mach number, giving a **published lift-curve slope against M 0.242–0.851** — the first external handle this project has on its compressibility axis. Also Eq. (4), the algorithm itself, and the B-757's `c` = 16.64 ft, `S` = 1951 ft² | **THE FLIGHT ILLUSTRATION IS NOT USABLE AS A VALIDATION TARGET AND NO FIGURE IS DIGITISED.** Three independent reasons, §4: 33,000 ft is below `boeing747`'s floor; the "measured" gust is the measured acceleration divided by the airplane's **own `C_Nα`**, so a time-history comparison would test two constants against each other; and **the author says so** — printed p. 7, the measurements "were combined asynchronously … not representative of an operational data stream … only for illustrative purposes". Table 1 itself carries **two confounds** — a column mixes Mach with trim angle of attack, and `C_N` is normal force, not lift |
 | **Yoshimura et al. 2022**, *J. Appl. Meteor. Climatol.* 61 503–519 | Tables A2/A3/A5: a **third CR-2144 747 flight condition** — M 0.8 at 6,096 m — with a complete non-dimensional longitudinal set including `C_mα̇`, the flight condition, and the short-period pair (`ω_n` 1.29, `ζ` 0.57) | **not an independent dataset** — Table A2 is attributed to Heffley & Jewell, i.e. CR-2144 again. Same standing as Caughey. Its own conclusion misreads Table A5's `s⁻¹` as `Hz` — see §5 |
 
 ### The vortex model, as cited
@@ -1105,8 +1106,9 @@ comparison, and 3.8674 is the number that does *not* answer it.
 **NTRS is reachable from an ordinary machine**, so the whole acquisition half unblocked at a
 `curl`. `refs/NASA-TM-2012-217337-…pdf` (30.1 MB) and `refs/NASA-TM-2003-212666-…pdf`
 (1.6 MB) are now held; §3 has both rows. **MIL-F-8785C was already in `refs/`** and §0 had
-recorded it as missing — that is a gitignore artefact, not an acquisition, and V5(a) is
-therefore unblocked too without anything being fetched for it.
+recorded it as missing — that is a gitignore artefact, not an acquisition. ~~V5(a) is
+therefore unblocked too.~~ **It is not; see "What MIL-F-8785C actually says about rotational
+gusts" below, which corrects that claim in the session that made it.**
 
 `atisim/data/tpaws_tm2012_217337_table1.csv`, written by
 `scripts/tpaws_table1_ingest.py` **from the PDF's text layer** — no digitisation, no reading
@@ -1206,6 +1208,102 @@ Dryden — and §5's altitude objection stands, with three rows in band and a fo
 straddling. What has been shown is narrow and worth exactly what it says: **on TPAWS' own
 window definition the model's peak factor is not high**, and on the definition V5 used it
 would have looked 62% too high for a reason that is arithmetic rather than aerodynamic.
+
+### What MIL-F-8785C actually says about rotational gusts — session 34, correcting §0 and §4
+
+**This entry corrects a claim made earlier in this same session.** §0 and the S0 entry above
+both said that holding `refs/MIL-F-8785C.pdf` unblocks V5(a). **It does not, and the reason
+is not availability.**
+
+**MIL-F-8785C specifies no rotational turbulence spectra anywhere.** §3.7 "Atmospheric
+disturbances" runs printed p. 45 (§3.7, §3.7.1) → p. 47 (§3.7.1.1 von Kármán, §3.7.1.2
+Dryden) → p. 48 (§3.7.1.3 discrete gust, then §3.7.2). Both continuous models print
+**Φ_u, Φ_v, Φ_w and nothing else** — which is exactly what `wind.py` transcribes, so that
+transcription is complete and faithful rather than partial. There is no §3.7.1.4.
+
+**The pages were read as rendered images, not from the text layer, and that is a method
+note worth keeping.** This PDF's OCR is unusable for equations — printed p. 47 comes out as
+*"gpectra for the t.rbule%e ~~locitiesis"*. Transcribing rotational forms from that would
+have been reconstructing symbols from noise, which is rule 2's failure wearing a more
+respectable coat than writing them from memory. Rendering at 200 dpi and reading the page
+is the method that works on a scanned standard.
+
+**What the reading did find is more useful than what it went looking for.** §3.7.1.3,
+printed p. 48, defines the discrete gust and then says, in the specification's own words,
+that it *"may be used for any of the three gust-velocity components **and, by derivation,
+any of the three angular components**."*
+
+So **for its discrete model, MIL-F-8785C obtains the angular components BY DERIVATION from
+the translational ones** — which is structurally what V5(a) found this project's field
+doing. That does not make V5(a)'s finding wrong, and it does not license the continuous
+case: MIL-F-8785C gives the continuous rotational spectra no treatment at all, so it
+neither endorses nor forbids a derived Φ_q. What it does is **locate the objection
+correctly**. V5(a)'s "one degree of freedom where the specification has three" is a
+statement about **MIL-HDBK-1797 / MIL-STD-1797A**, which introduced independent rotational
+spectra — not about MIL-F-8785C, which is the specification this project actually cites and
+transcribes.
+
+**V5(a) therefore remains BLOCKED, on MIL-HDBK-1797 or MIL-STD-1797A, and on nothing else.**
+§0 carries it. The earlier claim in this session that it was unblocked is struck there.
+
+### Stewart's B-757 table, ingested — and why his flight data is not a validation target — session 34 (phase S1)
+
+**NASA/TM-2003-212666 is held and has been read.** The design wanted its severe encounter —
+33,000 ft, M 0.78, input and response both plotted, 50 sps through a 20 Hz filter — as a
+published input-and-response pair. **It cannot serve as one**, for three independent
+reasons, and the third is the paper's own:
+
+1. **ALTITUDE.** 33,000 ft is 2,000 ft below `boeing747.valid_altitude`'s floor.
+   `checks.recovery_band` refuses the run. This was already known and is §5.3's objection.
+2. **CIRCULARITY, and this one is new.** Stewart's "measured" vertical gust is **not an
+   independent observation of the atmosphere.** His Eq. (4) obtains it by dividing the
+   measured normal acceleration by **the airplane's own C_Nα**, with small elevator,
+   pitch-rate and attitude corrections: `Δα_g = (W/q̄SC_Nα)Δa_n − (C_Nδ/C_Nα)Δδ −
+   (C_Nq/C_Nα)Δq̂ − Δθ + Δγ`. Drive this project's model with that gust, compare the load
+   back, and **what is being tested is whether two lift-curve slopes agree** — a comparison
+   of two constants wearing the costume of a time-history validation. It would look like
+   the strongest result in this document and be close to vacuous.
+3. **THE AUTHOR SAYS SO.** Printed p. 7: the measurements *"were combined asynchronously on
+   a common data bus and are, therefore, not representative of an operational data
+   stream. The results that are shown herein are, therefore, only for illustrative
+   purposes."* He says it three times, and says a rigorous evaluation *"would require a
+   different experimental arrangement."*
+
+**So no figure in this paper is digitised and no number is taken from one.** That is the
+result of phase S1, and it is a negative one.
+
+**Table 1 is free of all three objections and IS ingested**, because it is the airplane
+rather than the encounter: `atisim/data/stewart_tm2003_212666_table1.csv`, 72 rows,
+text layer, `scripts/stewart_table1_ingest.py`. Three coefficients — C_Nα, C_Nq, C_Nδ —
+against dynamic pressure at 0/10/20/30/40 kft, clean, nominal 180,000 lb. The
+dynamic-pressure grid is printed three times, once per coefficient, and the ingest asserts
+all three agree; that check is what caught the first parse reading a printed **page number**
+as a cell, where the 40 kft block straddles the page break.
+
+**Why it is worth holding: it is the first external check this project has on its
+compressibility axis.** Through the paper's own Eq. (8) each column carries a Mach number,
+so Table 1 is a **published lift-curve slope against Mach for a transport**, M 0.242–0.851:
+
+| alt (kft) | M range | C_Nα range | 1/√(1−M²) over the same span |
+|---|---|---|---|
+| 0 | 0.242–0.529 | 5.006 → 5.430 (**+8.5%**) | +14.3% |
+| 20 | 0.354–0.754 | 5.235 → 6.438 (**+23.0%**) | +42.5% |
+| 40 | 0.642–0.825 | 4.847 → 7.434 (**+53.4%**) | +35.5% |
+
+Every Prandtl–Glauert claim in this record — `ASSUMPTIONS` C3, `pg_mach_ref` — has until now
+been checked against the model's **own algebra**. This is a set someone else measured.
+
+**TWO CONFOUNDS, and the table is worth nothing without them.** At fixed altitude and
+weight a higher `q̄` is also a **lower trim angle of attack**, so a column mixes Mach with
+trim-α nonlinearity; and `C_N` is the total **normal** force, not lift. The 40 kft M 0.642
+column also reads 4.847, below every other altitude's low-Mach value. **No comparison
+against the model is made here** — the table is banked, its confounds are named, and the
+comparison is specified in §7 as work with a stated method rather than run in the session
+that found the data.
+
+**§5.3's verdict is untouched.** Stewart at 33,000 ft is outside the band by 2,000 ft;
+whether the corrected band changes the `IMPOSSIBLE` reading is the record owner's decision,
+per §8's precedent, and this session did not take it.
 
 ### Two readings of CR-2144 pp. 220–222, compared — and the hand reading is the better one — session 32
 
@@ -6696,6 +6794,92 @@ shut. Pinned by
 > answer to "what would make this a predictive tool?". It is recorded here because it is
 > §7's job to carry it; sessions 24 and 25 refer to its phase numbers throughout.
 
+### Making the turbulence comparisons capable of failing — session 34
+
+**This is written because the aim is a predictive tool, and the question that matters is not
+"what else should be compared" but "which comparisons could ever have changed our mind".**
+Applying that test to the programme just completed is uncomfortable and is the point.
+
+#### 1. Three classes, and §4 does not currently distinguish them
+
+| phase | the model's side | compared against | class |
+|---|---|---|---|
+| **V1** transfer function | flown gust response | **the model's own linearisation** | **A** — self-consistency |
+| **V2** PSD identity | a realisation's variance | what that realisation contains | **A** |
+| **V5(a)** rotational gust | realised `p_gust`, `q_gust` | their exact closed form | **A** |
+| **V5(b)** peak factor | Shinozuka construction | a Gaussian control, same spectrum | **A** — internal contrast |
+| **V4** gust lag | the model's lift lag | **Sears' function** | **B** — external analytic |
+| **V3** discrete gust | 1-cos gust load | **NACA Report 1206 (Pratt–Walker)** | **B** |
+| **S2** peak factor | `n_z` ensemble | **TPAWS' 53 measured encounters** | **C** — measured flight |
+| **S1** | — | — | ruled out, §4 |
+
+**Class A cannot find a modelling error, only an implementation error**, because both sides
+descend from the same equations. It found two real ones — §6(i) and §5.21 — and that is
+worth having. But **V1 passing by 116× says the code solves its own equations; it says
+nothing about whether those equations describe an aeroplane in turbulence**, and the record
+should not be readable as though it did.
+
+**Class B is the only place the model has so far been surprised**: V3's design predicted the
+model would read LOW and it reads **+17.57% HIGH**. One external analytic comparison,
+one surprise — which is roughly the rate a useful comparison should surprise at.
+
+**Class C is one scalar**, and this session showed it moving from 3.8674 to 1.9421 on a
+change of definition alone. **So the honest position is that the model has almost no
+validation against measured turbulence response, and T2 below should be read accordingly.**
+
+#### 2. Five changes that would make the comparisons bite
+
+**(a) Fly the aircraft whose declared band matches the data. This is the cheap one and it is
+large.** TPAWS' 53 encounters were assessed against `boeing747` (35–45 kft), which admits
+**3**. Against **`boeing737`** (25–35 kft, M 0.68–0.88) the same table admits **28 rows,
+every one of them inside both the altitude and the Mach band** — computed from the ingested
+CSV and `atmosphere.speed_of_sound`. That is the difference between "three points cannot set
+a band" and a population. **Caveat that must travel with it:** TPAWS' aircraft is a B-757
+and neither model entry is one, so this licenses comparisons of **shape and ordering**, per
+rule 6, and never a load level.
+
+**(b) Pre-register the REDUCTION, not just the prediction.** S2's verdict flipped entirely on
+which σ window was used, and the seal only caught it because someone thought to make the
+definition a precondition. That should be standard: a comparison's reduction, on **both**
+sides, is part of what gets sealed before the run.
+
+**(c) Give every external comparison a circularity field.** Stewart's "measured" gust is the
+measured acceleration divided by the aircraft's own `C_Nα`. Driving the model with it would
+have produced an impressive-looking time-history agreement that tested two constants against
+each other. **Before any measured quantity is used as a target, the record should state how
+it was derived and whether that derivation shares physics with what is being tested.**
+
+**(d) Prefer shape and ordering to level.** Where the response spectrum peaks relative to the
+short period is falsifiable, survives a regime mismatch, and is already sealed as
+`the_dryden_response_peaks_at_the_short_period`. A load *level* survives neither the altitude
+mismatch nor the aircraft mismatch, and §1's claim is deliberately comparative for that
+reason.
+
+**(e) State the envelope and refuse to extrapolate.** For predictive use the deliverable is
+not "the model is validated" but **"inside this band, for this quantity, to this tolerance,
+on this evidence"** — and `checks.recovery_band` already refuses runs outside a declared
+envelope. The same discipline should govern the claims, not only the runs.
+
+#### 3. The test the programme currently lacks
+
+**No turbulence result in §4 could have come out "the model is wrong about the physics".**
+V1/V2/V5 could only have said "the code is wrong", V3 and V4 could have said "the model
+disagrees with an engineering formula" and V3 did, and S2 could only have said "one scalar
+lands outside a band". **Every new comparison should declare, before it runs, an outcome
+that would mean the MODEL is wrong — not the code.** `predictions.py` is already the
+machinery for this; what is missing is the habit of pointing it at the physics.
+
+#### 4. Where improvement would pay first, once comparisons can fail
+
+Session 29's elasticities already rank what the headline load is sensitive to: `CLa` +0.692
+and `mass` −0.649 lead it — **one lever counted twice, session 31** — and
+**`kappa_airfoil` −0.339 is third, a DECLARED constant.** A declared constant in the top
+three is the first place a comparison that can fail would bite. **And the Mach axis now has
+an external handle for the first time**: Stewart's Table 1 is a published `C_Nα` against
+M 0.242–0.851, against which `ASSUMPTIONS` C3's Prandtl–Glauert treatment has only ever been
+checked against its own algebra. The comparison is specified in §4 with both its confounds
+and is **not run** — it is the next piece of work, not a result.
+
 ### The finishing plan — phases, gates and status
 
 The decision it rests on: **"predictive tool" is three different projects.** **T1**
@@ -7191,13 +7375,27 @@ blocked because `ntrs.nasa.gov` answered **HTTP 403** to every request. That was
 container's egress proxy stating a policy, not NASA refusing anyone: from an ordinary
 machine both documents return **200**. They are now in `refs/` and §3 has a row each.
 
-**And the third blocked document was never missing.** §0 and §4 both recorded MIL-HDBK-1797
-or MIL-F-8785C's rotational spectra as unavailable, blocking V5(a). **`refs/MIL-F-8785C.pdf`
-has been in the main checkout since session 25, and §3 has said so since then.** `refs/` is
-gitignored, so a fresh container cannot see it; session 33 reported the shelf it could see
-and had no way to know. **The lesson is about the record, not the container**: a gap that is
-a gitignore artefact looks exactly like a gap that is real, and only §3 could tell them
-apart. V5(a) is unblocked and **was not acted on** — it is a session's work, not a footnote.
+**And the third blocked document was never missing — but holding it does not unblock V5(a),
+and this session got that wrong before it got it right.** §0 and §4 recorded MIL-F-8785C's
+rotational spectra as unavailable. **`refs/MIL-F-8785C.pdf` has been in the main checkout
+since session 25 and §3 has said so since then** — a gitignore artefact, since `refs/` is
+invisible to a fresh container. **The first draft of this entry concluded V5(a) was
+therefore unblocked. Reading the document shows it is not: MIL-F-8785C has no rotational
+spectra at all.** Both continuous models print Φ_u, Φ_v, Φ_w and stop, so `wind.py`'s
+transcription is complete rather than partial, and V5(a) is blocked on **MIL-HDBK-1797 /
+MIL-STD-1797A**, a document this project has never held. The struck claims are left in §0
+and §4 rather than deleted.
+
+**Two things came out of that reading that are worth more than the comparison it failed to
+enable.** First, §3.7.1.3 says the discrete gust may be used for the three gust-velocity
+components *"and, by derivation, any of the three angular components"* — so **for its
+discrete model the specification derives the angular components too**, which locates V5(a)'s
+"one degree of freedom where the specification has three" as a statement about
+MIL-HDBK-1797 and not about the specification this project cites. Second, a method note:
+**this PDF's OCR is unusable for equations** — printed p. 47 reads *"gpectra for the
+t.rbule%e ~~locitiesis"* — and the pages were read as 200 dpi **images** instead.
+Transcribing formulae from that OCR would have been rule 2's failure in a more respectable
+coat than writing them from memory.
 
 **1. TPAWS Table 1 has 53 rows. The design document parsed 51, and every number it derived
 came from the 51.** The paper says 53 twice (printed pp. 5 and 7). The two it lost are
@@ -7266,23 +7464,60 @@ the pin is for. **It passes here** — 968 passed, 1 skipped, 1 xfailed, none fa
 what rule 3 is for, and it is worth recording that the rule paid rather than only that it
 was followed.
 
+**8. S1 is done and its headline is negative: Stewart's flight data cannot validate this
+model, for three independent reasons.** 33,000 ft is below the 747's floor; his "measured"
+gust is the measured acceleration divided by **the airplane's own `C_Nα`**, so driving the
+model with it and comparing the load back would test two lift-curve slopes against each
+other while looking like a time-history validation; and printed p. 7 says the data "were
+combined asynchronously … not representative of an operational data stream … only for
+illustrative purposes". **No figure is digitised.** §4 has it.
+
+**Table 1 is ingested instead, and is worth more than what S1 went looking for.** 72 rows,
+text layer, `C_Nα`/`C_Nq`/`C_Nδ` against dynamic pressure at five altitudes — and through
+the paper's own Eq. (8) every column carries a Mach number, so it is a **published
+lift-curve slope against M 0.242–0.851**. `ASSUMPTIONS` C3's Prandtl–Glauert axis has never
+had an external check. **The comparison is specified and deliberately NOT run**, because the
+session that finds a dataset should not also be the one that decides what it says.
+
+**9. §7 now carries a method section on making these comparisons capable of failing**, which
+is the thing the aim — a predictive tool — actually requires. Its uncomfortable finding:
+**of the eight comparisons this programme ran, four can only detect a coding error, two are
+against engineering formulae, one is a single measured scalar, and one was ruled out.** V1
+passing by 116× says the code solves its own equations, not that those equations describe an
+aeroplane. The concrete part: **TPAWS admits 3 rows against `boeing747` and 28 against
+`boeing737`**, whose declared 25–35 kft / M 0.68–0.88 band the data actually sits in —
+computed, not estimated. That is the difference between "three points cannot set a band" and
+a population.
+
 **WHAT WAS NOT DONE, so nobody goes looking.**
 
-- **S1 is not done** — NASA/TM-2003-212666 is held and **has not been read**. The handover's
-  ordering put S0 then S2, and S1's substantive output is a **decision** about §5.3's band,
-  which §8's precedent reserves for the record's owner. Nothing here depends on it.
-- **V5(a) is not done**, though it is now unblocked. See above.
+- **V5(a) is still blocked**, and on a document this project has never held —
+  MIL-HDBK-1797 or MIL-STD-1797A. Holding MIL-F-8785C does not help; see above.
+- **The Stewart Mach comparison is specified, not run.** Both its confounds are named in §4.
+- **The `boeing737` re-run of S2 is proposed, not done.** 28 rows is an admissibility count,
+  not a result.
 - **The three decisions session 33 left open are still open** — `stage_sampled`'s default,
   §5.3's corrected band, and a larger V5(b) ensemble. This session took none of them, and
   §4's new S2 entry gives the third one a sharper form: a larger ensemble should be reduced
   **both** ways, because the two disagree about the sign.
-- **§10's four session-33 rows name `.venv/bin/python`**, the container's path, where the
-  rest of the table and `docs/DEVELOPMENT.md` rule 4 both say `.venv/Scripts/python.exe`.
-  Those four commands do not run on this machine. **Flagged, not fixed** — it is four lines
-  of someone else's row and rule 3 says surgical.
-- **The four session-33 commits carry a `Co-Authored-By: Claude` trailer**, against the
-  standing rule that none should. Session 34's do not. **Not rewritten**, because they are
-  already on `origin` and that is the owner's call.
+- ~~**§10's four session-33 rows name `.venv/bin/python`** … flagged, not fixed.~~
+  **FIXED, and the count was wrong: it is FIVE §10 rows and FIVE script docstrings**, ten
+  places in all, where the container's Linux interpreter path was written into a project
+  whose other §10 rows and whose `docs/DEVELOPMENT.md` rule 4 both say
+  `.venv/Scripts/python.exe`. Every one of those commands failed on this machine.
+  `README.md`, `docs/getting-started.md` and `docs/running.md` also name `.venv/bin/python`
+  and are **left alone** — they say "on Linux and macOS", which is correct.
+- **The four session-33 commits are still attributed to Claude, and it is worse than a
+  trailer.** Their `Co-Authored-By: Claude Opus 5` and `Claude-Session:` lines are the small
+  part; **author AND committer on all four are `Claude <noreply@anthropic.com>`**, which is
+  what populates GitHub's contributor list — the exact thing the project was moved to a
+  fresh repository to clear. Session 34's own commits are clean, and `origin/main` is clean.
+  **The rewrite was prepared and NOT applied**: reattributing author and committer to
+  `Matus_gib` with both dates preserved, and dropping the two trailer lines, while keeping
+  `3bd1e08`'s prose about the 403 because that is record, not attribution. It was refused by
+  the environment as a destructive git operation. `db4eadf` carries no trailer and is not
+  touched by the rewrite, so `predictions.sealed_at` and `test_predictions.SEAL_COMMITS`
+  survive it; the three SHAs quoted in §0 and §4 would need updating afterwards.
 
 ### Session 33 — the gust path measured against mathematics, and what that caught
 
@@ -10057,13 +10292,14 @@ several sessions, which is the drift §4's rules exist to prevent.
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_spectra.py --outdir runs/cat` | **Response spectra and load exceedance (session 25, phase 2).** Three limbs: Mehta's headline field as a `n_z` spectrum against the aircraft's short period and the array's four core-passage frequencies; Yoshimura et al. 2023's protocol -- N virtual flights through `wind.dryden_field`, spectra averaged, peak against the airframe's own frequency -- which settles a sealed prediction; and the first load-exceedance curve, both signs, with N in the denominator. `--seeds` defaults to 32; **session 27 ran `--seeds 151` to match Yoshimura and §4 records the result, which is cleaner — use 151 when the peak location matters.** Writes `09-spectra.png`. Same `PYTHONPATH` rule. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_uncertainty.py --outdir runs/cat` | **The Hannibal comparison with error bars (session 23c).** Measures the gust SPACING against TM-102186's "about 5 sec apart" -- the one channel the identification did not set -- converts Mehta's own Eq. (A3) cost into an RMS wind residual and decomposes it against Lester's reconstruction error, then flies the propagated `V0` and `r0` band and a gust-strength sweep to show the peak load is saturated. Writes `06-uncertainty.png`. Same `PYTHONPATH` rule. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_validation.py --outdir runs/cat` | **The CAT source pass (session 23).** Flies Mehta 1987's five-vortex Hannibal field, reproduces TM-102186 Fig. 8's three-aircraft ordering and tests its stated mechanism across the whole registry, compares the 747's short period at a third CR-2144 flight condition, and grades every run on Misaka's `σ_n`. **Since the end of session 30 the 747 headline (section 1, figure 01) flies Mehta's field replayed on its identified path (`wind.on_identified_path`); the fleet ordering and severity table still fly each aircraft at its own altitude.** Prints every number and writes four figures. **`PYTHONPATH` is mandatory** — `python scripts/…` resolves `atisim` to the main checkout, which this script detects and prints on its first line. |
-| `PYTHONPATH=<abs worktree root> .venv/bin/python scripts/gust_transfer_sweep.py --sweep --amplitudes --refine` | **V1, the falsification step (session 33).** `H(Ω)` from the aircraft's own linearisation against twelve single-frequency gusts flown through the full nonlinear path, in amplitude **and phase** — an amplitude-only comparison passes with the sign of `Cmq` reversed. `--amplitudes` shows the error falling as the SQUARE of the gust, which is how "not limited by the nonlinearity" is checked rather than asserted. `--refine` is the limb that found §6(i): the held-wind column halves with dt and the stage-sampled one does not move. Minutes; ~20 flights. |
-| `PYTHONPATH=<abs worktree root> .venv/bin/python scripts/gust_psd_identity.py -n 24` | **V2, the PSD identity (session 33).** `σ_nz² = ∫\|H\|²Φ_w dΩ` against a Dryden Monte Carlo, reporting the **three errors separately**: the one-sided/two-sided factor of two, the 400-component log grid's 1.634% variance shortfall, and the ensemble's own standard error with N beside it. Limb C divides the realisation's variance out, which is the only comparison in which the grid cancels exactly. ~25 min at the default N and 1200 s records. |
-| `PYTHONPATH=<abs worktree root> .venv/bin/python scripts/gust_lag_bound.py` | **V4, the gust lag (session 33).** Sears' function at the frequencies this project actually forces, then the same term integrated across the Dryden band — `σ_nz` would fall by **6.78%**. Seconds; no flights. It is what `ASSUMPTIONS` C12 is built from. |
-| `PYTHONPATH=<abs worktree root> .venv/bin/python scripts/discrete_gust.py --checks` | **V3, Pratt & Walker (session 33).** A 1-cosine gust swept over gradient distance against NACA Report 1206's formula, with the Sears factor printed beside every row. **The design predicted the model would undershoot and it overshoots**, by 17.57% at the 12.5 chords K_g was fitted at; `--checks` shows that is neither the amplitude nor the step size. Minutes; ~15 flights. |
-| `PYTHONPATH=<abs worktree root> .venv/bin/python scripts/dryden_realisation_audit.py -n 48` | **V5, the realisation rather than the spectrum (session 33).** Limb A: the rotational gust the field produces, against its exact closed form — `p_gust` is identically zero and `q_gust` is fully determined by the translational component, so this field has one degree of freedom where the specification has three. Limb B: the peak factor of the Shinozuka construction against `wind.gaussian_vertical_field`, the same spectrum with amplitudes DRAWN. Settles `the_shinozuka_realisation_is_peak_poor`. **~45 min: 96 flights of 1200 s.** `--skip-a` runs limb B alone. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/gust_transfer_sweep.py --sweep --amplitudes --refine` | **V1, the falsification step (session 33).** `H(Ω)` from the aircraft's own linearisation against twelve single-frequency gusts flown through the full nonlinear path, in amplitude **and phase** — an amplitude-only comparison passes with the sign of `Cmq` reversed. `--amplitudes` shows the error falling as the SQUARE of the gust, which is how "not limited by the nonlinearity" is checked rather than asserted. `--refine` is the limb that found §6(i): the held-wind column halves with dt and the stage-sampled one does not move. Minutes; ~20 flights. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/gust_psd_identity.py -n 24` | **V2, the PSD identity (session 33).** `σ_nz² = ∫\|H\|²Φ_w dΩ` against a Dryden Monte Carlo, reporting the **three errors separately**: the one-sided/two-sided factor of two, the 400-component log grid's 1.634% variance shortfall, and the ensemble's own standard error with N beside it. Limb C divides the realisation's variance out, which is the only comparison in which the grid cancels exactly. ~25 min at the default N and 1200 s records. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/gust_lag_bound.py` | **V4, the gust lag (session 33).** Sears' function at the frequencies this project actually forces, then the same term integrated across the Dryden band — `σ_nz` would fall by **6.78%**. Seconds; no flights. It is what `ASSUMPTIONS` C12 is built from. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/discrete_gust.py --checks` | **V3, Pratt & Walker (session 33).** A 1-cosine gust swept over gradient distance against NACA Report 1206's formula, with the Sears factor printed beside every row. **The design predicted the model would undershoot and it overshoots**, by 17.57% at the 12.5 chords K_g was fitted at; `--checks` shows that is neither the amplitude nor the step size. Minutes; ~15 flights. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/dryden_realisation_audit.py -n 48` | **V5, the realisation rather than the spectrum (session 33).** Limb A: the rotational gust the field produces, against its exact closed form — `p_gust` is identically zero and `q_gust` is fully determined by the translational component, so this field has one degree of freedom where the specification has three. Limb B: the peak factor of the Shinozuka construction against `wind.gaussian_vertical_field`, the same spectrum with amplitudes DRAWN. Settles `the_shinozuka_realisation_is_peak_poor`. **~45 min: 96 flights of 1200 s.** `--skip-a` runs limb B alone. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/tpaws_table1_ingest.py --pdf refs/NASA-TM-2012-217337-…pdf [--write]` | **S0, the TPAWS ingest (session 34).** Reads Table 1 out of the **text layer** — no digitisation, no reading uncertainty — locating the page by its caption rather than by index. Prints four checks, every one of them the document's own statement about its own table (row count, its σ_Δn ≥ 0.2 g criterion, sign discipline, the 0–40 dBz band), then the range of every column. `--write` regenerates `atisim/data/tpaws_tm2012_217337_table1.csv`. **Exits non-zero if any check fails.** Seconds. **`--pdf` is required** — `refs/` is gitignored and lives only in the main checkout. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe -u scripts/tpaws_peak_factor.py [-n 48] [--tpaws-only]` | **S2, the peak factor on TPAWS' own window definition (session 34).** Settles `the_model_peak_factor_lands_below_tpaws`. Reduces the **same flights the V5 audit flies** three ways in one pass — whole-record σ, TPAWS' max-of-a-5 s-running-σ, and the same within 15/30/60 s encounter segments — and its whole-record column reproduces V5's 3.8674/4.0199 to four decimals, which is what licenses the second reduction. **The reductions and N are pre-specified in the docstring and the script was committed before it was run**, because picking a reduction after seeing which one settles a prediction is optional stopping wearing a different hat. `--tpaws-only` prints the document side alone and flies nothing. **~45 min: 96 flights of 1200 s.** |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/stewart_table1_ingest.py --pdf refs/NASA-TM-2003-212666-…pdf [--write]` | **S1, Stewart's B-757 normal-force table (session 34).** Text layer, printed pp. 12–13; writes `atisim/data/stewart_tm2003_212666_table1.csv`. Four checks, none of which sets a parameter — and the one that earns its keep is **the shared dynamic-pressure grid**, printed three times, once per coefficient: it caught the first parse reading a printed **page number** as a cell where the 40 kft block straddles the page break. Then prints `C_Nα` against Mach, reconstructed through the paper's own Eq. (8), beside 1/√(1−M²). Seconds. **`--pdf` is required.** Reads the TABLE only — §4 says why no figure in this paper is digitised. |
 | `docs/summary/jsbsim-atisim-vortex-report.html` | **The written comparison** — the numbers above with the reasoning, the figure, and what the result does and does not establish. Not generated; edit it when the numbers move. |
 | `presentation_package/engine_validity_audit.html` | **The session-28 audit, as a page to present from.** The four reference classes on one log axis, the four mechanisms behind the apparent error growth, the strip-load verdict, and the unresolved-pathway inventory with a status on each. Every figure traces to §4 or to this session's re-runs. Not generated; edit it when §4 moves. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/les_flight.py --dataset <figshare root> [--domain D03] [--flights 24] [--aircraft boeing747]` | **AtiSim through Yoshimura et al.'s LES field** — the first wind field this project flies that was *not* identified from the accelerations it is then asked to predict. Reads one LES domain and flies N virtual flights through it beside Yoshimura's own. **Needs the Yoshimura figshare dataset** (21152203, CC BY 4.0, 17.9 GB, held outside the repository); `--dataset` or `ATISIM_LES_ROOT` names its root, the directory holding `les/` and `unpacked/`. §4, "The LES comparison". |

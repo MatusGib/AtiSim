@@ -587,6 +587,49 @@ LEDGER: dict[str, Entry] = {
         "20 Hz in situ wind data 'assuming a 5 second window'.",
         inputs=("tpaws.table1",),
     ),
+    # -- Stewart's B-757 normal-force set (design phase S1) -----------------
+    # `atisim/data/stewart_tm2003_212666_table1.csv`, written by
+    # `scripts/stewart_table1_ingest.py` from the text layer. This is the
+    # TABLE, not the paper's flight illustration: printed p. 7 says that
+    # illustration's measurements "were combined asynchronously ... not
+    # representative of an operational data stream" and are "only for
+    # illustrative purposes", so nothing is taken from its figures.
+    "stewart.table1": Entry(
+        "SOURCED",
+        "72 rows. NASA/TM-2003-212666, Stewart, 'Description of a Normal-Force "
+        "In-Situ Turbulence Algorithm for Airplanes', December 2003, NTRS "
+        "20040021314, Table 1 'Aerodynamic parameters', printed pp. 12-13. "
+        "Three coefficients against dynamic pressure at 0, 10, 20, 30 and 40 "
+        "kft, clean configuration at a nominal 180,000 lb (printed p. 4). The "
+        "dynamic-pressure grid is printed three times, once per coefficient, "
+        "and the ingest asserts all three agree.",
+    ),
+    "stewart.CNalpha": Entry(
+        "SOURCED",
+        "4.847-7.437 per radian across 24 columns. THE AIRCRAFT IS A B-757, "
+        "NOT ANY AIRCRAFT THIS PROJECT FLIES, so it is a comparison target and "
+        "never an input. Its value is that each column carries a Mach number "
+        "through the paper's own Eq. (8) (printed p. 8), giving M 0.242-0.851 "
+        "-- a FIRST-HAND published lift-curve slope against Mach, which is the "
+        "external check ASSUMPTIONS C3's Prandtl-Glauert axis has never had. "
+        "TWO CONFOUNDS, stated because the comparison is worthless without "
+        "them: at fixed altitude and weight a higher q is also a LOWER TRIM "
+        "ANGLE OF ATTACK, so a column mixes Mach with trim-alpha nonlinearity; "
+        "and C_N is the total NORMAL force, not lift.",
+        inputs=("stewart.table1",),
+    ),
+    "stewart.CNq": Entry(
+        "SOURCED",
+        "3.63-8.54 per radian. Same table and same two confounds.",
+        inputs=("stewart.table1",),
+    ),
+    "stewart.CNdelta": Entry(
+        "SOURCED",
+        "0.380-0.543 per radian, elevator. Same table. Printed p. 9 reports "
+        "the elevator and pitch-rate terms were 'relatively insignificant' for "
+        "the illustrated run.",
+        inputs=("stewart.table1",),
+    ),
     "tpaws.reflectivity": Entry(
         "SOURCED",
         "0-40 dBz peak radar reflectivity factor per event, the band printed "

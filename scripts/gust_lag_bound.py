@@ -22,7 +22,7 @@ rather than closing it -- which is the direction that says it is not being
 raised for convenience. Limb C prices that directly against the turbulence
 result, not just at a frequency.
 
-Run: PYTHONPATH=<abs worktree root> .venv/bin/python scripts/gust_lag_bound.py
+Run: PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/gust_lag_bound.py
 """
 
 import numpy as np
