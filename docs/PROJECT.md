@@ -132,7 +132,9 @@ adds a third; session 34 pushes it, closes S0 and S2, and leaves S1 as the one o
 | **What is DONE** | **S0, S2 and S1.** `atisim/data/tpaws_tm2012_217337_table1.csv` (53 rows) and `atisim/data/stewart_tm2003_212666_table1.csv` (72 rows), both from a text layer; `scripts/tpaws_table1_ingest.py`, `scripts/tpaws_peak_factor.py`, `scripts/stewart_table1_ingest.py`; `test_tpaws_table1.py` (8 tests) and `test_stewart_table1.py` (6); twelve `provenance` entries, two §3 rows. **`the_model_peak_factor_lands_below_tpaws` is SETTLED** — RIGHT on its claim, WRONG on its mechanism, and the window definition is the whole verdict. **§7 gains a method section** on making these comparisons capable of failing, which is what the predictive-tool aim actually needs. §4 has every write-up |
 | **S1, DONE and mostly NEGATIVE** | NASA/TM-2003-212666 **read**. Its flight illustration **cannot be a validation target** — altitude, circularity, and the author's own "illustrative purposes" caveat, §4. No figure digitised. **Table 1 ingested instead** (72 rows), which is worth more: a published `C_Nα` against Mach, the first external check on `ASSUMPTIONS` C3. §5.3's verdict untouched — still the owner's decision |
 | **The comparison that can fail** | **BUILT AND RUN.** `scripts/gust_response_factor.py`: the gust response factor moves **21.9%** between a 737 and a 747 where S2's peak factor moves **3.0%**. Figure 133 digitised as **vectors** (residual 1.3e-3), and with TPAWS Table 1 + Stewart Table 1 the **measured B-757 attenuation is 0.700–0.830** — a first external number of its kind here. §4 has all three entries |
-| **What is STILL OPEN, and the first one is now the priority** | **A SOURCED B-757 LONGITUDINAL SET — pitch derivatives and inertia.** Without it the real aeroplane cannot be flown against the measurement: built on a borrowed frame the answer moves **32%**, against a bracket 17% wide. Stewart gives only the normal-force set. Then **V5(a)**, blocked on MIL-HDBK-1797 / MIL-STD-1797A, which MIL-F-8785C does not substitute for. Then the **Stewart Mach comparison**, specified in §4 and §7 and deliberately not run |
+| ~~**A sourced B-757 longitudinal set is the priority**~~ | **SEARCHED FOR, NOT FOUND, AND NOT NEEDED — corrected within the session that wrote it.** NTRS, the local library and JSBSim's 61 models have no 757 aero set, and it should be treated as unavailable rather than un-searched (§4). It is also **not the blocker**: ±30% on C_mα, C_mq or I_yy moves the attenuation **≤2.3%**, against the 32% the borrowed frames disagreed by |
+| **What the 757 comparison actually needs** | **An aircraft this model can validly fly at τ ≈ 1.2 s, and it has none.** Attenuation is a clean function of the plunge time constant across both sourced entries, so no 757 entry is required — but the measured B-757 sits at **τ = 1.18 s** where the lowest reachable inside a declared band is **1.72 s**. The measured point is 0.54 s outside the swept range and the curve is **not extrapolated** to it |
+| **What is STILL OPEN** | **The Stewart Mach comparison**, specified in §4 and §7, deliberately not run — and now the most valuable of the three, because §4 records the Prandtl–Glauert machinery as PRESENT AND INERT while Stewart measures a real transport's C_Nα rising **+53%** across the cruise Mach range. Then **V5(a)**, blocked on MIL-HDBK-1797 / MIL-STD-1797A |
 | ~~**Also unblocked, and NOT acted on** — V5(a)'s specification comparison~~ | **WRONG, and corrected within the session that wrote it.** The claim was that holding `refs/MIL-F-8785C.pdf` unblocks V5(a). **It does not. MIL-F-8785C contains no rotational gust spectra at all** — §3.7 runs printed p. 45 → 47 → 48 and gives three TRANSLATIONAL components and nothing else, read off the page images because the OCR layer is unusable. V5(a) still needs **MIL-HDBK-1797 / MIL-STD-1797A**, which is a different document and is **not held**. §4 has what the reading did produce, which is better than what was being looked for |
 | **The correction that matters most** | **TPAWS Table 1 has 53 rows, not the 51 the design document parsed.** Two rows print a RANGED altitude and were silently dropped. **Neither moves any column's range**, so every printed range in the design is correct and a range check could never have caught it. §4 has the arithmetic and the general lesson |
 
@@ -1328,8 +1330,11 @@ inventing them. Which entry is borrowed is a DECLARED choice, so it was made **t
 **FRAME SENSITIVITY 32.1%, against a measured bracket only 17% wide.** The borrowed dynamics
 decide the answer, so **the modelled 757 attenuation is not determined** and the verdict line
 the script prints — 0.607 against 0.700–0.830, "OUTSIDE" — **must not be read as a result.**
-What is missing is now named exactly: **a 757 pitch set (C_mα, C_mq) and inertia.** Stewart
-supplies only the normal-force set, C_Nα/C_Nq/C_Nδ.
+~~What is missing is now named exactly: a 757 pitch set (C_mα, C_mq) and inertia.~~
+**THAT DIAGNOSIS WAS WRONG and is corrected two entries below**: a ±30% error in C_mα, C_mq
+or I_yy moves this attenuation by **at most 2.3%**, so the pitch set is not what the 32% was
+made of. It came from the rest of the borrowed assembly — `CL0`, `Cm0`, the drag polar, the
+engine and the trim state that follows from them.
 
 **The first attempt at C returned an attenuation of 3.019** — an aeroplane amplifying a gust
 threefold — because it replaced `mass` and left the template's `inertia`, giving a 757's mass
@@ -1349,6 +1354,73 @@ it is recorded as a direction to test rather than a corroboration.
 deviation and Figure 134 shows those peaks are **not co-located** — up to 2 km apart, 85%
 within 900 m. A ratio of two separately located maxima estimates a transfer gain; it is not
 one.
+
+### A sourced B-757 pitch set: searched for, not found — and not needed — session 34
+
+**THE SEARCH, recorded because a negative result is a finding.** Three places, none of which
+has one:
+
+| where | what was looked for | result |
+|---|---|---|
+| **NTRS**, the obvious repository | eight queries — 757 stability derivatives, simulation math model, parameter identification, mass properties, ARIES, wake-vortex encounter models | **nothing.** The ARIES papers (e.g. 20030014127) describe the *facility* and its instrumentation, not an aero model |
+| **the local reference library** | full-text scan of every PDF in `refs/` and `Reference_papers/` for "757" | **nothing.** Every hit in `Flight_Dynamics_-_Second_Edition.pdf` is a page NUMBER, not the aircraft |
+| **JSBSim**, which this project already recovers derivative sets from | a 757 among its 61 shipped models | **nothing.** It ships 737, B747, 787-8, MD11, A320 — and no 757 |
+
+**One lead looked right and was not.** Stewart's reference 5, NASA TP-3610 *"Calibration of
+NASA Turbulent Air Motion Measurement System"* (NTRS 19970010469), is about the **Lockheed
+188 Electra**, NASA 429. He cites it for the technique, not the aeroplane.
+
+**The likely reason, stated as an inference and not a source:** a transport's stability
+derivatives are the manufacturer's proprietary data, and NASA's ARIES documents describe what
+was bolted onto the aeroplane rather than what the aeroplane is. **This should be treated as
+unavailable, not as un-searched.**
+
+**IT TURNS OUT NOT TO MATTER, which is the useful half.**
+`scripts/pitch_set_requirement.py`, on `boeing747` because it is fully sourced:
+
+| perturbation | attenuation | change |
+|---|---|---|
+| C_mα ×0.7 / ×1.3 | 0.9625 / 0.9504 | **+0.7% / −0.5%** |
+| C_mq ×0.7 / ×1.3 | 0.9559 / 0.9693 | **+0.0% / +1.4%** |
+| I_yy ×0.7 / ×1.3 | 0.9337 / 0.9677 | **−2.3% / +1.3%** |
+
+**A ±30% error anywhere in the pitch set moves the gust response attenuation by at most
+2.3%**, against the 32% the borrowed frames disagreed by. **So the entry above named the
+wrong acquisition.** The 32% was the rest of the assembly — `CL0`, `Cm0`, the drag polar, the
+engine, and the trim state those produce — not C_mα, C_mq or I_yy.
+
+**AND THE TEST HAS A FRAME-INDEPENDENT FORM.** Attenuation swept against the plunge time
+constant, each aircraft **inside its own declared band**:
+
+| τ (s) | 1.72 | 1.97 | 2.14 | 2.77 | 2.81 | 3.44 |
+|---|---|---|---|---|---|---|
+| attenuation | 0.720 | 0.769 | 0.820 | 0.956 | 0.941 | 1.033 |
+| aircraft | 737 | 737 | 737 | 747 | 747 | 747 |
+
+**Monotone in τ across both aircraft, and the two entries interleave** — 737 at 2.14 sits
+below 747 at 2.77 on the same curve. So attenuation is, to this resolution, a function of τ
+alone, and **τ for the B-757 is computed entirely from sourced quantities.** No 757 entry, no
+borrowed dynamics, no DECLARED structure.
+
+**AND IT STILL CANNOT BE RUN, for a reason worth more than the test.** The measured B-757
+sits at **τ = 1.18 s**. The lowest τ reachable inside any declared band here is **1.72 s**
+(`boeing737` at 25 kft), so the measured point lies **0.54 s outside the swept range** and
+reading the curve there is extrapolation — which §7(e) says to refuse, and which this script
+refuses.
+
+**THE GAP IS THE RESULT.** The B-757 of TPAWS is **more gust-responsive than any aircraft
+this model can validly fly**: its plunge time constant is 31% below the model's reachable
+minimum. The wing loadings are nearly equal — 4406 N/m² for the 757 against 4375 for
+`boeing737` — so the difference is almost entirely **lift slope**: Stewart's C_Nα is **6.36
+per radian** at 25 kft M 0.70 where `boeing737` carries **4.3478**, and `boeing747` 4.9441.
+
+**That is not a like-for-like indictment** — a 757 is not a 737, and C_N is normal force
+where CLa is lift. But it sits beside a fact this record already carries: §4 notes the
+Prandtl–Glauert machinery is **PRESENT AND INERT**, `pg_mach_ref` being −1.0 on every
+registry entry, so **both aircraft above fly at M 0.75–0.86 with no compressibility
+correction at all**. Stewart's Table 1 shows a real transport's C_Nα rising **+53% between
+M 0.64 and M 0.83**. The inertness was known; **what is new is an outside measurement of what
+it costs.** That is the Mach comparison §7 already specifies, and it is still not run.
 
 ### What MIL-F-8785C actually says about rotational gusts — session 34, correcting §0 and §4
 
@@ -7700,10 +7772,40 @@ shortfall is **32%**, same sign, different aeroplane, independent evidence chain
 called** — the frame sensitivity exceeds the effect. But it is the first time an outside
 dataset has pointed at that shortfall at all.
 
+**13. A sourced 757 pitch set was searched for, not found — and then shown not to be
+needed, which corrects point 12 above in the same session.** NTRS across eight queries, a
+full-text scan of every local PDF, and JSBSim's 61 shipped models: **none has a 757 aero
+set**, and the one promising lead (NASA TP-3610, Stewart's own reference 5) turns out to be a
+**Lockheed Electra**. Treat it as unavailable rather than un-searched.
+
+**It was the wrong target anyway.** On the fully sourced `boeing747`, ±30% on C_mα moves the
+attenuation 0.7%, C_mq 1.4%, I_yy 2.3% — **at most 2.3% against the 32% the borrowed frames
+disagreed by.** The 32% was `CL0`, `Cm0`, the drag polar, the engine and the trim state that
+follows, not the pitch derivatives.
+
+**And the test has a frame-independent form that needs no 757 at all**: attenuation is
+monotone in the plunge time constant across BOTH sourced aircraft, with the 737 and 747
+points interleaving on one curve (τ 1.72→0.720 … 3.44→1.033), and the B-757's τ is computed
+entirely from sourced quantities.
+
+**14. It still cannot be run, and the reason is the finding.** The measured B-757 sits at
+**τ = 1.18 s**; the lowest reachable inside any declared band is **1.72 s**, `boeing737` at
+25 kft. The measured point is **0.54 s outside the swept range** and the curve is not
+extrapolated to it. **The B-757 is more gust-responsive than any aircraft this model can
+validly fly** — 31% below the reachable minimum — and since the wing loadings nearly match
+(4406 against 4375 N/m²) the difference is almost all **lift slope**: 6.36 per radian in
+Stewart against `boeing737`'s 4.3478. Not a like-for-like indictment, but it sits beside
+§4's own record that Prandtl–Glauert here is **present and inert** while Stewart measures a
+real transport's C_Nα rising **+53%** across cruise Mach.
+
 **WHAT WAS NOT DONE, so nobody goes looking.**
 
 - **V5(a) is still blocked**, and on a document this project has never held —
   MIL-HDBK-1797 or MIL-STD-1797A. Holding MIL-F-8785C does not help; see above.
+- **No aircraft was added to the registry**, and none should be on this evidence: what is
+  missing is not a 757 but a validly-flyable entry near τ ≈ 1.2 s.
+- **The attenuation-versus-τ curve is NOT extrapolated** to the measured point, and any
+  future session that does so has converted a refusal into a result.
 - **The Stewart Mach comparison is specified, not run.** Both its confounds are named in §4.
 - **The 757 comparison is not settled and must not be quoted as one.** `gust_response_factor.py`
   prints a verdict line; at 32% frame sensitivity it is a placeholder, not a result.
@@ -10516,6 +10618,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe -u scripts/tpaws_737_band.py [-n 8]` | **S2 re-flown against the aircraft whose band the data is in (session 34).** `boeing737` admits **28** of TPAWS' 53 rows where `boeing747` admits 3, so the target is the 28-row population (2.5013 ± 0.5503, peakier than all 53). 8 conditions × 8 seeds; reductions are **imported** from `tpaws_peak_factor.py` and so cannot drift from S2's. Three checks: population count, `checks.recovery_band` on **every flown trajectory** (it fires 0.023 and 0.046 band widths at the two declared edges and 0.000 at the six interior conditions — not widened), and intensity invariance across a 4× σ_w range (0.84%). **~35 min: 70 flights of 1200 s.** |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/digitise_tpaws_fig133.py --pdf refs/NASA-TM-2012-217337-…pdf [--write]` | **TPAWS Figure 133, read as VECTORS (session 34).** Supplies σ_w per event, the one term the gust response factor needs that no table gives. Not a raster digitisation: the chart is born-digital, the markers are filled paths whose coordinates the PDF states, and both axes calibrate on the printed tick labels' own boxes — **residual 1.3e-3 data units**. Four checks, and the one that matters is the paper's own **anisotropy** claim (79% of 78 markers above the 1:1 line), because no range test can tell σ_u from σ_w and a swapped axis would otherwise pass. Writes `atisim/data/tpaws_fig133_sigma_uw.csv`. Seconds. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe -u scripts/gust_response_factor.py [-n 4]` | **The turbulence comparison that CAN fail (session 34).** Section A builds the **measured B-757** gust response attenuation, 0.700–0.830, out of TPAWS Table 1 + Figure 133 + Stewart Table 1, bracketed because the two populations differ (78 vs 49). Section B flies `boeing737` and `boeing747` and prints the attenuation **beside** S2's peak factor on the same flights — 21.9% apart against 3.0% — which is the evidence that the peak factor cannot discriminate. Section C builds a **real B-757** from sourced mass/S/c/C_Lα on two borrowed frames and reports the frame sensitivity; at **32.1%** the modelled side is NOT determined, and the printed verdict line must not be read as a result. **~12 min: 16 flights.** |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe -u scripts/pitch_set_requirement.py` | **Does the 757 comparison need a 757 pitch set? (session 34).** Section A perturbs `Cma`, `Cmq` and `Iyy` by ±30% on the fully sourced `boeing747`: the attenuation moves **at most 2.3%**, against the 32% two borrowed frames disagreed by — so the pitch set was the wrong acquisition and §4 says so. Section B sweeps the attenuation against the **plunge time constant**, each aircraft inside its own declared band; both land on one monotone curve and interleave, which is the frame-independent form of the test. It then **refuses to extrapolate**: the measured B-757 is at τ 1.18 s where the lowest reachable is 1.72 s, and printing that gap is the point. **~10 min: 24 flights.** |
 | `docs/summary/jsbsim-atisim-vortex-report.html` | **The written comparison** — the numbers above with the reasoning, the figure, and what the result does and does not establish. Not generated; edit it when the numbers move. |
 | `presentation_package/engine_validity_audit.html` | **The session-28 audit, as a page to present from.** The four reference classes on one log axis, the four mechanisms behind the apparent error growth, the strip-load verdict, and the unresolved-pathway inventory with a status on each. Every figure traces to §4 or to this session's re-runs. Not generated; edit it when §4 moves. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/les_flight.py --dataset <figshare root> [--domain D03] [--flights 24] [--aircraft boeing747]` | **AtiSim through Yoshimura et al.'s LES field** — the first wind field this project flies that was *not* identified from the accelerations it is then asked to predict. Reads one LES domain and flies N virtual flights through it beside Yoshimura's own. **Needs the Yoshimura figshare dataset** (21152203, CC BY 4.0, 17.9 GB, held outside the repository); `--dataset` or `ATISIM_LES_ROOT` names its root, the directory holding `les/` and `unpacked/`. §4, "The LES comparison". |
