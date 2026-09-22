@@ -568,9 +568,13 @@ LEDGER: dict[str, Entry] = {
     ),
     "tpaws.weight": Entry(
         "SOURCED",
-        "167.7-192.0 klb, tabulated FOR EVERY ROW. This is the quantity whose "
-        "absence makes PROJECT.md 5.19 structurally impossible for Hannibal, "
-        "which is most of why this table was worth acquiring.",
+        "167.7-192.0 klb, tabulated FOR EVERY ROW -- which is rare enough in "
+        "this project's sources to be worth naming. IT DOES NOT CLOSE "
+        "PROJECT.md 5.19, and must not be read as doing so: 5.19 wants the "
+        "weight of a DC-10-10 (N1809U) on the day of the Hannibal encounter, "
+        "and this is a B-757 on 53 other encounters. What it supplies is a "
+        "population in which the quantity 5.19 lacks is present, not the "
+        "missing value.",
         inputs=("tpaws.table1",),
     ),
     "tpaws.tas": Entry(

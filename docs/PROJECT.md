@@ -113,15 +113,28 @@ Rules carried from `docs/DEVELOPMENT.md` and enforced throughout the code:
 
 **At the release, 20 September 2026, two rows are still live.** Everything else in this section
 is struck through or marked merged and is kept as the record of how it was found. **Session 33
-adds a third.**
+adds a third; session 34 pushes it, closes S0 and S2, and leaves S1 as the one open phase.**
 
 | Still live | Where it is, after the history rewrite |
 |---|---|
-| **The turbulence response validation programme** | **In this repository**, on **`turbulence-response-validation-g6t99y`**, with **`turbulence-response-validation` pointing at the same commit**. Worked in the **main checkout** (`/home/user/AtiSim`) rather than a worktree — this session ran in a fresh container where no worktree existed. Phases **V1–V5 are DONE and in §4**; **S0, S1 and S2 are BLOCKED and cannot be done from this container at all**, and **nothing is pushed** — the row below says why on both counts |
+| **The turbulence response validation programme** | **In this repository and PUSHED**, on **`turbulence-response-validation-g6t99y`**, with **`turbulence-response-validation` at the same commit** — both at `53c2679` or later on `origin`. ~~Worked in the main checkout (`/home/user/AtiSim`)~~ **session 34 worked in the worktree `.claude/worktrees/email-professors-project-live-d753af`** on the Windows machine; the worktree's name is unrelated to this work and is an artefact of how the session was opened. Phases **V1–V5 and S0 and S2 are DONE and in §4**. **S1 is the only phase still open**, and its document is now held — §3. The session-33 block below is kept unedited except where marked, because it is an accurate record of a container that no longer exists |
 | **The WGS-84 union, `wgs84-earth`** | **In this repository**, rewritten with the rest of the history. `main` is a flat, non-rotating Earth — `ASSUMPTIONS.md` A1, and the README says so before the install instructions — and the union is one branch away, measured and banked rather than merged. §9, session 32, point 8 has the measurement and the decision; the row below has the address |
 | **The α̇ derivatives** | **Not in this repository.** The branch was never pushed while the release was prepared, and the rewrite did not carry it — so when the local branches were cleaned up it turned out to be a **single copy, on one machine**, which this row had already claimed was also in the archive. It now is: pushed to `MatusGib/AtiSim-archive` as **`alphadot-derivatives-parked`** at `6148cd8`, renamed on the way out because a `claude/*` name is not pushed anywhere. Locally it is still `claude/engine-validity-presentation-1408e8`, checked out in `.claude/worktrees/project-md-restructure-95b7b8`. §5's status table records what it would close and what it costs; §9, point 9 records the review that parked it |
 
-### Session 33's own work — the acquisition half, BLOCKED
+### Session 34's own work — the acquisition half, UNBLOCKED and mostly DONE
+
+| | |
+|---|---|
+| **Branch** | **`turbulence-response-validation-g6t99y`**, with **`turbulence-response-validation` fast-forwarded to the same commit** — both on `origin`, in sync, as the rule below the previous block asks. **The push works**: session 33's 403 was a container credential, and a session started after GitHub was relinked mints a new one |
+| **Worktree** | `.claude/worktrees/email-professors-project-live-d753af`, on the Windows machine. **Its name has nothing to do with this work.** `.venv` lives in the **main checkout** and resolves `atisim` there, so every command in §10 needs `PYTHONPATH` set to the absolute worktree root — rule 4, and it was checked on every run in this session |
+| **State** | **Two commits beyond `c02d1b2`.** Suite on the full tree: **968 passed, 1 skipped, 1 xfailed, NONE FAILED**, 31 min. Docs build clean under `-W --keep-going`. Nothing uncommitted |
+| **Session 33's one failure does NOT reproduce here, and that confirms its diagnosis** | `test_vortex_viz.py::test_logging_the_run_did_not_move_the_headline_numbers` **passes on this machine.** Session 33 saw it fail at 4.4e-14 relative in its container, checked that it failed on the untouched base commit too, and **refused to re-pin it** on the grounds that the pinned value is a Windows capture and re-pinning it to a Linux one would destroy what the pin is for. That call was right: the same pin passes on the Windows machine it was captured on. **The count is not comparable line-for-line with session 33's 909/3/1/1** — different platform and a different optional-dependency set, which is also why 3 skips there are 1 here |
+| **What is DONE** | **S0 and S2.** `atisim/data/tpaws_tm2012_217337_table1.csv` (53 rows, text layer), `scripts/tpaws_table1_ingest.py`, `scripts/tpaws_peak_factor.py`, `atisim/tests/test_tpaws_table1.py` (8 tests), six `provenance` entries, two §3 rows. **`the_model_peak_factor_lands_below_tpaws` is SETTLED** — RIGHT on its claim, WRONG on its mechanism, and the window definition is the whole verdict. §4 has both write-ups |
+| **What is STILL OPEN** | **S1 — and it is an ingest, not an acquisition.** NASA/TM-2003-212666 is held (`refs/…20040021314.pdf`, §3) and **has not been read**. It was left because the handover's ordering put S0 then S2 and because S1's substantive output is a **decision** about §5.3's band, which §8's precedent reserves for the record's owner. **Nothing in this record depends on it** |
+| **Also unblocked, and NOT acted on** | **V5(a)'s specification comparison.** §0 and §4 both recorded MIL-HDBK-1797/MIL-F-8785C's rotational spectra as missing. **`refs/MIL-F-8785C.pdf` has been in the main checkout since session 25** — §3 has said so since then. The gap was a **gitignore artefact**: `refs/` is invisible to a fresh container, and session 33 reported the shelf it could see. Writing Φ_p and Φ_q from that document is a session's work and is not started |
+| **The correction that matters most** | **TPAWS Table 1 has 53 rows, not the 51 the design document parsed.** Two rows print a RANGED altitude and were silently dropped. **Neither moves any column's range**, so every printed range in the design is correct and a range check could never have caught it. §4 has the arithmetic and the general lesson |
+
+### ~~Session 33's own work — the acquisition half, BLOCKED~~ — SUPERSEDED by the block above, kept because it records a container that no longer exists
 
 | | |
 |---|---|
@@ -131,7 +144,7 @@ adds a third.**
 | **State** | **Two commits beyond `db4eadf`** (which is itself one beyond `e334a02`). Suite run on the full tree: **909 passed, 3 skipped, 1 xfailed, 1 failed.** The one failure is `test_vortex_viz.py::test_logging_the_run_did_not_move_the_headline_numbers`, **and it fails identically on the untouched base commit in this container** — checked by stashing every change and re-running. It is an exact-equality rollout pin disagreeing at **4.4e-14 relative** (1.8397047596317158 against a pinned 1.8397047596317972) on this container's JAX/XLA and BLAS. **The pin was NOT re-captured**: re-pinning a Windows-captured value to a Linux one here would destroy what the pin is for, and `.github/workflows/tests.yml` already holds OpenBLAS to one kernel family for exactly this reason. Nothing uncommitted |
 | **What is done** | **All five verification phases, V1–V5**, in §4. `atisim/gust.py`, `atisim/tests/test_gust.py` (18 tests), five scripts, three new `wind` fields, `ASSUMPTIONS` C12, §6(i), and §5.21 closed. Two predictions sealed at `db4eadf`, before the run that decides them |
 | **What is BLOCKED, and it is not a decision** | **S0, S1 and S2 — the entire acquisition half.** Three documents are needed and none is reachable: **NASA/TM-2012-217337** (TPAWS, NTRS 20120003172) for S0/S2, **NASA/TM-2003-212666** (Stewart, NTRS 20040021314) for S1, and **MIL-HDBK-1797 or MIL-F-8785C's ROTATIONAL spectra** for V5(a)'s specification comparison. All three are redistributable — two are NASA works, the third is a US military standard — so this is **availability, not copyright**. `Reference_papers/**/*.pdf` is gitignored, `refs/` is gitignored, and **`ntrs.nasa.gov` answered HTTP 403 to every request from this container's egress proxy** (`connect_rejected`, policy denial, recorded in the proxy's own status endpoint). A previous session downloaded TPAWS and Stewart into a scratchpad that did not survive |
-| **What unblocks it** | Fetching the three documents on a machine with open egress and putting them where `docs/DEVELOPMENT.md` rule 5 says: a path passed on the command line. TPAWS' Table 1 **extracts from the PDF text layer** — 51 rows, no digitisation, no reading uncertainty — so S0 is an afternoon once the file exists. `predictions.the_model_peak_factor_lands_below_tpaws` is the bet waiting on it |
+| **What unblocks it** | Fetching the three documents on a machine with open egress and putting them where `docs/DEVELOPMENT.md` rule 5 says: a path passed on the command line. TPAWS' Table 1 **extracts from the PDF text layer** — ~~51 rows~~ **53, corrected session 34**, no digitisation, no reading uncertainty — so S0 is an afternoon once the file exists. **It was: both documents fetched and S0 done in session 34.** `predictions.the_model_peak_factor_lands_below_tpaws` is the bet waiting on it |
 | **Read this beside it** | The design document, `docs/design/specs/2026-09-21-turbulence-response-validation-design.md`, is committed at `db4eadf` and states every gate **before** any of them was measured. Two of its own claims did not survive contact: V3's predicted SIGN was wrong (§4), and V5(a)'s comparison against the specification's rotational spectra cannot be made without the specification |
 
 **Commit ids below predate the rewrite.** `docs/design/commit-map.txt` translates them, except
@@ -783,6 +796,8 @@ rigid-rotation self-consistency test that found them. **Read it before changing 
 | **Bach & Parks 1987**, J. Aircraft **24**(11) 789–792 — **HELD, session 26**, `Reference_papers/bach-parks-1987-angle-of-attack-estimation-JA24-11.pdf` | **the error budget on the identification this project's fields rest on.** Eq. (2) gives `C_L` from body-axis accelerations and thrust over `QS`, so **mass and wing area enter only as the ratio `m/S`**. Eq. (4)'s error analysis: the AOA estimate moves **about 0.05° for a 1% error in acceleration**, and "also about 0.05 deg for a 1% error in the lift coefficient" | **contains no DC-10.** Its two validation cases are an **L-1011** and a **B-747SP**, so it does not help §7's acquisition #1. It bounds the input, not the airframe |
 | **Ashburn, Waco & Melvin 1970**, AFFDL-TR-70-101 (HICAT), AD878415 — **HELD, session 26**, `Reference_papers/AFFDL-TR-70-101-Ashburn-Waco-Melvin-1970-HICAT-AD878415.pdf` | **measured** high-altitude turbulence: probability densities and **exceedance curves of RMS gust velocity**, from U-2 flights | **its band is 45,000–70,000 ft and this project flies 35,000–45,000** (corrected session 33; it said 33,000–41,000, which matched neither aircraft's declared band)**.** Against MIL-F-8785C Fig. 7 in that band it is an *extrapolated* check, and possibly not an independent one — the report compares itself against **MIL-A-8861A** and against **Steiner's NASA U-2** data, so the high-altitude end of Fig. 7 may descend from the same aircraft. Settling that needs the spec's Background Information and User Guide (ADA119421), which is ~~**not held**~~ **HELD, session 31** (`refs/ADA119421-MIL-F-8785C-background-user-guide-Moorhouse-Woodcock-1982.pdf`, Internet Archive copy, md5 `e410411a…`). **It does not settle the question; it moves it back one report.** The guide never mentions HICAT or the U-2. Its intensities combine Av.P. 970's time-in-turbulence fraction P₁(h) (its Ref. 20, reproduced as its Fig. 34) with one Rayleigh σ distribution (Pritchard, in Chalk et al. AFFDL-TR-69-72, 1969: mode 2.3 ft/s, mean 2.8 ft/s), taken as constant with altitude for clear-air turbulence. Independence from HICAT now needs AFFDL-TR-69-72 or Av.P. 970, neither held |
 | **Misaka, Obayashi & Endo 2008**, *J. Aircraft* 45(4) 1217–1229 | **the RMS normal load severity index** — `σ_n` over a moving 5 s average, moderate 0.2–0.3 g, severe ≥ 0.3 g (attributed there to Hamilton & Proctor). Defined at cruise altitude, which the F-factor thresholds are not | its own Figs. 26–27 show `σ_n` tracks the *trend* of measured acceleration and misses the peaks, by construction of the 5 s window |
+| **Hamilton, Proctor & Ahmad 2012**, NASA/TM-2012-217337, *Flight Tests of the Turbulence Prediction and Warning System (TPAWS)*, NTRS 20120003172 — **HELD, session 34**, `refs/NASA-TM-2012-217337-TPAWS-Hamilton-Proctor-Ahmad-20120003172.pdf` (a US Government work, "Public Use Permitted") | **Table 1 entire — 53 in-situ turbulence encounters on NASA Langley's B-757 ARIES**, ingested from the PDF's **text layer** to `atisim/data/tpaws_tm2012_217337_table1.csv`: altitude, **aircraft weight for every row**, TAS, σ_Δn, both Δn extremes, peak vertical wind, reflectivity. And the **σ_Δn definition first-hand** — printed p. 5 makes it a sliding 5 s window subtracting that window's *own* mean (a running standard deviation), printed p. 125 names the tabulated scalar "the peak σ_Δn". **This closes Misaka's attribution above**: the moving-5 s-average metric, and the 0.2 g moderate / 0.3 g severe thresholds, are printed on p. 125 of the document Misaka attributes them to | **its band is 15–35 kft against this project's 35–45.** Three rows sit in band for `boeing747` and a fourth straddles the floor (§4, phase S0). The encounters are **convective** and last "several seconds to a minute" (printed p. 7) against 1200 s of stationary Dryden — a duration mismatch **no reduction removes**, and it is quoted with every use of the peak factor |
+| **Stewart 2003**, NASA/TM-2003-212666, *Description of a Normal-Force In-Situ Turbulence Algorithm for Airplanes*, NTRS 20040021314 — **HELD, session 34**, `refs/NASA-TM-2003-212666-Stewart-normal-force-insitu-turbulence-20040021314.pdf` | design phase **S1's** document, 21 pp.: a severe encounter on the same B-757 at 33,000 ft, M 0.78, with input and response both plotted and a frequency-domain comparison, accelerometer at 50 sps through a 20 Hz anti-alias filter | **ACQUIRED, NOT YET READ.** Nothing in this record is derived from it and §0 carries S1 as the open row. Its 33,000 ft is 2,000 ft below `boeing747`'s floor, so §5.3's band objection applies to it too — the design says so, and says what that does to the verdict is the record owner's call, not a measurement |
 | **Yoshimura et al. 2022**, *J. Appl. Meteor. Climatol.* 61 503–519 | Tables A2/A3/A5: a **third CR-2144 747 flight condition** — M 0.8 at 6,096 m — with a complete non-dimensional longitudinal set including `C_mα̇`, the flight condition, and the short-period pair (`ω_n` 1.29, `ζ` 0.57) | **not an independent dataset** — Table A2 is attributed to Heffley & Jewell, i.e. CR-2144 again. Same standing as Caughey. Its own conclusion misreads Table A5's `s⁻¹` as `Hz` — see §5 |
 
 ### The vortex model, as cited
@@ -1059,18 +1074,138 @@ stopping. **FUTURE WORK**, with the protocol above as its specification.
 
 **What this does not license:** quoting 0.15 of a peak factor as a correction to anything.
 
+**QUALIFIED BY S2, session 34, and the qualification is not small.** Everything above is
+measured on the window definition stated in bold two paragraphs up — σ over the whole
+retained record. Re-reduced on **TPAWS' own** definition, the maximum of a 5 s running σ,
+the same 96 flights give **Shinozuka − Gaussian = +0.0092 ± 0.0375, 0.25 se, with the sign
+reversed**. So this entry's result is a **property of the whole-record reduction**, not a
+general statement that a Shinozuka field is peak-poor. The sealed entry is settled as it was
+decided and is not edited; what changes is how far it may be carried. See "The peak factor
+against TPAWS" below.
+
 **The one structural difference is visible without any statistics**, and is why the control
 exists: four Shinozuka seeds realise field rms **3.9309–3.9390 m/s, a spread of 0.2%**,
 against the control's **3.909–4.038, a spread of 3.3%**. A Shinozuka realisation's
 amplitude spectrum has zero variance across the ensemble by construction.
 
-**S2 — the TPAWS half — could not be run at all.** NASA/TM-2012-217337 is not in this
+~~**S2 — the TPAWS half — could not be run at all.** NASA/TM-2012-217337 is not in this
 repository and `ntrs.nasa.gov` answered HTTP 403 to every request from this container.
 `predictions.the_model_peak_factor_lands_below_tpaws` is sealed against it and waits. For
-whoever settles it: **the Shinozuka arm's up peak factor is 3.8674 ± 0.0450 at N = 48**, on
-the window definition stated above — which is **not** TPAWS' 5 s σ window, and the
+whoever settles it: the Shinozuka arm's up peak factor is 3.8674 ± 0.0450 at N = 48, on
+the window definition stated above — which is not TPAWS' 5 s σ window, and the
 prediction's own text says that hazard must be resolved from the document before the two
-numbers are put side by side.
+numbers are put side by side.~~ **SUPERSEDED, session 34 — S0 and S2 are DONE**, two
+entries below. The paragraph is kept because it is an accurate record of that container:
+the 403 was its egress proxy's policy denial, not NASA's. **The handover it wrote turned
+out to be the right one**: the hazard it refused to assume past is exactly what decides the
+comparison, and 3.8674 is the number that does *not* answer it.
+
+### TPAWS Table 1, ingested — session 34 (design phase S0)
+
+**NTRS is reachable from an ordinary machine**, so the whole acquisition half unblocked at a
+`curl`. `refs/NASA-TM-2012-217337-…pdf` (30.1 MB) and `refs/NASA-TM-2003-212666-…pdf`
+(1.6 MB) are now held; §3 has both rows. **MIL-F-8785C was already in `refs/`** and §0 had
+recorded it as missing — that is a gitignore artefact, not an acquisition, and V5(a) is
+therefore unblocked too without anything being fetched for it.
+
+`atisim/data/tpaws_tm2012_217337_table1.csv`, written by
+`scripts/tpaws_table1_ingest.py` **from the PDF's text layer** — no digitisation, no reading
+uncertainty, no calibration step, which is not true of any other data file in this project.
+Every column is `provenance.SOURCED` in the strict sense. Four checks pass, and all four are
+the document's own statements about its own table: the row count, its σ_Δn ≥ 0.2 g
+significance criterion, sign discipline on both extremes, and the 0–40 dBz band.
+
+**THE TABLE HAS 53 ROWS. The design document says 51, and every number it derived from the
+table was computed on 51.** The paper states 53 twice — printed p. 5, "ARIES tallied 53
+encounters with CIT", and printed p. 7, "a summary of the key in situ parameters from 53
+significant turbulence events". The two missing rows are **`232-05`, whose altitude prints
+"31 to 35"**, and **`235-05*`, which prints "22 to 19"** — a descent, printed high-to-low. A
+parser expecting a scalar altitude dropped exactly those two.
+
+**Why it survived review, which is the useful part:** neither dropped row moves any column's
+range. Every printed range in the design document is correct — altitude 15–35 kft, weight
+167.7–192.0 klb, TAS 185–238 m/s, σ_Δn 0.20–0.49 g, Δn +0.37…+1.30 / −0.34…−1.40 g, winds
++2.8…+23.4 / −2.1…−21.4 m/s — because both dropped rows sit strictly inside the extremes on
+every one of them. **A range check cannot catch a dropout that is interior on every axis**,
+and that is the general lesson, not a fact about this table.
+`test_tpaws_table1.py::test_the_two_ranged_altitudes_survive` pins the defect itself rather
+than its symptom, and the CSV carries `altitude_kft_first`/`_last` as printed, never a
+midpoint.
+
+**What the correction is worth, stated so it is not over-claimed.** Re-derived on 53 rows the
+peak factor is **mean 2.3831, population sd 0.4942**, against the seal's transcribed
+2.386 / 0.506 — **0.13%**. The three in-band rows are unchanged at 2.296, 3.037, 2.756. So
+the row count decides nothing on its own, and S2 below does not rest on it.
+
+**A fourth admissibility category the 51-row parse could not see.** Against
+`boeing747.valid_altitude` (35,000–45,000 ft, `aircraft.py:780`):
+
+| | Rows | |
+|---|---|---|
+| ≥ 35 kft throughout | **3** — `232-06`, `232-08`, `232-10` | admissible; M 0.775–0.779 is inside `valid_mach` too |
+| **straddles the 35 kft floor** | **1** — `232-05`, "31 to 35" | **admissible on neither reading.** Not a category the design has |
+| 30–34 kft | 5 | below the declared floor; `checks.recovery_band` would refuse the run |
+| < 30 kft | 44 | outside, and far outside |
+
+### The peak factor against TPAWS — session 34 (design phase S2)
+
+**`predictions.the_model_peak_factor_lands_below_tpaws` is SETTLED: RIGHT on its claim and
+WRONG on its mechanism.** It is answerable only because the hazard the seal made a
+precondition turned out to be resolvable from the document.
+
+**The definition, read off the paper rather than assumed** — three places, and they agree:
+
+| printed | says |
+|---|---|
+| **p. 5** | σ_Δn is a function of **time** over a "shifting / sliding window", τ = 5 s, and the printed equation subtracts the mean **over that same window** — a running *standard deviation*, not a running RMS about the record mean |
+| **p. 125** | "the peak σ_Δn" — the tabulated scalar is the **maximum over the encounter** of that running quantity |
+| **p. 8** | Table 1's column group header, "Peak In Situ Turbulence (g's)", governs the extremes alongside it; printed p. 7 calls Δn_max "the peak normal load acceleration" |
+
+So TPAWS' peak factor is **the encounter's extreme over the maximum of a 5 s running σ**.
+V5 measured the model's over a **whole-record** σ. A running maximum is ≥ the whole-record
+value, so the two definitions differ **with a sign**: TPAWS' denominator is the larger and
+its peak factor the smaller.
+
+`scripts/tpaws_peak_factor.py`, N = 48 per arm, 1200 s records at dt = 0.02, first 100 s
+discarded. **The script was committed before it was run** (`53c2679`), with all its
+reductions and its N pre-specified, because choosing a reduction after seeing which one
+settles a prediction is the same fault as optional stopping.
+
+**The whole-record column reproduces the V5 audit to four decimals — 3.8674 ± 0.0450 and
+4.0199 ± 0.0611 — so these are V5's flights, reduced a second way.** That is what licenses
+the comparison; without it the gap below would be a difference of flights.
+
+| reduction | Shinozuka | Gaussian control | vs **2.3831** |
+|---|---|---|---|
+| **R1** σ over the whole record — *V5's* | **3.8674 ± 0.0450** | 4.0199 ± 0.0611 | far above → **WRONG** |
+| **R2** σ = max of a 5 s running σ — *TPAWS'* | **1.9421 ± 0.0246** | 1.9329 ± 0.0283 | **17.9 se below → RIGHT** |
+| **R3** same, within 15 s encounters | 1.9909 ± 0.0059 | 1.9876 ± 0.0060 | below |
+| **R3** within 30 s encounters | 1.9391 ± 0.0070 | 1.9425 ± 0.0072 | below |
+| **R3** within 60 s encounters | 1.9236 ± 0.0085 | 1.9218 ± 0.0089 | below |
+
+**The window definition alone moves the answer by a factor of 1.99, and it is the whole
+verdict.** 1.9421 also sits **0.89 population sd below TPAWS' mean**, so it is inside the
+design's S2 band as well as under its centre. **The verdict does not turn on the one
+DECLARED quantity**: R3 exists because TPAWS' encounters last "several seconds to a minute"
+(printed p. 7) against 1200 s records, and at every encounter length it lands below.
+
+**THE MECHANISM IS NOT THE ONE THE SEAL ARGUED, and this is the finding worth carrying.**
+The reasoning bet that the Shinozuka construction's peak-poorness would beat the narrowband
+resonance. Under TPAWS' reduction **the construction contributes nothing measurable**:
+Shinozuka − Gaussian is **+0.0092 ± 0.0375, 0.25 se**, and the **sign is reversed** from the
+−0.1525 (2.01 se) that `the_shinozuka_realisation_is_peak_poor` was settled on one entry
+above. **That companion result is a whole-record-σ effect and does not survive a 5 s running
+one.** Neither sealed entry is edited on the strength of it — both are recorded as they were
+decided, per §4's own rule — but V5(b) should not be read as a claim about peak factors in
+general, and the paragraph there now says so.
+
+**What this does NOT license**, and the list is longer than the result: reading 1.9421 as
+agreement with TPAWS about anything physical. The duration mismatch is **not removed by any
+reduction here** — TPAWS' encounters are convective, this project's records are stationary
+Dryden — and §5's altitude objection stands, with three rows in band and a fourth
+straddling. What has been shown is narrow and worth exactly what it says: **on TPAWS' own
+window definition the model's peak factor is not high**, and on the definition V5 used it
+would have looked 62% too high for a reason that is arithmetic rather than aerodynamic.
 
 ### Two readings of CR-2144 pp. 220–222, compared — and the hand reading is the better one — session 32
 
@@ -5629,7 +5764,7 @@ wording** — which is how five of them were found already closed (§9, session 
 | 5.16 | Two errors in the sources | **CLOSED** — documented | take microburst geometry from Schultz Table 2 |
 | 5.17 | Hannibal dated two ways | **CLOSED**, session 31 | NTSB CHI81DA042: 3 April 1981 |
 | 5.18 | ±g asymmetry | buffet boundary **CLOSED**, session 26 · nonlinear lift curve **IMPOSSIBLE WITH SOURCES HELD** | CR-114494 draws `CL_BASIC` as straight lines |
-| 5.19 | Absolute agreement with recorded g-loads | **IMPOSSIBLE WITH SOURCES HELD** · route **FUTURE WORK** | aircraft identified (N1809U, DC-10-10); the weight on the day is not found. Routes: the NTSB docket, the NTSB pre-1982 database (39 MB Access file, not tried), and the 1982 SFTE paper by Parks, Bach & Wingrove |
+| 5.19 | Absolute agreement with recorded g-loads | **IMPOSSIBLE WITH SOURCES HELD** · route **FUTURE WORK** | aircraft identified (N1809U, DC-10-10); the weight on the day is not found. Routes: the NTSB docket, the NTSB pre-1982 database (39 MB Access file, not tried), and the 1982 SFTE paper by Parks, Bach & Wingrove. **TPAWS does NOT close this, session 34** — its Table 1 tabulates weight for all 53 of its rows, but they are a **B-757 on other encounters**, not N1809U on 3 April 1981. It supplies a population in which the missing quantity is present, which is not the missing value. The design document's phrasing invites the stronger reading; this row refuses it |
 | 5.20 | Half the Fig. 8 load band unreachable | **IMPOSSIBLE WITH SOURCES HELD** — structural | linear aero; the same ceiling as 5.18 |
 | 5.21 | The reported phugoid (4-state) is not the flown one — altitude couples through density | ~~**FUTURE WORK**~~ **MEASURED ON THE SHIPPED 747, session 33** (phase V1, `gust._linearise`): adding height as a fifth state moves the phugoid **ωn +12.61%, ζ −42.57%** at M 0.80 / 37,000 ft and **+13.30% / −41.56%** at `CRUISE`. The short period moves **+0.024% / +0.018%** — untouched, which is what says the effect is the slow height–density exchange and not a change of plant. The 4-state stays the correct CR-2144 comparator | the unmerged branch's +20.5% / −50.6% on the pre-session-30 747 is corroborated in sign and order and superseded in place. Free-response check: the 4-state matrix mispredicts the flown Δn by **6–26% over 20 s**, the 5-state by **0.1–1.4%**. Pinned by `test_gust.py::test_the_altitude_state_moves_the_phugoid_by_more_than_a_tenth` |
 
@@ -7048,6 +7183,106 @@ source exactly. A smoother interpolant would agree with the source less.
   touch the core response.
 
 ## 9. Session log
+
+### Session 34 — the blocked half was never blocked by NASA, and a definition decided a bet
+
+**The whole acquisition half unblocked at a `curl`.** Session 33 recorded S0, S1 and S2 as
+blocked because `ntrs.nasa.gov` answered **HTTP 403** to every request. That was its
+container's egress proxy stating a policy, not NASA refusing anyone: from an ordinary
+machine both documents return **200**. They are now in `refs/` and §3 has a row each.
+
+**And the third blocked document was never missing.** §0 and §4 both recorded MIL-HDBK-1797
+or MIL-F-8785C's rotational spectra as unavailable, blocking V5(a). **`refs/MIL-F-8785C.pdf`
+has been in the main checkout since session 25, and §3 has said so since then.** `refs/` is
+gitignored, so a fresh container cannot see it; session 33 reported the shelf it could see
+and had no way to know. **The lesson is about the record, not the container**: a gap that is
+a gitignore artefact looks exactly like a gap that is real, and only §3 could tell them
+apart. V5(a) is unblocked and **was not acted on** — it is a session's work, not a footnote.
+
+**1. TPAWS Table 1 has 53 rows. The design document parsed 51, and every number it derived
+came from the 51.** The paper says 53 twice (printed pp. 5 and 7). The two it lost are
+`232-05`, whose altitude prints **"31 to 35"**, and `235-05*`, which prints **"22 to 19"** —
+a descent, high-to-low. A parser expecting a scalar dropped exactly those.
+
+**Why this is worth more than the correction it produces.** Re-derived on 53 rows the peak
+factor is 2.3831 ± 0.4942 against the transcribed 2.386 / 0.506 — **0.13%**, and it settles
+nothing. What matters is why nobody caught it: **both dropped rows are interior on every
+column**, so every printed range in the design is correct. A range check cannot catch a
+dropout that is interior on every axis. The test pins the two ranged rows themselves.
+
+**2. `the_model_peak_factor_lands_below_tpaws` is SETTLED — RIGHT on its claim, WRONG on its
+mechanism — and the seal's own precondition is what decided it.** The seal refused to assume
+whether TPAWS' Δn_max is the peak within its 5 s σ window or over the whole encounter, and
+said that if it could not be read off the document the prediction should be **abandoned
+rather than settled either way**. It can be read off, in three places that agree: printed
+p. 5 makes σ_Δn a sliding 5 s window subtracting that window's own mean; printed p. 125
+names the tabulated scalar "the peak σ_Δn"; printed p. 8's column header governs the
+extremes beside it.
+
+So TPAWS' denominator is a **running maximum** and V5's was a **whole-record σ**. A running
+maximum is the larger, so the definitions differ with a sign — and the size of it is the
+entire result:
+
+| σ taken as | Shinozuka, N = 48 | against 2.3831 |
+|---|---|---|
+| the whole record — **V5's** | **3.8674 ± 0.0450** | far above → **WRONG** |
+| max of a 5 s running σ — **TPAWS'** | **1.9421 ± 0.0246** | **17.9 se below → RIGHT** |
+
+**The whole-record column reproduces V5's 3.8674 and 4.0199 to four decimals**, so these are
+V5's flights reduced a second way and not a different experiment. The verdict survives the
+one DECLARED quantity too: chopped into 15/30/60 s encounters to match the document's own
+"several seconds to a minute", it reads 1.9909, 1.9391, 1.9236 — all below.
+
+**3. The mechanism the seal argued is not the mechanism, and that qualifies the previous
+session's headline.** The reasoning bet the Shinozuka construction's peak-poorness would
+beat the narrowband resonance. Under TPAWS' reduction the construction contributes
+**+0.0092 ± 0.0375, 0.25 se — sign reversed** from the −0.1525 (2.01 se) that
+`the_shinozuka_realisation_is_peak_poor` was settled on. **That result is a property of the
+whole-record reduction**, not a general fact about Shinozuka fields. Neither sealed entry is
+edited; §4's V5(b) now carries the qualification, per rule 1's "supersede in place".
+
+**4. `scripts/tpaws_peak_factor.py` was committed before it was run**, with its three
+reductions and its N written into the docstring. Session 33 recorded that raising N after
+seeing a marginal result is optional stopping; **choosing a reduction after seeing which one
+settles the prediction is the same fault in a different hat**, and pre-committing is the
+only thing that makes the difference checkable by someone else.
+
+**5. TPAWS does NOT close 5.19**, and §5.19 now says so in those words. Its Table 1 carries
+aircraft weight on all 53 rows — but they are a B-757 on other encounters, not N1809U on
+3 April 1981. It supplies a population in which the missing quantity is present, which is
+not the missing value. The design document's phrasing invites the stronger reading.
+
+**6. Holding TPAWS closes a second-hand citation.** §3 has carried Misaka et al. 2008 for
+the 5 s moving-average σ_n severity index, "attributed there to Hamilton & Proctor". That is
+this document, and its printed p. 125 gives the 0.2 g moderate / 0.3 g severe thresholds
+first-hand.
+
+**7. Session 33's one test failure does not reproduce, and refusing to "fix" it was right.**
+`test_vortex_viz.py::test_logging_the_run_did_not_move_the_headline_numbers` failed in that
+container at **4.4e-14 relative**. Session 33 checked it failed on the untouched base commit
+too, diagnosed it as that container's JAX/XLA and BLAS, and **declined to re-pin**, on the
+grounds that the value is a Windows capture and re-pinning it to a Linux one destroys what
+the pin is for. **It passes here** — 968 passed, 1 skipped, 1 xfailed, none failed. This is
+what rule 3 is for, and it is worth recording that the rule paid rather than only that it
+was followed.
+
+**WHAT WAS NOT DONE, so nobody goes looking.**
+
+- **S1 is not done** — NASA/TM-2003-212666 is held and **has not been read**. The handover's
+  ordering put S0 then S2, and S1's substantive output is a **decision** about §5.3's band,
+  which §8's precedent reserves for the record's owner. Nothing here depends on it.
+- **V5(a) is not done**, though it is now unblocked. See above.
+- **The three decisions session 33 left open are still open** — `stage_sampled`'s default,
+  §5.3's corrected band, and a larger V5(b) ensemble. This session took none of them, and
+  §4's new S2 entry gives the third one a sharper form: a larger ensemble should be reduced
+  **both** ways, because the two disagree about the sign.
+- **§10's four session-33 rows name `.venv/bin/python`**, the container's path, where the
+  rest of the table and `docs/DEVELOPMENT.md` rule 4 both say `.venv/Scripts/python.exe`.
+  Those four commands do not run on this machine. **Flagged, not fixed** — it is four lines
+  of someone else's row and rule 3 says surgical.
+- **The four session-33 commits carry a `Co-Authored-By: Claude` trailer**, against the
+  standing rule that none should. Session 34's do not. **Not rewritten**, because they are
+  already on `origin` and that is the owner's call.
 
 ### Session 33 — the gust path measured against mathematics, and what that caught
 
@@ -9827,6 +10062,8 @@ several sessions, which is the drift §4's rules exist to prevent.
 | `PYTHONPATH=<abs worktree root> .venv/bin/python scripts/gust_lag_bound.py` | **V4, the gust lag (session 33).** Sears' function at the frequencies this project actually forces, then the same term integrated across the Dryden band — `σ_nz` would fall by **6.78%**. Seconds; no flights. It is what `ASSUMPTIONS` C12 is built from. |
 | `PYTHONPATH=<abs worktree root> .venv/bin/python scripts/discrete_gust.py --checks` | **V3, Pratt & Walker (session 33).** A 1-cosine gust swept over gradient distance against NACA Report 1206's formula, with the Sears factor printed beside every row. **The design predicted the model would undershoot and it overshoots**, by 17.57% at the 12.5 chords K_g was fitted at; `--checks` shows that is neither the amplitude nor the step size. Minutes; ~15 flights. |
 | `PYTHONPATH=<abs worktree root> .venv/bin/python scripts/dryden_realisation_audit.py -n 48` | **V5, the realisation rather than the spectrum (session 33).** Limb A: the rotational gust the field produces, against its exact closed form — `p_gust` is identically zero and `q_gust` is fully determined by the translational component, so this field has one degree of freedom where the specification has three. Limb B: the peak factor of the Shinozuka construction against `wind.gaussian_vertical_field`, the same spectrum with amplitudes DRAWN. Settles `the_shinozuka_realisation_is_peak_poor`. **~45 min: 96 flights of 1200 s.** `--skip-a` runs limb B alone. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/tpaws_table1_ingest.py --pdf refs/NASA-TM-2012-217337-…pdf [--write]` | **S0, the TPAWS ingest (session 34).** Reads Table 1 out of the **text layer** — no digitisation, no reading uncertainty — locating the page by its caption rather than by index. Prints four checks, every one of them the document's own statement about its own table (row count, its σ_Δn ≥ 0.2 g criterion, sign discipline, the 0–40 dBz band), then the range of every column. `--write` regenerates `atisim/data/tpaws_tm2012_217337_table1.csv`. **Exits non-zero if any check fails.** Seconds. **`--pdf` is required** — `refs/` is gitignored and lives only in the main checkout. |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe -u scripts/tpaws_peak_factor.py [-n 48] [--tpaws-only]` | **S2, the peak factor on TPAWS' own window definition (session 34).** Settles `the_model_peak_factor_lands_below_tpaws`. Reduces the **same flights the V5 audit flies** three ways in one pass — whole-record σ, TPAWS' max-of-a-5 s-running-σ, and the same within 15/30/60 s encounter segments — and its whole-record column reproduces V5's 3.8674/4.0199 to four decimals, which is what licenses the second reduction. **The reductions and N are pre-specified in the docstring and the script was committed before it was run**, because picking a reduction after seeing which one settles a prediction is optional stopping wearing a different hat. `--tpaws-only` prints the document side alone and flies nothing. **~45 min: 96 flights of 1200 s.** |
 | `docs/summary/jsbsim-atisim-vortex-report.html` | **The written comparison** — the numbers above with the reasoning, the figure, and what the result does and does not establish. Not generated; edit it when the numbers move. |
 | `presentation_package/engine_validity_audit.html` | **The session-28 audit, as a page to present from.** The four reference classes on one log axis, the four mechanisms behind the apparent error growth, the strip-load verdict, and the unresolved-pathway inventory with a status on each. Every figure traces to §4 or to this session's re-runs. Not generated; edit it when §4 moves. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/les_flight.py --dataset <figshare root> [--domain D03] [--flights 24] [--aircraft boeing747]` | **AtiSim through Yoshimura et al.'s LES field** — the first wind field this project flies that was *not* identified from the accelerations it is then asked to predict. Reads one LES domain and flies N virtual flights through it beside Yoshimura's own. **Needs the Yoshimura figshare dataset** (21152203, CC BY 4.0, 17.9 GB, held outside the repository); `--dataset` or `ATISIM_LES_ROOT` names its root, the directory holding `les/` and `unpacked/`. §4, "The LES comparison". |

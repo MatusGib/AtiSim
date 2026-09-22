@@ -119,12 +119,6 @@ SEAL_COMMITS = {"0c72200", "2837ddd", "1091fc7", "db4eadf"}
 SOURCE_GATED = {
     # Settled only by a document PROJECT.md section 5 names as not held here.
     "dc10_does_not_close_the_hannibal_gap",
-    # Session 33. NASA/TM-2012-217337 Table 1 is a NASA work and redistributable,
-    # so this one is source-gated by AVAILABILITY rather than by copyright: the
-    # PDF is not in this repository, `Reference_papers/` is gitignored, and NTRS
-    # was unreachable from the container that sealed it. PROJECT.md section 0
-    # carries the acquisition.
-    "the_model_peak_factor_lands_below_tpaws",
 }
 RUN_GATED = {
     # Settled by a run in this repository. Admissible ONLY because the seal
@@ -151,6 +145,20 @@ RUN_GATED = {
     # named here, which is the rule this class exists to protect.
     "the_shinozuka_realisation_is_peak_poor": (
         "scripts/dryden_realisation_audit.py"
+    ),
+    # MOVED from SOURCE_GATED in session 34, on the session-27 precedent three
+    # entries above and for the same kind of reason: a fact about the shelf,
+    # not a convenience. This entry was sealed at db4eadf in a container whose
+    # egress proxy answered 403 to ntrs.nasa.gov, which is why it was filed as
+    # source-gated by AVAILABILITY rather than by copyright. NTRS is reachable
+    # from the machine this was settled on, and NASA/TM-2012-217337 now sits in
+    # `refs/` beside MIL-F-8785C -- so it is settleable by a run here exactly as
+    # the Dryden and MIL-F-8785C entries are. The seal precedes the script named
+    # below by every commit this branch has, so the rule the class exists to
+    # protect is untouched. The script is named in `outcome`, not `settled_by`,
+    # for the reason given above: `settled_by` is inside the digest.
+    "the_model_peak_factor_lands_below_tpaws": (
+        "scripts/tpaws_peak_factor.py"
     ),
 }
 
