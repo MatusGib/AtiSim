@@ -134,7 +134,8 @@ adds a third; session 34 pushes it, closes S0 and S2, and leaves S1 as the one o
 | **The comparison that can fail** | **BUILT AND RUN.** `scripts/gust_response_factor.py`: the gust response factor moves **21.9%** between a 737 and a 747 where S2's peak factor moves **3.0%**. Figure 133 digitised as **vectors** (residual 1.3e-3), and with TPAWS Table 1 + Stewart Table 1 the **measured B-757 attenuation is 0.700–0.830** — a first external number of its kind here. §4 has all three entries |
 | ~~**A sourced B-757 longitudinal set is the priority**~~ | **SEARCHED FOR, NOT FOUND, AND NOT NEEDED — corrected within the session that wrote it.** NTRS, the local library and JSBSim's 61 models have no 757 aero set, and it should be treated as unavailable rather than un-searched (§4). It is also **not the blocker**: ±30% on C_mα, C_mq or I_yy moves the attenuation **≤2.3%**, against the 32% the borrowed frames disagreed by |
 | **What the 757 comparison actually needs** | **An aircraft this model can validly fly at τ ≈ 1.2 s, and it has none.** Attenuation is a clean function of the plunge time constant across both sourced entries, so no 757 entry is required — but the measured B-757 sits at **τ = 1.18 s** where the lowest reachable inside a declared band is **1.72 s**. The measured point is 0.54 s outside the swept range and the curve is **not extrapolated** to it |
-| **What is STILL OPEN** | **The Stewart Mach comparison**, specified in §4 and §7, deliberately not run — and now the most valuable of the three, because §4 records the Prandtl–Glauert machinery as PRESENT AND INERT while Stewart measures a real transport's C_Nα rising **+53%** across the cruise Mach range. Then **V5(a)**, blocked on MIL-HDBK-1797 / MIL-STD-1797A |
+| **The Stewart Mach comparison** | **RUN.** §4 has it. Reading down Stewart's matched-q̄ columns isolates Mach at near-constant trim: the measured lift slope is **flat below M 0.60 and rises +22.9% above it**, where Prandtl–Glauert rises smoothly from M = 0 and over-predicts every column by 5–22%. **The model flies a low-Mach lift slope at cruise Mach**, and the implied load effect is **+16.6%** against §5's 32% shortfall — an implication with three stated reasons it is not a correction |
+| **What is STILL OPEN** | **V5(a)**, blocked on MIL-HDBK-1797 / MIL-STD-1797A. And session 33's `pg_mach_ref` decision, which now has evidence under it: the existing machinery is the **wrong form**, so switching it on is not the fix |
 | ~~**Also unblocked, and NOT acted on** — V5(a)'s specification comparison~~ | **WRONG, and corrected within the session that wrote it.** The claim was that holding `refs/MIL-F-8785C.pdf` unblocks V5(a). **It does not. MIL-F-8785C contains no rotational gust spectra at all** — §3.7 runs printed p. 45 → 47 → 48 and gives three TRANSLATIONAL components and nothing else, read off the page images because the OCR layer is unusable. V5(a) still needs **MIL-HDBK-1797 / MIL-STD-1797A**, which is a different document and is **not held**. §4 has what the reading did produce, which is better than what was being looked for |
 | **The correction that matters most** | **TPAWS Table 1 has 53 rows, not the 51 the design document parsed.** Two rows print a RANGED altitude and were silently dropped. **Neither moves any column's range**, so every printed range in the design is correct and a range check could never have caught it. §4 has the arithmetic and the general lesson |
 
@@ -1354,6 +1355,69 @@ it is recorded as a direction to test rather than a corroboration.
 deviation and Figure 134 shows those peaks are **not co-located** — up to 2 km apart, 85%
 within 900 m. A ratio of two separately located maxima estimates a transfer gain; it is not
 one.
+
+### The Stewart Mach comparison — the first external check on the compressibility axis — session 34
+
+`scripts/stewart_mach_comparison.py`. Every Prandtl–Glauert claim in this record had been
+checked against the model's own algebra. This checks it against a set someone else measured.
+
+**How the trim confound is beaten, which is the only reason this is a comparison.** Raising
+dynamic pressure at fixed altitude raises Mach *and* lowers trim α, so a column of Stewart's
+table mixes them. But trim lift is `C_L = W/(q̄S)` — **at fixed q̄ the trim C_L is fixed too**,
+and Stewart tabulated at roughly matched dynamic pressures across his altitudes. Reading
+**down** a matched-q̄ column varies Mach at near-constant trim. **The 40 kft row is excluded**:
+its q̄ grid runs 113–186 psf against the others' 86–415, and including it pushes three columns
+past 30% q̄ spread where excluded they sit at 4.7–10.7%.
+
+| col | q̄ spread | C_L trim | Mach | C_Nα | measured | Prandtl–Glauert | ratio |
+|---|---|---|---|---|---|---|---|
+| 0 | 10.7% | 1.046 | 0.242→0.464 | 5.005→5.209 | **+4.1%** | +9.5% | **0.950** |
+| 1 | **4.7%** | 0.696 | 0.302→0.542 | 5.676→5.713 | **+0.7%** | +13.4% | **0.888** |
+| 2 | 7.6% | 0.450 | 0.378→0.669 | 5.461→5.517 | **+1.0%** | +24.5% | **0.811** |
+| 3 | 10.7% | 0.316 | 0.454→0.792 | 5.403→6.964 | **+28.9%** | +45.9% | **0.883** |
+| 4 | 30.2% | 0.242 | 0.529→0.851 | 5.430→6.834 | **+25.9%** | +61.5% | **0.779** |
+
+**`ratio` is measured ÷ Prandtl–Glauert, so 1.000 would mean the model's form is right.
+Every column is below it: the form over-predicts throughout, by 5.0% to 22.1% on the
+resulting coefficient.**
+
+**THE DISAGREEMENT IS IN SHAPE, NOT SIZE, and that is the finding.** Pooling every 0–30 kft
+point by Mach band:
+
+| Mach band | n | mean C_Nα |
+|---|---|---|
+| 0.20–0.45 | 7 | 5.395 |
+| 0.45–0.60 | 7 | 5.489 |
+| 0.60–0.72 | 3 | 5.731 |
+| 0.72–0.90 | 3 | **6.745** |
+
+**The lift slope is flat to +1.8% below M 0.60 and then rises +22.9%.** Prandtl–Glauert has
+no such knee — it rises smoothly from M = 0 and keeps rising toward M = 1. So the measured
+curve is a transonic one and the model's available correction is not.
+
+**WHAT THIS SAYS ABOUT THE MODEL, in two parts that point opposite ways.**
+
+- **Below M 0.60 the inert factor is RIGHT.** A flat lift slope is what the data shows, and
+  declaring `pg_mach_ref` would introduce a rise that is not there.
+- **Above M 0.70 it is WRONG, and that is where both transports fly.** `boeing737` and
+  `boeing747` operate M 0.70–0.90, where this data puts the slope **+23.9%** above its
+  sub-M-0.60 value — and the model applies no correction at all, so **it flies a low-Mach
+  lift slope at cruise Mach.**
+
+**THE IMPLICATION, AND IT IS AN IMPLICATION.** `CLa`'s elasticity on the headline load is
+**+0.692** (§4, session 29), so a +23.9% lift-slope error implies roughly **+16.6% on the
+load** — against §5's recorded **32% Hannibal shortfall**, in the same direction, and about
+half of it. **Three reasons that is not a correction and none is small:** the elasticity was
+measured over ±1–5% and this extrapolates it fivefold, where §4 itself says the ranking holds
+at ±1–5%; the elasticity is for the 747's Hannibal *peak* load, not the quantity this Mach
+shape was read from; and `C_N` is total normal force on a B-757 where `CLa` is lift on
+aircraft that are not one. **The shape transfers; the level does not.**
+
+**What it does support, stated narrowly:** the Mach axis is worth declaring, it points the
+same way as the known shortfall, and **a flat Prandtl–Glauert is the wrong form to declare it
+with.** Session 33's open decision on `pg_mach_ref` now has evidence under it: switching the
+existing machinery on would trade a known error at cruise for a new one below M 0.60 and
+would over-correct above it by 5–22%.
 
 ### A sourced B-757 pitch set: searched for, not found — and not needed — session 34
 
@@ -7806,7 +7870,8 @@ real transport's C_Nα rising **+53%** across cruise Mach.
   missing is not a 757 but a validly-flyable entry near τ ≈ 1.2 s.
 - **The attenuation-versus-τ curve is NOT extrapolated** to the measured point, and any
   future session that does so has converted a refusal into a result.
-- **The Stewart Mach comparison is specified, not run.** Both its confounds are named in §4.
+- ~~The Stewart Mach comparison is specified, not run.~~ **RUN, §4** — and it found the model's
+  available correction is the wrong SHAPE, not merely absent.
 - **The 757 comparison is not settled and must not be quoted as one.** `gust_response_factor.py`
   prints a verdict line; at 32% frame sensitivity it is a placeholder, not a result.
 - **No σ_w was paired to a Table 1 row**, because Figure 133 is unlabelled and its population
@@ -10619,6 +10684,7 @@ several sessions, which is the drift §4's rules exist to prevent.
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/digitise_tpaws_fig133.py --pdf refs/NASA-TM-2012-217337-…pdf [--write]` | **TPAWS Figure 133, read as VECTORS (session 34).** Supplies σ_w per event, the one term the gust response factor needs that no table gives. Not a raster digitisation: the chart is born-digital, the markers are filled paths whose coordinates the PDF states, and both axes calibrate on the printed tick labels' own boxes — **residual 1.3e-3 data units**. Four checks, and the one that matters is the paper's own **anisotropy** claim (79% of 78 markers above the 1:1 line), because no range test can tell σ_u from σ_w and a swapped axis would otherwise pass. Writes `atisim/data/tpaws_fig133_sigma_uw.csv`. Seconds. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe -u scripts/gust_response_factor.py [-n 4]` | **The turbulence comparison that CAN fail (session 34).** Section A builds the **measured B-757** gust response attenuation, 0.700–0.830, out of TPAWS Table 1 + Figure 133 + Stewart Table 1, bracketed because the two populations differ (78 vs 49). Section B flies `boeing737` and `boeing747` and prints the attenuation **beside** S2's peak factor on the same flights — 21.9% apart against 3.0% — which is the evidence that the peak factor cannot discriminate. Section C builds a **real B-757** from sourced mass/S/c/C_Lα on two borrowed frames and reports the frame sensitivity; at **32.1%** the modelled side is NOT determined, and the printed verdict line must not be read as a result. **~12 min: 16 flights.** |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe -u scripts/pitch_set_requirement.py` | **Does the 757 comparison need a 757 pitch set? (session 34).** Section A perturbs `Cma`, `Cmq` and `Iyy` by ±30% on the fully sourced `boeing747`: the attenuation moves **at most 2.3%**, against the 32% two borrowed frames disagreed by — so the pitch set was the wrong acquisition and §4 says so. Section B sweeps the attenuation against the **plunge time constant**, each aircraft inside its own declared band; both land on one monotone curve and interleave, which is the frame-independent form of the test. It then **refuses to extrapolate**: the measured B-757 is at τ 1.18 s where the lowest reachable is 1.72 s, and printing that gap is the point. **~10 min: 24 flights.** |
+| `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/stewart_mach_comparison.py` | **The compressibility axis against outside data (session 34).** Reads Stewart's Table 1 DOWN its matched-dynamic-pressure columns, which is what isolates Mach from trim angle of attack — at fixed q̄ the trim C_L is fixed — and prints the measured C_Nα rise beside the Prandtl–Glauert factor `aero.py` would apply. The 40 kft row is **excluded and shown separately**, its q̄ grid being unmatched. Then pools every 0–30 kft point by Mach band, which is where the **knee at M 0.60** shows and where Prandtl–Glauert's shape fails. Section D prices it against `CLa`'s load elasticity and states three reasons that is an implication, not a correction. Seconds; **flies nothing**. |
 | `docs/summary/jsbsim-atisim-vortex-report.html` | **The written comparison** — the numbers above with the reasoning, the figure, and what the result does and does not establish. Not generated; edit it when the numbers move. |
 | `presentation_package/engine_validity_audit.html` | **The session-28 audit, as a page to present from.** The four reference classes on one log axis, the four mechanisms behind the apparent error growth, the strip-load verdict, and the unresolved-pathway inventory with a status on each. Every figure traces to §4 or to this session's re-runs. Not generated; edit it when §4 moves. |
 | `PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/les_flight.py --dataset <figshare root> [--domain D03] [--flights 24] [--aircraft boeing747]` | **AtiSim through Yoshimura et al.'s LES field** — the first wind field this project flies that was *not* identified from the accelerations it is then asked to predict. Reads one LES domain and flies N virtual flights through it beside Yoshimura's own. **Needs the Yoshimura figshare dataset** (21152203, CC BY 4.0, 17.9 GB, held outside the repository); `--dataset` or `ATISIM_LES_ROOT` names its root, the directory holding `les/` and `unpacked/`. §4, "The LES comparison". |
