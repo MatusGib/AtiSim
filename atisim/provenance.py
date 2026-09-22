@@ -522,4 +522,73 @@ LEDGER: dict[str, Entry] = {
         "a future low-altitude use would otherwise inherit the wrong length "
         "silently -- the same failure mode as the recovery band.",
     ),
+
+    # -- TPAWS Table 1, ingested whole (design phase S0) ---------------------
+    # `atisim/data/tpaws_tm2012_217337_table1.csv`, written by
+    # `scripts/tpaws_table1_ingest.py` from the PDF's TEXT LAYER: no
+    # digitisation, no reading uncertainty, no calibration step. Every column
+    # below is therefore SOURCED in the strict sense the docstring requires --
+    # read directly from a cited table -- which is not true of this project's
+    # other figure-derived data. The aircraft is NASA Langley's B-757 ARIES.
+    "tpaws.table1": Entry(
+        "SOURCED",
+        "53 significant turbulence events. NASA/TM-2012-217337, Hamilton, "
+        "Proctor & Ahmad, 'Flight Tests of the Turbulence Prediction and "
+        "Warning System (TPAWS)', February 2012, NTRS 20120003172, Table 1 "
+        "'Summary of Significant Turbulence Events', printed p. 8. The row "
+        "count is the document's own: printed p. 7, 'a summary of the key in "
+        "situ parameters from 53 significant turbulence events', and printed "
+        "p. 5, 'ARIES tallied 53 encounters with CIT'. Two rows print a RANGED "
+        "altitude -- 232-05 '31 to 35' and 235-05* '22 to 19' -- and are "
+        "carried as first/last exactly as printed, never collapsed to a "
+        "midpoint. A previous parse dropped those two and reported 51.",
+    ),
+    "tpaws.sigma_dn": Entry(
+        "SOURCED",
+        "0.20-0.49 g across the 53 rows. THE WINDOW IS NOT THE WHOLE RECORD, "
+        "and the distinction decides what the column may be compared against: "
+        "printed p. 5 defines sigma_dn as a function of time over a 'shifting "
+        "/ sliding window' of tau = 5 s, subtracting the mean over that same "
+        "window, and printed p. 125 names the tabulated scalar 'the peak "
+        "sigma_dn'. So each value is the MAXIMUM OVER THE ENCOUNTER OF A 5 s "
+        "RUNNING STANDARD DEVIATION. A running maximum is >= the whole-record "
+        "value, so a peak factor built on this denominator is SMALLER than one "
+        "built on a whole-record sigma.",
+        inputs=("tpaws.table1",),
+    ),
+    "tpaws.dn_extremes": Entry(
+        "SOURCED",
+        "Delta_n_max +0.37 to +1.30 g, Delta_n_min -0.34 to -1.40 g. The "
+        "ENCOUNTER's extremes, printed p. 7, 'the peak normal load "
+        "acceleration'; Table 1's column group header, 'Peak In Situ "
+        "Turbulence (g's)', governs these and sigma_dn alike. Figure 2, "
+        "printed p. 6, plots the pair over 606 encounters 'assuming a 5 second "
+        "window', from Bowles and Buck (2009).",
+        inputs=("tpaws.table1",),
+    ),
+    "tpaws.weight": Entry(
+        "SOURCED",
+        "167.7-192.0 klb, tabulated FOR EVERY ROW. This is the quantity whose "
+        "absence makes PROJECT.md 5.19 structurally impossible for Hannibal, "
+        "which is most of why this table was worth acquiring.",
+        inputs=("tpaws.table1",),
+    ),
+    "tpaws.tas": Entry(
+        "SOURCED", "185-238 m/s true airspeed.", inputs=("tpaws.table1",),
+    ),
+    "tpaws.vertical_wind": Entry(
+        "SOURCED",
+        "Peak vertical wind, +2.77 to +23.42 and -2.09 to -21.42 m/s. Printed "
+        "p. 128's Figure 133 computes the companion sigma_u/sigma_w peaks from "
+        "20 Hz in situ wind data 'assuming a 5 second window'.",
+        inputs=("tpaws.table1",),
+    ),
+    "tpaws.reflectivity": Entry(
+        "SOURCED",
+        "0-40 dBz peak radar reflectivity factor per event, the band printed "
+        "p. 7 states for this table. Five rows carry the printed asterisk, "
+        "'events where the radar was in long pulse mode, and which are not "
+        "included in radar scoring'.",
+        inputs=("tpaws.table1",),
+    ),
 }
