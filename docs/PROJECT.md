@@ -1006,6 +1006,72 @@ Linear in U_de (0.035649–0.035709 over a 16× range) and converged in dt at 0.
 (0.035660 at dt = 0.01 and 0.005), so neither the amplitude nor the step size is what is
 being read.
 
+#### V5 — auditing the REALISATION rather than the spectrum
+
+What had been checked about `wind.dryden_vertical_field` is that it has the variance and
+the spectrum it claims. Two things had not been. Script:
+`scripts/dryden_realisation_audit.py`.
+
+**(a) The rotational gust. The realised `Φ_p` is identically zero, and that is structural.**
+`max|p_gust| = 0.000e+00 rad/s` — not small, **zero**, and no intensity changes it. The
+field varies along track only, so every strip of the wing meets the same gust
+(`ASSUMPTIONS` E10). A specification `Φ_p` is non-zero at every frequency, so the realised
+one cannot be made to match it **at any scaling**.
+
+The pitching gust is worse than wrong — it is **not independent**. Measured against its
+exact closed form, `q_gust = −cos²θ Σ A_k Ω_k sin(Ω_k x + φ_k)`, to **4.24e−12 relative**,
+which is an exact comparison with no difference scheme in it. So `Φ_q = cos⁴θ · Ω² Φ_w`
+with cos⁴θ = 0.992288, and σ_q²/σ_w² = 5.696e−04 (rad/s per m/s)². **This field has one
+degree of freedom where the specification has three.**
+
+**The comparison the design asked for — against MIL-HDBK-1797's own analytic `Φ_p` and
+`Φ_q` — IS NOT MADE, and that is a source problem, not a result.** Neither MIL-F-8785C nor
+MIL-HDBK-1797 is in this repository (`refs/` is gitignored), and the specification's
+**rotational** forms are transcribed nowhere in the tree — `wind.py` carries only Φ_u, Φ_v
+and Φ_w, verbatim from p. 47. Writing the rotational ones from memory is what rule 2
+forbids. §0 carries it as an acquisition.
+
+**(b) The peak factor. The sealed prediction is RIGHT by 0.01 of a standard error, which
+is not a clean win and is not reported as one.**
+
+`wind.gaussian_vertical_field` is the control: same spectrum, same 400-component grid,
+same expected variance, amplitudes **drawn** instead of fixed. N = 48 per arm, 1200 s
+records, first 100 s discarded. **Window definition, which is a choice and is stated
+because TPAWS' is different:** σ and the extreme are both over the whole retained record.
+
+| | Shinozuka (fixed amplitudes) | Gaussian control | difference |
+|---|---|---|---|
+| **n_z up, max/σ** | **3.8674 ± 0.0450** | **4.0199 ± 0.0611** | **−0.1525 ± 0.0758, 2.01 se** |
+| n_z down, \|min\|/σ | 3.6905 ± 0.0346 | 3.8082 ± 0.0536 | −0.1177 ± 0.0639, 1.84 se |
+| **the FIELD's own, max\|w\|/σ** | 3.9238 ± 0.0372 | 3.9122 ± 0.0408 | **+0.0116 ± 0.0552, 0.21 se** |
+| σ_nz (g) | 0.15561 ± 0.00019 | 0.15483 ± 0.00110 | |
+
+**The third row is the one worth reading.** The two constructions' **gust** extremes are
+indistinguishable — 0.21 standard errors — so whatever bias exists is **not in the marginal
+distribution of the gust**, which is where the sealed reasoning put it. It appears only
+after the aircraft has filtered the gust. The direction is established on both load
+channels; the **size is not resolved at N = 48**, and the down channel at 1.84 se does not
+clear the seal's own 2 se threshold.
+
+**A larger ensemble would settle it properly and was deliberately NOT run**, because
+increasing N after seeing a marginal result and stopping when it clears is optional
+stopping. **FUTURE WORK**, with the protocol above as its specification.
+
+**What this does not license:** quoting 0.15 of a peak factor as a correction to anything.
+
+**The one structural difference is visible without any statistics**, and is why the control
+exists: four Shinozuka seeds realise field rms **3.9309–3.9390 m/s, a spread of 0.2%**,
+against the control's **3.909–4.038, a spread of 3.3%**. A Shinozuka realisation's
+amplitude spectrum has zero variance across the ensemble by construction.
+
+**S2 — the TPAWS half — could not be run at all.** NASA/TM-2012-217337 is not in this
+repository and `ntrs.nasa.gov` answered HTTP 403 to every request from this container.
+`predictions.the_model_peak_factor_lands_below_tpaws` is sealed against it and waits. For
+whoever settles it: **the Shinozuka arm's up peak factor is 3.8674 ± 0.0450 at N = 48**, on
+the window definition stated above — which is **not** TPAWS' 5 s σ window, and the
+prediction's own text says that hazard must be resolved from the document before the two
+numbers are put side by side.
+
 ### Two readings of CR-2144 pp. 220–222, compared — and the hand reading is the better one — session 32
 
 **Session 30 read CR-2144 printed pp. 220–222 by hand** (295 Engauge points,
@@ -6982,6 +7048,120 @@ source exactly. A smoother interpolant would agree with the source less.
   touch the core response.
 
 ## 9. Session log
+
+### Session 33 — the gust path measured against mathematics, and what that caught
+
+**The question this answers is one `docs/validation.md` does not ask.** That page names the
+project's largest remaining risk as the absence of a time-history comparison. True, and not
+the only hole: **every turbulence figure in §4 was a comparison against a document, and none
+was a comparison against an exact answer.** `test_verification.py` has checked the integrator
+against a closed-form solution since session 11 and measures RK4's order at 3.99982. Nothing
+did the equivalent for the response to a gust. Design, written before any number was measured
+and committed at `db4eadf`:
+`docs/design/specs/2026-09-21-turbulence-response-validation-design.md`.
+
+**1. V1 passes by 116×, and it had to find two defects before it could.** The flown response
+to twelve single-frequency gusts matches the aircraft's own linearised transfer function to
+**0.0043% in amplitude and 0.0017° in phase**. Phase is not decoration: an amplitude-only
+comparison passes with the sign of `Cmq` reversed.
+
+It did not pass on the first run, and **neither failure was in the gust path**:
+
+- **§6(i), new.** `wind.field_model` sets `model.stage_sampled = True` on its output, with a
+  comment saying the attribute is read at trace time. **Nothing reads it.** `integrate.step`
+  gates on its own argument, `vortex_viz.fly` had none to pass, and `test_verification.py`
+  asserts only that the mark *exists* — so nothing went red. Every run ever flown through
+  that harness took the first-order path, and `ASSUMPTIONS` E4's own closing remedy was
+  unreachable from the harness that flies every §4 turbulence result. **No published number
+  moves**: E4 already priced the hold at −0.82% on the headline Δθ and already says that
+  figure's last two digits are scheme-dependent. What is new is that the escape hatch was
+  welded shut. Fixed as an API with the default left at `False`, because flipping it moves
+  every deterministic-field result at once and that is the record owner's decision.
+- **§5.21, closed.** That row asked for the flown phugoid on the shipped 747 and said the only
+  measurement was on an unmerged branch and not quotable. It is now measured:
+  `validation.longitudinal_matrix` holds altitude fixed while `dynamics.derivatives` reads
+  `density(altitude)` afresh, so height is a real fifth state. Adding it moves the phugoid
+  **+12.61% in ω_n and −42.57% in ζ**, and the short period by **0.024%** — untouched, which
+  is what says the effect is the slow height–density exchange and not a change of plant. The
+  4-state matrix mispredicts the flown free response by **6–26% over 20 s**; the 5-state by
+  0.1–1.4%. The 4-state stays the correct comparator for CR-2144's own matrices, which are
+  constant-density too.
+
+**2. V2 separates three errors instead of summing them.** The one-sided/two-sided factor of
+two would be **+41.4%** and is absent. The 400-component log grid carries **1.634%** less
+variance than `sigma_w` names, so a realisation cannot deliver the intensity its argument
+asks for — and charging that to the model would be wrong. Against what a realisation exactly
+contains the identity holds to **0.081%, 0.24 standard errors** at N = 24; against the
+continuous integral, 0.231%, 1.29 se, and only that loose because the grid's shortfall enters
+input and output nearly proportionally and cancels.
+
+**3. V4 split an assumption that had been claiming twice its reach for twelve sessions.**
+`ASSUMPTIONS` C2 is titled *"no α̇ **or unsteady lag**"* and calls itself the
+best-characterised assumption in the project — and every number in it is about α̇, the lag on
+the aircraft's **own** motion. The lag on the **gust's** arrival is Sears' problem, not
+Theodorsen's; `Sears`, `Küssner`, `Wagner` and `Theodorsen` appeared nowhere in the tree. The
+gust half is now **C12**, bounded: **3.11%** of the lift lost at the short period, **3.90%**
+at the Parks core passage, and **6.78%** off σ_nz integrated across the Dryden band. **The
+sign is the reason it is worth raising** — it makes the simulated load smaller, so it widens
+§5's shortfall rather than explaining it. A newly-found term that happened to close the
+project's headline gap would deserve far more scepticism.
+
+**4. V3 says the design was WRONG about the sign, and that is recorded as a wrong
+prediction.** The design said the model must undershoot Pratt & Walker by about the Sears
+factor. It **overshoots**, by **17.57%** at the 12.5-chord gradient K_g was fitted at. The
+reasoning underneath survives and is what makes the miss interesting: the model's own
+alleviation factor is 0.9693 against K_g's 0.8244 — it does shed load, by pitching, but
+recovers only 3.1% of the 17.6% the empirical fit contains — and **0.8029 × 1.1757 = 0.9439**,
+so V4's lag accounts for most of the rest.
+
+**5. V5's sealed prediction is RIGHT by 0.01 of a standard error, and the third row of its
+table is the interesting one.** `wind.dryden_vertical_field` is a Shinozuka construction:
+fixed component amplitudes, random phases, exact target PSD, and **not a Gaussian process**.
+Against a control that differs only in that, the n_z up peak factor is lower by
+**0.1525 ± 0.0758, 2.01 se** — where the seal required 2. The down channel (1.84 se) does not
+clear it. **The FIELD's own peak factor differs by 0.21 se**: the two constructions' gust
+extremes are indistinguishable, so whatever bias exists is not in the marginal distribution
+of the gust, which is where the sealed reasoning put it. A larger ensemble was **deliberately
+not run** — increasing N after seeing a marginal result and stopping when it clears is
+optional stopping.
+
+**6. §5.3's altitude band was wrong and is corrected; its verdict is deliberately not
+revisited.** The row read *"this project's 33–41 kft"*, which matches neither aircraft —
+`boeing747` declares 35,000–45,000 and `_boeing_747_jsbsim` 35,000–41,000, and the README
+agrees with the code. **The correction matters to the argument**: HICAT's 45–70 kft no longer
+sits 4,000 ft away but **abuts** the 747's declared ceiling at a shared endpoint, which is a
+materially weaker band objection than the row has been carrying. Whether that changes an
+`IMPOSSIBLE` verdict is a decision, not a measurement — §8's own precedent — so this session
+corrected the number, stated the consequence, and changed no verdict.
+
+**7. WHAT WAS NOT DONE, AND IT IS HALF THE DESIGN.** **S0, S1 and S2 — the entire acquisition
+half — are blocked and could not be attempted.** Three documents are needed and none is
+reachable from this container: NASA/TM-2012-217337 (TPAWS) for S0 and S2,
+NASA/TM-2003-212666 (Stewart) for S1, and MIL-HDBK-1797's rotational spectra for V5(a)'s
+specification comparison. **All three are redistributable** — two NASA works and a military
+standard — so this is availability, not copyright: `Reference_papers/` and `refs/` are
+gitignored, and **`ntrs.nasa.gov` answered HTTP 403 to every request** from the egress proxy.
+A previous session had downloaded two of them into a scratchpad that did not survive. §0 has
+the row and what unblocks it. `the_model_peak_factor_lands_below_tpaws` is sealed against
+S0 and waits.
+
+**8. The suite, and one failure that is not this session's.** 909 passed, 3 skipped, 1
+xfailed, **1 failed**: `test_vortex_viz.py::test_logging_the_run_did_not_move_the_headline_numbers`,
+an exact-equality rollout pin reading 1.8397047596317158 against a pinned 1.8397047596317972
+— **4.4e-14 relative**. It fails identically on the untouched base commit in this container,
+checked by stashing every change and re-running, so it is this container's JAX/XLA and BLAS
+and not the diff. **The pin was NOT re-captured.** Re-pinning a value captured on one
+platform to another platform's is what the pin exists to prevent, and
+`.github/workflows/tests.yml` already holds OpenBLAS to one kernel family for exactly this
+reason.
+
+**9. Nothing is pushed.** `git push` returns HTTP 403 — Claude has no GitHub access to this
+repository for the organisation — on both branch names, and `add_repo` reports it already
+attached, so it is the GitHub App not being installed rather than a scope this session can
+widen. The commits are on **`turbulence-response-validation-g6t99y`**, with
+`turbulence-response-validation` set to the same commit. §0 carries it.
+
+**18 new tests in `test_gust.py`**, which `pytest --collect-only -q` counts on its own.
 
 ### Release 1.1 — the α̇ derivative declared, and two defects it uncovered
 

@@ -316,6 +316,33 @@ PREDICTIONS: tuple[Prediction, ...] = (
         ),
         sealed_at="db4eadf",
         digest="3bdc9e15c075460c",
+        status="SETTLED",
+        outcome=(
+            "RIGHT, and by 0.01 of a standard error -- which is as close to "
+            "not settling as the seal's own rule allows, and is reported that "
+            "way rather than as a clean win. N = 48 per arm, 1200 s records at "
+            "dt = 0.02, first 100 s discarded, run by "
+            "scripts/dryden_realisation_audit.py limb B. The n_z up peak "
+            "factor max(n_z - mean)/sigma_nz is 3.8674 +/- 0.0450 for the "
+            "Shinozuka field against 4.0199 +/- 0.0611 for the Gaussian "
+            "control: a difference of -0.1525 +/- 0.0758, 2.01 standard "
+            "errors, where the seal required 2. THE OTHER TWO CHANNELS DO NOT "
+            "CLEAR IT and both are reported here because leaving them out "
+            "would misrepresent what was measured. The DOWN peak factor "
+            "|min|/sigma differs by -0.1177 +/- 0.0639, 1.84 se -- same sign, "
+            "same size, NOT SETTLED at this N. And the FIELD's own peak factor "
+            "differs by +0.0116 +/- 0.0552, 0.21 se: the two constructions' "
+            "gust extremes are indistinguishable. So whatever bias exists is "
+            "not in the marginal distribution of the gust, which is where the "
+            "reasoning above put it -- it appears only after the aircraft has "
+            "filtered the gust. The right reading is that the DIRECTION is "
+            "established on both load channels and the SIZE is not resolved at "
+            "N = 48; a larger ensemble would settle it properly and is "
+            "recorded as future work rather than run after seeing this, which "
+            "would be optional stopping. What it does NOT license: quoting "
+            "0.15 of a peak factor as a correction to anything. PROJECT.md "
+            "section 4, phase V5."
+        ),
     ),
     Prediction(
         name="the_model_peak_factor_lands_below_tpaws",
