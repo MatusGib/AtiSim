@@ -587,6 +587,38 @@ LEDGER: dict[str, Entry] = {
         "20 Hz in situ wind data 'assuming a 5 second window'.",
         inputs=("tpaws.table1",),
     ),
+    # -- TPAWS Figure 133, read as VECTORS not pixels ------------------------
+    # `atisim/data/tpaws_fig133_sigma_uw.csv`, written by
+    # `scripts/digitise_tpaws_fig133.py`. Unlike every other digitised file in
+    # this project it carries NO pixel error budget: the chart is vector art,
+    # each marker is a filled path whose coordinates the PDF states exactly,
+    # and the axes are calibrated on the printed tick labels' own text boxes.
+    # The calibration residual is 1.3e-3 data units, which is the author's
+    # plotting precision rather than a reading error.
+    "tpaws.fig133": Entry(
+        "SOURCED",
+        "78 events. NASA/TM-2012-217337 Figure 133, printed p. 128: "
+        "'Corresponding peak values of sigma_u and sigma_w peaks for all 2002 "
+        "turbulence events. Computed from in situ 20 Hz wind data assuming a 5 "
+        "second window.' THE POPULATION IS NOT TABLE 1'S: this is all 2002 "
+        "events, where Table 1 carries the 49 SIGNIFICANT 2002 events "
+        "(sigma_dn >= 0.2 g), so Figure 133's set contains Table 1's and adds "
+        "~29 weaker ones. The scatter is unlabelled, so no marker can be paired "
+        "to a row and any ratio of the two must be bracketed.",
+    ),
+    "tpaws.sigma_w": Entry(
+        "SOURCED",
+        "2.14-8.62 m/s, mean 4.233. The PEAK of a 5 s running standard "
+        "deviation of vertical wind, matching sigma_dn's own reduction. 79% of "
+        "the points lie above the 1:1 line against sigma_u, which is the "
+        "paper's own anisotropy finding (printed pp. 127-128) and is the check "
+        "that the axes were not read swapped. NOT CO-LOCATED WITH THE LOAD "
+        "PEAK: Figure 134 puts the sigma_u and sigma_w peaks up to 2 km apart, "
+        "85% within 900 m, so a ratio of separately located maxima estimates a "
+        "transfer gain rather than being one.",
+        inputs=("tpaws.fig133",),
+    ),
+
     # -- Stewart's B-757 normal-force set (design phase S1) -----------------
     # `atisim/data/stewart_tm2003_212666_table1.csv`, written by
     # `scripts/stewart_table1_ingest.py` from the text layer. This is the
