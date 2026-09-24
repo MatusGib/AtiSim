@@ -1,12 +1,8 @@
 name: docs
 
 # Builds the documentation site on every push and pull request, with warnings
-# treated as errors, so a docstring or a record edit that breaks the site fails
-# here rather than on release day. Deploys to GitHub Pages from `main` -- but
-# only while the repository is PUBLIC: Pages cannot publish from a private
-# repository on a free plan, and the deploy switches itself on at release
-# without this file being edited. Enable Pages once, with its source set to
-# "GitHub Actions" (Settings > Pages).
+# treated as errors, and deploys it to GitHub Pages from `main` when the
+# repository is public (Settings > Pages > Source: GitHub Actions).
 
 on:
   push:

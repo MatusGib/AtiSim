@@ -10,18 +10,23 @@ B-747 sheets captioned "636600 lb / .25 c / Flexible", each carrying SL
     printed p. 222  (PDF index 227)  CL_M, CD_M, Cm_M                per Mach
 
 THE DATA is `data/cr2144_p220_222_digitised.csv`: read by hand in Engauge
-Digitizer, one .dig file per quantity, and regenerated from those files by
-`scripts/cr2144_speed_derivatives.py --dig-dir`, which applies each file's own
-three-point axis calibration. **The eight .dig originals are tracked beside it
-in `data/cr2144_dig/`**, each carrying the page crop it was traced on, so the
+Digitizer, one .dig file per quantity, each converted with that file's own
+three-point axis calibration. **The eight .dig originals are kept beside it in
+`data/cr2144_dig/`**, each carrying the page crop it was traced on, so the
 placement of every point can be re-read or corrected rather than only its
-result being trusted. That is where `--dig-dir` looks by default. ONLY THE HAND-PLACED POINTS ARE KEPT. The Engauge
-CSV exports that came with them are not used: they put every curve on one
-shared Mach grid and extrapolate each one past its drawn end, which is where a
-40,000 ft Cm_M of 105 and a sea-level CL_M of -47 come from. Two cleaning rules,
-both reported by the script: a point copied verbatim from the SL curve into
-another curve is dropped (nine in CL_M's 40,000 ft curve, at Mach numbers no
-40,000 ft condition flies), and an exact repeat within a curve is dropped.
+result being trusted. ONLY THE HAND-PLACED POINTS ARE KEPT. The Engauge CSV
+exports that came with them are not used: they put every curve on one shared
+Mach grid and extrapolate each one past its drawn end, which is where a
+40,000 ft Cm_M of 105 and a sea-level CL_M of -47 come from. Two cleaning rules
+were applied: a point copied verbatim from the SL curve into another curve is
+dropped (nine in CL_M's 40,000 ft curve, at Mach numbers no 40,000 ft condition
+flies), and an exact repeat within a curve is dropped.
+
+A SECOND, INDEPENDENT READING of the same pages -- an automated trace of
+CR-2144 pp. 218-228, one CSV per curve with its calibration and tick-fit
+residual in the header -- is kept in `data/cr2144_trace/`. `crosscheck` scores
+the two readings against each other; the hand reading is the one the model
+uses.
 
 THE CHECK. The circled numbers on every curve are CR-2144's flight conditions
 3-10, and Table IX-4 prints the dimensional derivatives at each. Appendix A
@@ -110,7 +115,7 @@ def value(quantity: str, altitude: str, mach: float, scheme: str = "linear",
     raise ValueError(f"unknown scheme {scheme!r}")
 
 
-AUTO_DIR = Path(__file__).parent.parent / "Reference_papers" / "CR-2144" / "csv"
+AUTO_DIR = Path(__file__).parent / "data" / "cr2144_trace"
 
 # The automated trace names files by printed symbol and altitude in feet; the
 # hand reading uses snake_case quantities and SL / 20K / 40K. cm_q is absent

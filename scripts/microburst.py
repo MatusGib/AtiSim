@@ -6,13 +6,13 @@ aircraft actually has. Unlike the lee wave, this field has a horizontal outflow,
 so both terms of the F-factor are exercised rather than one.
 
 The default aircraft is the CHEROKEE, not the 747, and that is a deliberate
-constraint rather than a preference -- see PROJECT.md section 5. The 747's only
+constraint rather than a preference. The 747's only
 derivative set is CR-2144 flight condition 9: Mach 0.8 at 40,000 ft. A microburst
 is a sub-500 m phenomenon met at approach speed, and there is no honest way to
 fly a cruise-only derivative set there.
 
-Run: .venv/Scripts/python.exe scripts/microburst.py
-     .venv/Scripts/python.exe scripts/microburst.py --png runs/microburst.png
+Run: python scripts/microburst.py
+     python scripts/microburst.py --png runs/microburst.png
 """
 
 import argparse

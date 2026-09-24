@@ -1,10 +1,9 @@
 name: tests
 
 # The full test suite, then the executed notebooks, on a clean Linux runner.
-# Runs on pull requests and on main rather than on every push: the suite takes
-# the better part of half an hour, and the notebooks re-run real flights.
-# JSBSim is not installed -- the suite reads the frozen reference XML and never
-# imports it (pyproject.toml, the `ref` extra).
+# Runs on pull requests and on main: the suite takes about half an hour and the
+# notebooks re-run real flights. JSBSim is not installed -- the suite reads the
+# frozen reference XML in atisim/tests/data/.
 
 on:
   pull_request:
@@ -25,12 +24,10 @@ jobs:
     timeout-minutes: 120
     env:
       # OpenBLAS picks its kernels by CPU at runtime, and GitHub's runners are a
-      # mix: some expose AVX-512 and some do not. On the AVX-512 hosts the two
-      # families round differently, and test_verification.py's bit-exact rollout
-      # pin moves. Measured on ten runners: with OpenBLAS held to its AVX2
-      # (Haswell) kernels, every host reproduces the pinned bits. This makes
-      # every runner the environment the pin was captured in; it loosens nothing.
-      # docs/PROJECT.md section 4, "What does not reproduce on another platform".
+      # mix: some expose AVX-512 and some do not. The two kernel families round
+      # differently, which moves test_verification.py's bit-exact rollout pin.
+      # Holding OpenBLAS to its AVX2 (Haswell) kernels makes every runner
+      # reproduce the pinned bits; it loosens nothing.
       OPENBLAS_CORETYPE: Haswell
     steps:
       - uses: actions/checkout@v4

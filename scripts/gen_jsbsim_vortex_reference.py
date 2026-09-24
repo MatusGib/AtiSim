@@ -1,21 +1,19 @@
 """Freeze JSBSim's response to the Wingrove & Bach vortex cases.
 
-Run with the interpreter that has JSBSim installed -- NOT the project venv:
+Needs JSBSim (`pip install -e .[ref]`):
 
-    C:/Users/mateusz/AppData/Local/Programs/Python/Python310/python.exe \
-        scripts/gen_jsbsim_vortex_reference.py
+    python scripts/gen_jsbsim_vortex_reference.py
 
 Writes atisim/tests/data/jsbsim_vortex_reference.xml. The suite and the report
 read that file and never import jsbsim, so reference drift shows up in git diff
-rather than as a mysterious change in test results. This is the third and last
-file in the project that imports jsbsim.
+rather than as a mysterious change in test results.
 
 WHAT IS INJECTED, AND WHAT CANNOT BE
 ------------------------------------
 JSBSim's wind is sampled at ONE point and enters only as a translational
 velocity. Its property catalog reports atmosphere/{p,q,r}-turb-rad_sec as
-READ-ONLY, and a write to q-turb-rad_sec reads back 0.0 after a step (measured,
-session 21). So the gust GRADIENT across the airframe -- which atisim carries
+READ-ONLY, and a write to q-turb-rad_sec reads back 0.0 after a step
+(measured). So the gust GRADIENT across the airframe -- which atisim carries
 via wind.gust_rates and wind.sampled_rates -- has no injection point here and is
 structurally absent from the JSBSim side.
 

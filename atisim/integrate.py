@@ -12,7 +12,7 @@ standard treatment for Dryden and von Karman turbulence"; no source saying so
 exists anywhere in this repository and none was found when one was looked for.
 That matters more than an ordinary uncited line would, because this is the sole
 stated justification for a choice that costs the scheme three orders of accuracy
-in a spatially varying field (ASSUMPTIONS.md E4). So here is the reasoning
+in a spatially varying field (assumption E4). So here is the reasoning
 instead, with no appeal to authority:
 
   A Dryden or von Karman field is a STOCHASTIC PROCESS whose realisation is

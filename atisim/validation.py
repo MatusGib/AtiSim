@@ -169,8 +169,8 @@ def lateral_modes(ac: Aircraft, alpha: float, elevator: float, throttle: float,
 class Reference(NamedTuple):
     """A published number and the document it came from.
 
-    `source` is not optional and not a comment. PROJECT.md's standing rule is
-    that a figure without its table has broken the project, and a NamedTuple
+    `source` is not optional and not a comment. A figure without its table
+    cannot be checked, and a NamedTuple
     field is the cheapest way to make an uncited number unconstructible.
     """
 

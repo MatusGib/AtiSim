@@ -1,52 +1,39 @@
 """How much does a result depend on the model's own numbers?
 
-WHY THIS MODULE EXISTS. Section 4 of PROJECT.md measures the model against
-SOURCES. Nothing in it measures the model against ITSELF, so no row there says
-whether the headline gust load is set by `CLa` or by `Cmq`, nor whether a
-modelling choice from `ASSUMPTIONS.md` costs more than a derivative does. This
-module supplies the derivative of a result with respect to a coefficient, which
-is the object all three of those questions are asking for.
-
-Design: docs/design/specs/2026-09-10-model-sensitivity-analysis-design.md.
-Nothing here is evidence on its own -- a number produced by this module belongs
-in section 4 with the run that produced it.
+The validation modules measure the model against its SOURCES. This one measures
+it against ITSELF: the derivative of a result -- a mode, a trim, a gust load --
+with respect to a coefficient, so that one can ask whether a load is set by
+`CLa` or by `Cmq`, or whether a modelling choice costs more than a derivative.
 
 WHAT IS REPORTED, AND WHY IT IS NOT THE GRADIENT. `Cmq` is per radian and `mass`
 is in kilograms, so their gradients are not comparable and a table sorted by
-|dQ/dp| would rank by units. The ELASTICITY (dQ/dp)(p/Q) is dimensionless: it is
-the per-cent change in the answer per per-cent change in the input, and it is
-the only form in which a derivative and a mass belong in the same ranking. Raw
-gradients are returned beside it, never ranked.
+|dQ/dp| would rank by units. The ELASTICITY (dQ/dp)(p/Q) is dimensionless: the
+per-cent change in the answer per per-cent change in the input. Raw gradients
+are returned beside it, never ranked.
 
-THE THREE OBSTACLES BETWEEN `jax.jacfwd` AND AN ANSWER. Each is a property of
-this codebase rather than of sensitivity analysis, and each has its own check in
-test_sensitivity.py:
+THREE THINGS STAND BETWEEN `jax.jacfwd` AND AN ANSWER, and each has its own
+check in test_sensitivity.py:
 
   1. TRIM IS A NEWTON SOLVE. Every quantity worth differentiating is defined at
-     the re-trimmed condition -- `validation.sweep` re-trims at every sample
-     because changing a derivative moves the trim point, and comparing across
-     two different trims confounds the coefficient with the condition.
-     Differentiating through the unrolled loop would work but is wasteful and is
-     silently wrong if the loop has not converged. `implicit_trim_jacobian` uses
-     the implicit function theorem on the residual instead, which needs no
-     iteration count and is exact at the solution.
+     the re-trimmed condition, because changing a derivative moves the trim
+     point. Differentiating through the unrolled loop is wasteful and silently
+     wrong if the loop has not converged; `implicit_trim_jacobian` uses the
+     implicit function theorem on the residual instead, which is exact at the
+     solution.
 
   2. THE MODE CHAIN BREAKS AT NUMPY. `validation.longitudinal_matrix` is itself
      a `jacfwd` of the real dynamics, so A(p) differentiates cleanly -- and then
      `validation.modes_from_matrix` calls `np.linalg.eigvals`, which JAX cannot
-     see through. `eigenvalue_sensitivity` closes the gap with the first-order
-     perturbation dlambda = diag(W dA V), W = inv(V), rather than by writing a
-     differentiable eig. It is exact to first order and it FAILS AT REPEATED OR
-     NEARLY REPEATED EIGENVALUES, so `eigenvalue_separation` is reported beside
-     every result and the caller is expected to look at it.
+     see through. `eigenvalue_sensitivity` uses the first-order perturbation
+     dlambda = diag(W dA V), W = inv(V). It is exact to first order and it FAILS
+     AT REPEATED OR NEARLY REPEATED EIGENVALUES, so `eigenvalue_separation` is
+     reported beside every result and the caller is expected to look at it.
 
-  3. THE `Aircraft` TUPLE IS NOT A SET OF INDEPENDENT PARAMETERS, and a naive
-     `jacfwd` over the whole of it is therefore WRONG. `inertia_inv` is the
-     inverse of `inertia`; `AR` is b^2/S. Perturbing either half of such a pair
-     alone produces an airframe that does not exist. `INDEPENDENT_FIELDS` is the
-     subset that may be varied one at a time, and `COUPLED_FIELDS` records what
-     was excluded and what it is tied to, so the exclusion is a declared
-     modelling statement rather than an oversight.
+  3. THE `Aircraft` TUPLE IS NOT A SET OF INDEPENDENT PARAMETERS, so a naive
+     `jacfwd` over the whole of it is WRONG. `inertia_inv` is the inverse of
+     `inertia`; `AR` is b^2/S. `INDEPENDENT_FIELDS` is the subset that may be
+     varied one at a time, and `COUPLED_FIELDS` records what was excluded and
+     what it is tied to.
 """
 
 from typing import NamedTuple

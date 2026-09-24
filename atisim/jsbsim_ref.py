@@ -9,7 +9,6 @@ rather than as a mysterious change in test results.
 Both the tests and the report read through this one parser, so a schema change
 breaks in a single place instead of two.
 
-Design: docs/design/specs/2026-08-20-jsbsim-737-verification-design.md
 """
 
 import xml.etree.ElementTree as ET
@@ -29,13 +28,12 @@ class Condition(NamedTuple):
 
     `matched_altitude` is the geometric altitude at which atisim's density
     equals the density JSBSim actually flew at. It is **recomputed at load
-    time** by `_match_density` rather than read from the reference file, and the
-    reason is session 23.
+    time** by `_match_density` rather than read from the reference file.
 
     *** IT USED TO BE FROZEN, AND FREEZING IT WAS THE BUG. *** It is not a
     JSBSim measurement -- it is a property of ATISIM's atmosphere, solved
     against a JSBSim measurement. Freezing it therefore froze a dependency on a
-    model this project owns and can change. When session 23 corrected the ISA to
+    model this project owns and can change. When the ISA was corrected to
     convert geometric to geopotential, the stored -43.22 ft stopped being a
     correction and became a 0.158% density ERROR, in the same place the original
     0.159% bias had been and in the same direction.

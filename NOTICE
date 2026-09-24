@@ -2,26 +2,13 @@ AtiSim — scope of the MIT licence
 =================================
 
 `LICENSE` covers the AtiSim source code, its documentation, and the data this
-project derived itself — including the digitisations under
-`Reference_papers/CR-2144/` and `atisim/data/`.
+project derived itself, including the digitisations under `atisim/data/`.
 
-It does NOT cover the third-party reference documents this project reads, nor
+It does NOT cover the third-party reference documents AtiSim is built from, nor
 the published figures and tables digitised from them. Those remain the property
-of their publishers.
-
-Reference documents
--------------------
-
-Third-party documents are NOT redistributed in this repository. Five are kept
-because each is a US Government work, or prints the Title 17 statement that no
-copyright is asserted in the United States, or states that it is not subject to
-US copyright protection. The basis for each is recorded beside it in
-`.gitignore`.
-
-`Reference_papers/SOURCES.md` is the index: every document the project uses,
-with its md5, its licence basis, and a permanent locator (DOI, NTRS or DTIC
-ID) for the ones not held here. Scripts that read a PDF take a `--pdf` path argument, so
-they work against a copy you obtain yourself.
+of their publishers. No third-party document is redistributed in this
+repository; `docs/references.md` lists each one with a permanent locator (DOI,
+NTRS or DTIC ID).
 
 Digitised data
 --------------
@@ -34,8 +21,8 @@ Data digitised from US Government works carries no separate restriction:
   - MIL-F-8785C
   - AFFDL-TR-70-101 (HICAT) — approved for public release
 
-Anything read from a publisher-held document is recorded in `docs/PROJECT.md`
-as a citation to the table it came from, rather than reproduced.
+Values taken from publisher-held documents appear only as cited numbers in the
+source code, each beside the table it came from.
 
 Reference engine
 ----------------
@@ -43,5 +30,5 @@ Reference engine
 `atisim/tests/data/jsbsim_*.xml` are frozen outputs generated from JSBSim
 (github.com/JSBSim-Team/jsbsim), which is licensed under the LGPL 2.1. They are
 generated data used as a comparison baseline, not JSBSim source. JSBSim itself
-is an optional extra (`pip install -e .[ref]`) and is imported by exactly one
-script; the test suite reads the frozen XML instead.
+is an optional extra (`pip install -e .[ref]`), imported only by the scripts
+that regenerate this data; the test suite reads the frozen XML instead.

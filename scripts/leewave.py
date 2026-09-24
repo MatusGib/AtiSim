@@ -1,14 +1,14 @@
 """Mountain lee wave against the 747's thrust authority.
 
-PROJECT.md section 7 step 8. Flies the 747 at its CR-2144 cruise condition
+Flies the 747 at its CR-2144 cruise condition
 through a Doyle et al. 2011 lee wave and asks the one question the F-factor was
 invented to answer: can the engines counter it?
 
 The answer is not the same for both of that paper's flight legs, which is the
 result. Run:
 
-    .venv/Scripts/python.exe scripts/leewave.py
-    .venv/Scripts/python.exe scripts/leewave.py --png runs/leewave.png
+    python scripts/leewave.py
+    python scripts/leewave.py --png runs/leewave.png
 """
 
 import argparse
@@ -130,7 +130,7 @@ print(f"\ncritical amplitude, F = {full:+.4f}: w0 = {critical:.2f} m/s")
 print(f"Doyle et al. 2011 IOP 4 primary wave: 6 m/s crest-to-trough north, 12 south")
 print("-> the hazard threshold sits INSIDE the observed range, not outside it.")
 print("The shear term is zero BY CONSTRUCTION: this field carries no horizontal")
-print("perturbation (PROJECT.md section 5). F here is the vertical term alone,")
+print("perturbation. F here is the vertical term alone,")
 print("and is therefore a LOWER BOUND on the real hazard.")
 print(f"\nF exceeds w0/V = {wind.LEE_WAVE_AMPLITUDE['south']/V:.5f} because the aircraft")
 print("SLOWS in the downdraft and F goes as 1/Va. Peak F drifts a few percent")
@@ -193,7 +193,7 @@ figure.text(
     f"F > (T_r-D)/W is that paper's own. The FAA 0.1 threshold is NOT used -- it "
     f"is calibrated for below 500 m.\n"
     "The field carries no horizontal perturbation, so the shear term is zero by "
-    "construction and F is the vertical term alone (PROJECT.md section 5).",
+    "construction and F is the vertical term alone.",
     fontsize=6.5, family="monospace", color="0.35",
 )
 

@@ -1,127 +1,103 @@
 # Changelog
 
-AtiSim was developed between August and September 2026 over 32 working sessions. This file
-lists what the release contains, grouped by capability. The session-by-session account — what
-was measured, what was wrong, and what was corrected — is kept in full in
-[`docs/PROJECT.md`](docs/PROJECT.md) §9, and every result named here is a §4 entry there with
-the tolerance it was measured to.
+This file gives the changes in each version of AtiSim. The format is
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The version numbers use
+[Semantic Versioning](https://semver.org/).
 
-The repository's history was rewritten before this release, to take publisher-held reference
-documents out of every commit. No code, result or record entry changed;
-[`docs/design/commit-map.txt`](docs/design/commit-map.txt) maps the commit ids quoted in the
-record to the ones that exist now.
+## [Unreleased]
+
+### Changed
+
+- The documentation has three manuals: the User Manual, Physics and Assumptions, and the
+  Development Manual. The structure is that of the JSBSim Reference Manual. The text uses
+  ASD-STE100 Simplified Technical English.
+- The automated trace of CR-2144 is now in the package, at `atisim/data/cr2144_trace/`. Thus
+  `cr2144_mach.crosscheck` reads only data in the package.
+
+### Fixed
+
+- The version of the package was 0.1.0. It is now 1.1.0.
+- An installation that is not editable now includes all the data that the package reads. This
+  data includes the JSBSim reference files.
 
 ## [1.1.0] — 2026-09-21
 
 ### Changed
 
-- **The Boeing 747 declares CR-2144 Table IX-4's angle-of-attack-rate pitching derivative**
-  (`Cmadot` = −6.336, converted from the tabulated `Mwd` and round-tripping to it exactly).
-  Short-period damping against Table IX-5 goes from −11.5% to **+0.6%**, and phugoid damping
-  from +2.83% to +1.38%. The table's `Zwd` is deliberately **not** taken: it converts to a
-  negative `CL_α̇`, and downwash lag makes that derivative positive.
-- **The Hannibal headline falls from 75.3% to 70.2% of the recorded peak-to-peak.** The α̇
-  moment damps the response the encounter excites, so the model moves closer to its own source
-  and further from the record — the same trade the speed derivatives made. `docs/PROJECT.md` §1
-  and §9 record it.
+- The Boeing 747 has the pitching derivative for the rate of change of angle of attack, from
+  CR-2144 Table IX-4 (`Cmadot` = −6.336). The error in short-period damping against Table IX-5
+  decreases from −11.5% to +0.6%. The error in phugoid damping decreases from +2.8% to +1.4%.
+- The table value of `Zwd` is not in the model. It gives a negative `CL_α̇`, but the downwash lag
+  makes this derivative positive.
+- The load in the Hannibal encounter decreases from 75.3% to 70.2% of the recorded
+  peak-to-peak value. The new term damps the response that the encounter causes.
 
 ### Fixed
 
-- **The autopilot lurched when engaged with a pitch rate.** `engage` had the wrong sign on its
-  pitch-rate seed, leaving a transient of `2·q_d·q` — zero from trim, which is why every test
-  missed it, and the full surface rate limit when handing over mid-manoeuvre. `PROJECT.md`
-  §6(i).
-- **A uniform wind could change the attitude.** `wind.gust_alphadot` returned only the field's
-  spatial gradient and dropped the transport term of `d(wind_body)/dt`, so a wind constant in
-  NED produced no α̇ while the aircraft rotated under it. Harmless while every aircraft flown in
-  wind had `Cmadot` zero; a Galilean-invariance violation the moment one did not. `PROJECT.md`
-  §6(j).
-- A stale docstring in `test_jsbsim_737_layers.py` still described the 737's phugoid frequency
-  gap as 6.58%; session 24 closed it to +0.45%.
+- The autopilot does not jump when you engage it during a pitch rate. The pitch-rate term in
+  `autopilot.engage` had the incorrect sign.
+- A uniform wind does not change the attitude. The rate of change of angle of attack now
+  includes the transport term of the wind in body axes.
 
 ## [1.0.0] — 2026-09-20
 
-### Flight dynamics core
+The first public version.
 
-- Six-degree-of-freedom rigid-body dynamics: quaternion attitude, fixed-step fourth-order
-  Runge–Kutta, `lax.scan` rollouts, `jit` and `vmap` over ensembles, float64 throughout.
-- Air-relative aerodynamics: wind enters **only** through the relative velocity and the gust
-  rates, so any wind field drops into the same integrator.
-- Newton trim for steady level flight in angle of attack, elevator and throttle; linearisation
-  about the trimmed state for modal analysis.
-- Gravity varying with altitude, and the International Standard Atmosphere read on
-  geopotential altitude.
-- Prandtl–Glauert compressibility across the longitudinal lift-slope family, with Mach-scheduled
-  control derivatives.
-- A cascaded PID autopilot, and a manual flying interface with a cockpit display.
+### Flight dynamics
+
+- A rigid-body model with six degrees of freedom, quaternion attitude and fixed-step RK4
+  integration. JAX compiles the rollouts, and they operate on ensembles with `vmap`. All
+  calculations use 64-bit numbers.
+- Air-relative aerodynamics. The wind changes only the relative velocity and the gust rates.
+- A Newton trim for steady level flight, and the linear modes about the trim.
+- Gravity that changes with altitude, and the International Standard Atmosphere.
+- A cascaded PID autopilot, and manual flight with a cockpit display.
 
 ### Aircraft
 
-- **Boeing 747**, cruise and power approach, from NASA CR-2144 — including the report's speed
-  derivatives and a declared thrust line, which close the phugoid against Table IX-5.
-- **Boeing 737**, cruise and approach, linearised from JSBSim's own 737 model. **Not a qualified
-  source and not valid away from cruise**: it exists so AtiSim's solver can be checked against an
-  independent engine fed the same coefficients, and no claim about a real 737 rests on it.
-- **Boeing 787**, rebuilt from Yoshimura et al.'s own simulation code, for the LES comparison.
-- Piper Cherokee and Cessna 172, for manual flying; outside the validated scope.
-- Every coefficient carries a provenance category — sourced, derived, calibrated or declared —
-  checked by the test suite (`atisim/provenance.py`).
+- The Boeing 747, at cruise and in power approach, from NASA CR-2144. The model includes the
+  speed derivatives and the thrust line.
+- The Boeing 737, at cruise and in approach, from the JSBSim 737. Use it only for comparison
+  with JSBSim.
+- The Boeing 787 model from the code of Yoshimura et al., and the Piper Cherokee and the Cessna
+  172 for manual flight.
+- A category for each coefficient: sourced, derived, calibrated or declared
+  (`atisim.provenance`). The test suite checks these categories.
 
 ### Wind and turbulence
 
-- Rankine vortex arrays: Parks et al. (1985) and Mehta's (1987) five-core field identified from
-  the Hannibal, Missouri DC-10 encounter, as point fields and as line vortices in three
-  dimensions, with the along-track wind and the replay of the field on its identified path.
-- Updraft, Oseguera–Bowles microburst, and a Doyle et al. mountain lee wave.
-- Dryden continuous turbulence, vertical, lateral and longitudinal, for Monte Carlo ensembles.
-- Strip-integrated rolling loads across the span (see *Known issues*).
+- Rankine vortex arrays: the Hannibal fields of Parks et al. (1985) and Mehta (1987), as points
+  and as lines in space.
+- An updraft, a microburst from Oseguera and Bowles (1988), and a mountain lee wave from Doyle
+  et al. (2011).
+- Dryden turbulence in three components.
+- Rolling loads that the model integrates across the span.
 
-### Validation and verification
+### Verification and validation
 
-- Solver verification against exact mathematics: integration order, conservation, and a
-  closed-form torque-free rotation.
-- Modes against CR-2144 Tables IX-4 and IX-5, and against Caughey's published worked example.
-- Cross-code comparison against JSBSim for the 737 and the 747, including the vortex
-  encounters.
-- The Hannibal encounter flown against the recorded load, with an uncertainty band; TM-102186
-  Fig. 8's three-aircraft load ordering reproduced; response spectra and load-exceedance
-  distributions over ensembles.
-- A comparison against a published large-eddy simulation of clear-air turbulence, with the
-  matched aircraft.
-- Digitisations of TM-102186 Figs. 6 and 7, Parks et al. Fig. 6, MIL-F-8785C Fig. 7 and CR-2144
-  pp. 220–222, each checked against the document's own printed values — the last one also
-  against an independent trace of the same pages.
-- A sensitivity study that differentiates the model in its own coefficients.
-- Sealed predictions, committed before the run that decides them (`atisim/predictions.py`).
-- Two executed notebooks: `notebooks/validation-ladder.ipynb` re-runs the evidence behind the
-  validation claim, from hand-derived checks to the recorded encounter and the published
-  orderings; `notebooks/solver-validation.ipynb` verifies the solver.
+- Checks of the solver against exact mathematics.
+- Linear modes against CR-2144 Tables IX-4 and IX-5, and against the example of Caughey.
+- Comparisons with JSBSim for the 737, the 747 and vortex encounters.
+- The Hannibal encounter against the recorded load, and the order of loads in TM-102186
+  Figure 8.
+- Response spectra and exceedance statistics of Dryden ensembles.
+- Two notebooks that do the validation again.
 
-### Analysis and tooling
+### Tools
 
-- Run artifacts (Parquet series with provenance and check results) and a Dash analysis app
-  with a shared time cursor across every panel.
-- 44 scripts, each documented in [`docs/PROJECT.md`](docs/PROJECT.md) §10, and a Sphinx
-  documentation site built from the same record.
-- Continuous integration on a clean Linux runner: the full test suite and both notebooks on
-  every pull request, and the documentation site built with warnings treated as errors.
+- Run files with provenance and check results, and a Dash analysis application.
+- Command-line scripts for encounters, manual flight and reference data.
+- A documentation site, and continuous integration for the tests, the notebooks and the
+  documentation.
 
-### Known issues
+### Known problems
 
-- **The strip load path counts the gust's rolling moment twice** when enabled
-  (`vortex_viz.fly(strip=True)`). Lateral results only; no longitudinal result depends on it.
-  `docs/PROJECT.md` §6(h).
-- **The Earth is flat and non-rotating** (`ASSUMPTIONS.md` A1). The rotating WGS-84 model is
-  complete on the `wgs84-earth` branch and not yet merged.
-- **No stall.** The lift model is linear in angle of attack; results past about 10° are outside
-  the model.
-- **No absolute load prediction.** The model is validated for comparison and mechanism, not for
-  a load value. The documentation's *Validation* page states the claim and its envelope.
+- The strip load path counts the rolling moment of the gust two times, when you set
+  `vortex_viz.fly(strip=True)`. This affects only lateral results.
+- The Earth is flat and does not turn.
+- The lift model has no stall. Results above about 10° angle of attack are not valid.
+- AtiSim does not predict absolute loads.
 
-### Parked for a later release
-
-- The rotating WGS-84 Earth (`wgs84-earth` branch), with its rebase cost mapped.
-- Table IX-4's α̇ pitching derivative on the 747, reviewed and ready.
-- The repair of the strip path's roll accounting.
-- The full list, with the route for each, is the status table at the head of
-  `docs/PROJECT.md` §5.
+[Unreleased]: https://github.com/MatusGib/AtiSim/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/MatusGib/AtiSim/releases/tag/v1.1.0
+[1.0.0]: https://github.com/MatusGib/AtiSim/releases/tag/v1.0.0

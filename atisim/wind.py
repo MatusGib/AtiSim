@@ -120,8 +120,8 @@ class VortexArray(NamedTuple):
       Case 1, Hannibal MO, 37,000 ft: r0 = 600 ft, V0 = 85 ft/s, spacing 3500 ft
       Case 2, Morton WY,   39,000 ft: r0 = 450 ft, V0 = 70 ft/s, spacing 3200 ft
 
-    See PARKS_CASES for the source, and ASSUMPTIONS.md E12 for the 500 ft
-    reading this project flew from session 22 to 25 and no longer does.
+    See PARKS_CASES for the source, and assumption E12 for why the papers'
+    500 ft and 600 ft core radii are never mixed.
     """
 
     north: Array  # (N,) m, NED north of each core
@@ -362,7 +362,7 @@ def on_identified_path(field, altitude: float = MEHTA_HANNIBAL_ALTITUDE):
     Mehta's cores are placed relative to the path the DC-10's winds were
     computed along -- "nearly straight and level at 37,000 ft", p. 29 -- and
     Parks et al. 1985 Fig. 6 measures the "nearly": the inertially estimated
-    altitude was 36,985-36,996 ft at cores 3 and 4 (PROJECT.md section 4). A
+    altitude was 36,985-36,996 ft at cores 3 and 4. A
     simulated aircraft flown with fixed controls climbs ~500-600 ft in the
     updraft before them and passes ABOVE both, where the horizontal wind has
     the opposite sign. Flown at its own altitude it therefore meets a wind the
@@ -811,15 +811,15 @@ def mehta_unmodelled_wind(n: int = MEHTA_COST_SATURATES_AT) -> float:
       - Independence is assumed in subtracting the squares. Mehta fits bias and
         trend terms explicitly, so the correlated part of the reconstruction
         error is partly absorbed into those and is not in the residual.
-      - Lester's table is a DIFFERENT encounter, one with no ATC radar fixes
-        (PROJECT.md section 3), so its errors are if anything an overestimate
-        for Hannibal, which had them.
+      - Lester's table is a DIFFERENT encounter, one with no ATC radar fixes,
+        so its errors are if anything an overestimate for Hannibal, which had
+        them.
 
     So the true value lies between this and `mehta_residual_ceiling`.
 
     UNLIKE THE CEILING, THIS IS NOT UNIT-ROBUST. Splitting J evenly between the
     two components assumes both are in the same unit, and Mehta never labels J
-    -- see the block above MEHTA_COST_STARTUP, and PROJECT.md section 8. If his
+    -- see the block above MEHTA_COST_STARTUP. If his
     horizontal residual is in knots the even split is wrong and only the ceiling
     survives.
     """
@@ -843,7 +843,7 @@ class LeeWave(NamedTuple):
     amplitude ratio is the ratio of vertical to horizontal wavenumber. Building
     it needs a stratification N and an ambient cross-mountain wind speed, and no
     source held by this project supplies either at 12 km. The omission is
-    recorded in PROJECT.md section 5 rather than papered over with a guess.
+    stated rather than papered over with a guess.
     """
 
     w0: Array  # m/s, zero-to-peak vertical velocity
@@ -923,7 +923,7 @@ def along_track_shear(
     dF = 0.1423 at a standard-rate turn one core radius above a Parks core,
     where the Rankine tangential velocity is fully horizontal -- the whole of
     the FAA's 1 km alerting threshold, and measured rather than estimated. See
-    `docs/ASSUMPTIONS.md` E7.
+    assumption E7.
     """
     track = vel_ned[:2]
     speed = jnp.maximum(jnp.linalg.norm(track), 1e-9)
@@ -1154,7 +1154,7 @@ def dryden_vertical_field(
 
     `wavelength_min` bounds the smallest structure represented. 20 m is a third
     of a 747 span, which is already below the scale at which this project's
-    point-sampled gust means anything (`docs/ASSUMPTIONS.md` E2) -- going finer
+    point-sampled gust means anything (assumption E2) -- going finer
     would add variance the aircraft model cannot legitimately respond to.
 
     `wavelength_max` bounds the largest. 40 km is 75 scale lengths, far enough
@@ -1454,7 +1454,7 @@ def gust_alphadot(pos_ned: Array, quat: Array, vel_body: Array, field) -> Array:
     forms it from the wind it was handed and the state it is evaluating at. That
     split is not cosmetic: the wind is HELD across an RK4 step, and holding a
     term that varies with attitude and rate would cost the scheme three orders
-    (measured: 3.99 -> 1.03 on a gradient-free field). PROJECT.md section 6(j).
+    (measured: 3.99 -> 1.03 on a gradient-free field).
     """
     dcm = quat_to_dcm(quat)  # body -> NED
     vel_ned = dcm @ vel_body
@@ -1579,7 +1579,7 @@ def strip_clp_from_rate(ac: Aircraft, stations, p_hat: Array) -> Array:
     tabulated Clp, this returns `Clp * p_hat` -- IN THE CONTINUUM LIMIT, which is
     where the identity a0 = -8*Clp holds. At the shipped `airframe.N_SPAN = 9` it
     returns 82.6% of that, converging at order 1.50; see
-    `airframe.calibrated_lift_slope` and docs/ASSUMPTIONS.md F5. Stengel
+    `airframe.calibrated_lift_slope` and assumption F5. Stengel
     eq. 3.4-39 gives the spanwise incidence a roll rate induces, dalpha = p*y/V,
     which in terms of p_hat = pb/2V is dalpha = 2*p_hat*y/b.
     """

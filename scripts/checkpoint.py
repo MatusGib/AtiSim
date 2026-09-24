@@ -1,6 +1,6 @@
-"""Step 1-5 checkpoint: trim, hold, and validation against the source document.
+"""Trim the 747, hold it in level flight, and check its modes against CR-2144.
 
-Run: .venv/Scripts/python.exe scripts/checkpoint.py
+Run: python scripts/checkpoint.py
 """
 
 import jax

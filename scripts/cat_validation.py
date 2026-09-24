@@ -1,4 +1,4 @@
-"""Session 23's CAT evidence: fly the new source cases and draw them against the papers.
+"""Clear-air-turbulence validation: fly the published cases and draw them against the papers.
 
 Four questions, four figures, one printed table of every number behind them:
 
@@ -13,7 +13,7 @@ Four questions, four figures, one printed table of every number behind them:
   4  Misaka et al. 2008's RMS normal load is a severity index defined at cruise
      altitude, which the F-factor thresholds are not. Grade every run on it.
 
-Run: .venv/Scripts/python.exe scripts/cat_validation.py --outdir runs/cat
+Run: python scripts/cat_validation.py --outdir runs/cat
 """
 
 import argparse
