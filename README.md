@@ -1,163 +1,127 @@
 # AtiSim
 
-**A six-degree-of-freedom fixed-wing flight dynamics core in JAX, built to study how aircraft
-respond to clear-air turbulence — and validated by rebuilding real encounters from NASA flight
-records and flying the model through them.**
+[![tests](https://github.com/MatusGib/AtiSim/actions/workflows/tests.yml/badge.svg)](https://github.com/MatusGib/AtiSim/actions/workflows/tests.yml)
+[![docs](https://github.com/MatusGib/AtiSim/actions/workflows/docs.yml/badge.svg)](https://matusgib.github.io/AtiSim/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-![The AtiSim cockpit panel](docs/summary/panel.png)
+**AtiSim is a six-degree-of-freedom fixed-wing flight dynamics model written in JAX, built to
+study how aircraft respond to clear-air turbulence.** It has been validated by rebuilding real
+turbulence encounters from NASA flight records and flying the model through them.
 
-Quaternion state, fixed-step RK4, `lax.scan` rollouts, `jit` and `vmap` over ensembles, float64
-throughout. Wind enters only through the air-relative velocity, so any wind field — a vortex
-array identified from a flight recorder, a Dryden ensemble, a microburst, a mountain lee wave —
-drops into the same integrator.
+![The AtiSim cockpit panel](docs/images/panel.png)
 
-## What it does
+## Features
 
-The headline test is the **Hannibal, Missouri encounter of 3 April 1981**: a DC-10 at 37,000 ft
-flew through a row of clear-air-turbulence vortices, and NASA identified the wind field from its
-flight recorder (Parks et al. 1985; Mehta 1987). AtiSim rebuilds that field, flies a Boeing 747
-through it, and compares the response with the recorded load.
+- **6-DOF rigid-body dynamics.** Quaternion attitude, fixed-step RK4, `lax.scan` rollouts,
+  `jit` and `vmap` over ensembles, and float64 throughout.
+- **Air-relative aerodynamics.** Wind enters only through the air-relative velocity and the
+  gust rates, so you can fly any wind field without changing the integrator.
+- **Wind and turbulence models.** Rankine vortex arrays, including the Hannibal field
+  identified from a DC-10's flight recorder, as well as line vortices, updrafts,
+  Oseguera–Bowles microbursts, mountain lee waves and Dryden turbulence.
+- **Aircraft.** A Boeing 747 (cruise and approach, from NASA CR-2144), a Boeing 737
+  linearised from JSBSim for cross-code checks, and two light aircraft. Every coefficient
+  cites its source table.
+- **Trim, linear modes and sensitivities.** A Newton trim solve, modal analysis about any trim
+  point, and derivatives of results with respect to the model's own coefficients.
+- **Tools.** A cockpit display you can fly by hand, a cascaded PID autopilot, run artifacts, and
+  a Dash app for exploring a run.
 
-The simulated load reaches **70.2% of the recorded peak-to-peak** — and the documentation
-explains the shortfall rather than tuning it away. The model also reproduces the ordering and
-mechanism of NASA TM-102186's three-aircraft comparison, and the linear modes of its source data.
-The documentation's *Validation* page states the claim, the envelope it holds in, and the status
-of every known gap.
+## Installation
 
-## What it cannot do — read this first
-
-**AtiSim is a comparative and mechanistic tool, not a load calculator.** It will tell you which
-encounter is worse and why, and get the ordering right. It will not tell you "the load will be
-2.3 g": the recorded encounter was flown by a DC-10 at an unrecorded weight, and no DC-10
-derivative set is published.
-
-It is validated only inside this envelope:
-
-- 747-class transports, Mach 0.70–0.90, 35,000–45,000 ft
-- longitudinal response — lateral fields exist, lateral validation does not
-- angle of attack below about 10° — **the lift model has no stall**
-- gusts larger than about three wingspans
-- a flat, non-rotating Earth — a rotating WGS-84 model is complete on the `wgs84-earth` branch
-
-## Install
-
-Python 3.10 or later.
+AtiSim needs Python 3.10 or later.
 
 ```bash
 git clone https://github.com/MatusGib/AtiSim.git
 cd AtiSim
 python -m venv .venv
-.venv/Scripts/python.exe -m pip install -e .
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+python -m pip install -e .
 ```
 
-On Linux and macOS use `.venv/bin/python`. The runtime needs four packages — `jax`, `numpy`,
-`scipy`, `matplotlib`. Extras: `.[dev]` for the tests and notebooks, `.[ui]` for the analysis
-app, `.[docs]` for the documentation site, `.[ref]` for regenerating the JSBSim comparison data.
+The runtime depends only on `jax`, `numpy`, `scipy` and `matplotlib`. Optional extras:
+
+| Extra | Installs |
+|---|---|
+| `.[dev]` | pytest and Jupyter, for the test suite and notebooks |
+| `.[ui]` | Dash, Plotly and PyArrow, for run artifacts and the analysis app |
+| `.[docs]` | Sphinx, to build the documentation |
+| `.[ref]` | JSBSim, only to regenerate the cross-code reference data |
 
 ## Quick start
 
-**Walk the validation ladder** — one notebook that re-runs the evidence behind the validation
-claim, from answers you can work out by hand up to the recorded encounter and the published
-orderings, asserting each as it goes. It needs the `dev` extra and takes a few minutes:
+To fly a Boeing 747 through the vortex array NASA identified at Hannibal, Missouri, and read
+the load it pulls:
 
-```bash
-.venv/Scripts/python.exe -m pip install -e .[dev]
-.venv/Scripts/python.exe -m jupyter lab notebooks/validation-ladder.ipynb
+```python
+import atisim  # enables float64; import before creating any array
+from atisim import vortex_viz
+
+enc, info = vortex_viz.fly_mehta("boeing747", dt=0.01, replayed=True)
+n_z = enc.n_z[enc.window]
+print(f"peak-to-peak load: {n_z.max() - n_z.min():.2f} g")   # 1.90 g
 ```
 
-**The sanity checks** on their own — eleven cases from degenerate inputs upward, each expected
-value derived by hand and printed beside the model's answer:
+You can also run the same encounter from the command line and draw the analysis figure:
 
 ```bash
-.venv/Scripts/python.exe scripts/sanity.py
+python scripts/vortex.py --case hannibal --png runs/hannibal.png
 ```
 
-**Fly the Hannibal encounter** and draw the analysis figure:
+Or fly it by hand. The arrow keys work the stick, and `a` hands control to the autopilot:
 
 ```bash
-.venv/Scripts/python.exe scripts/vortex.py --case hannibal --png runs/v.png
+python scripts/fly.py --wind hannibal
 ```
 
-**Fly it by hand**, with a cockpit display — arrow keys are the stick, `a` hands over to the
-autopilot:
+The [user guide](https://matusgib.github.io/AtiSim/user-guide.html) covers trim, rollouts,
+wind fields and linear modes, and the [scripts page](https://matusgib.github.io/AtiSim/scripts.html)
+lists every command-line tool.
+
+## What it is validated for
+
+AtiSim is a **comparative and mechanistic** tool for the **longitudinal** gust response of a
+transport aircraft at cruise. It can tell you which of two encounters is worse, how the response
+scales and why. It is **not** a load calculator.
+
+- Flown through the recorded Hannibal encounter, the 747 reaches **70.2%** of the recorded
+  peak-to-peak load. That encounter was flown by a DC-10, for which no derivative set is
+  published, so the model is not expected to match the recorded load exactly.
+- It reproduces the three-aircraft load ordering and mechanism in NASA TM-102186, and the linear
+  modes of its source data to within 2%.
+- The validated envelope is 747-class aircraft at Mach 0.70–0.90 and 35,000–45,000 ft, with
+  |α| < 10° (**the lift model has no stall**) and gusts larger than about three wingspans.
+
+For the full statement, the evidence behind it and the known limitations, see
+[Validation](https://matusgib.github.io/AtiSim/validation.html).
+
+## Testing
 
 ```bash
-.venv/Scripts/python.exe scripts/fly.py --wind hannibal
+python -m pip install -e ".[dev,ui]"
+python -m pytest -q                        # the test suite
+python -m pytest --nbval-lax notebooks/    # the executed validation notebooks
 ```
 
-**Explore a run** in the analysis app, where clicking any time series moves every panel —
-including the 3-D wind field with the trajectory through it — to that instant:
-
-```bash
-.venv/Scripts/python.exe scripts/vortex.py --artifacts runs/analysis
-.venv/Scripts/python.exe -m atisim.apps.sweep runs/analysis
-```
-
-Every one of the 44 scripts is described in the documentation's *Running it* page.
-
-## Tests
-
-```bash
-.venv/Scripts/python.exe -m pip install -e .[dev,ui]
-.venv/Scripts/python.exe -m pytest -q
-```
-
-Over 900 tests, asserting bands and orderings rather than exact values. The count and runtime of
-the last full run are recorded in [`docs/PROJECT.md`](docs/PROJECT.md) §10. **The `ui` extra is
-there for a reason:** the artifact and figure tests skip themselves at import when `pyarrow` and
-`plotly` are absent, so `.[dev]` alone gives a green run with 50 of them missing rather than
-failing. The notebooks are a
-second gate, executed cell by cell:
-
-```bash
-.venv/Scripts/python.exe -m pytest --nbval-lax notebooks/
-```
-
-CI runs both on every pull request. If you work in more than one checkout, first confirm which
-one Python imports:
-
-```bash
-.venv/Scripts/python.exe -c "import atisim; print(atisim.__file__)"
-```
+The tests check bands and orderings rather than exact values. Without the `ui` extra, the
+artifact and figure tests skip themselves.
 
 ## Documentation
 
-**[matusgib.github.io/AtiSim](https://matusgib.github.io/AtiSim/)** — getting started, what the
-model may be used for, every script, and the API reference generated from the source. Its
-narrative pages include sections of [`docs/PROJECT.md`](docs/PROJECT.md) verbatim, so the site
-cannot state a result the record does not.
-
-To build it yourself:
+The full documentation, including the API reference, is at
+**[matusgib.github.io/AtiSim](https://matusgib.github.io/AtiSim/)**. To build it locally:
 
 ```bash
-.venv/Scripts/python.exe -m pip install -e .[docs]
-.venv/Scripts/python.exe -m sphinx -b html docs docs/_build/html
+python -m pip install -e ".[docs]"
+python -m sphinx -b html docs docs/_build/html
 ```
 
-- [`docs/PROJECT.md`](docs/PROJECT.md) — the standing record: what exists, what is measured and
-  to what tolerance, what is known to be wrong, and what is left
-- [`docs/ASSUMPTIONS.md`](docs/ASSUMPTIONS.md) — every modelling assumption, each with a measured
-  bound
-- [`CHANGELOG.md`](CHANGELOG.md) — what this release contains, by capability
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — how to extend it without breaking the record
+## Contributing
 
-## Why there is so much documentation
-
-Every number in AtiSim carries the table it came from, and `atisim/provenance.py` records whether
-each constant was sourced, derived, calibrated or declared — a test fails if a derived value
-points at something that does not exist. Every result is a row in `docs/PROJECT.md` beside the
-tolerance it was measured to. Superseded results are struck through rather than deleted, so an
-inconvenient finding cannot quietly disappear, and claims about untested cases are sealed in
-`atisim/predictions.py` *before* the run that decides them. It is more paperwork than a flight
-simulator usually carries; it is what lets the validation claim be checked rather than taken on
-trust.
-
-## Sources
-
-The reference documents are listed, with checksums and permanent locators, in
-[`Reference_papers/SOURCES.md`](Reference_papers/SOURCES.md). US Government documents are
-included; publisher-held papers are cited, not redistributed.
+Bug reports and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md)
+before you start. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE), with [`NOTICE`](NOTICE) for what it does and does not cover.
+AtiSim is released under the MIT license; see [LICENSE](LICENSE). [NOTICE](NOTICE) explains what
+the license covers and what it does not, including the third-party reference data.

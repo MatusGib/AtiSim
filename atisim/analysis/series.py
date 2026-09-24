@@ -83,9 +83,9 @@ def envelope(x: np.ndarray, y: np.ndarray, target: int) -> tuple[np.ndarray, np.
 
     **Never stride-decimate a channel whose peak is the result.** Measured on the
     canonical vortex run: taking every 16th sample reports a peak load factor of
-    -1.164 g against the true -1.235 g, a 5.7% error on the number PROJECT.md
-    section 4 headlines. Min/max envelope decimation loses 0.0000% at every level
-    tested -- 2000, 1000, 500, 250 and 100 points -- because the peak is by
+    -1.164 g against the true -1.235 g, a 5.7% error on the headline number.
+    Min/max envelope decimation loses 0.0000% at every level tested -- 2000,
+    1000, 500, 250 and 100 points -- because the peak is by
     definition an extreme and this keeps every bucket's extremes.
 
     And the stride error cannot be bounded by using more points: it is 4.07% at

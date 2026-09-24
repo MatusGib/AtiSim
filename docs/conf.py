@@ -2,20 +2,14 @@
 
 Build from the repository root:
 
-    .venv/Scripts/python.exe -m pip install -e .[docs]
-    .venv/Scripts/python.exe -m sphinx -b html docs docs/_build/html
-
-The narrative pages include sections of docs/PROJECT.md verbatim through MyST's
-`{include}` directive rather than restating them, so a number on the site is
-the number in the record and cannot drift from it. The record itself --
-PROJECT.md, ASSUMPTIONS.md, DEVELOPMENT.md -- renders as ordinary pages.
+    python -m pip install -e .[docs]
+    python -m sphinx -b html docs docs/_build/html
 """
 import os
 import sys
 
-# Import `atisim` from THIS tree, not from wherever an editable install points.
-# docs/DEVELOPMENT.md rule 4: a worktree shares the main checkout's venv, and a
-# build that silently documents another tree's code looks exactly like a real one.
+# Import `atisim` from THIS tree, not from wherever an editable install points,
+# so the API reference always documents the code beside it.
 sys.path.insert(0, os.path.abspath(".."))
 
 project = "AtiSim"
@@ -33,14 +27,10 @@ extensions = [
 source_suffix = {".md": "markdown", ".rst": "restructuredtext"}
 root_doc = "index"
 
-# The record uses strikethrough to supersede claims in place, and it is the
-# project's rule never to delete a superseded row -- so the site must render it.
-myst_enable_extensions = ["strikethrough", "dollarmath", "colon_fence", "deflist"]
+myst_enable_extensions = ["dollarmath", "colon_fence", "deflist"]
 myst_heading_anchors = 3
 
-# The design history and the generated PDFs are kept in the repository but are
-# not part of the site; the harvested session report is gone.
-exclude_patterns = ["_build", "design/**", "summary/**", "Thumbs.db", ".DS_Store"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
 autosummary_generate = True
 autodoc_member_order = "bysource"
@@ -49,9 +39,6 @@ autodoc_default_options = {"members": True, "show-inheritance": True}
 # reference engine. Mocked so the API reference builds from the runtime install.
 autodoc_mock_imports = ["dash", "plotly", "pyarrow", "jsbsim"]
 
-# The record's heading levels are chosen for reading, not for Sphinx's nesting
-# rules, and its in-text references to other sections are prose, not links.
-suppress_warnings = ["myst.header", "myst.xref_missing", "myst.strikethrough"]
 
 html_theme = "furo"
 html_title = "AtiSim"

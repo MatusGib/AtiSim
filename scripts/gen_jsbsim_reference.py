@@ -1,27 +1,20 @@
 """Generate the frozen JSBSim reference data for the 737 cross-code comparison.
 
-Run with an interpreter that has JSBSim installed (NOT the project venv, which
-deliberately does not). On this machine that interpreter is, measured session 21:
+Needs JSBSim (`pip install -e .[ref]`). The frozen data was generated with
+jsbsim 1.3.1, numpy 2.2.6, scipy 1.15.3 and jax 0.6.2. Nothing here imports
+matplotlib, so it runs in a minimal environment:
 
-    C:/Users/mateusz/AppData/Local/Programs/Python/Python310/python.exe \
-        scripts/gen_jsbsim_reference.py
-
-It carries jsbsim 1.3.1, numpy 2.2.6, scipy 1.15.3 and jax 0.6.2 -- everything
-this file imports. It does NOT carry matplotlib, so nothing here may import it.
+    python scripts/gen_jsbsim_reference.py
 
 Writes atisim/tests/data/jsbsim_737_reference.xml. The test suite reads that
 file and never imports jsbsim, so the suite runs anywhere and reference drift
 shows up in git diff.
 
-This is no longer the only file that imports jsbsim: scripts/gen_jsbsim_747.py
-recovers the 747 entry and scripts/gen_jsbsim_vortex_reference.py freezes the
-vortex encounters. There are exactly three, all of them under scripts/, and all
-of them freeze their output so nothing under atisim/ ever imports jsbsim.
+scripts/gen_jsbsim_747.py (the 747 entry) and scripts/gen_jsbsim_vortex_reference.py
+(the vortex encounters) build on this file. All three freeze their output, so
+nothing under atisim/ ever imports jsbsim.
 
-Design: docs/design/specs/2026-08-20-jsbsim-737-verification-design.md
-
-Two rules govern everything here, and both come from measurements made before
-the design was written:
+Two rules govern everything here:
 
 1. READ BACK, NEVER ASSUME. JSBSim's FCS injects deflections that were never
    commanded -- the yaw damper moves the rudder 0.0035 rad at M 0.78 with zero

@@ -170,8 +170,8 @@ def fly_in_moving_air(
 
     Mehta's five-core array does not have that property. Measured: at a 12 r0
     lead the superposed far field is 5.28 m/s and the run begins 0.198 g out of
-    trim -- worse than the 0.20 g that PROJECT.md section 9 session 3 records as
-    having understated first-core d(theta) by 15%. Pushing the lead out does
+    trim -- worse than the 0.20 g that is known to
+    understate first-core d(theta) by 15%. Pushing the lead out does
     almost nothing, because 1/r is not a decay: 40 r0 gives 2.60 m/s, 150 r0
     gives 0.90, and reaching 0.25 m/s needs 600 r0 -- 95 km, over 400 s of
     flight, which lets the phugoid develop and replaces one contaminant with a
@@ -405,15 +405,15 @@ def manoeuvre(
     the updraft's edge sharpness -- the paper constrains the load the pilot
     reached, not how long they took to reach it. It is also the analysis window,
     which is the rule the other two encounters already follow: the window is the
-    disturbance's own extent (PROJECT.md section 8). Everything outside the pulse
+    disturbance's own extent. Everything outside the pulse
     is flown so the recovery is on the record, and so the figure's whole-run
     marker means the same thing it means for the other two.
 
     `lead_in` is why `n_z[0]` is the TRIMMED load factor, which is what
     `fig8_point` measures the excursion from. Stepping the elevator at t=0 leaves
     the first sample already loaded and overstates the excursion by about 0.08 g
-    -- the same shape of error as a too-short vortex lead-in (section 9,
-    session 3), and the reason that one is 40 core radii.
+    -- the same shape of error as a too-short vortex lead-in, and the reason
+    that one is 40 core radii.
     """
     sim, elev_trim, throttle = _pushdown_setup(ac, airspeed, altitude)
     n = int(round(seconds / dt))
@@ -573,13 +573,13 @@ def fly_mehta(aircraft: str, dt: float, lead_r0: float = 12.0, replayed: bool = 
 
     `replayed` evaluates the field on the path it was identified along
     (`wind.on_identified_path`), whatever the aircraft's own climb. It is the
-    HEADLINE form since session 30, and used for the 747 headline only: flown at
+    HEADLINE form, and used for the 747 headline only: flown at
     its own altitude the fixed-control 747 climbed over cores 3 and 4 and met the
     opposite horizontal wind to the DC-10, which Parks 1985 Fig. 6 shows held its
     altitude through them. It is NOT used for the fleet ordering. The replay is
     justified by the DC-10's record, and pinning a slow aircraft's field to a
     fixed altitude holds it inside a core it would fly out of -- the Cherokee
-    reaches |alpha| 102 deg that way. PROJECT.md section 4 has both forms.
+    reaches |alpha| 102 deg that way.
     """
     ac = REGISTRY[aircraft]
     V = CRUISE[aircraft]["airspeed"]

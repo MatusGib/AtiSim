@@ -524,7 +524,7 @@ FIG8_LOAD_BAND = (-2.01, -1.69)
 #: takes the load before it has time to change attitude. An updraft column is
 #: 3.03 short periods -- quasi-steady, so it pitches and follows the air. A
 #: manoeuvre is the elevator moving, so pitch follows the stick. Hence
-#: increasing pitch excursion, left to right. PROJECT.md section 4.
+#: increasing pitch excursion, left to right.
 CATEGORY_ORDER = ("vortex", "updraft", "manoeuvr")
 
 
@@ -623,8 +623,8 @@ def discriminator(points: list[dict]) -> go.Figure:
     2.24 to 8.33 deg between the two windows while the manoeuvre moves 30.37 to
     30.74, and that asymmetry is why the window rule had to exist.
 
-    THE X-AXIS SCALES TO THE DATA, NOT TO THE PAPER. PROJECT.md section 5 forbids
-    reading this as agreement -- Wingrove & Bach never identifies an aircraft type
+    THE X-AXIS SCALES TO THE DATA, NOT TO THE PAPER. Do not read this as
+    agreement -- Wingrove & Bach never identifies an aircraft type
     -- and a chart cropped to the reference range would hide the model's
     manoeuvring point sitting 2.5x to the right of the paper's.
 

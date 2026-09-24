@@ -1,45 +1,49 @@
 [project]
 name = "atisim"
-version = "0.1.0"
-description = "JAX 6-DOF fixed-wing flight dynamics"
+version = "1.1.0"
+description = "Six-degree-of-freedom fixed-wing flight dynamics in JAX, for studying aircraft response to clear-air turbulence"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Mateusz Wozniak" }]
 requires-python = ">=3.10"
 dependencies = ["jax", "numpy", "scipy", "matplotlib"]
+keywords = ["flight dynamics", "6-DOF", "JAX", "turbulence", "aircraft", "simulation"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/MatusGib/AtiSim"
+Documentation = "https://matusgib.github.io/AtiSim/"
+Changelog = "https://github.com/MatusGib/AtiSim/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
+# Test suite and notebooks.
 dev = ["pytest", "pymupdf", "jupyter", "nbval"]
-# The analysis UI. A SEPARATE extra rather than a runtime dependency: the
-# simulator and every script in scripts/ must keep working without it, and
-# `pyarrow` alone is a ~90 MB wheel against a four-package runtime list.
-# atisim/checks.py and atisim/analysis/artifact.py need pyarrow;
-# atisim/analysis/figures.py needs plotly; only atisim/apps needs dash.
+# Run artifacts and the Dash analysis app. Kept out of the runtime dependencies:
+# the simulator and every script work without it, and pyarrow alone is large.
 ui = ["dash", "plotly", "pyarrow"]
-# The cross-code reference engine, for REGENERATING the JSBSim comparison only.
-# Same reasoning as `ui`: scripts/gen_jsbsim_reference.py is the ONLY file that
-# imports jsbsim, the tests read the frozen XML instead, and the suite must stay
-# runnable without a compiled extension. See
-# docs/design/specs/2026-08-20-jsbsim-737-verification-design.md.
+# JSBSim, needed only to REGENERATE the frozen cross-code reference data in
+# atisim/tests/data/. The test suite reads the frozen XML and never imports it.
 ref = ["jsbsim"]
-# The documentation site, built by Sphinx from docs/. MyST lets the existing
-# Markdown records -- PROJECT.md, ASSUMPTIONS.md, DEVELOPMENT.md -- render as
-# pages unchanged, so the site cannot drift from them. A separate extra for
-# the same reason as `ui`: nothing at runtime needs it.
+# The documentation site.
 docs = ["sphinx>=7", "myst-parser>=2", "furo"]
 
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["atisim*"]
 
-# `cr2144_mach.py` reads its digitised points from a CSV beside it, so the data
-# has to travel with the package rather than only existing in the checkout.
 [tool.setuptools.package-data]
-atisim = ["data/*.csv"]
+atisim = ["data/*.csv", "data/cr2144_dig/*.dig", "data/cr2144_trace/*.csv", "tests/data/*.xml"]
 
 [tool.pytest.ini_options]
-# notebooks/ is deliberately NOT here. It needs --nbval-lax, and putting that in
-# addopts would make every pytest run fail with "unrecognized arguments" wherever
-# nbval is not installed -- including any install without the dev extra. The
-# notebook is a separate gate command; see PROJECT.md section 10.
+# The notebooks are a separate gate (`pytest --nbval-lax notebooks/`): putting
+# --nbval-lax here would break every run where nbval is not installed.
 testpaths = ["atisim/tests"]

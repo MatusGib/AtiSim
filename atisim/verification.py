@@ -7,8 +7,7 @@ describe a real aeroplane, and the one that has to be settled first. A failure
 here is a defect in the core.
 
 The split is the standard verification/validation one (Roache; AIAA G-077).
-PROJECT.md section 4 mixes them; the design spec says why separating them is most
-of the value. Tiers 1 and 2 -- analytic laws and published worked examples -- are
+Tiers 1 and 2 -- analytic laws and published worked examples -- are
 atisim/validation.py.
 """
 
@@ -87,7 +86,7 @@ def fixed_control_refinement(ac, airspeed, altitude, dts, dt_ref, t_end=4.0,
     per step and holds it across the four stages, which is an O(h) perturbation
     of the right-hand side within the step, so the observed order falls to 1.
     Measured 1.01-1.03 across four independent smooth fields against 3.989 in
-    still air; see `test_verification.py` and PROJECT.md section 4. A field with
+    still air; see `test_verification.py`. A field with
     a KINK -- the Rankine core edge -- has no order at all, because the error
     depends on where the step grid lands relative to the crossing.
     """
@@ -150,8 +149,8 @@ class WindClock(NamedTuple):
     `FilterState` in test_integrate.py, which stands in for a Dryden shaping
     filter the same way. A time-varying uniform field needs a clock and nothing
     else, so it brings one here rather than `wind.WindState` growing a field for
-    a model that does not exist yet. PROJECT.md section 7 records the
-    consequence: Dryden's time dependence costs no signature change.
+    a model that does not exist yet. The consequence: Dryden's time
+    dependence costs no signature change.
     """
 
     t: Array
@@ -223,7 +222,7 @@ class FreeFallResult(NamedTuple):
 def free_fall_through_a_swinging_wind(ac, dt=0.02, n=300):
     """Fly a de-aerodynamicised body through a violently time-varying uniform wind.
 
-    The second of the two gust-modelling errors PROJECT.md section 2 names. An
+    The second of the two classic gust-modelling errors. An
     air mass that accelerates does not push on the aeroplane: it only changes the
     flow the wings see, so the wind may enter through `vel_rel` and nowhere else,
     and an explicit -m*dW/dt term double-counts.

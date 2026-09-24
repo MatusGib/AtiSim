@@ -1,8 +1,7 @@
-"""Fig. 8's three categories with error bars -- PROJECT.md section 7, step 6.
+"""Fig. 8's three categories with error bars, over a Dryden ensemble.
 
-Step 6 has waited on step 4 (Dryden) since session 3, and step 4 landed in
-session 23b. Its stated verify criterion is that the vortex < updraft <
-manoeuvre ORDERING holds across the ensemble, and that is what this asks.
+The question: does the vortex < updraft < manoeuvre ORDERING of TM-102186
+Fig. 8 hold across an ensemble, not only for the one realisation flown?
 
 WHY AN ENSEMBLE IS THE POINT. The three deterministic Fig. 8 points have no
 spread by construction: every member of a batch meets the same field, so a
@@ -11,8 +10,8 @@ discriminator's categories are separable or merely happen to be separated by
 the one realisation that was flown. Superposing a random layer gives each
 category a CLOUD, and the question becomes whether the clouds overlap.
 
-THE INTENSITY IS SOURCED, NOT PICKED. sigma_w spans the range session 23c
-derived from Mehta's own fit residual -- `wind.mehta_unmodelled_wind` to
+THE INTENSITY IS SOURCED, NOT PICKED. sigma_w spans the range derived
+from Mehta's own fit residual -- `wind.mehta_unmodelled_wind` to
 `wind.mehta_residual_ceiling`. It is the wind his five vortices demonstrably do
 not represent, which is exactly what a background layer should be.
 
@@ -26,7 +25,7 @@ noiseless makes the three-way ordering EASIER to hold. The test that does not
 get that help is the vortex-versus-updraft overlap, which is reported separately
 and is the discriminator's real job.
 
-Run: PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cat_ensemble.py --outdir runs/cat
+Run: python scripts/cat_ensemble.py --outdir runs/cat
 """
 
 import argparse

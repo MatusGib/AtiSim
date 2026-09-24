@@ -1,10 +1,8 @@
 """Where every constant in this model came from.
 
-Review's requirement, stated directly: it must be possible to say which numbers
-are bulletproof -- read from a cited table -- and which were predicted, with no
-credit given to a predicted number for landing in a plausible range.
-
-Four categories, mutually exclusive:
+It must be possible to say which numbers are read from a cited table and which
+were chosen, with no credit given to a chosen number for landing in a plausible
+range. Four categories, mutually exclusive:
 
   SOURCED     read directly from a cited table. `detail` carries document,
               table and page. Nothing else counts as sourced.
@@ -12,37 +10,22 @@ Four categories, mutually exclusive:
               relation is citable; the number is not independently checkable.
   CALIBRATED  fitted so the model reproduces a SOURCED number to a stated
               tolerance. The fit target is an input.
-  DECLARED    chosen. Not derivable from any source this project holds.
-              `detail` must carry the sensitivity range.
+  DECLARED    chosen. Not derivable from any source held. `detail` must carry
+              the sensitivity range.
 
-`inputs` names other ledger entries. It is what makes a DERIVED number's chain
-walkable back to something SOURCED, and test_provenance.py asserts the chain
+`inputs` names other ledger entries, which makes a DERIVED number's chain
+walkable back to something SOURCED; `test_provenance.py` asserts the chain
 exists, is acyclic, and bottoms out.
 
 This module holds no aircraft data. It holds statements ABOUT data.
 
-WHAT IS ACTUALLY ENFORCED, stated precisely because this docstring used to
-overstate it. It said "adding a constant without saying where it came from fails
-the build", and nothing checked that: every test in `test_provenance.py` iterates
-`LEDGER` against itself, so the entries are checked for internal consistency --
-categories, inputs, acyclicity, the chain bottoming out -- and NOTHING checked
-COVERAGE. The audit measured what the claim was worth: about 346 non-trivial
-numeric literals across nine physics modules against 13 entries, roughly 2%.
-
-The direction that was missing now exists, as
-`test_audit_regression.py::test_the_provenance_ledger_does_not_cover_the_source_modules`.
-It parses the MODULE-LEVEL numeric constants of five physics modules -- `aero`,
-`airframe`, `atmosphere`, `trim`, `wind` -- with `ast`, and fails if one appears
-that is neither in this ledger nor in that test's recorded baseline. So the true
-statement is narrower than the old one and worth having:
-
-    a NEW module-level constant in one of those five modules, added without a
-    ledger entry, fails the build.
-
-Constants inside functions, in the other four physics modules, and the aircraft
-data in `aircraft.py` are NOT covered. The baseline set may only ever shrink;
-widening it to admit a new constant is the one move that would make the check
-meaningless.
+What is enforced: the ledger's internal consistency, and coverage of the
+MODULE-LEVEL numeric constants of five physics modules -- `aero`, `airframe`,
+`atmosphere`, `trim`, `wind`. A new module-level constant in one of those,
+added without a ledger entry, fails the build
+(`test_audit_regression.py::test_the_provenance_ledger_does_not_cover_the_source_modules`).
+Constants inside functions, in other modules, and the aircraft data in
+`aircraft.py` are not covered; the aircraft entries cite their sources inline.
 """
 
 from typing import NamedTuple

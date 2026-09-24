@@ -2,93 +2,102 @@
 
 ## Install
 
-AtiSim needs Python 3.10 or later. The runtime has four dependencies — `jax`, `numpy`, `scipy`
-and `matplotlib`.
+AtiSim needs Python 3.10 or later.
 
 ```bash
 git clone https://github.com/MatusGib/AtiSim.git
 cd AtiSim
 python -m venv .venv
-.venv/Scripts/python.exe -m pip install -e .
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+python -m pip install -e .
 ```
 
-On Linux and macOS the interpreter is `.venv/bin/python`. Optional extras:
+The runtime has four dependencies: `jax`, `numpy`, `scipy` and `matplotlib`. The optional
+extras are:
 
-| Extra | For |
-|---|---|
-| `.[dev]` | the test suite and the executed notebooks |
-| `.[ui]` | the Dash analysis app — **and the artifact and figure tests**, 50 of them, which skip themselves at import without it |
-| `.[ref]` | regenerating the JSBSim comparison data — the suite itself never needs JSBSim |
-| `.[docs]` | building this site |
+| Extra | Installs | For |
+|---|---|---|
+| `.[dev]` | pytest, Jupyter, nbval | the test suite and the executed notebooks |
+| `.[ui]` | Dash, Plotly, PyArrow | run artifacts, the analysis app, and the tests that cover them |
+| `.[docs]` | Sphinx, MyST, Furo | building this site |
+| `.[ref]` | JSBSim | regenerating the cross-code reference data only |
 
-## Check which code you are running
+Importing `atisim` turns on float64 in JAX. Because that setting only takes effect before the
+first array is created, import `atisim` before you create any JAX array.
 
-An editable install maps `atisim` to the directory it was installed from. If you work in more
-than one checkout, a run can import a *different* tree from the one you edited — and nothing
-warns you: the tests pass, against code you did not change. Before trusting any result:
+## Check the installation
 
 ```bash
-.venv/Scripts/python.exe -c "import atisim; print(atisim.__file__)"
+python scripts/sanity.py
 ```
 
-If that path is not the tree you edited, set `PYTHONPATH` to the absolute path of the tree you
-mean. {doc}`running` has the full table of which launch method resolves where.
+This runs eleven checks, starting from degenerate inputs. With zero wind, does the aircraft
+fly straight? With a coefficient zeroed so that a motion is physically impossible, does that
+motion stop? Next it checks signs, and then numbers derived by hand in the script, which it
+prints beside the model's answer.
+
+If you work in more than one checkout, confirm that Python imports the tree you expect:
+
+```bash
+python -c "import atisim; print(atisim.__file__)"
+```
 
 ## Run the tests
 
 ```bash
-.venv/Scripts/python.exe -m pip install -e .[dev,ui]
-.venv/Scripts/python.exe -m pytest -q
+python -m pip install -e ".[dev,ui]"
+python -m pytest -q
 ```
 
-The suite asserts **bands and orderings, not exact values**, for the reason {doc}`validation`
-gives. The count and runtime of the last full run are recorded in {doc}`running`.
+The suite checks bands and orderings rather than exact values, for the reasons given in
+{doc}`validation`. A full run takes about half an hour. Install `ui` as well as `dev`: without
+PyArrow and Plotly, the artifact and figure tests skip themselves.
 
-**Install `ui` as well as `dev` to run all of it.** `test_artifact.py` and `test_figures.py`
-call `importorskip` at module level, so without `pyarrow` and `plotly` they do not collect at
-all: 887 tests instead of 937, green either way and silent about the difference.
-
-## Before you believe the model: the validation ladder
+The two notebooks are executed as a second gate:
 
 ```bash
-.venv/Scripts/python.exe -m pip install -e .[dev]
-.venv/Scripts/python.exe -m jupyter lab notebooks/validation-ladder.ipynb
+python -m pytest --nbval-lax notebooks/
 ```
 
-One notebook re-runs the evidence behind the validation claim, in four rungs, each resting on
-the one below: answers you can work out by hand; the model's own source data and an independent
-engine fed the same coefficients; a recorded encounter; and the published orderings with the
-mechanism behind them. Every number is computed as it runs, and each rung asserts what the
-claim says and no more. `notebooks/solver-validation.ipynb` does the same for the solver.
-
-The first rung is also a script:
+## Walk the validation ladder
 
 ```bash
-.venv/Scripts/python.exe scripts/sanity.py
+python -m jupyter lab notebooks/validation-ladder.ipynb
 ```
 
-Eleven checks from degenerate inputs upward. Zero the wind: does it fly straight? Zero a
-coefficient so a motion becomes physically impossible: does the motion stop? Then signs, then
-numbers derived by hand in the script and printed beside the model's answer, so they can be
-read rather than trusted.
+This notebook re-runs the evidence behind the validation claim in four rungs, each resting on
+the one below:
+
+1. answers you can work out by hand
+2. the model's own source data, and an independent engine fed the same coefficients
+3. a recorded encounter
+4. the published orderings, and the mechanism behind them
+
+Every number is computed as the notebook runs. `notebooks/solver-validation.ipynb` does the same
+for the solver.
 
 ## Fly a real encounter
 
 ```bash
-.venv/Scripts/python.exe scripts/vortex.py --case hannibal --png runs/v.png
+python scripts/vortex.py --case hannibal --png runs/hannibal.png
 ```
 
-This flies a Boeing 747 through the vortex array Mehta (1987) identified from a DC-10's flight
-recorder near Hannibal, Missouri, on 3 April 1981, alongside an updraft and an elevator
-manoeuvre, and draws the analysis figure. How the result compares with the recorded load is in
-{doc}`validation`.
+This flies a Boeing 747 through the vortex array that Mehta (1987) identified from a DC-10's
+flight recorder near Hannibal, Missouri, on 3 April 1981. It also flies an updraft and an
+elevator manoeuvre, and then draws the analysis figure.
 
-To fly it by hand, with a cockpit display and the autopilot a key press away:
+To fly the encounter by hand, with a cockpit display:
 
 ```bash
-.venv/Scripts/python.exe scripts/fly.py --wind hannibal
+python scripts/fly.py --wind hannibal
 ```
 
-The arrow keys are the stick — up is stick *forward*, so it pitches the nose down — `,` and `.`
-the rudder, `-` and `=` the throttle, `[` and `]` the trim, and `a` hands control to the
-autopilot.
+| Key | Action |
+|---|---|
+| arrow keys | stick (up is stick *forward*, which pitches the nose down) |
+| `,` `.` | rudder |
+| `-` `=` | throttle |
+| `[` `]` | pitch trim |
+| `a` | hand control to the autopilot |
+
+Next, {doc}`user-guide` shows how to do the same things from Python.

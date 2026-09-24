@@ -44,7 +44,7 @@ parser.add_argument(
     "--pushdown-seconds", type=float, default=6.609,
     help="manoeuvre pulse length, s. DECLARED MODELLING PARAMETER, not source data: "
          "the paper fixes the load the pilot reached, not how long they held it. "
-         "The default is the 747's short period (PROJECT.md section 4), which puts "
+         "The default is the 747's short period, which puts "
          "the manoeuvre between the vortex's 0.235 and the updraft's 3.026 short "
          "periods -- so the third cluster's separation is not a duration effect.",
 )
@@ -58,8 +58,7 @@ parser.add_argument("--png", type=Path, help="save here instead of showing")
 parser.add_argument(
     "--artifacts", type=Path, metavar="DIR",
     help="also write a run artifact per encounter, for the analysis UI. Needs "
-         "the `ui` extra (pyarrow). Every number this script prints came from a "
-         "run that did not survive it until this flag existed.",
+         "the `ui` extra (pyarrow).",
 )
 args = parser.parse_args()
 
@@ -146,7 +145,7 @@ provenance = (
     f"manoeuvre: zero wind, elevator pulse {hold:g} s DECLARED (not sourced), "
     f"{elevator_step * RAD2DEG:.3f} deg from trim BISECTED to reach "
     f"d(n) = {vortex_viz.FIG8_LOAD_INCREMENT:+.1f} g, the Fig. 8 band read as an "
-    f"INCREMENT; the absolute reading is out of the linear range (PROJECT.md 5, 8)\n"
+    f"INCREMENT; the absolute reading is out of the linear range\n"
     f"loads: {load_path}. "
     "Strip results must be quoted with the loading-shape sensitivity beside them: "
     "2.6% across defensible shapes, 49.7% including the uniform bracket.\n"
@@ -193,7 +192,7 @@ if args.artifacts:
         load_model=("loads.strip_model" if args.strip else None),
         loading_shape=("elliptic" if args.strip else None),
         caveats=[
-            "Load comparisons are ORDERING ONLY, never values (PROJECT.md 5): "
+            "Load comparisons are ORDERING ONLY, never values: "
             "both papers' records are DC-10 class and neither identifies an "
             "aircraft type.",
             "The Parks core is 3.07 spans, so the point-gust assumption E2 is "
@@ -215,7 +214,7 @@ if args.artifacts:
           "omega_gust_estimator": "analytic tangent at CG"},
          {"lead_in_core_radii": args.lead_in,
           "window": {"kind": "first core", "north_m": [-r0, r0]},
-          "window_rule": "the disturbance's own extent (PROJECT.md 8)"}),
+          "window_rule": "the disturbance's own extent"}),
         (updraft, "updraft",
          {"kind": "UpdraftColumn",
           "source": "Wingrove & Bach 1994, J. Aircraft 31(4) 753-760",
@@ -227,7 +226,7 @@ if args.artifacts:
           "sharpness_provenance": "DECLARED, not sourced -- the paper fixes the "
                                   "magnitude and duration and says nothing about the edge",
           "window": {"kind": "column", "north_m": [-radius, radius]},
-          "window_rule": "the disturbance's own extent (PROJECT.md 8)"}),
+          "window_rule": "the disturbance's own extent"}),
         (pushdown, "manoeuvre",
          {"kind": "none (zero wind)",
           "source": "the category is DEFINED by the absence of turbulence",
@@ -241,7 +240,7 @@ if args.artifacts:
                                  "is an output",
           "window": {"kind": "elevator pulse", "seconds": hold,
                      "starts_at_s": pushdown_lead},
-          "window_rule": "the disturbance's own extent (PROJECT.md 8)"}),
+          "window_rule": "the disturbance's own extent"}),
     ]
 
     sha = artifact.git_sha()[:7] or "nogit"

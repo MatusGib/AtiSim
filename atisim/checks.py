@@ -1,35 +1,27 @@
 """Run checks: does this particular flight hold together?
 
-A third tier alongside `verification.py` and `validation.py`, and the distinction
-matters. Those two ask whether the MODEL is right -- the arithmetic, and the
-agreement with published data -- and they answer it once, in the test suite.
-This module asks whether ONE RUN is sensible, and it answers it every time a run
-is flown.
+A third tier alongside `verification.py` and `validation.py`. Those two ask
+whether the MODEL is right -- the arithmetic, and the agreement with published
+data -- and answer it once, in the test suite. This module asks whether ONE RUN
+is sensible, and answers it every time a run is flown.
 
-**Everything the analysis UI displays is computed here and written to the run
-artifact. The UI renders and never computes.** That is not a preference: it is
-the protocol `docs/ASSUMPTIONS.md` states for the notebook -- add the
-computation to a module, assert it in a test, then display it -- and session 13
-exists entirely because session 12 did only the middle step, leaving the notebook
-telling a reader something the code had already disproved. A figure is more
-persuasive than a print, so the same drift in a UI would be worse.
+Everything the analysis UI displays is computed here and written to the run
+artifact; the UI renders and never computes.
 
-FOUR OF THESE CHECKS HAVE NEVER FIRED, and that is recorded rather than hidden.
-The quaternion norm sits at 2.2e-16, every field the project holds is solenoidal
-to round-off, and the Parks vortex produces exactly zero lateral response. Those
-are `tripwire` checks: they exist for the field or the integrator change that has
-not happened yet. Rendering them as a green tick would claim evidence they do not
-provide, so `Check.kind` carries the distinction through to the UI, and
-`test_checks.py` gives each one a negative control -- an input that must make it
-fail -- because otherwise nothing distinguishes a tripwire from a function that
-returns True.
+Each check carries a `kind`:
 
-Checks needing a SECOND RUN -- Galilean invariance, strip-versus-point, a halved
-step size -- are not here. They belong to a comparison driver that writes its own
-artifact, because a check cannot be computed by the run it is about. The UI must
-never launch a simulation to fill a panel: `n_steps` is a `static_argname`, so
-every distinct dt pays a fresh 0.6-0.9 s JAX compile, and a panel whose contents
-depend on the machine is not a check.
+  gate      can fail on a real run, and does.
+  tripwire  has never fired on the fields and integrator shipped -- the
+            quaternion norm, field divergence, lateral symmetry. It is shown
+            as a number and a word, never a green tick, because it has not yet
+            had anything to catch. `test_checks.py` gives every check a
+            negative control: an input that must make it fail.
+  report    a number with no honest threshold.
+
+Checks needing a SECOND RUN -- Galilean invariance, strip-versus-point, a
+halved step size -- are not here: a check cannot be computed by the run it is
+about. The UI never launches a simulation to fill a panel, because `n_steps` is
+a `static_argname` and every distinct dt pays a fresh JAX compile.
 """
 
 from typing import NamedTuple
@@ -103,7 +95,7 @@ def quaternion_norm(traj) -> Check:
     """Largest departure from unit norm over the run.
 
     `integrate.step` re-normalises every step, so this measures whether the
-    projection is doing real work. ASSUMPTIONS.md F2: it should be removing
+    projection is doing real work. Assumption F2: it should be removing
     essentially nothing, and a value that grows means the integrator is drifting
     off the unit sphere while the projection hides it.
     """
@@ -217,7 +209,7 @@ def energy_closure(traj, ac: Aircraft, field) -> Check:
     trajectory itself is first order in a spatially varying field, because
     `integrate.step` holds the wind across the four RK4 stages -- measured
     1.05 against 3.99 in still air, and 4.05 with the hold removed
-    (`test_verification.py`, PROJECT.md section 4). So this residual halving as
+    (`test_verification.py`). So this residual halving as
     dt halves is the CORRECT behaviour and a residual falling like dt^4 would
     mean the closure was wrong.
     """
@@ -240,7 +232,7 @@ class EnergyProfile(NamedTuple):
     """Per-step closure residual against position. C4, a `report`.
 
     This is the sharpest positional diagnostic the project has: the Rankine core
-    boundary, where ASSUMPTIONS.md E2 records the one-sided derivatives differ by
+    boundary, where (assumption E2) the one-sided derivatives differ by
     2*V0/r0 with opposite signs, shows up here at 20-350x the run median.
     """
 
@@ -399,17 +391,16 @@ def trimmed_start(traj, ac: Aircraft, controls: Controls, field) -> Check:
     """How far out of equilibrium the run begins, in g -- and what that is worth.
 
     The load factor in trimmed level flight is cos(theta), not 1: the body-normal
-    accelerometer reads g*cos(theta). PROJECT.md section 9 session 3 is why this
-    exists -- a -6 r0 lead-in starts the aircraft 0.20 g out and understated
-    first-core d(theta) by 15%, and nothing caught it at the time.
+    accelerometer reads g*cos(theta). This check exists because a -6 r0
+    lead-in starts the aircraft 0.20 g out and understates first-core d(theta)
+    by 15%, and nothing else catches it.
 
     **IN A WIND FIELD THERE IS NO TRIMMED START, AND THIS IS A `report`.** The
     Parks far field is 1/r and never dies away: at scripts/vortex.py's own 40
     core radii it is still V0*r0/r = 0.648 m/s, which is 0.157 deg of alpha and
     a MEASURED 0.0384 g of offset. Demanding cos(theta0) there would fail the
     project's canonical run, and picking a tolerance loose enough to pass it
-    would be choosing a number to make a check succeed -- which PROJECT.md
-    forbids in as many words.
+    would be choosing a number to make a check succeed.
 
     So the reported quantity is the offset AS A FRACTION OF THE RUN'S OWN PEAK
     EXCURSION, which is the thing a start error actually threatens and is
@@ -418,7 +409,7 @@ def trimmed_start(traj, ac: Aircraft, controls: Controls, field) -> Check:
 
     **In STILL AIR it is a `gate`**, because there the right answer exists and is
     exactly cos(theta0). That is the manoeuvring case, whose n_z[0] = 0.9967
-    PROJECT.md section 4 records as "the trimmed value, i.e. the lead-in worked".
+    is the trimmed value, i.e. the lead-in worked.
     """
     del field, controls
     n_z = load_factor_series(traj, ac)
@@ -495,8 +486,8 @@ class AlphaBand(NamedTuple):
         the check useless in one direction or the other. `scripts/vortex.py`
         prints "INVALID -- this run proves nothing" for the red band alone, and
         the manoeuvring Fig. 8 point is a PUBLISHED result at |alpha| 10.31 deg,
-        which is amber. A gate that failed it would be condemning PROJECT.md
-        section 4's own table.
+        which is amber. A gate that failed it would be condemning a published
+        result.
 
         So `passed` answers "does this run prove anything?" and the band word
         travels in `window_band` for the UI to colour amber. A caller wanting the
@@ -664,7 +655,7 @@ def lateral_symmetry(traj) -> Check:
     axisymmetric about an axis the aircraft flies straight through, so every
     strip on the span sees the same vertical gust and the antisymmetric roll
     integral cancels exactly. That is why flying the strip path moves the vortex
-    result by 0.000000 m (PROJECT.md section 4). The same fact makes ANY lateral
+    result by 0.000000 m. The same fact makes ANY lateral
     response on these fields a defect rather than a small number.
 
     Applies only to a symmetric encounter, so the caller decides whether to run

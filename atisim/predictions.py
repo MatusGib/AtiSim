@@ -1,32 +1,24 @@
-"""Sealed predictions: what this model says BEFORE the answer is available.
+"""Sealed predictions: what the model says BEFORE the answer is available.
 
-WHY THIS FILE EXISTS. Every number in PROJECT.md section 4 is *retrodictive* --
-the paper was open beside the model when the comparison was made. That is not
-worthless, but it is the weaker kind of evidence, and no amount of it becomes
-the stronger kind. A model earns the word "predictive" by saying what will
-happen before anyone can check, and then being checked.
+A comparison made with the source open beside the model is retrodictive. A
+model earns the word "predictive" by stating a result before anyone can check
+it, and then being checked. Each entry here is such a statement, with the
+observation that would falsify it.
 
-WHAT THE SEAL ACTUALLY IS, AND WHAT IT IS NOT. The seal is the **git history**.
-Each entry records the commit its author could see (`sealed_at`) and a hash of
-its own claim (`digest`). `test_predictions.py` recomputes the digest, so an
-ACCIDENTAL edit fails the build. A DELIBERATE edit would update the digest too
--- nothing here can prevent that, and pretending otherwise would be worse than
-useless. What the digest buys is that tampering shows up as a diff on a line
-whose only purpose is to be stable, next to a SHA that dates the claim. It
-makes dishonesty visible rather than impossible. Read it that way.
+The seal is the git history. Each entry records the commit its author could see
+(`sealed_at`) and a hash of its own claim (`digest`). `test_predictions.py`
+recomputes the digest, so an accidental edit fails the build; a deliberate one
+shows up as a diff on a line whose only purpose is to be stable. The repository
+history was rewritten once to remove third-party documents, so `sealed_at`
+values name commits from before that rewrite.
 
-The release rewrote this repository's history to remove publisher-held PDFs, so every
-`sealed_at` below addresses a commit id that changed. The entries are NOT edited -- rule 1
-below -- and `docs/design/commit-map.txt` translates each one. PROJECT.md section 9, session
-32, point 12.
+The rules:
 
-THE RULES, which are the whole value of the exercise:
-
-  1. A SEALED entry is never edited. Not to fix a number, not to widen an
-     interval, not to add a caveat that would have helped.
+  1. A SEALED entry is never edited -- not to fix a number, widen an interval,
+     or add a caveat.
   2. Settling one means adding `outcome` and `settled_by`, and changing
-     `status` -- and nothing else. A wrong prediction stays wrong, in the file,
-     with its original numbers.
+     `status` -- nothing else. A wrong prediction stays wrong, with its
+     original numbers.
   3. A prediction that cannot be wrong is not a prediction. Every entry names
      the observation that would falsify it.
   4. Nothing here may be quoted as evidence FOR the model. Until an entry is

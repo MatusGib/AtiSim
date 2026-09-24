@@ -1,16 +1,11 @@
-"""The lateral dimension the model did not have — session 24, phase 1.
+"""The lateral response: fly vortex lines that vary across the span.
 
-Until this session every wind field in the project was a function of along-track
-distance alone. Three things followed, and they compounded:
-
-  * `wind.strip_roll_moment` integrated to EXACTLY zero on every field, so the
-    strip load path built in session 14 had never moved a reported number;
-  * the lateral modes were validated as eigenvalues and never once excited;
-  * `vortex_viz.Encounter` carried no roll, sideslip or rate channel, so the
-    pipeline could not have reported a rolling response if one had occurred.
-
-The model was longitudinal BY CONSTRUCTION rather than by choice, and no
-document said so. This script is the measurement that changes that.
+A wind field that is a function of along-track distance alone cannot roll the
+aircraft: the strip rolling moment integrates to exactly zero, and the lateral
+modes are never excited. This script flies vortex LINES at an angle to the
+flight path, so the field varies across the span, and reports the rolling
+response. It is a capability demonstration -- no source records a lateral
+clear-air-turbulence response to validate it against.
 
 WHAT IS NEW HERE, AND WHAT IS ONLY GEOMETRY. Nothing below adds physics. Parks'
 own model is two-dimensional in the plane perpendicular to the vortex LINES;
@@ -19,7 +14,7 @@ drops out. `wind.line_vortex_wind` is the same equations written as lines in
 space -- it reproduces the point model exactly along the flight path and differs
 off it, which is the whole point.
 
-Run: PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/lateral.py --outdir runs/cat
+Run: python scripts/lateral.py --outdir runs/cat
 """
 
 import argparse

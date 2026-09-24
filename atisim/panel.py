@@ -1214,8 +1214,8 @@ def field_ahead(
     ends up confidently pointing at somewhere the aircraft is not.
 
     `lead_in` is in core radii, matching vortex.py. Below about 12 the 1/r far
-    field launches the aircraft out of equilibrium (PROJECT.md section 9,
-    session 3). `sharpness` is a DECLARED modelling parameter, not source data.
+    field launches the aircraft out of equilibrium. `sharpness` is a DECLARED
+    modelling parameter, not source data.
     """
     if name == "none":
         return zero_wind, None, "still air"

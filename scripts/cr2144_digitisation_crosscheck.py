@@ -1,20 +1,17 @@
-"""CR-2144 pp. 220-222 read twice, compared: session 30's hand reading against
-the automated trace found untracked in session 32.
+"""CR-2144 pp. 220-222 read twice, compared: the hand reading the model uses
+against an independent automated trace of the same pages.
 
 Settles the sealed prediction `cr2144_two_readings_agree_on_the_good_panels`
 (atisim/predictions.py). That seal was committed together with this script and
 before `atisim.cr2144_mach.crosscheck` existed, so no run of it can precede the
 seal.
 
-Run from the repository root, with an ABSOLUTE PYTHONPATH from a worktree -- a bare
-`python scripts/...` puts scripts/ on the path, not the worktree, and imports
-atisim from the main checkout (docs/DEVELOPMENT.md rule 4; session 32 hit exactly
-this, and was saved only because crosscheck did not yet exist there):
-    PYTHONPATH=<abs worktree root> .venv/Scripts/python.exe scripts/cr2144_digitisation_crosscheck.py
+Run from the repository root:
+    python scripts/cr2144_digitisation_crosscheck.py
 
 Source: NASA CR-2144, printed pp. 220-222 (PDF pp. 225-227). Reads neither the
 PDF nor the scans; both inputs are tracked derived data --
-atisim/data/cr2144_p220_222_digitised.csv and Reference_papers/CR-2144/csv/.
+atisim/data/cr2144_p220_222_digitised.csv and atisim/data/cr2144_trace/.
 """
 import math
 

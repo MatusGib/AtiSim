@@ -1,9 +1,8 @@
 """Recover a 747 entry from JSBSim's own B747, for the vortex comparison.
 
-Run with the interpreter that has JSBSim installed -- NOT the project venv:
+Needs JSBSim (`pip install -e .[ref]`):
 
-    C:/Users/mateusz/AppData/Local/Programs/Python/Python310/python.exe \
-        scripts/gen_jsbsim_747.py
+    python scripts/gen_jsbsim_747.py
 
 Writes atisim/tests/data/jsbsim_747_reference.xml. Nothing under atisim/ imports
 jsbsim; the suite reads the frozen file and drift shows up in git diff.

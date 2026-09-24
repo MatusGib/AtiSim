@@ -213,10 +213,9 @@ def elliptic_chord(y: Array, ac: Aircraft) -> Array:
     THE CLAMP GUARDS THE VALUE AND NOT THE DERIVATIVE, WHICH IS A SEPARATE BUG.
     At a tip station the argument is EXACTLY 0.0, and sqrt's forward-mode tangent
     is du/(2 sqrt(u)) -- so at u = 0 it is 0/0, NaN for ANY tangent including a
-    zero one, exactly as PROJECT.md section 6(f) records for `aero.py`'s
-    Prandtl-Glauert sentinel. A `jvp` seeded in `CLa`, which this function does
-    not even depend on, was enough to trip it. Found session 29 while screening
-    the strip load path, and repaired there.
+    zero one, exactly as with `aero.py`'s Prandtl-Glauert sentinel. A `jvp`
+    seeded in `CLa`, which this function does not even depend on, is enough to
+    trip it.
 
     The repair is the double-`where`: the sqrt never sees the zero, and the tip
     returns a constant 0.0 whose tangent is 0.0.
@@ -293,8 +292,8 @@ def calibrated_lift_slope(ac: Aircraft) -> Array:
     has a sqrt singularity at the tips that the rule cannot resolve. Measured
     convergence order is 1.50, stable across every refinement tried, so it takes
     ~19 stations for 5% and ~56 for 1%. Both the count and this calibration basis
-    were deliberately left as they are; see docs/ASSUMPTIONS.md F5 for why, and
-    provenance.LEDGER["strip.n_stations"].
+    were deliberately left as they are; see assumption F5 in the documentation for why,
+    and provenance.LEDGER["strip.n_stations"].
 
     What it does not guarantee at any station count is that the spanwise SHAPE is
     right, which is why the sensitivity sweep is mandatory.

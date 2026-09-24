@@ -1831,9 +1831,9 @@ def boeing787_yoshimura() -> Aircraft:
 
     WHY IT EXISTS. Every LES load comparison before it flew `boeing747` at
     M 0.406 against a M 0.80 linearisation, or `boeing737_approach` whose short
-    period is 83% away from theirs. PROJECT.md section 4's input audit refused
-    those numbers. With this entry both codes fly the same aeroplane through the
-    same field at the same condition, which is the design that made the JSBSim
+    period is 83% away from theirs. Neither is a like-for-like input. With this
+    entry both codes fly the same aeroplane through the same field at the same
+    condition, which is the design that made the JSBSim
     vortex comparison worth having.
 
     SOURCE. `flightsim-data/src/fs.f90` lines 230-275 of the figshare extract
@@ -1860,9 +1860,9 @@ def boeing787_yoshimura() -> Aircraft:
 
     I_yy IS DECLARED AND CANNOT MATTER. It is not in `fs.f90`. It and Cma enter
     the dynamics only as their product M_a, which IS sourced, so any I_yy
-    reproduces M_a exactly -- verified by round-trip from 1.0e7 to 4.0e7 in
-    PROJECT.md section 4. The value below is the midpoint of two independent
-    estimates (the 747's I_y/I_z ratio, and the lamina relation I_z - I_x),
+    reproduces M_a exactly -- verified by round-trip from 1.0e7 to 4.0e7. The
+    value below is the midpoint of two independent estimates (the 747's I_y/I_z
+    ratio, and the lamina relation I_z - I_x),
     which differ by 12.7%. Do NOT go looking for a published 787 pitch inertia:
     the one number that could not be sourced is the one that is unobservable.
 
@@ -2014,7 +2014,7 @@ def boeing747_without_thrust_line() -> Aircraft:
     """`boeing747` as it stood before the thrust line: thrust through the CG,
     and CL0, Cm0 and the drag polar referenced to that. Not in REGISTRY. It
     exists so the pre-line entry is measurable exactly rather than rebuilt by
-    hand -- with the Mach seam also shut it is the 747 before session 30."""
+    hand -- with the Mach seam also shut it is the 747 without its speed derivatives."""
     return _boeing_747(thrust_line=False)
 
 
@@ -2172,8 +2172,8 @@ def buffet_cl(mach):
     clamping and should not be quoted; inside it, it is good to +-0.02.
 
     Not used by `aero.py` and deliberately so -- a hard ceiling is a kink, and
-    PROJECT.md section 4 records eleven tests going red the last time one was
-    tried. This is a REPORTING boundary, not a force model.
+    the last time one was tried eleven tests went red. This is a REPORTING
+    boundary, not a force model.
     """
     return float(jnp.interp(jnp.asarray(mach, dtype=float),
                             jnp.asarray(B747_BUFFET_MACH),

@@ -42,9 +42,8 @@ def gravity(z: Array) -> Array:
 
     Smooth and monotonic, so it costs `jacfwd` and RK4 nothing.
 
-    Worth 0.383% at the 747's cruise altitude: 9.76922 against 9.80665. Session
-    12 measured that and chose not to model it; session 23 modelled it because
-    correctness at altitude was preferred to a frozen baseline.
+    Worth 0.383% at the 747's cruise altitude: 9.76922 against 9.80665, which
+    reaches the phugoid frequency almost one for one.
     """
     return G0 * (R_EARTH_MEAN / (R_EARTH_MEAN + z)) ** 2
 

@@ -1,34 +1,26 @@
 """The run artifact: a flown run, on disk, traceable to what produced it.
 
-**The gap this closes.** `viz.save`/`viz.load` exist and work, but the only
-caller is `scripts/fly.py` -- the interactive panel. `scripts/vortex.py`,
-`leewave.py` and `microburst.py` each build arrays in memory, draw a PNG and
-exit, so every number in PROJECT.md section 4's encounter tables came from a run
-that no longer exists. And `viz.Trajectory` could not have carried them anyway:
-nine array fields, no aircraft identity, no wind-field identity, no dt, no trim
-solution, no declared parameters and no git SHA.
+An artifact is a directory holding the run's time series as Parquet, with
+`meta.json` and `checks.json` beside it: aircraft and wind-field identity, time
+step, trim solution, declared parameters, the git SHA of the code that flew it,
+and the result of every run check (`atisim.checks`).
 
-What it does carry is the ARRAYS, and those are right, so this format keeps
-`viz.Trajectory` as the payload and adds the metadata around it. `read_run`
-returns a real `viz.Trajectory`, so `viz.derived` and `viz.post_flight` work on
-an artifact unchanged.
+The payload is a `viz.Trajectory`, so `read_run` returns one and `viz.derived`
+and `viz.post_flight` work on an artifact unchanged.
 
-**Format: Parquet for the series, JSON beside it -- and the reason is not
-speed.** Measured on a 4,018-sample run: Parquet+zstd is 0.263 MB and reads in
-0.81 ms; npz-compressed is 0.198 MB and reads in 2.94 ms. npz is SMALLER, and
-neither is remotely a bottleneck. Parquet is chosen because it carries typed
-per-column metadata natively -- which is where `units` and `frame` have to live
--- and because a directory of Parquet is a dataset any tool can open. The cost,
-stated plainly: `pyarrow` is a ~90 MB wheel against a four-package runtime list,
-which is why it is the `ui` extra and not a dependency.
+**Why Parquet.** Not for speed -- on a 4,018-sample run Parquet+zstd is 0.263 MB
+and reads in 0.81 ms, npz 0.198 MB and 2.94 ms, and neither is a bottleneck.
+Parquet carries typed per-column metadata natively, which is where `units` and
+`frame` live, and a directory of Parquet is a dataset any tool can open. The
+cost: `pyarrow` is a large wheel, which is why this is the `ui` extra and not a
+runtime dependency.
 
-**The field is NOT stored.** Sampling any of the project's four fields on a 64^3
-grid costs 0.56-2.84 ms, and that grid is 6.3 MB of float64 -- so reading it back
-would be slower than recomputing it, and it would be a second copy of something
-already determined exactly by a four-to-six-float NamedTuple. The artifact stores
-the field SPECIFICATION and the UI rebuilds the field. What is stored is
-`wind_ned` and `omega_gust` AT THE AIRCRAFT, because those are the realisation
-actually flown and a stochastic model could not be re-derived.
+**The field is NOT stored.** Sampling a field on a 64^3 grid costs a few
+milliseconds and would be 6.3 MB of float64 -- a second copy of something fully
+determined by a small NamedTuple. The artifact stores the field SPECIFICATION
+and the UI rebuilds the field (`rebuild_field`). What is stored is `wind_ned`
+and `omega_gust` AT THE AIRCRAFT, because those are the realisation actually
+flown and a stochastic model could not be re-derived.
 """
 
 import hashlib
@@ -107,8 +99,7 @@ class Run(NamedTuple):
 def git_sha() -> str:
     """The commit this run was flown at, or "" if git cannot say.
 
-    Empty rather than a guess: PROJECT.md's standing rule is flag, never invent,
-    and a wrong SHA is worse than an absent one.
+    Empty rather than a guess: a wrong SHA is worse than an absent one.
     """
     try:
         out = subprocess.run(
