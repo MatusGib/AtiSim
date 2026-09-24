@@ -47,6 +47,15 @@ takes its path as the argument `--pdf`.
 - Lester, P. F., Sen, O. & Bach, R. E. (1989). The use of DFDR information in the analysis
   of a turbulence incident over Greenland. *Mon. Wea. Rev.* 117, 1103–1107. The RMS error of a
   flight-recorder wind reconstruction.
+- Hamilton, D. W., Proctor, F. H. & Ahmad, N. N. (2012). *Flight Tests of the Turbulence
+  Prediction and Warning System (TPAWS).* NASA/TM-2012-217337 (NTRS 20120003172). The 53
+  measured B-757 encounters of Table 1, the 5 s running-σ reduction (p. 5), and the 606
+  encounters of Figure 2.
+- Stewart, E. C. (2003). *Description of a Normal-Force In-Situ Turbulence Algorithm for
+  Airplanes.* NASA/TM-2003-212666 (NTRS 20040021314). The accelerometer and vane gust spectra
+  of Figure 5, which size the structural modes in section 10.4.
+- Bowles, R. L. & Buck, B. K. (2009). NASA/CR-2009-215769 (NTRS 20090025483). The report behind
+  TPAWS Figure 2, and the 5 s definition of σ_Δn.
 
 ## Wind and turbulence models
 
@@ -60,7 +69,13 @@ takes its path as the argument `--pdf`.
   characteristics of stratospheric mountain waves during T-REX. *Mon. Wea. Rev.* 139, 3–23.
   DOI [10.1175/2010MWR3466.1](https://doi.org/10.1175/2010MWR3466.1). Lee-wave amplitudes.
 - MIL-F-8785C (1980). *Military Specification: Flying Qualities of Piloted Airplanes.* The
-  Dryden spectral forms (§3.7.1.2) and turbulence exceedance probability (Fig. 7).
+  Dryden and von Kármán spectral forms (§3.7.1), the rotational gust spectra (§3.7.5, p. 58)
+  and turbulence exceedance probability (Fig. 7).
+- Sears, W. R. (1941). Some aspects of non-stationary airfoil theory and its practical
+  application. *J. Aeronautical Sciences* 8(3), 104–108. The gust lag of assumption C12.
+- Pratt, K. G. & Walker, W. G. (1953). *A Revised Gust-Load Formula and a Re-Evaluation of V-G
+  Data Taken on Civil Transport Airplanes From 1933 to 1950.* NACA Report 1206. The discrete
+  gust formula in `gust.pratt_walker`.
 - Misaka, T., Obayashi, S. & Endo, E. (2008). Measurement-integrated simulation of
   clear-air turbulence using a four-dimensional variational method. *J. Aircraft* 45(4),
   1217–1229. The RMS normal-load severity index.

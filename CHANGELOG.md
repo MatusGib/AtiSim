@@ -6,6 +6,23 @@ This file gives the changes in each version of AtiSim. The format is
 
 ## [Unreleased]
 
+### Added
+
+- `atisim.gust`: the linear transfer function from a vertical gust to the load factor, the
+  random-process identity, Sears' function for the gust lag, and the Pratt–Walker discrete gust
+  formula. `gust.measure_gust_transfer` flies a gust sinusoid and reads the transfer function
+  from the run.
+- `atisim.insitu`: the 5 s running-σ reductions of NASA/TM-2012-217337 (TPAWS), for a
+  comparison of a simulated record with measured encounters.
+- `atisim/data/tpaws_tm2012_217337_table1.csv`: the 53 measured B-757 encounters of TPAWS
+  Table 1.
+- New fields in `atisim.wind`: `von_karman_vertical_field`, `one_minus_cosine_gust`,
+  `sinusoidal_vertical_field`, and `gaussian_vertical_field` as a control. The rotational gust
+  spectra of MIL-F-8785C §3.7.5: `dryden_p_spectrum`, `dryden_q_spectrum` and
+  `dryden_r_spectrum`.
+- `vortex_viz.fly`, `fly_in_moving_air` and `fly_from_state` accept `stage_sampled`. The
+  default is `False`, so no result changes.
+
 ### Changed
 
 - The documentation has three manuals: the User Manual, Physics and Assumptions, and the
@@ -13,6 +30,11 @@ This file gives the changes in each version of AtiSim. The format is
   ASD-STE100 Simplified Technical English.
 - The automated trace of CR-2144 is now in the package, at `atisim/data/cr2144_trace/`. Thus
   `cr2144_mach.crosscheck` reads only data in the package.
+- Physics and Assumptions gives the validation against 53 measured B-757 encounters (section
+  10.4). In random turbulence, the peak loads of the model are approximately 20% too small
+  relative to their rms. The gust response gain is not validated against the 757.
+- New assumptions C12 (no gust lag), E13 (no rolling gust, and no pitching-gust roll-off) and
+  E14 (the random field is not Gaussian), each with its measured effect.
 
 ### Fixed
 

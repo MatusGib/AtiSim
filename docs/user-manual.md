@@ -26,6 +26,9 @@ Use AtiSim to compare turbulence encounters and to find the mechanism of a respo
 only for the longitudinal response of a 747-class aircraft at Mach 0.70 to 0.90, between
 35,000 ft and 45,000 ft. {doc}`physics-and-assumptions`, section 1, gives the full limits.
 
+In random turbulence, the peak loads of the model are approximately 20% too small relative to
+their rms. {doc}`physics-and-assumptions`, section 10.4, gives the measurement.
+
 :::{caution}
 Do not use AtiSim to calculate a design load or a certification load. AtiSim does not predict
 absolute loads. An incorrect load can cause an unsafe design.
@@ -438,6 +441,9 @@ The tests use the stored data. Use these scripts only to make the data again.
 | Microburst | `microburst_wind(p, microburst(u_max=..., radius=..., z_m=...))` | Oseguera and Bowles (1988) |
 | Lee wave | `lee_wave_wind(p, LeeWave(...))` | Doyle et al. (2011) |
 | Dryden turbulence | `dryden_field(sigma, seed)` | MIL-F-8785C |
+| von Kármán turbulence, vertical | `von_karman_vertical_field(sigma, seed)` | MIL-F-8785C |
+| 1 − cosine gust | `one_minus_cosine_gust(peak, gradient_distance)` | NACA Report 1206 |
+| Single gust sinusoid | `sinusoidal_vertical_field(amplitude, wavelength)` | |
 | Sum of fields | `superpose(*fields)` | |
 
 All functions are in `atisim.wind`. {doc}`api/index` gives the full Python interface.

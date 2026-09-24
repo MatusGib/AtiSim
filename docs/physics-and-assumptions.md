@@ -22,6 +22,11 @@ AtiSim can answer these questions:
 
 AtiSim cannot give the absolute load that a real aircraft feels in an encounter.
 
+In random turbulence, the peak load of the model is too small relative to its rms load. Against
+measured encounters, the ratio is approximately 20% too low (section 10.4). If you must give a
+peak load from a random-turbulence run, multiply the peak by 1.24, the ratio on the mean, or
+by 1.20, the ratio on the slope of 606 encounters. Give the factor with the result.
+
 :::{caution}
 Do not use AtiSim to calculate a design load or a certification load. AtiSim does not predict
 absolute loads. An incorrect load can cause an unsafe design.
@@ -343,7 +348,28 @@ each component as a sum of 400 cosines. The wavelengths are between 20 m and 40 
 logarithmic spacing and a random phase. The seed sets the phases. Thus the field is frozen, and
 the three components are independent.
 
-### 7.6 F-factor
+Each cosine has a fixed amplitude. Thus the field has the correct spectrum, but it is not a
+Gaussian process (assumption E14). `wind.gaussian_vertical_field` is a control with random
+amplitudes. Use it only to measure the effect of this construction.
+
+The field changes only along the track. Thus it has no rolling gust, and its pitching gust is
+the pure gradient $\partial w / \partial x$ (assumption E13). MIL-F-8785C §3.7.5 gives the
+rotational spectra $\Phi_p$, $\Phi_q$ and $\Phi_r$. `wind.dryden_p_spectrum`,
+`wind.dryden_q_spectrum` and `wind.dryden_r_spectrum` calculate them.
+
+### 7.6 Other gust fields
+
+| Field | Function | Use |
+|---|---|---|
+| von Kármán turbulence | `von_karman_vertical_field(sigma, seed)` | A sensitivity study. The spectrum falls as $\Omega^{-5/3}$, and the Dryden spectrum falls as $\Omega^{-2}$. $L$ is 2500 ft. |
+| Single sinusoid | `sinusoidal_vertical_field(amplitude, wavelength)` | A check against the exact transfer function (section 10.1). |
+| 1 − cosine gust | `one_minus_cosine_gust(peak, gradient_distance)` | The discrete gust of NACA Report 1206. Compare it with `gust.pratt_walker`. |
+
+The module `atisim.gust` gives the linear transfer function from a vertical gust to the load
+factor, $H(\Omega)$. It uses the linearisation of the same equations that the simulator
+integrates. Thus it verifies the integration path, not the aerodynamic data.
+
+### 7.7 F-factor
 
 The F-factor is the hazard index of Proctor et al. (2000):
 
@@ -427,6 +453,7 @@ assumption, and a measured bound when one is available.
 | C9 | All lift increments act at the relative wind of the center of gravity. | This breaks the energy balance at very high pitch rates, from 84 °/s to 201 °/s. No state inside the limits of operation shows it. |
 | C10 | The aileron deflection is one angle for a compound control. | This agrees with the definition in the source derivatives. Do not compare `aileron_limit` with the travel of one surface. |
 | C11 | The two estimates of the tail arm do not agree. | The difference is 1.4% to 2.9% on the 747, and 2.0 to 2.9 times on the light aircraft. Do not change a derivative to make them agree. |
+| C12 | A gust gives its full lift immediately. There is no Sears attenuation and no Küssner lag. | C2 is about the motion of the aircraft. This assumption is about the arrival of the gust. At the 747 short period, thin-airfoil theory gives a loss of 3.1% of the lift and a lag of 4.2°. Over the Dryden band, $\sigma_{n_z}$ decreases by 6.78%. Thus the effect makes the load smaller, not larger. `gust.sears` and `gust.kussner_attenuation` calculate it. |
 
 ### 9.4 Atmosphere
 
@@ -451,6 +478,8 @@ assumption, and a measured bound when one is available.
 | E10 | Only the line-vortex field changes across the span. | Other fields cannot roll the aircraft. No validation of the lateral response is available. |
 | E11 | A response spectrum needs a stationary record. | With fixed controls, the airspeed can change by 13% in 100 s. Give this drift with each spectrum. |
 | E12 | The published descriptions of the Hannibal vortex do not agree. | The model uses each set of core radius, speed and spacing as its paper gives it. A mixed set changes the peak-to-peak load by about 4%. |
+| E13 | The random turbulence changes only along the track. | MIL-F-8785C §3.7.5 gives an independent rolling gust. The model has none. The pitching gust of the model is the pure gradient, without the roll-off of the specification. At the 747 short period, its spectrum is 1.10 times too large. With the roll-off, $\sigma_{n_z}$ of the 747 changes by −1.70% for the magnitude only, and by −9.71% with a minimum-phase lag. The specification does not give the phase. Use `gust.gust_transfer(q_rolloff_span=...)` to see the effect. |
+| E14 | The random turbulence is a sum of cosines with fixed amplitudes. It is stationary, and it is not a Gaussian process. | The spectrum is correct. On the 5 s reduction of TPAWS, a Gaussian field changes the peak factor by 0.009 ± 0.038. Measured turbulence comes in patches. A patchy field with a kurtosis from 3 to 39 does not change the peak factor either. |
 
 ### 9.6 Numerical methods
 
@@ -477,6 +506,16 @@ equations agree with the real aircraft and with the published data. The notebook
 - The torque-free rotation agrees with its analytic solution.
 - A uniform wind moves the trajectory but does not change the attitude.
 - A wind that is uniform but changes with time gives no body force.
+- The flown response to a single gust sinusoid agrees with the linearised transfer function of
+  the aircraft, `gust.gust_transfer`. Over two decades of frequency, the largest error is
+  0.0043% in amplitude and 0.0017° in phase. This check uses `stage_sampled=True`
+  (assumption E4).
+- The random-process identity $\sigma_{n_z}^2 = \int |H|^2 \Phi_w \, d\Omega$ holds to 0.081%
+  (0.24 standard errors) for 24 Dryden realisations.
+
+These two checks verify the path from the gust to the load: trim, the integrator, the three gust
+channels and the measurement. They do not verify the aerodynamic data, because the transfer
+function uses the same data.
 
 ### 10.2 Validation against the source data
 
@@ -512,19 +551,62 @@ A match is not expected, for these reasons:
 
 The 747 derivatives come only from their source, and not from their effect on this result.
 
-### 10.4 Validation against published orders and mechanisms
+### 10.4 Validation against measured turbulence encounters
+
+NASA/TM-2012-217337 (TPAWS) gives 53 measured turbulence encounters of the NASA Boeing 757.
+The file `atisim/data/tpaws_tm2012_217337_table1.csv` holds its Table 1. TPAWS calculates each
+statistic on a 5 s sliding window. The module `atisim.insitu` does the same reduction on a
+simulated record. Always use it for a comparison with TPAWS. The reduction over a full record
+gives a peak factor of 3.87 for the same flights, against 1.94 on the 5 s window.
+
+The **peak factor** is the peak load increment divided by the peak 5 s rms load. 28 of the
+encounters are inside the band of validity of `boeing737`. The model flies the 737 in that band
+through Dryden turbulence at four intensities, and cuts each record into 30 s encounters.
+
+| Quantity | Model | Measured | Ratio |
+|---|---|---|---|
+| Mean peak factor | 2.01 | 2.50 (standard deviation 0.55), 28 encounters in the band | 1.24 |
+| Slope of peak load against rms load, through the origin | 2.16 | 2.595, 606 encounters on 8 transport types (TPAWS Figure 2) | 1.20 |
+
+Other encounter lengths give a model slope down to 2.10. The 747 gives the same peak factor to
+3%.
+
+The distributions are different: the Kolmogorov–Smirnov p-value is 1.6 × 10⁻⁸. 13 of the 28
+encounters are above the 95th percentile of the model. **The peak loads of the model are
+approximately 20% too small relative to their rms, and have half the spread.** The peak load is
+proportional to the rms load in the model and in the data. Thus the scaling is validated, but
+the level is not.
+
+These explanations were each predicted before the run that tested them. None closes the gap:
+
+| Explanation | Effect on the gap |
+|---|---|
+| Structural modes at the accelerometer, sized from NASA/TM-2003-212666 Figure 5 | closes 17%. The peak factor increases by 0.08 (0.05 to 0.12 for the reading of the figure). |
+| The event selection rule of TPAWS | opens it by up to 21% |
+| Patchy turbulence, with patches longer than the 5 s window | no change |
+| A Gaussian field instead of fixed amplitudes (E14) | no change |
+
+The first two effects cancel when they are applied together. Intermittency inside the 5 s
+window, at scales less than approximately 1 km, is not tested.
+
+**The gust response gain is not validated against the 757.** The comparison must read the model
+at the plunge time constant $\tau$ of each 757 encounter. Four airframes, flown in the same way,
+differ by up to 16% at the same $\tau$. The limit was 5%. Thus $\tau$ does not set the gain, and
+the comparison is not possible.
+
+### 10.5 Validation against published orders and mechanisms
 
 - **TM-102186 Figure 8.** Three aircraft with different speeds fly through the same vortices. The model gives the same order of loads as the paper. It also agrees with the mechanism in the paper in 6 of 6 cases.
 - **Wingrove and Bach discriminator.** The pitch angle in a vortex, an updraft and a pilot maneuver increases in that order, as the paper gives.
 - **Frequency response.** The load spectrum of the Hannibal run has its peak in one frequency bin of the short period. In a Dryden ensemble, the response at the short period is more than 3 times the response at 0.05 Hz. But the input has more energy at 0.05 Hz.
 
-### 10.5 Predictions before the result
+### 10.6 Predictions before the result
 
 `atisim.predictions` holds predictions with a digest and a commit, from before the run that
 gave the result. Three predictions have a result. Two are correct, and one is incorrect on one
 panel of four. One prediction has no result yet.
 
-### 10.6 Uncertainty
+### 10.7 Uncertainty
 
 These values give the size of the known uncertainties in the headline load:
 
@@ -534,6 +616,9 @@ These values give the size of the known uncertainties in the headline load:
 | Wind constant during one step (E4) | 0.82% of the pitch change in a core |
 | Different published vortex parameters (E12) | about 4% |
 | Different aircraft (DC-10 against 747) | not known |
+| No gust lag (C12) | 3.1% of the lift at the short period, 6.78% of $\sigma_{n_z}$. The load decreases. |
+| No pitching-gust roll-off (E13) | −1.70% to −9.71% of $\sigma_{n_z}$ |
+| Peak factor in random turbulence (section 10.4) | approximately 20% too low |
 
 All comparisons with a recorded encounter use summary values, such as peaks, spacings and
 orders. No comparison uses a full time history.
@@ -544,5 +629,7 @@ orders. No comparison uses a full time history.
 - The Earth is flat and does not turn.
 - The lift model has no stall.
 - The validation of AtiSim does not include absolute loads.
+- In random turbulence, the peak load is approximately 20% too small relative to the rms load.
+- The random turbulence has no rolling gust, and no gust lag.
 
 The references for this manual are in {doc}`references`.

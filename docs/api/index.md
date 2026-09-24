@@ -39,6 +39,8 @@ Import `atisim` before you make a JAX array. The import sets 64-bit precision.
    :toctree: generated
 
    atisim.wind
+   atisim.gust
+   atisim.insitu
    atisim.response
 ```
 

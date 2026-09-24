@@ -505,4 +505,15 @@ LEDGER: dict[str, Entry] = {
         "a future low-altitude use would otherwise inherit the wrong length "
         "silently -- the same failure mode as the recovery band.",
     ),
+    "wind.VON_KARMAN_LW": Entry(
+        "SOURCED",
+        "2,500 ft. MIL-F-8785C section 3.7.2.1, printed p. 48: 'L_u = L_v = L_w = "
+        "2,500 feet using the von Karman form or ... 1,750 feet using the Dryden "
+        "form.' Read from the page image.",
+    ),
+    "wind.VON_KARMAN_SCALE": Entry(
+        "SOURCED",
+        "1.339. MIL-F-8785C section 3.7.1.1, printed p. 47, the von Karman form's "
+        "(1.339 L Omega) in all three components. Read from the page image.",
+    ),
 }
