@@ -24,7 +24,7 @@ Contributions may be declined or removed if they are clearly inappropriate, unre
 
 ## Reporting Concerns
 
-If you encounter behaviour that violates these guidelines, please raise the matter directly with the project maintainer through the contact details provided in the repository.
+If you encounter behaviour that violates these guidelines, please raise the matter directly mw1824@ic.ac.uk
 
 As this is currently a small, individually maintained project, concerns will be handled on a case-by-case basis.
 
