@@ -1,10 +1,10 @@
-# API reference
+# API Reference
 
-The `atisim` package, module by module. Each module's docstring states what it models, what it
-assumes, and which source its numbers come from — the reference is generated from those
-docstrings, so it describes the code as it is.
+This reference gives the modules of the `atisim` package. Sphinx makes it from the docstrings of
+the code. Each docstring tells what the code models, what it assumes, and where its numbers come
+from.
 
-Importing `atisim` enables float64 in JAX, and it must be imported before any array is created.
+Import `atisim` before you make a JAX array. The import sets 64-bit precision.
 
 ## Dynamics core
 
