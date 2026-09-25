@@ -36,11 +36,12 @@ def small_run():
     state = trim.trimmed_state(jnp.array(float(x[0])), jnp.array(V), jnp.array(H))
     state = state._replace(pos_ned=jnp.array([-4000.0, 0.0, -H]))
     sim = integrate.init_sim(state, jax.random.PRNGKey(0))
+    # Built once: `wind_model` is a static argument of the jitted `step`, so a
+    # fresh closure per step would recompile it on every iteration.
+    model = wind.field_model(field)
     recorder = viz.Recorder()
     for i in range(120):
-        sim = integrate.step(
-            sim, controls, jnp.array(0.01), ac, wind_model=wind.field_model(field)
-        )
+        sim = integrate.step(sim, controls, jnp.array(0.01), ac, wind_model=model)
         recorder.append((i + 1) * 0.01, sim, controls, Mode.MANUAL)
     return recorder.trajectory(), ac, controls, field
 

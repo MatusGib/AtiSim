@@ -1191,13 +1191,11 @@ def test_the_gradient_arm_has_an_independent_cross_check_and_what_it_bounds():
     scale = v0 / r0
 
     def worst_disagreement(field):
-        out = 0.0
-        for frac in np.linspace(-2.5, 2.5, 101):
-            p = jnp.array([frac * r0, 0.0, -H])
-            tangent = float(wind.gust_rates(p, quat, field)[1])
-            secant = float(wind.sampled_rates(p, quat, field, st)[1])
-            out = max(out, abs(secant - tangent) / scale)
-        return out
+        north = jnp.linspace(-2.5, 2.5, 101) * r0
+        points = jnp.stack([north, jnp.zeros(101), jnp.full(101, -H)], axis=1)
+        tangent = jax.vmap(lambda p: wind.gust_rates(p, quat, field)[1])(points)
+        secant = jax.vmap(lambda p: wind.sampled_rates(p, quat, field, st)[1])(points)
+        return float(jnp.abs(secant - tangent).max()) / scale
 
     rankine = worst_disagreement(lambda p: wind.vortex_wind(p, array))
     smooth = worst_disagreement(lambda p: wind.lamb_oseen_wind(p, array))

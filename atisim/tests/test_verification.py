@@ -357,10 +357,9 @@ def test_the_two_vortex_profiles_agree_on_what_parks_identified():
                              r0=jnp.array(r0), v0=jnp.array(v0))
     # Sample straight up from the core, where the field is purely horizontal.
     radii = np.linspace(1.0, 4.0 * r0, 6000)
-    speed = np.array([
-        float(jnp.abs(wind.lamb_oseen_wind(jnp.array([0.0, 0.0, -r]), array)[0]))
-        for r in radii
-    ])
+    points = jnp.stack([jnp.zeros(6000), jnp.zeros(6000), -jnp.asarray(radii)], axis=1)
+    speed = np.abs(np.asarray(
+        jax.jit(jax.vmap(lambda p: wind.lamb_oseen_wind(p, array)))(points)[:, 0]))
     assert speed.max() == pytest.approx(v0, rel=1e-4), "peak speed is not V0"
     assert radii[speed.argmax()] == pytest.approx(r0, rel=2e-3), "peak is not at r0"
 
