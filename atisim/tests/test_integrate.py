@@ -98,6 +98,20 @@ def test_logged_rollout_gives_the_same_states_as_rollout(test_aircraft):
     assert np.asarray(logged.wind_ned).shape == (200, 3)
     assert np.abs(np.asarray(logged.wind_ned)).max() > 0.0
 
+    # The same on the STAGE-SAMPLED path, the default since v1.2 for a
+    # position-only field -- the path test_vortex_viz's headline pin takes.
+    model = wind.field_model(lambda p: jnp.array([0.0, 0.0, -0.001 * p[0]]))
+    _, plain = integrate.rollout(
+        sim, CRUISE_CONTROLS, jnp.array(0.02), test_aircraft, 200,
+        wind_model=model, stage_sampled=True)
+    _, logged = integrate.logged_rollout(
+        sim, CRUISE_CONTROLS, jnp.array(0.02), test_aircraft, 200,
+        wind_model=model, stage_sampled=True)
+    for field in State._fields:
+        assert np.array_equal(
+            np.asarray(getattr(logged.state, field)), np.asarray(getattr(plain, field))
+        ), ("stage-sampled", field)
+
 
 def test_step_matches_a_manual_rk4_stage_sequence(test_aircraft):
     """Guard against a mis-weighted Butcher tableau."""
