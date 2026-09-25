@@ -453,7 +453,7 @@ assumption, and a measured bound when one is available.
 | C9 | All lift increments act at the relative wind of the center of gravity. | This breaks the energy balance at very high pitch rates, from 84 °/s to 201 °/s. No state inside the limits of operation shows it. |
 | C10 | The aileron deflection is one angle for a compound control. | This agrees with the definition in the source derivatives. Do not compare `aileron_limit` with the travel of one surface. |
 | C11 | The two estimates of the tail arm do not agree. | The difference is 1.4% to 2.9% on the 747, and 2.0 to 2.9 times on the light aircraft. Do not change a derivative to make them agree. |
-| C12 | A gust gives its full lift immediately. There is no Sears attenuation and no Küssner lag. | C2 is about the motion of the aircraft. This assumption is about the arrival of the gust. At the 747 short period, thin-airfoil theory gives a loss of 3.1% of the lift and a lag of 4.2°. Over the Dryden band, $\sigma_{n_z}$ decreases by 6.78%. Thus the effect makes the load smaller, not larger. `gust.sears` and `gust.kussner_attenuation` calculate it. |
+| C12 | A gust gives its full lift immediately. There is no Sears attenuation and no Küssner lag. | C2 is about the motion of the aircraft. This assumption is about the arrival of the gust. At the 747 short period, thin-airfoil theory (Sears) gives a loss of 3.1% of the lift and a lag of 4.2°. The effect on the load depends on the phase too. A model of the lag with its phase (the Jones approximation to the Küssner function) changes $\sigma_{n_z}$ over the Dryden band by −0.6% (747) to −1.0% (737), and increases the load by about 1% near the short period. A calculation of the magnitude only gives −6.78%, and is not correct. The theory is two-dimensional and incompressible, but the aircraft fly at Mach 0.70 to 0.90 with swept wings. Thus these values are approximate. `gust.sears` and `gust.kussner_attenuation` calculate the magnitude. |
 
 ### 9.4 Atmosphere
 
@@ -616,7 +616,7 @@ These values give the size of the known uncertainties in the headline load:
 | Wind constant during one step (E4) | 0.82% of the pitch change in a core |
 | Different published vortex parameters (E12) | about 4% |
 | Different aircraft (DC-10 against 747) | not known |
-| No gust lag (C12) | 3.1% of the lift at the short period, 6.78% of $\sigma_{n_z}$. The load decreases. |
+| No gust lag (C12) | About −0.6% to −1.0% of $\sigma_{n_z}$ over the Dryden band, and about +1% near the short period |
 | No pitching-gust roll-off (E13) | −1.70% to −9.71% of $\sigma_{n_z}$ |
 | Peak factor in random turbulence (section 10.4) | approximately 20% too low |
 

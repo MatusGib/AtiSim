@@ -297,13 +297,16 @@ def test_v4_the_gust_lag_is_the_same_order_as_the_point_gust_cost(cruise):
             > gust.kussner_attenuation(wn_sp, c, V)[0])
 
 
-def test_v4_the_lag_widens_the_hannibal_shortfall_rather_than_closing_it(cruise):
-    """The SIGN, which is the reason this term is worth raising at all.
+def test_v4_the_magnitude_only_bound_reduces_sigma_nz(cruise):
+    """The MAGNITUDE-ONLY bound: |S| applied to |H| across the Dryden band.
 
-    Applying |S| to |H| across the Dryden band reduces sigma_nz. PROJECT.md §5
-    records the model falling SHORT of the recorded encounter, so this makes
-    that gap larger. A term that closed it would deserve more scepticism than
-    one that does not.
+    Renamed from "..._widens_the_hannibal_shortfall_rather_than_closing_it".
+    What it asserts is unchanged and still true of this calculation. What the
+    old name claimed -- that the lag lowers the load -- is not true of the lag
+    itself: with its phase, sigma_nz falls only 0.6-1.0% and the load rises
+    about 1% near the short period, and Hannibal moves -0.03%
+    (`kussner_attenuation`'s docstring; Physics and Assumptions C12). This
+    bound drops the phase, which is most of the answer.
     """
     ac, V, H = cruise
     Omega = np.geomspace(2.0 * np.pi / 40_000.0, 2.0 * np.pi / 20.0, 2000)

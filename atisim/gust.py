@@ -381,10 +381,13 @@ def kussner_attenuation(omega: float, chord: float, V: float):
     indicial response being its transform. One effect, two authors, and taking
     them for two would double-count it.
 
-    **THE SIGN MATTERS MORE THAN THE SIZE.** The attenuation is a loss, so
-    including it would REDUCE simulated load. The model already falls short of
-    the recorded Hannibal load; this term therefore WIDENS that shortfall
-    rather than explaining it.
+    **THIS IS THE LOSS OF LIFT MAGNITUDE, NOT THE EFFECT ON THE LOAD.** The lag
+    also shifts the phase, and the load depends on both. Modelled with its
+    phase (Jones's approximation to Kussner's function), the lag changes
+    sigma_nz over the Dryden band by only -0.6% (747) to -1.0% (737), and near
+    the short period it RAISES the load by about 1%. Applying |S| to |H| alone
+    gives -6.78% and overstates it. Thin-aerofoil, incompressible and unswept,
+    so approximate at the Mach numbers and sweeps this model flies.
     """
     k = reduced_frequency(omega, chord, V)
     S = sears(k)
