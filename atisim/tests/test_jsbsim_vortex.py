@@ -7,6 +7,7 @@ comparison that fails any of those produces numbers that look exactly like a
 result and are not one.
 """
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -116,13 +117,11 @@ def test_injected_field_matches_atisims_field_at_every_sample(reference):
             v0=jnp.array(enc.values["v0"]),
             cos_dpsi=jnp.array(enc.values.get("cos_dpsi", 1.0)),
         )
-        for s in enc.samples:
-            mine = np.asarray(
-                wind.vortex_wind(jnp.array([s.north, 0.0, -s.altitude]), array)
-            )
-            worst = float(np.abs(mine - s.wind).max())
-            if worst > worst_overall:
-                worst_overall, worst_key = worst, key
+        points = jnp.array([[s.north, 0.0, -s.altitude] for s in enc.samples])
+        mine = np.asarray(jax.vmap(lambda p: wind.vortex_wind(p, array))(points))
+        worst = float(np.abs(mine - np.array([s.wind for s in enc.samples])).max())
+        if worst > worst_overall:
+            worst_overall, worst_key = worst, key
     assert worst_overall < 1e-9, (
         f"the two independently-written vortex fields disagree by "
         f"{worst_overall:.3e} m/s, worst at {worst_key}"

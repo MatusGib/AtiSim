@@ -468,7 +468,7 @@ def _solved_trim_jvp(primals, tangents):
 
 def load_history(ac: Aircraft, wind_model, V, H, *, start_north, n_steps, dt,
                  moving_air: bool = True, load_model=None, key_seed: int = 0,
-                 stage_sampled: bool = False):
+                 stage_sampled: bool = True):
     """n_z per sample -- the differentiable twin of `vortex_viz._measure`'s n_z.
 
     Mirrors `fly_in_moving_air` -> `fly_from_state` -> `_measure` exactly,

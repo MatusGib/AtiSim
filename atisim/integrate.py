@@ -43,7 +43,7 @@ import jax.numpy as jnp
 from jax import Array
 
 from atisim.aircraft import Aircraft
-from atisim.dynamics import derivatives
+from atisim.dynamics import derivatives, relative_velocity
 from atisim.loads import CoeffIncrement, zero_increment
 from atisim.state import Controls, State, quat_normalize
 from atisim.wind import WindState, zero_wind, zero_wind_state
@@ -69,6 +69,12 @@ class SimState(NamedTuple):
     wind_ned: Array  # (3,) m/s NED, applied by the previous step
     omega_gust: Array  # (3,) rad/s body, applied by the previous step
     increment: CoeffIncrement  # coefficients applied by the previous step
+    # The two Kussner lag states, m/s NED-down (wind.JONES_KUSSNER), or None.
+    # None is an EMPTY pytree leaf, so without the lag the carry has exactly the
+    # structure it had before the lag existed -- every hand-built or batched
+    # SimState works unchanged. A lagged run must start it explicitly, as
+    # vortex_viz.fly_from_state does, at the gust the aircraft meets.
+    gust_lag: Array | None = None
 
 
 def init_sim(state: State, key: Array) -> SimState:
@@ -107,7 +113,7 @@ def rk4_step(f, x, dt):
     return _axpy(x, increment, dt)
 
 
-@partial(jax.jit, static_argnames=("wind_model", "load_model", "stage_sampled"))
+@partial(jax.jit, static_argnames=("wind_model", "load_model", "stage_sampled", "gust_lag"))
 def step(
     sim: SimState,
     controls: Controls,
@@ -115,7 +121,8 @@ def step(
     ac: Aircraft,
     wind_model=zero_wind,
     load_model=None,
-    stage_sampled: bool = False,
+    stage_sampled: bool = True,
+    gust_lag: bool = False,
 ) -> SimState:
     """One RK4 step. The PRNG key is threaded through the wind model.
 
@@ -130,6 +137,12 @@ def step(
     handed to `derivatives` is `None` when no load model was given, so the
     default path adds nothing at all rather than adding four exact zeros.
     `load_model` is static, so this branch is resolved at trace time.
+
+    `gust_lag` applies Kussner's lag to the vertical gust (ASSUMPTIONS C12,
+    `wind.JONES_KUSSNER`). Its two states are integrated with the aircraft by
+    the same RK4 stages, so it needs the field at every stage: it requires
+    `stage_sampled=True` and a `wind.field_model`. The pitching gust rate is
+    left unlagged -- the wing-tail delay is a separate term.
     """
     # The wind contract gained an OPTIONAL fifth return, the wind-induced
     # angle-of-attack rate. A model that does not produce one is unchanged and
@@ -160,11 +173,53 @@ def step(
     # the integrator. `wind.field_model` therefore MARKS the models that are
     # safe, and nothing else is re-sampled.
     #
-    # DEFAULT IS STILL THE HOLD. Flipping it would move every published
-    # deterministic-field result again, so it is opt-in per call and the switch
-    # is measured rather than assumed -- see
+    # DEFAULT IS STAGE SAMPLING, since v1.2. It moved every
+    # published deterministic-field result slightly -- the Hannibal headline
+    # 70.2% -> 70.0% -- and each moved number is listed in the changelog. A
+    # model WITHOUT the mark (a stochastic or filter-state model) still takes
+    # the hold, so the default is safe for them. Pass stage_sampled=False to
+    # reproduce a v1.1 number. Measured, not assumed:
     # test_integrate.test_stage_sampling_restores_fourth_order.
     stage_field = getattr(wind_model, "field", None) if stage_sampled else None
+    # A `wind.sampled_field_model` carries its stations: its gust rates are the
+    # secant across them, and a stage must form them the same way.
+    stage_stations = getattr(wind_model, "stations", None)
+    if gust_lag and stage_field is None:
+        raise ValueError(
+            "gust_lag needs stage_sampled=True and a wind.field_model: the lag's "
+            "input is re-evaluated at every RK4 stage")
+    if gust_lag and sim.gust_lag is None:
+        raise ValueError(
+            "gust_lag needs SimState.gust_lag started at the gust the aircraft "
+            "meets, as vortex_viz.fly_from_state does")
+
+    def _stage_rates(s):
+        from atisim.wind import gust_rates, sampled_rates
+        if stage_stations is None:
+            return gust_rates(s.pos_ned, s.quat, stage_field)
+        return sampled_rates(s.pos_ned, s.quat, stage_field, stage_stations)
+
+    if gust_lag:
+        from atisim.wind import kussner_lag_rate, lagged_gust_alphadot, lagged_wind
+
+        def g(y):
+            s, lag = y
+            w = stage_field(s.pos_ned)
+            airspeed = jnp.linalg.norm(relative_velocity(s.vel_body, s.quat, w))
+            lag_dot = kussner_lag_rate(lag, w[2], airspeed, ac.c)
+            og = _stage_rates(s)
+            ad = lagged_gust_alphadot(s.pos_ned, s.quat, s.vel_body, stage_field,
+                                      lag, lag_dot)
+            ds = derivatives(s, controls, ac, lagged_wind(w, lag), og,
+                             increment=increment, alphadot_gust=ad)
+            return ds, lag_dot
+
+        new_state, new_lag = rk4_step(g, (sim.state, sim.gust_lag), dt)
+        new_state = new_state._replace(quat=quat_normalize(new_state.quat))
+        return SimState(
+            state=new_state, wind=wind_state, key=key, wind_ned=wind_ned,
+            omega_gust=omega_gust, increment=applied, gust_lag=new_lag,
+        )
 
     if stage_field is None:
         def f(s: State) -> State:
@@ -172,11 +227,10 @@ def step(
                                increment=increment, alphadot_gust=alphadot_gust)
     else:
         from atisim.wind import gust_alphadot as _gust_alphadot
-        from atisim.wind import gust_rates as _gust_rates
 
         def f(s: State) -> State:
             w = stage_field(s.pos_ned)
-            og = _gust_rates(s.pos_ned, s.quat, stage_field)
+            og = _stage_rates(s)
             ad = _gust_alphadot(s.pos_ned, s.quat, s.vel_body, stage_field)
             return derivatives(s, controls, ac, w, og,
                                increment=increment, alphadot_gust=ad)
@@ -191,10 +245,12 @@ def step(
         wind_ned=wind_ned,
         omega_gust=omega_gust,
         increment=applied,
+        gust_lag=sim.gust_lag,
     )
 
 
-@partial(jax.jit, static_argnames=("n_steps", "wind_model", "load_model", "stage_sampled"))
+@partial(jax.jit, static_argnames=("n_steps", "wind_model", "load_model", "stage_sampled",
+                                   "gust_lag"))
 def rollout(
     sim: SimState,
     controls: Controls,
@@ -203,7 +259,8 @@ def rollout(
     n_steps: int,
     wind_model=zero_wind,
     load_model=None,
-    stage_sampled: bool = False,
+    stage_sampled: bool = True,
+    gust_lag: bool = False,
 ) -> tuple[SimState, State]:
     """Run n_steps with fixed controls.
 
@@ -213,13 +270,15 @@ def rollout(
 
     def body(carry: SimState, _) -> tuple[SimState, State]:
         carry = step(carry, controls, dt, ac, wind_model=wind_model,
-                     load_model=load_model, stage_sampled=stage_sampled)
+                     load_model=load_model, stage_sampled=stage_sampled,
+                     gust_lag=gust_lag)
         return carry, carry.state
 
     return jax.lax.scan(body, sim, None, length=n_steps)
 
 
-@partial(jax.jit, static_argnames=("n_steps", "wind_model", "load_model", "stage_sampled"))
+@partial(jax.jit, static_argnames=("n_steps", "wind_model", "load_model", "stage_sampled",
+                                   "gust_lag"))
 def logged_rollout(
     sim: SimState,
     controls: Controls,
@@ -228,7 +287,8 @@ def logged_rollout(
     n_steps: int,
     wind_model=zero_wind,
     load_model=None,
-    stage_sampled: bool = False,
+    stage_sampled: bool = True,
+    gust_lag: bool = False,
 ) -> tuple[SimState, SimState]:
     """`rollout`, but the whole `SimState` is stacked rather than just the state.
 
@@ -247,7 +307,8 @@ def logged_rollout(
 
     def body(carry: SimState, _) -> tuple[SimState, SimState]:
         carry = step(carry, controls, dt, ac, wind_model=wind_model,
-                     load_model=load_model, stage_sampled=stage_sampled)
+                     load_model=load_model, stage_sampled=stage_sampled,
+                     gust_lag=gust_lag)
         return carry, carry
 
     return jax.lax.scan(body, sim, None, length=n_steps)

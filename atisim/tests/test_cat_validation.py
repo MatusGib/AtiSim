@@ -28,6 +28,7 @@ Sources, in the order they are first used:
 
 import math
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -1368,11 +1369,9 @@ def test_the_two_field_implementations_agree_on_the_oblique_array():
         r0=jnp.array(v["r0"]), v0=jnp.array(v["v0"]),
         cos_dpsi=jnp.array(v["cos_dpsi"]),
     )
-    worst = 0.0
-    for s in enc.samples:
-        mine = np.asarray(
-            wind.vortex_wind(jnp.array([s.north, 0.0, -s.altitude]), array))
-        worst = max(worst, float(np.abs(mine - s.wind).max()))
+    points = jnp.array([[s.north, 0.0, -s.altitude] for s in enc.samples])
+    mine = np.asarray(jax.vmap(lambda p: wind.vortex_wind(p, array))(points))
+    worst = float(np.abs(mine - np.array([s.wind for s in enc.samples])).max())
     assert worst < 1e-9, f"the two array implementations disagree by {worst:.3e}"
 
 

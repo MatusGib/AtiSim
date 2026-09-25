@@ -61,10 +61,10 @@ def test_the_wave_is_periodic_at_its_stated_wavelength():
 
 def test_the_vertical_velocity_never_exceeds_the_stated_amplitude():
     north = np.linspace(-60_000.0, 60_000.0, 2001)
-    w_up = np.array([
-        -float(wind.lee_wave_wind(jnp.array([n, 0.0, -H]), a_wave(w0=6.0))[2])
-        for n in north
-    ])
+    wave = a_wave(w0=6.0)
+    points = jnp.stack([jnp.asarray(north), jnp.zeros(north.size), jnp.full(north.size, -H)],
+                       axis=1)
+    w_up = -np.asarray(jax.vmap(lambda p: wind.lee_wave_wind(p, wave))(points)[:, 2])
     assert np.abs(w_up).max() == pytest.approx(6.0, abs=1e-6)
 
 

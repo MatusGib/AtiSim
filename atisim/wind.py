@@ -1133,12 +1133,194 @@ DRYDEN_ALTITUDE_FLOOR = 2000.0 * FT2M  # m, below which L_w is NOT this constant
 # to get wrong.
 DRYDEN_LU = DRYDEN_LW
 DRYDEN_LV = DRYDEN_LW
+# The von Karman form's scale length and constant, MIL-F-8785C section 3.7.2.1
+# (printed p. 48: "L_u = L_v = L_w = 2,500 feet using the von Karman form") and
+# section 3.7.1.1 (printed p. 47), confirmed from the page images.
+VON_KARMAN_LW = 2500.0 * FT2M  # m
+VON_KARMAN_SCALE = 1.339
 
 
 def dryden_spectrum(omega: Array, sigma_w: float, L_w: float = DRYDEN_LW) -> Array:
     """MIL-F-8785C vertical spatial PSD at spatial frequency `omega` (rad/m)."""
     u2 = (L_w * omega) ** 2
     return sigma_w**2 * (L_w / jnp.pi) * (1.0 + 3.0 * u2) / (1.0 + u2) ** 2
+
+
+def sinusoidal_vertical_field(amplitude: float, wavelength: float,
+                              phase: float = 0.0):
+    """A single-frequency frozen vertical gust, as a position-only field.
+
+    `w_up(N) = amplitude * cos(2 pi N / wavelength + phase)`, positive UP.
+
+    WHY A SPECTRUM'S WORTH OF MACHINERY IS NOT USED HERE. This is the input to
+    the ONE experiment in this project that has an exact answer -- the transfer
+    function verification of `atisim/gust.py` -- and a
+    single sinusoid is the only input for which "the answer" is a single
+    complex number rather than an integral. `dryden_vertical_field` with one
+    component would do the same arithmetic, but its amplitude is set by the
+    spectrum and the caller could not choose it, and choosing it is exactly
+    what keeps that run inside the linear regime it is verifying.
+
+    Composes with `superpose` and is analytically differentiable, so
+    `field_model`'s `jacfwd` produces the exact gradient and `stage_sampled`
+    applies -- which matters here more than anywhere else, since a held wind
+    would cost the integrator three orders and the check would then be measuring the
+    integrator instead of the response.
+    """
+    k = 2.0 * jnp.pi / wavelength
+
+    def field(pos_ned: Array) -> Array:
+        w_up = amplitude * jnp.cos(k * pos_ned[0] + phase)
+        # NED z is DOWN; an updraft is negative. Same convention as LeeWave.
+        return jnp.array([0.0, 0.0, -w_up])
+
+    return field
+
+
+def gaussian_vertical_field(
+    sigma_w: float,
+    seed: int,
+    *,
+    L_w: float = DRYDEN_LW,
+    n_components: int = 400,
+    wavelength_min: float = 20.0,
+    wavelength_max: float = 40_000.0,
+):
+    """`dryden_vertical_field`'s Gaussian CONTROL: random amplitudes too.
+
+    Same spectrum, same grid, same variance in expectation -- and a genuinely
+    Gaussian process, which `dryden_vertical_field` is not.
+
+    **WHY A CONTROL IS NEEDED AT ALL.**
+    The Shinozuka construction gives every component a FIXED amplitude
+    `sqrt(2 Phi dOmega)` and a random phase. That reproduces the target PSD
+    exactly -- `test_cat_validation.py::test_a_dryden_realisation_has_the_
+    variance_it_claims` measures it -- and it does NOT reproduce a Gaussian
+    process's higher moments: each realisation's amplitude spectrum has zero
+    variance across the ensemble. Every peak, exceedance and load-factor claim
+    the model gives rests on statistics that construction is not guaranteed
+    to get right. On TPAWS' 5 s reduction, the Shinozuka field's peak factor
+    minus this one's is +0.009 +/- 0.038 (0.25 se): the construction is not
+    what makes the model's peaks small.
+
+    Here each component carries independent `a_k cos + b_k sin` with
+    `a_k, b_k ~ N(0, A_k^2/2)`, so the sum is Gaussian by construction, its
+    variance is the same `sum A_k^2/2`, and the ONLY difference from the
+    Shinozuka field is the thing under test. Comparing the two isolates the
+    construction rather than the spectrum, which comparing either against a
+    textbook peak-factor formula could not do -- the asymptotic
+    `sqrt(2 ln(nu T))` does not apply at these record lengths.
+
+    NOT a replacement for `dryden_vertical_field` and not to be flown for a
+    result. It is the null hypothesis, and using it for anything else would
+    make the comparison it exists for circular.
+    """
+    omega, amplitude, _ = dryden_vertical_components(
+        sigma_w, seed, L_w=L_w, n_components=n_components,
+        wavelength_min=wavelength_min, wavelength_max=wavelength_max,
+    )
+    # A SEPARATE key stream from the Shinozuka field's, so that seed k of one is
+    # not a re-phasing of seed k of the other. Sharing it would correlate the
+    # two ensembles member for member and understate the difference between
+    # them -- which is the one quantity the whole comparison is about.
+    ka, kb = jax.random.split(jax.random.PRNGKey(seed + 1_000_003), 2)
+    scale = amplitude / jnp.sqrt(2.0)
+    a = scale * jax.random.normal(ka, (n_components,))
+    b = scale * jax.random.normal(kb, (n_components,))
+
+    def field(pos_ned: Array) -> Array:
+        x = pos_ned[0]
+        w_up = jnp.sum(a * jnp.cos(omega * x) + b * jnp.sin(omega * x))
+        # NED z is DOWN; an updraft is negative. Same convention as LeeWave.
+        return jnp.array([0.0, 0.0, -w_up])
+
+    return field
+
+
+def one_minus_cosine_gust(peak: float, gradient_distance: float,
+                          start_north: float = 0.0):
+    """The certification discrete gust, as a position-only field.
+
+        w_up(s) = (peak/2) (1 - cos(pi s / H))   for 0 <= s <= 2H
+                = 0                              outside
+
+    with `s = north - start_north` and `H = gradient_distance` -- the distance
+    from the gust's start to its peak, which is the convention NACA Report 1206
+    and every airworthiness code since state it in. The gust is therefore 2H
+    long and its maximum is `peak` at s = H.
+
+    Pratt & Walker fitted the alleviation factor `K_g` for H = 12.5 mean chords,
+    which is what makes `gust.pratt_walker` comparable against a run through
+    this field and only this field. Sweep H around that value, so the
+    comparison is not read off one point.
+
+    C1 BUT NOT C2, and that is worth knowing before a convergence study is run
+    on it. The slope `(peak pi / 2H) sin(pi s / H)` vanishes at both ends, so
+    the wind and its gradient are continuous everywhere; the CURVATURE jumps at
+    s = 0 and s = 2H. That is two points in a run, not a region, and it is why
+    this field is legitimate to fly while `wind.vortex_wind`'s Rankine core --
+    whose SLOPE jumps -- makes an order study non-monotone (assumption E9).
+    """
+    half = 0.5 * peak
+    k = jnp.pi / gradient_distance
+
+    def field(pos_ned: Array) -> Array:
+        s = pos_ned[0] - start_north
+        inside = (s >= 0.0) & (s <= 2.0 * gradient_distance)
+        # `jnp.where` on a SAFE argument, not on the result: the cosine is
+        # finite everywhere so this is only a mask, but keeping the pattern
+        # identical to the rest of this module costs nothing and means no
+        # future edit has to rediscover which branch jacfwd differentiates.
+        w_up = jnp.where(inside, half * (1.0 - jnp.cos(k * s)), 0.0)
+        # NED z is DOWN; an updraft is negative. Same convention as LeeWave.
+        return jnp.array([0.0, 0.0, -w_up])
+
+    return field
+
+
+def dryden_vertical_components(
+    sigma_w: float,
+    seed: int,
+    *,
+    L_w: float = DRYDEN_LW,
+    n_components: int = 400,
+    wavelength_min: float = 20.0,
+    wavelength_max: float = 40_000.0,
+):
+    """The (omega, amplitude, phase) triple `dryden_vertical_field` sums.
+
+    Split out of that function -- which now calls it and is bit-identical to
+    what it was -- because a Shinozuka realisation's response variance has an
+    EXACT closed form in terms of these three arrays, and no caller could reach
+    them while they lived inside a closure.
+
+    For a sum of sinusoids with
+    FIXED amplitudes A_k and random phases, driven through a transfer function
+    H, the response variance over a long record is
+
+        sigma_response^2 = sum_k |H(omega_k)|^2 A_k^2 / 2
+
+    with no approximation at all -- not a Riemann sum of an integral, but the
+    variance this particular realisation actually has. Comparing a flown run
+    against THAT separates the model's response from the realisation's own
+    discretisation, which comparing against the continuous integral cannot do.
+    `atisim/gust.py::realisation_mean_square_ratio` is the caller.
+
+    Returns jax arrays, since that is what the field closure consumes.
+    """
+    key = jax.random.PRNGKey(seed)
+    omega = jnp.geomspace(
+        2.0 * jnp.pi / wavelength_max, 2.0 * jnp.pi / wavelength_min, n_components
+    )
+    # Trapezoidal widths on a log grid: each component owns half the gap to
+    # each neighbour, and the two ends own their single half-gap.
+    edges = jnp.concatenate([
+        omega[:1], jnp.sqrt(omega[1:] * omega[:-1]), omega[-1:]
+    ])
+    d_omega = edges[1:] - edges[:-1]
+    amplitude = jnp.sqrt(2.0 * dryden_spectrum(omega, sigma_w, L_w) * d_omega)
+    phase = jax.random.uniform(key, (n_components,), maxval=2.0 * jnp.pi)
+    return omega, amplitude, phase
 
 
 def dryden_vertical_field(
@@ -1167,18 +1349,10 @@ def dryden_vertical_field(
     makes the realised variance sum(Phi dOmega) -- a Riemann sum of the integral
     that defines sigma_w^2.
     """
-    key = jax.random.PRNGKey(seed)
-    omega = jnp.geomspace(
-        2.0 * jnp.pi / wavelength_max, 2.0 * jnp.pi / wavelength_min, n_components
+    omega, amplitude, phase = dryden_vertical_components(
+        sigma_w, seed, L_w=L_w, n_components=n_components,
+        wavelength_min=wavelength_min, wavelength_max=wavelength_max,
     )
-    # Trapezoidal widths on a log grid: each component owns half the gap to
-    # each neighbour, and the two ends own their single half-gap.
-    edges = jnp.concatenate([
-        omega[:1], jnp.sqrt(omega[1:] * omega[:-1]), omega[-1:]
-    ])
-    d_omega = edges[1:] - edges[:-1]
-    amplitude = jnp.sqrt(2.0 * dryden_spectrum(omega, sigma_w, L_w) * d_omega)
-    phase = jax.random.uniform(key, (n_components,), maxval=2.0 * jnp.pi)
 
     def field(pos_ned: Array) -> Array:
         w_up = jnp.sum(amplitude * jnp.cos(omega * pos_ned[0] + phase))
@@ -1234,6 +1408,115 @@ def dryden_longitudinal_spectrum(
     measured in a test rather than asserted here.
     """
     return sigma_u**2 * (2.0 * L_u / jnp.pi) / (1.0 + (L_u * omega) ** 2)
+
+
+# ---------------------------------------------------------------------------
+# THE ROTATIONAL SPECTRA.
+#
+# MIL-F-8785C section 3.7.5, "Application of the disturbance model in analyses",
+# printed p. 58, read from the rendered page image -- the PDF's OCR layer is
+# unusable for equations. They are easy to miss: section 3.7.1 (pp. 45-48)
+# has the translational spectra, and these are eleven pages on. Printed p. 60 adds that "u_g, v_g, w_g and p_g
+# shall be considered mutually independent ... However, q_g is correlated with
+# w_g, and r_g is correlated with v_g."
+#
+# NOTHING HERE CHANGES A FIELD. dryden_vertical_field varies along track only,
+# so its realised p_gust is identically zero and its q_gust is the pure gradient
+# -cos^2(theta) dw/dx, without the specification's 1/[1 + (4b Omega/pi)^2]
+# roll-off. These functions are what the flown field is measured against;
+# `gust.gust_transfer(q_rolloff_span=...)` applies the q roll-off.
+# ---------------------------------------------------------------------------
+
+
+def dryden_p_spectrum(omega: Array, sigma_w: float, span: float,
+                      L_w: float = DRYDEN_LW) -> Array:
+    """MIL-F-8785C's rolling-gust spatial PSD, printed p. 58.
+
+        Phi_p(Omega) = (sigma_w^2 / L_w) 0.8 (pi L_w / 4b)^(1/3) / [1 + (4 b Omega / pi)^2]
+
+    `span` is the wing span b in metres, `omega` is spatial frequency in rad/m.
+    p_g = -dw_g/dy is a SPANWISE gradient, which an along-track field cannot
+    carry; and since p_g is independent of w_g (printed p. 60), no filter on
+    w_g can supply it either.
+
+    ITS CONVENTION IS NOT STATED. Neither the specification nor its background
+    guide (Moorhouse & Woodcock, 1982) says whether this form is one- or
+    two-sided. Taking p_g as the least-squares slope of w_g across the span --
+    which reproduces this form's corner pi/(4b) -- on an isotropic field with
+    `dryden_spectrum`'s one-sided footing gives 1.7 to 1.9 times this level at
+    low frequency, so it may be two-sided -- in which case the one-sided
+    sigma_p is sqrt(2) larger. Transcribed as printed; report both readings.
+    """
+    return ((sigma_w**2 / L_w) * 0.8 * (jnp.pi * L_w / (4.0 * span)) ** (1.0 / 3.0)
+            / (1.0 + (4.0 * span * omega / jnp.pi) ** 2))
+
+
+def dryden_q_spectrum(omega: Array, sigma_w: float, span: float,
+                      L_w: float = DRYDEN_LW) -> Array:
+    """MIL-F-8785C's pitching-gust spatial PSD, printed p. 58.
+
+        Phi_q(Omega) = Omega^2 / [1 + (4 b Omega / pi)^2] * Phi_w(Omega)
+
+    The pure gradient's Omega^2 Phi_w through a first-order roll-off at the span
+    frequency pi/(4b): 'precisely at very low frequencies only' does
+    q_g = dw_g/dx hold (printed p. 58).
+    """
+    return (omega**2 / (1.0 + (4.0 * span * omega / jnp.pi) ** 2)
+            * dryden_spectrum(omega, sigma_w, L_w))
+
+
+def dryden_r_spectrum(omega: Array, sigma_v: float, span: float,
+                      L_v: float = DRYDEN_LV) -> Array:
+    """MIL-F-8785C's yawing-gust spatial PSD, printed p. 58.
+
+        Phi_r(Omega) = Omega^2 / [1 + (3 b Omega / pi)^2] * Phi_v(Omega)
+
+    Phi_v has the same right-hand side as Phi_w in the Dryden form (printed
+    p. 47), so `dryden_spectrum` serves it.
+    """
+    return (omega**2 / (1.0 + (3.0 * span * omega / jnp.pi) ** 2)
+            * dryden_spectrum(omega, sigma_v, L_v))
+
+
+
+
+def von_karman_spectrum(omega: Array, sigma_w: float,
+                        L_w: float = VON_KARMAN_LW) -> Array:
+    """MIL-F-8785C's von Karman vertical spatial PSD, printed p. 47, one-sided.
+
+        Phi_w(Omega) = sigma_w^2 (L_w/pi) [1 + (8/3)(1.339 L_w Omega)^2]
+                                          / [1 + (1.339 L_w Omega)^2]^(11/6)
+
+    Falls as Omega^(-5/3), which is what Stewart's Fig. 5 measures in the
+    atmosphere a B-757 flew through, where Dryden falls as Omega^(-2).
+    Fly it as a SENSITIVITY beside `dryden_vertical_field`, not as a baseline:
+    no published result of this model was flown through it.
+    """
+    u2 = (VON_KARMAN_SCALE * L_w * omega) ** 2
+    return (sigma_w**2 * (L_w / jnp.pi) * (1.0 + (8.0 / 3.0) * u2)
+            / (1.0 + u2) ** (11.0 / 6.0))
+
+
+def von_karman_vertical_field(
+    sigma_w: float,
+    seed: int,
+    *,
+    L_w: float = VON_KARMAN_LW,
+    n_components: int = 400,
+    wavelength_min: float = 20.0,
+    wavelength_max: float = 40_000.0,
+):
+    """`dryden_vertical_field` with the von Karman spectrum -- same construction,
+    same grid, same fixed amplitudes and random phases, via `_dryden_component`.
+    """
+    w = _dryden_component(von_karman_spectrum, sigma_w, jax.random.PRNGKey(seed),
+                          L_w, n_components, wavelength_min, wavelength_max)
+
+    def field(pos_ned: Array) -> Array:
+        # NED z is DOWN; an updraft is negative. Same convention as everywhere.
+        return jnp.array([0.0, 0.0, -w(pos_ned[0])])
+
+    return field
 
 
 def _dryden_component(spectrum, sigma, key, L, n_components,
@@ -1471,6 +1754,85 @@ def gust_alphadot(pos_ned: Array, quat: Array, vel_body: Array, field) -> Array:
     return (u_rel * rel_rate_body[2] - w_rel * rel_rate_body[0]) / denominator
 
 
+# ---------------------------------------------------------------------------
+# THE GUST LAG -- assumption C12, opt-in (since v1.2).
+#
+# Kussner's indicial function, the lift build-up on a wing entering a
+# sharp-edged gust, in Jones's two-exponential approximation:
+#
+#     psi(s) = 1 - 0.5 e^(-0.13 s) - 0.5 e^(-s),   s = 2 V t / c
+#
+# with s the distance travelled in SEMICHORDS. DECLARED: the coefficients are
+# the standard approximation, and the source that gives them is not held here.
+# What is held is Sears' function (`gust.sears`), and the approximation is
+# priced against it rather than trusted: |psi(ik)| / |S(k)| is 0.980-1.051 over
+# k 0.005-1 (test_gust_lag.py), worst near k 0.02 -- the transports' short
+# period -- where a sum of exponentials cannot follow Sears' k ln k. Its PHASE is referenced to the gust reaching
+# the leading edge; Sears' is referenced to mid-chord, and the model samples
+# the gust at the CG. That reference is a declared choice too, and the design
+# document prices it.
+#
+# As a filter: Psi(p) = sum_i a_i b_i / (p + b_i) with sum_i a_i = 1, so the
+# lagged gust is sum_i a_i x_i with x_i' = b_i (2V/c) (w - x_i). A steady gust
+# is passed exactly, and a lag started at the gust it meets never moves.
+# ---------------------------------------------------------------------------
+JONES_KUSSNER = ((0.5, 0.13), (0.5, 1.0))  # (weight a_i, rate b_i per semichord)
+# The fast pole is STIFF: 2V/c is 57 /s for the 747 and 123 /s for the 737 at
+# cruise, so RK4's stability limit (lambda dt = 2.785) sits near the time steps
+# this project flies. MEASURED on the filter alone: its frequency response is
+# within 0.2% in amplitude and 0.02 deg in phase up to 2.5 Hz while
+# lambda dt <= 1.5, and -2.6% / +1.1 deg at 2.45. Lagged runs are held to it.
+KUSSNER_RK4_LIMIT = 1.5
+
+
+def kussner_max_dt(airspeed, chord) -> float:
+    """Longest time step a lagged run may take: KUSSNER_RK4_LIMIT / (2V/c b_max)."""
+    b_max = max(bi for _, bi in JONES_KUSSNER)
+    return KUSSNER_RK4_LIMIT / (2.0 * float(airspeed) / float(chord) * b_max)
+
+
+def kussner_jones(k):
+    """Jones's Kussner transfer function at semichord reduced frequency k."""
+    p = 1j * jnp.asarray(k, dtype=float)
+    out = 1.0 + 0.0 * p
+    for a, b in JONES_KUSSNER:
+        out = out - a * p / (p + b)
+    return out
+
+
+def kussner_lag_rate(lag: Array, w_down: Array, airspeed: Array, chord) -> Array:
+    """d(lag)/dt for the two filter states, driven by the NED-down gust."""
+    b = jnp.array([bi for _, bi in JONES_KUSSNER])
+    return (2.0 * airspeed / chord) * b * (w_down - lag)
+
+
+def lagged_wind(wind_ned: Array, lag: Array) -> Array:
+    """`wind_ned` with its vertical component replaced by the lagged gust."""
+    a = jnp.array([ai for ai, _ in JONES_KUSSNER])
+    return wind_ned.at[2].set(jnp.dot(a, lag))
+
+
+def lagged_gust_alphadot(pos_ned: Array, quat: Array, vel_body: Array, field,
+                         lag: Array, lag_rate: Array) -> Array:
+    """`gust_alphadot`, with the vertical wind and its rate taken from the lag.
+
+    The horizontal components keep the field's own material derivative; the
+    vertical one is the lagged gust's rate, so the alphadot the aircraft sees is
+    the rate of the incidence it is actually given.
+    """
+    dcm = quat_to_dcm(quat)  # body -> NED
+    vel_ned = dcm @ vel_body
+    a = jnp.array([ai for ai, _ in JONES_KUSSNER])
+    wind_rate_ned = (jax.jacfwd(field)(pos_ned) @ vel_ned).at[2].set(jnp.dot(a, lag_rate))
+    wind_body = dcm.T @ lagged_wind(field(pos_ned), lag)
+    rel_rate_body = -(dcm.T @ wind_rate_ned)
+
+    vel_rel = vel_body - wind_body
+    u_rel, w_rel = vel_rel[0], vel_rel[2]
+    denominator = jnp.maximum(u_rel**2 + w_rel**2, V_MIN**2)
+    return (u_rel * rel_rate_body[2] - w_rel * rel_rate_body[0]) / denominator
+
+
 def field_model(field):
     """Turn a position-only wind field into a `wind_model`.
 
@@ -1537,6 +1899,12 @@ def sampled_field_model(field, stations):
         alphadot = gust_alphadot(state.pos_ned, state.quat, state.vel_body, field)
         return wind_ned, omega_gust, wind_state, key, alphadot
 
+    # A pure function of position, like `field_model`'s, so it carries the same
+    # mark -- and its stations, so a stage-sampled `integrate.step` forms the
+    # gust rates the same way at every stage (the wing-tail delay, since v1.2).
+    model.stage_sampled = True
+    model.field = field
+    model.stations = stations
     return model
 
 

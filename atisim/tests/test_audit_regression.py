@@ -653,15 +653,18 @@ def test_the_microburst_satisfies_continuity_numerically():
     """The paper's own headline property, asserted rather than trusted."""
     burst = wind.microburst(u_max=19.0, radius=1000.0, z_m=100.0)
     rng = np.random.default_rng(0)
-    worst = 0.0
-    for _ in range(300):
-        p = jnp.array([rng.uniform(-2500, 2500), rng.uniform(-2500, 2500),
-                       -rng.uniform(30.0, 1200.0)])
-        jac = np.asarray(jnp.stack([
-            (wind.microburst_wind(p.at[i].add(0.05), burst)
-             - wind.microburst_wind(p.at[i].add(-0.05), burst)) / 0.1
-            for i in range(3)], axis=1))
-        worst = max(worst, abs(np.trace(jac)))
+    points = jnp.array([
+        [rng.uniform(-2500, 2500), rng.uniform(-2500, 2500), -rng.uniform(30.0, 1200.0)]
+        for _ in range(300)])
+
+    @jax.jit
+    @jax.vmap
+    def divergence(p):
+        return sum((wind.microburst_wind(p.at[i].add(0.05), burst)[i]
+                    - wind.microburst_wind(p.at[i].add(-0.05), burst)[i]) / 0.1
+                   for i in range(3))
+
+    worst = float(jnp.abs(divergence(points)).max())
     assert worst < 1e-6, f"max |div| = {worst:.3e}"
 
 
@@ -905,45 +908,47 @@ def test_lateral_modes_orders_roll_and_spiral_by_speed_not_by_sign():
         assert 0.0 < rt < st, f"{name}: roll {rt} should be fast and positive"
 
 
-def _aero_power(ac, V, alt, q, de):
+def _pitch_plane_power(ac, V, alpha, q, de, rho, a):
     """F_aero.v + M_aero.omega in still air with the throttle shut.
 
     For this EOM that IS dE/dt: gravity is conservative and enters E as
     potential energy, and with no wind and no thrust the aerodynamic wrench is
     the only other force. A passive airframe must have it <= 0 everywhere.
     """
-    from atisim.atmosphere import speed_of_sound
-    rho, a = density(jnp.array(alt)), speed_of_sound(jnp.array(alt))
-    vel = jnp.array([V, 0.0, 0.0])
+    vel = jnp.array([V * jnp.cos(alpha), 0.0, V * jnp.sin(alpha)])
     om = jnp.array([0.0, q, 0.0])
-    c = Controls(elevator=jnp.array(de), aileron=jnp.array(0.0),
+    c = Controls(elevator=de, aileron=jnp.array(0.0),
                  rudder=jnp.array(0.0), throttle=jnp.array(0.0))
     F, M = aero_forces_moments(vel, om, c, ac, rho, a)
-    return float(jnp.dot(F, vel) + jnp.dot(M, om))
+    return jnp.dot(F, vel) + jnp.dot(M, om)
 
 
-def test_the_model_admits_states_that_CREATE_energy_in_still_air():
-    """KNOWN FLAW, bounded, and outside the declared envelope.
+# One compiled call over a batch of states. Evaluating the states one eager call
+# at a time is what used to hold these energy tests at minutes each.
+_pitch_plane_powers = jax.jit(
+    jax.vmap(_pitch_plane_power, in_axes=(None, 0, 0, 0, 0, None, None)))
 
-    The aero build-up has no `CD_de` and no explicit `CD_q`; drag responds to
-    elevator and pitch rate only through the induced term on total CL. So the
-    control-moment power `Cmde*de*q` has no matching drag channel, and at a
-    large enough pitch rate it beats the `Cmq` damping power. The aerodynamics
-    then do POSITIVE work on the aircraft with the throttle shut.
 
-    Found by audit Agent E; the state below reproduces its figure exactly.
-    Bounded by the two tests that follow, and those bounds are what make this a
-    documented flaw rather than an alarm.
-    """
-    ac = REGISTRY["cherokee"]
-    alt = CRUISE["cherokee"]["altitude"]
-    p = _aero_power(ac, 75.0, alt, -8.256, 25.0 * DEG2RAD)
-    assert p > 0.0, "no positive-power state; if this is fixed, see AUDIT.md"
-    assert p == pytest.approx(56.965e3, rel=0.02)
+def _still_air_powers(ac, altitude, V, q, de, alpha=0.0):
+    """`_pitch_plane_power` over broadcast arrays of V, q, de and alpha."""
+    from atisim.atmosphere import speed_of_sound
+    V, alpha, q, de = np.broadcast_arrays(*(np.asarray(x, dtype=float)
+                                            for x in (V, alpha, q, de)))
+    out = _pitch_plane_powers(
+        ac, jnp.asarray(V.ravel()), jnp.asarray(alpha.ravel()),
+        jnp.asarray(q.ravel()), jnp.asarray(de.ravel()),
+        density(jnp.array(altitude)), speed_of_sound(jnp.array(altitude)))
+    return np.asarray(out).reshape(V.shape)
+
+
+def _aero_power(ac, V, alt, q, de):
+    """Still-air power at one wings-level state, as a float."""
+    return float(_still_air_powers(ac, alt, V, q, de))
 
 
 def test_only_the_cherokee_has_a_positive_power_region_and_it_needs_201_deg_per_sec():
-    """The bound on the finding above, and it is what keeps it harmless.
+    """The bound on `test_the_model_creates_mechanical_energy_in_still_air`, and
+    it is what keeps it harmless.
 
     At their own cruise conditions, with the elevator at its own limit and the
     pitch rate swept to 30 rad/s, the Cessna and BOTH 747s have no
@@ -959,8 +964,7 @@ def test_only_the_cherokee_has_a_positive_power_region_and_it_needs_201_deg_per_
         ac = REGISTRY[name]
         V, alt = CRUISE[name]["airspeed"], CRUISE[name]["altitude"]
         de = float(ac.elevator_limit)
-        worst = max(_aero_power(ac, V, alt, q, de)
-                    for q in np.linspace(0.0, -30.0, 301))
+        worst = _still_air_powers(ac, alt, V, np.linspace(0.0, -30.0, 301), de).max()
         assert worst < 0.0, f"{name} now has a positive-power state"
 
     ac = REGISTRY["cherokee"]
@@ -970,7 +974,7 @@ def test_only_the_cherokee_has_a_positive_power_region_and_it_needs_201_deg_per_
     # Cmq damping power (~q^2) beats the control-moment power (~q) again. So
     # scan for the first sign change and bisect inside that bracket.
     grid = np.linspace(0.0, -30.0, 301)
-    power = np.array([_aero_power(ac, V, alt, q, de) for q in grid])
+    power = _still_air_powers(ac, alt, V, grid, de)
     first = int(np.argmax(power > 0.0))
     assert power[first] > 0.0, "the Cherokee no longer has a positive-power band"
     lo, hi = grid[first - 1], grid[first]
@@ -1071,9 +1075,12 @@ def test_the_wind_hold_costs_the_headline_figure_more_than_E4_bounds_it():
     field = lambda p: wind.vortex_wind(p, arr)  # noqa: E731
     dt, seconds = 0.02, 40.0
 
+    # The HELD arm must ask for the hold: since v1.2, `fly` stage-samples a
+    # position-only field by default, which would make both arms
+    # the same scheme and this test measure nothing.
     enc = vortex_viz.fly(B747, field, V, H, label="v", start_north=-40 * r0,
                          seconds=seconds, dt=dt, window=(-r0, r0),
-                         window_name="core")
+                         window_name="core", stage_sampled=False)
     w = np.asarray(enc.window)
     th = np.asarray(enc.theta)
     held = math.degrees(th[w].max() - th[w].min())
@@ -1502,16 +1509,15 @@ def test_restoring_the_lift_tilt_removes_the_energy_violation():
     plausible cause because of this test.
     """
     ac = CHEROKEE
-    shipped = restored = 0
-    for V in np.linspace(0.4 * 50.0, 1.6 * 50.0, 40):
-        for q in np.linspace(-10.0, 10.0, 80):
-            for de in (-float(ac.elevator_limit), float(ac.elevator_limit)):
-                p = _still_air_power(ac, float(V), float(q), de, _E1_ALTITUDE)
-                qbar = 0.5 * float(density(_E1_ALTITUDE)) * V**2
-                arm = -float(ac.Cmde) / float(ac.CLde) * float(ac.c)
-                tilt = (qbar * float(ac.S) * float(ac.CLde) * de) * (q * arm / V) * V
-                shipped += p > 0
-                restored += (p + tilt) > 0
+    V, q, de = np.meshgrid(
+        np.linspace(0.4 * 50.0, 1.6 * 50.0, 40), np.linspace(-10.0, 10.0, 80),
+        [-float(ac.elevator_limit), float(ac.elevator_limit)], indexing="ij")
+    p = _still_air_powers(ac, _E1_ALTITUDE, V, q, de)
+    qbar = 0.5 * float(density(_E1_ALTITUDE)) * V**2
+    arm = -float(ac.Cmde) / float(ac.CLde) * float(ac.c)
+    tilt = (qbar * float(ac.S) * float(ac.CLde) * de) * (q * arm / V) * V
+    shipped = int((p > 0).sum())
+    restored = int((p + tilt > 0).sum())
     assert shipped == 1190, f"the violating region moved: {shipped} points"
     assert restored == 0, (
         f"restoring the lift tilt left {restored} violating states; the "
@@ -1528,25 +1534,18 @@ def test_aerodynamic_power_is_dissipative_inside_the_declared_envelope(name):
     0 positive states out of 2000 per aircraft. This is what makes the violation
     a bounded flaw rather than a live defect in anything the project reports.
     """
-    from atisim.atmosphere import speed_of_sound
-
     ac = REGISTRY[name]
     Vc = float(CRUISE[name]["airspeed"])
     altitude = float(CRUISE[name]["altitude"])
     rng = np.random.default_rng(4242)
-    rho, a_sound = density(altitude), speed_of_sound(altitude)
-    worst = -np.inf
-    for _ in range(2000):
-        V = float(rng.uniform(0.5 * Vc, 1.6 * Vc))
-        alpha = float(rng.uniform(-math.radians(12), math.radians(12)))
-        q = float(rng.uniform(-0.5, 0.5))
-        de = float(rng.uniform(-float(ac.elevator_limit), float(ac.elevator_limit)))
-        vel = jnp.array([V * math.cos(alpha), 0.0, V * math.sin(alpha)])
-        omega = jnp.array([0.0, q, 0.0])
-        controls = Controls(jnp.array(de), jnp.array(0.0), jnp.array(0.0),
-                            jnp.array(0.0))
-        force, moment = aero_forces_moments(vel, omega, controls, ac, rho, a_sound)
-        worst = max(worst, float(force @ vel + moment @ omega))
+    # Drawn in the original interleaved order, so the 2000 states are unchanged.
+    V, alpha, q, de = np.array([
+        (rng.uniform(0.5 * Vc, 1.6 * Vc),
+         rng.uniform(-math.radians(12), math.radians(12)),
+         rng.uniform(-0.5, 0.5),
+         rng.uniform(-float(ac.elevator_limit), float(ac.elevator_limit)))
+        for _ in range(2000)]).T
+    worst = float(_still_air_powers(ac, altitude, V, q, de, alpha=alpha).max())
     assert worst < 0.0, (
         f"{name} gains energy inside the declared envelope: {worst:+.1f} W. "
         "The bound in AUDIT.md section 2.5 no longer holds.")

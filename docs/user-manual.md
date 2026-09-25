@@ -26,6 +26,9 @@ Use AtiSim to compare turbulence encounters and to find the mechanism of a respo
 only for the longitudinal response of a 747-class aircraft at Mach 0.70 to 0.90, between
 35,000 ft and 45,000 ft. {doc}`physics-and-assumptions`, section 1, gives the full limits.
 
+In random turbulence, the peak loads of the model are approximately 20% too small relative to
+their rms. {doc}`physics-and-assumptions`, section 10.4, gives the measurement.
+
 :::{caution}
 Do not use AtiSim to calculate a design load or a certification load. AtiSim does not predict
 absolute loads. An incorrect load can cause an unsafe design.
@@ -255,12 +258,53 @@ final, history = integrate.rollout(sim, controls, jnp.array(0.01), ac,
    print(f"peak-to-peak load: {n_z.max() - n_z.min():.2f} g")
    ```
 
-3. Make sure that the result is 1.90 g.
+3. Make sure that the result is 1.89 g. AtiSim 1.1 gave 1.90 g, because it kept the wind
+   constant during each time step (assumption E4). To get that value again, set
+   `stage_sampled=False`.
 
 The argument `replayed=True` samples the field along the path of the recorded aircraft.
 {doc}`physics-and-assumptions`, section 10.3, gives the reason.
 
-### 4.5 Combine wind fields
+### 4.5 Fly with the gust lag and the wing–tail delay
+
+Version 1.2 adds two optional corrections to the gust response. Both are off by default.
+
+- The gust lag, `gust_lag=True`, delays the lift from a vertical gust as the Küssner function
+  gives (assumption C12).
+- The wing–tail delay, `tail_arm=l`, calculates the pitching gust from the gust at the center of
+  gravity and the gust at the tail (assumption E13).
+
+1. Get the tail arm. For `boeing747`, use the arm that the model derives from its derivatives. For
+   `boeing737`, use `airframe.JSBSIM_HTAILARM_FT`:
+
+   ```python
+   import atisim
+   from atisim import airframe, vortex_viz
+   from atisim.aircraft import REGISTRY
+
+   ac = REGISTRY["boeing747"]
+   arm = float(airframe.effective_tail_arm(ac) * ac.c)
+   ```
+
+2. Fly the Hannibal encounter with both corrections:
+
+   ```python
+   enc, info = vortex_viz.fly_mehta("boeing747", dt=0.01, replayed=True,
+                                    gust_lag=True, tail_arm=arm)
+   n_z = enc.n_z[enc.window]
+   print(f"peak-to-peak load: {n_z.max() - n_z.min():.2f} g")
+   ```
+
+3. Make sure that the result is 1.77 g.
+
+The gust lag needs a time step less than `wind.kussner_max_dt`: 0.026 s for the 747 and 0.012 s
+for the 737. A longer time step causes an error. To use the wing–tail delay with other fields, give
+`wind_model=wind.sampled_field_model(field, airframe.stations(ac, n_lon=2, tail_arm=arm))`.
+
+{doc}`physics-and-assumptions`, sections 9 and 10, gives the limits of the two corrections. They
+are approximations. Do not think that they make every result more accurate.
+
+### 4.6 Combine wind fields
 
 Use `wind.superpose` to add two or more fields. Use `vortex_viz.fly` to fly any field:
 
@@ -284,7 +328,7 @@ enc = vortex_viz.fly(ac, field, V, H, label="vortices and updraft",
                      window=(-3000.0, 12000.0), window_name="the disturbed part")
 ```
 
-### 4.6 Add a wind field
+### 4.7 Add a wind field
 
 1. Write a function that takes a position in NED and gives the wind in NED, in m/s.
 2. Use only `jax.numpy` in the function, so that JAX can calculate its gradient.
@@ -301,7 +345,7 @@ def uniform_updraft(pos_ned):
 
 The full wind-model interface is in {doc}`physics-and-assumptions`, section 7.1.
 
-### 4.7 Calculate the linear modes
+### 4.8 Calculate the linear modes
 
 This example gives the phugoid and the short-period modes of the 747 at cruise:
 
@@ -325,7 +369,7 @@ Each mode is a pair of the natural frequency, in rad/s, and the damping ratio.
 `validation.lateral_modes` gives the lateral modes. `atisim.sensitivity` gives the change of a
 result when a coefficient changes.
 
-### 4.8 Fly an ensemble
+### 4.9 Fly an ensemble
 
 1. Make one Dryden field for each seed with `wind.dryden_field(sigma, seed)`.
 2. Fly each field.
@@ -334,7 +378,7 @@ result when a coefficient changes.
 The scripts `cat_ensemble.py` and `cat_spectra.py` are complete examples. For a batch of runs
 with one deterministic field, use `integrate.batch_sim` and `integrate.batched_rollout`.
 
-### 4.9 Save a run and examine it
+### 4.10 Save a run and examine it
 
 The analysis application needs the `ui` part (section 2.3).
 
@@ -356,7 +400,7 @@ The analysis application needs the `ui` part (section 2.3).
 
 To read a saved run in Python, use `atisim.analysis.artifact.read_run`.
 
-### 4.10 Do the validation again
+### 4.11 Do the validation again
 
 The validation needs the `dev` part (section 2.3).
 
@@ -438,6 +482,9 @@ The tests use the stored data. Use these scripts only to make the data again.
 | Microburst | `microburst_wind(p, microburst(u_max=..., radius=..., z_m=...))` | Oseguera and Bowles (1988) |
 | Lee wave | `lee_wave_wind(p, LeeWave(...))` | Doyle et al. (2011) |
 | Dryden turbulence | `dryden_field(sigma, seed)` | MIL-F-8785C |
+| von Kármán turbulence, vertical | `von_karman_vertical_field(sigma, seed)` | MIL-F-8785C |
+| 1 − cosine gust | `one_minus_cosine_gust(peak, gradient_distance)` | NACA Report 1206 |
+| Single gust sinusoid | `sinusoidal_vertical_field(amplitude, wavelength)` | |
 | Sum of fields | `superpose(*fields)` | |
 
 All functions are in `atisim.wind`. {doc}`api/index` gives the full Python interface.

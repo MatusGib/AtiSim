@@ -43,13 +43,22 @@ def _wind(burst, north, altitude, east=0.0):
     return wind.microburst_wind(jnp.array([north, east, -altitude]), burst)
 
 
+def _outflow(burst, north, altitude):
+    """Northward wind along a line of points, in one call rather than one each."""
+    north, altitude = np.broadcast_arrays(np.asarray(north, float),
+                                          np.asarray(altitude, float))
+    points = jnp.stack([jnp.asarray(north), jnp.zeros(north.size), -jnp.asarray(altitude)],
+                       axis=1)
+    return np.asarray(jax.vmap(lambda p: wind.microburst_wind(p, burst))(points)[:, 0])
+
+
 # --- the four constants the paper states -------------------------------------
 
 
 def test_peak_outflow_is_at_1_1212_downdraft_radii():
     burst = a_burst()
     radii = np.linspace(1.0, 4.0 * R, 4000)
-    speed = np.array([float(_wind(burst, r, Z_M)[0]) for r in radii])
+    speed = _outflow(burst, radii, Z_M)
     assert radii[int(np.argmax(speed))] / R == pytest.approx(1.1212, abs=0.005)
 
 
@@ -57,7 +66,7 @@ def test_the_altitude_of_maximum_outflow_is_0_22_of_the_characteristic_height():
     burst = a_burst()
     altitudes = np.linspace(1.0, 5.0 * Z_M, 4000)
     peak_radius = 1.1212 * R
-    speed = np.array([float(_wind(burst, peak_radius, z)[0]) for z in altitudes])
+    speed = _outflow(burst, peak_radius, altitudes)
     z_m = altitudes[int(np.argmax(speed))]
     assert z_m / float(burst.z_star) == pytest.approx(0.22, abs=0.005)
     assert z_m == pytest.approx(Z_M, rel=0.01)  # and it is where we asked for it

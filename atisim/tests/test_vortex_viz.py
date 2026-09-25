@@ -143,19 +143,37 @@ def pushdown():
 # opposes the pitch rate the core builds, so a smaller excursion is the
 # declaration working rather than drift; PROJECT.md section 4 has what else
 # moved with it. Previous: (2.3332704114024994, -1.2462664938758317).
-FIG8_VORTEX = (1.8397047596317972, -1.19626123006131)
+#
+# RE-PINNED FOR v1.2, and not by a change to the model: `fly` now stage-samples
+# a position-only field by default (assumption E4), where it held
+# one wind sample across the RK4 step. d(theta) 1.839705 -> 1.825799 (-0.76%),
+# dn -1.196261 -> -1.193036 (-0.27%) -- E4's measured ~0.8% cost of the hold at
+# this step, removed. `stage_sampled=False` reproduces the previous pin exactly.
+# Previous: (1.8397047596317972, -1.19626123006131).
+FIG8_VORTEX = (1.8257989028697514, -1.1930357257573792)
 FIG8_VORTEX_BEFORE_LOGGING = FIG8_VORTEX  # old name, kept for one release
 
 
 def test_logging_the_run_did_not_move_the_headline_numbers(encounter):
-    """Exact equality, not a tolerance.
+    """The headline pin, to rounding across platforms.
 
-    `fly` now uses `integrate.logged_rollout` so a run can be written to an
-    artifact with the wind it actually flew. That is the same `step` scanned with
-    a wider output, so the claim is arithmetic-neutrality, and any tolerance
-    admits a change that was not.
+    `fly` uses `integrate.logged_rollout`, the same `step` scanned with a wider
+    output, so the claim is arithmetic-neutrality. That claim is asserted
+    EXACTLY, in one process, by test_integrate's
+    `test_logged_rollout_gives_the_same_states_as_rollout` -- on the held path
+    and, since v1.2, on the stage-sampled one this pin now takes.
+
+    This compares against a CONSTANT captured on one machine, and was exact
+    equality while the pin took the held path. Since v1.2 the default
+    stage-samples, which runs the field's Jacobian through XLA at every stage,
+    and XLA's CPU code rounds the last bits differently by processor: CI's
+    Linux runner read dn -1.1930357257573767 against this pin's
+    -1.1930357257573792, 2e-15 relative, with d(theta) identical. rel = 1e-12
+    admits that and nothing a model change could produce -- the smallest pin
+    move this file records is 0.27%.
     """
-    assert vortex_viz.fig8_point(encounter) == FIG8_VORTEX_BEFORE_LOGGING
+    assert vortex_viz.fig8_point(encounter) == pytest.approx(FIG8_VORTEX_BEFORE_LOGGING,
+                                                            rel=1e-12)
 
 
 def test_a_flown_encounter_carries_the_run_it_flew(encounter):

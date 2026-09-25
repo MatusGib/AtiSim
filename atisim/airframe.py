@@ -29,6 +29,14 @@ from atisim.aircraft import Aircraft
 # sets whose CLq and Cmq disagree about what aircraft they describe.
 TAIL_ARM_BAND = (2.0, 6.0)
 
+# JSBSim 1.3.1's horizontal-tail arms, <metrics><htailarm>, in ft, from the
+# aircraft files the `boeing737` and `boeing747_jsbsim` entries were recovered
+# from. SOURCED -- see provenance.LEDGER["airframe.JSBSIM_HTAILARM_FT"]. Those
+# two entries define no CLq, so `effective_tail_arm` cannot derive theirs. The
+# B747 file's 106.6 ft is 32.5 m against CR-2144's derived 33.5 m: two sources
+# sharing nothing, agreeing to 3%.
+JSBSIM_HTAILARM_FT = {"boeing737": 48.04, "boeing747_jsbsim": 106.6}
+
 
 def effective_tail_arm(ac: Aircraft) -> Array:
     """Distance from the CG to the effective tail centre of pressure, in chords.
@@ -124,7 +132,8 @@ class Stations(NamedTuple):
     longitudinal: Array  # (M,) m, body x, positive forward
 
 
-def stations(ac: Aircraft, n_span: int = N_SPAN, n_lon: int = N_LON) -> Stations:
+def stations(ac: Aircraft, n_span: int = N_SPAN, n_lon: int = N_LON,
+             tail_arm: float | None = None) -> Stations:
     """Sample stations for an aircraft.
 
     Lateral extent is the span, which is SOURCED. Longitudinal extent is the
@@ -141,10 +150,19 @@ def stations(ac: Aircraft, n_span: int = N_SPAN, n_lon: int = N_LON) -> Stations
     fitted gradient came back NaN with nothing raised anywhere. A rollout would
     complete and report a NaN rms. Failing here means failing before the run
     starts instead of after it has produced nothing.
+
+    `tail_arm`, in metres, replaces the derived arm -- for an aircraft whose
+    source gives the arm directly (`JSBSIM_HTAILARM_FT`) rather than through
+    CLq and Cmq. Given one, the plausibility gate on the derivation does not
+    apply. Two longitudinal stations, [-tail_arm, 0], make the pitching gust the
+    wing-tail secant: the tail meeting the gust l_t/V after the wing.
     """
-    require_plausible_tail_arm(ac)
+    if tail_arm is None:
+        require_plausible_tail_arm(ac)
+        arm = effective_tail_arm(ac) * ac.c
+    else:
+        arm = jnp.asarray(tail_arm)
     half_span = ac.b / 2.0
-    arm = effective_tail_arm(ac) * ac.c
     return Stations(
         span=jnp.linspace(-half_span, half_span, n_span),
         longitudinal=jnp.linspace(-arm, 0.0, n_lon),
