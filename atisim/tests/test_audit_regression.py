@@ -1075,9 +1075,12 @@ def test_the_wind_hold_costs_the_headline_figure_more_than_E4_bounds_it():
     field = lambda p: wind.vortex_wind(p, arr)  # noqa: E731
     dt, seconds = 0.02, 40.0
 
+    # The HELD arm must ask for the hold: since v1.2, `fly` stage-samples a
+    # position-only field by default, which would make both arms
+    # the same scheme and this test measure nothing.
     enc = vortex_viz.fly(B747, field, V, H, label="v", start_north=-40 * r0,
                          seconds=seconds, dt=dt, window=(-r0, r0),
-                         window_name="core")
+                         window_name="core", stage_sampled=False)
     w = np.asarray(enc.window)
     th = np.asarray(enc.theta)
     held = math.degrees(th[w].max() - th[w].min())

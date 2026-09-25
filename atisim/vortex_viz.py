@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Circle
 
-from atisim import dynamics, integrate, loads, trim, validation, viz, wind
+from atisim import airframe, dynamics, integrate, loads, trim, validation, viz, wind
 from atisim.aero import air_data
 from atisim.aircraft import CRUISE, REGISTRY, Aircraft
 from atisim.atmosphere import density
@@ -101,7 +101,8 @@ def fly(
     window_name: str,
     strip: bool = False,
     load_model=None,
-    stage_sampled: bool = False,
+    stage_sampled: bool = True,
+    gust_lag: bool = False,
 ) -> Encounter:
     """Fly the trimmed aircraft through `field` with fixed controls.
 
@@ -144,7 +145,7 @@ def fly(
         ac, field, state, controls,
         label=label, seconds=seconds, dt=dt, window=window,
         window_name=window_name, load_model=load_model,
-        stage_sampled=stage_sampled,
+        stage_sampled=stage_sampled, gust_lag=gust_lag,
     )
 
 
@@ -161,7 +162,9 @@ def fly_in_moving_air(
     window: tuple[float, float],
     window_name: str,
     load_model=None,
-    stage_sampled: bool = False,
+    stage_sampled: bool = True,
+    gust_lag: bool = False,
+    wind_model=None,
 ) -> Encounter:
     """`fly`, but starting in equilibrium WITH the wind already at the start point.
 
@@ -214,7 +217,8 @@ def fly_in_moving_air(
         ac, field, state, controls,
         label=label, seconds=seconds, dt=dt, window=window,
         window_name=window_name, load_model=load_model,
-        stage_sampled=stage_sampled,
+        stage_sampled=stage_sampled, gust_lag=gust_lag,
+        wind_model=wind_model,
     )
 
 
@@ -231,7 +235,8 @@ def fly_from_state(
     window_name: str,
     load_model=None,
     wind_model=None,
-    stage_sampled: bool = False,
+    stage_sampled: bool = True,
+    gust_lag: bool = False,
 ) -> Encounter:
     """`fly`, but from a state and controls the caller already has.
 
@@ -263,22 +268,34 @@ def fly_from_state(
     0.119 s, while the same run stage-sampled sits at 0.0002% and does not move
     at all. HALVING WITH dt is not what a fourth-order scheme does.
 
-    It defaults to False so that every published baseline flown through here is
-    bit-identical to what it was, which is the same reason `integrate.step`
-    defaults to the hold. Pass True for any run whose answer is compared against
-    a closed-form result, and only for a field that is a pure function of
-    position -- re-drawing a stochastic field per stage would make the
-    realisation depend on step size.
+    It defaults to True since v1.2, as `integrate.step` does, and
+    it applies only to a model marked as a pure function of position
+    (`wind.field_model`, `wind.sampled_field_model`); anything else keeps the
+    hold, because re-drawing a stochastic field per stage would make the
+    realisation depend on step size. Pass False to reproduce a v1.1 number.
+
+    `gust_lag` applies Kussner's lag to the vertical gust (ASSUMPTIONS C12); it
+    needs `stage_sampled=True`. The lag starts at the gust the aircraft meets,
+    so it responds to changes in the gust and not to its presence, and n_z and
+    alpha_air are measured with the lagged gust the aerodynamics saw. `w_up`
+    stays the field's own.
     """
     model = wind.field_model(field) if wind_model is None else wind_model
     n = int(round(seconds / dt))
+    sim = integrate.init_sim(state, jax.random.PRNGKey(0))
+    if gust_lag:
+        dt_max = wind.kussner_max_dt(jnp.linalg.norm(state.vel_body), ac.c)
+        if dt > dt_max:
+            raise ValueError(
+                f"gust_lag: dt {dt} s is too long for the lag's fast pole; use "
+                f"dt <= {dt_max:.4f} s (wind.KUSSNER_RK4_LIMIT)")
+        sim = sim._replace(gust_lag=jnp.full(2, field(state.pos_ned)[2]))
     # `logged_rollout`, not `rollout`: same `step`, wider scan output, so the run
     # can be written to an artifact carrying the wind it actually flew.
     # `test_vortex_viz.py` pins the headline pair against the pre-change values.
     _, log = integrate.logged_rollout(
-        integrate.init_sim(state, jax.random.PRNGKey(0)),
-        controls, jnp.array(dt), ac, n, wind_model=model, load_model=load_model,
-        stage_sampled=stage_sampled,
+        sim, controls, jnp.array(dt), ac, n, wind_model=model,
+        load_model=load_model, stage_sampled=stage_sampled, gust_lag=gust_lag,
     )
     hist = log.state
     controls_hist = jax.tree.map(lambda v: jnp.full(n, v), controls)
@@ -287,6 +304,7 @@ def fly_from_state(
         label=label, hist=hist,
         controls_hist=controls_hist,
         model=model, load_model=load_model, ac=ac, dt=dt,
+        gust_lag=log.gust_lag if gust_lag else None,
         window=(north >= window[0]) & (north <= window[1]),
         window_name=window_name,
         log=integrate.trajectory_from_log(
@@ -307,6 +325,7 @@ def _measure(
     window_name: str,
     load_model=None,
     log=None,
+    gust_lag=None,
 ) -> Encounter:
     """Turn a flown history into an `Encounter`. Every category comes through here.
 
@@ -331,18 +350,20 @@ def _measure(
     `load_factor` inverts a force sum that `Cl`, `Cm` and `Cn` never enter.
     """
 
-    def analyse(pos_ned, vel_body, quat, omega, controls):
+    def analyse(pos_ned, vel_body, quat, omega, controls, lag):
         s = State(pos_ned=pos_ned, vel_body=vel_body, quat=quat, omega=omega)
-        wind_ned, omega_gust, _, _, _ = model(
+        field_wind, omega_gust, _, _, _ = model(
             wind.zero_wind_state(), s, jax.random.PRNGKey(0), jnp.array(dt)
         )
+        # What the aerodynamics saw: the lagged gust on a gust_lag run.
+        wind_ned = field_wind if gust_lag is None else wind.lagged_wind(field_wind, lag)
         increment = None if load_model is None else load_model(s)
         vel_rel = dynamics.relative_velocity(vel_body, quat, wind_ned)
         _, alpha_air, beta_air = air_data(vel_rel)
         _, alpha_inertial, _ = air_data(vel_body)
         phi, theta, _ = quat_to_euler(quat)
         return jnp.array([
-            -wind_ned[2], omega_gust[1], alpha_air, alpha_inertial, theta,
+            -field_wind[2], omega_gust[1], alpha_air, alpha_inertial, theta,
             omega[1],
             dynamics.load_factor(s, controls, ac, wind_ned, omega_gust, increment),
             controls.elevator,
@@ -352,8 +373,9 @@ def _measure(
             phi, beta_air, omega[0], omega[2], omega_gust[0],
         ])
 
+    lags = jnp.zeros((hist.pos_ned.shape[0], 2)) if gust_lag is None else gust_lag
     rows = np.asarray(jax.vmap(analyse)(
-        hist.pos_ned, hist.vel_body, hist.quat, hist.omega, controls_hist
+        hist.pos_ned, hist.vel_body, hist.quat, hist.omega, controls_hist, lags
     ))
     n = rows.shape[0]
     return Encounter(
@@ -585,7 +607,9 @@ MECHANISM_FLEET = (
 )
 
 
-def fly_mehta(aircraft: str, dt: float, lead_r0: float = 12.0, replayed: bool = False):
+def fly_mehta(aircraft: str, dt: float, lead_r0: float = 12.0, replayed: bool = False,
+              stage_sampled: bool = True, gust_lag: bool = False,
+              tail_arm: float | None = None):
     """Fly one aircraft through Mehta's five-vortex field at its own altitude.
 
     The field is placed at the aircraft's own cruise altitude rather than at
@@ -606,6 +630,11 @@ def fly_mehta(aircraft: str, dt: float, lead_r0: float = 12.0, replayed: bool = 
     justified by the DC-10's record, and pinning a slow aircraft's field to a
     fixed altitude holds it inside a core it would fly out of -- the Cherokee
     reaches |alpha| 102 deg that way.
+
+    `stage_sampled` and `gust_lag` pass through to `fly_in_moving_air`.
+    `stage_sampled` defaults on since v1.2; pass False for the v1.1 headline. `tail_arm`, in
+    metres, flies the wing-tail gust delay: the pitching gust as the secant
+    between the CG and the tail (`airframe.stations(n_lon=2)`).
     """
     ac = REGISTRY[aircraft]
     V = CRUISE[aircraft]["airspeed"]
@@ -627,6 +656,9 @@ def fly_mehta(aircraft: str, dt: float, lead_r0: float = 12.0, replayed: bool = 
         start_north=start, seconds=seconds, dt=dt,
         window=(x0 - 2.0 * r0, x1 + 2.0 * r0),
         window_name="the identified array, plus 2 r0 either side",
+        stage_sampled=stage_sampled, gust_lag=gust_lag,
+        wind_model=None if tail_arm is None else wind.sampled_field_model(
+            field, airframe.stations(ac, n_lon=2, tail_arm=tail_arm)),
     )
     return enc, dict(ac=ac, V=V, H=H, array=array, field=field, r0=r0)
 

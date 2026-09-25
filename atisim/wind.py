@@ -1754,6 +1754,85 @@ def gust_alphadot(pos_ned: Array, quat: Array, vel_body: Array, field) -> Array:
     return (u_rel * rel_rate_body[2] - w_rel * rel_rate_body[0]) / denominator
 
 
+# ---------------------------------------------------------------------------
+# THE GUST LAG -- assumption C12, opt-in (since v1.2).
+#
+# Kussner's indicial function, the lift build-up on a wing entering a
+# sharp-edged gust, in Jones's two-exponential approximation:
+#
+#     psi(s) = 1 - 0.5 e^(-0.13 s) - 0.5 e^(-s),   s = 2 V t / c
+#
+# with s the distance travelled in SEMICHORDS. DECLARED: the coefficients are
+# the standard approximation, and the source that gives them is not held here.
+# What is held is Sears' function (`gust.sears`), and the approximation is
+# priced against it rather than trusted: |psi(ik)| / |S(k)| is 0.980-1.051 over
+# k 0.005-1 (test_gust_lag.py), worst near k 0.02 -- the transports' short
+# period -- where a sum of exponentials cannot follow Sears' k ln k. Its PHASE is referenced to the gust reaching
+# the leading edge; Sears' is referenced to mid-chord, and the model samples
+# the gust at the CG. That reference is a declared choice too, and the design
+# document prices it.
+#
+# As a filter: Psi(p) = sum_i a_i b_i / (p + b_i) with sum_i a_i = 1, so the
+# lagged gust is sum_i a_i x_i with x_i' = b_i (2V/c) (w - x_i). A steady gust
+# is passed exactly, and a lag started at the gust it meets never moves.
+# ---------------------------------------------------------------------------
+JONES_KUSSNER = ((0.5, 0.13), (0.5, 1.0))  # (weight a_i, rate b_i per semichord)
+# The fast pole is STIFF: 2V/c is 57 /s for the 747 and 123 /s for the 737 at
+# cruise, so RK4's stability limit (lambda dt = 2.785) sits near the time steps
+# this project flies. MEASURED on the filter alone: its frequency response is
+# within 0.2% in amplitude and 0.02 deg in phase up to 2.5 Hz while
+# lambda dt <= 1.5, and -2.6% / +1.1 deg at 2.45. Lagged runs are held to it.
+KUSSNER_RK4_LIMIT = 1.5
+
+
+def kussner_max_dt(airspeed, chord) -> float:
+    """Longest time step a lagged run may take: KUSSNER_RK4_LIMIT / (2V/c b_max)."""
+    b_max = max(bi for _, bi in JONES_KUSSNER)
+    return KUSSNER_RK4_LIMIT / (2.0 * float(airspeed) / float(chord) * b_max)
+
+
+def kussner_jones(k):
+    """Jones's Kussner transfer function at semichord reduced frequency k."""
+    p = 1j * jnp.asarray(k, dtype=float)
+    out = 1.0 + 0.0 * p
+    for a, b in JONES_KUSSNER:
+        out = out - a * p / (p + b)
+    return out
+
+
+def kussner_lag_rate(lag: Array, w_down: Array, airspeed: Array, chord) -> Array:
+    """d(lag)/dt for the two filter states, driven by the NED-down gust."""
+    b = jnp.array([bi for _, bi in JONES_KUSSNER])
+    return (2.0 * airspeed / chord) * b * (w_down - lag)
+
+
+def lagged_wind(wind_ned: Array, lag: Array) -> Array:
+    """`wind_ned` with its vertical component replaced by the lagged gust."""
+    a = jnp.array([ai for ai, _ in JONES_KUSSNER])
+    return wind_ned.at[2].set(jnp.dot(a, lag))
+
+
+def lagged_gust_alphadot(pos_ned: Array, quat: Array, vel_body: Array, field,
+                         lag: Array, lag_rate: Array) -> Array:
+    """`gust_alphadot`, with the vertical wind and its rate taken from the lag.
+
+    The horizontal components keep the field's own material derivative; the
+    vertical one is the lagged gust's rate, so the alphadot the aircraft sees is
+    the rate of the incidence it is actually given.
+    """
+    dcm = quat_to_dcm(quat)  # body -> NED
+    vel_ned = dcm @ vel_body
+    a = jnp.array([ai for ai, _ in JONES_KUSSNER])
+    wind_rate_ned = (jax.jacfwd(field)(pos_ned) @ vel_ned).at[2].set(jnp.dot(a, lag_rate))
+    wind_body = dcm.T @ lagged_wind(field(pos_ned), lag)
+    rel_rate_body = -(dcm.T @ wind_rate_ned)
+
+    vel_rel = vel_body - wind_body
+    u_rel, w_rel = vel_rel[0], vel_rel[2]
+    denominator = jnp.maximum(u_rel**2 + w_rel**2, V_MIN**2)
+    return (u_rel * rel_rate_body[2] - w_rel * rel_rate_body[0]) / denominator
+
+
 def field_model(field):
     """Turn a position-only wind field into a `wind_model`.
 
@@ -1820,6 +1899,12 @@ def sampled_field_model(field, stations):
         alphadot = gust_alphadot(state.pos_ned, state.quat, state.vel_body, field)
         return wind_ned, omega_gust, wind_state, key, alphadot
 
+    # A pure function of position, like `field_model`'s, so it carries the same
+    # mark -- and its stations, so a stage-sampled `integrate.step` forms the
+    # gust rates the same way at every stage (the wing-tail delay, since v1.2).
+    model.stage_sampled = True
+    model.field = field
+    model.stations = stations
     return model
 
 

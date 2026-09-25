@@ -200,7 +200,9 @@ def _linearise(ac: Aircraft, alpha: float, elevator: float, throttle: float,
 def gust_transfer(ac: Aircraft, V: float, H: float, spatial_frequency,
                   ground_speed: float | None = None,
                   q_rolloff_span: float | None = None,
-                  q_rolloff_phase: str = "minimum"):
+                  q_rolloff_phase: str = "minimum",
+                  gust_lag: bool = False,
+                  tail_arm: float | None = None):
     """H(Omega): complex n_z per unit UPWARD gust velocity, in g per (m/s).
 
     `spatial_frequency` is Omega in rad/m -- the axis `wind.dryden_spectrum` is
@@ -235,6 +237,18 @@ def gust_transfer(ac: Aircraft, V: float, H: float, spatial_frequency,
     treats w_g as uniform over the aircraft, and alphadot reaches n_z here
     only through Cmalphadot. None, the default span, is the field as flown:
     the pure gradient, no roll-off.
+
+    `gust_lag` multiplies the vertical-gust and alphadot channels by Jones's
+    Kussner transfer function `wind.kussner_jones(k)`, k = omega c / (2V) --
+    what `integrate.step(gust_lag=True)` flies. The pitching channel is left
+    unlagged, as it is there.
+
+    `tail_arm`, in metres, replaces the pitching channel's point gradient
+    i Omega cos^2(theta) by the wing-tail secant
+    cos(theta) (1 - e^(-i Omega l cos(theta))) / l -- what
+    `wind.sampled_rates` gives on two stations, `airframe.stations(ac, n_lon=2,
+    tail_arm=l)`: the tail meeting the gust l_t/V after the wing. It tends to
+    the point gradient as l -> 0.
     """
     if q_rolloff_phase not in ("minimum", "zero"):
         raise ValueError(f"unknown q_rolloff_phase {q_rolloff_phase!r}")
@@ -249,11 +263,18 @@ def gust_transfer(ac: Aircraft, V: float, H: float, spatial_frequency,
     eye = np.eye(A.shape[0])
     for i, om in enumerate(Omega):
         gains = channels[:, 0] + 1j * om * channels[:, 1]
+        if tail_arm is not None:
+            ct = np.cos(alpha)  # theta == alpha at trim
+            gains[1] = ct * (1.0 - np.exp(-1j * om * tail_arm * ct)) / tail_arm
         if q_rolloff_span is not None:
             corner = 1.0 + 1j * (4.0 * q_rolloff_span / np.pi) * om
             gains[1] = gains[1] / (corner if q_rolloff_phase == "minimum"
                                    else abs(corner))
         omega = om * Vg  # rad/s -- the Taylor hypothesis, and the only place it enters
+        if gust_lag:
+            psi = complex(wind.kussner_jones(omega * float(ac.c) / (2.0 * V)))
+            gains[0] = gains[0] * psi
+            gains[2] = gains[2] * psi
         resolvent = np.linalg.solve(1j * omega * eye - A, B @ gains)
         out[i] = C @ resolvent + D @ gains
     return out if np.ndim(spatial_frequency) else out[0]
@@ -554,7 +575,8 @@ def measure_gust_transfer(ac: Aircraft, V: float, H: float, wavelength: float,
                           min_seconds: float = 400.0,
                           samples_per_period: float = 200.0,
                           dt_max: float = 0.05, dt_min: float = 0.002,
-                          stage_sampled: bool = True, seed_steady: bool = True):
+                          stage_sampled: bool = True, seed_steady: bool = True,
+                          gust_lag: bool = False, tail_arm: float | None = None):
     """Fly one single-frequency gust and read H off the flown record.
 
     Returns a dict carrying the measured complex H in g per (m/s), the fitted
@@ -584,23 +606,32 @@ def measure_gust_transfer(ac: Aircraft, V: float, H: float, wavelength: float,
 
     Omega = 2.0 * np.pi / wavelength
     seconds = max(periods * wavelength / V, min_seconds)
+    if gust_lag:  # the lag's fast pole sets its own ceiling on the step
+        dt_max = min(dt_max, 0.999 * wind.kussner_max_dt(V, ac.c))
     dt = float(np.clip(wavelength / (V * samples_per_period), dt_min, dt_max))
 
     field = wind.sinusoidal_vertical_field(amplitude, wavelength)
+    model = None
+    if tail_arm is not None:  # the wing-tail delay: two stations, CG and tail
+        if not seed_steady:
+            raise ValueError("tail_arm needs seed_steady=True, which flies a wind model")
+        from atisim import airframe
+        model = wind.sampled_field_model(
+            field, airframe.stations(ac, n_lon=2, tail_arm=tail_arm))
     label = f"lambda={wavelength:.0f}"
     if seed_steady:
         state, controls = steady_state_seed(ac, V, H, wavelength, amplitude)
         enc = vortex_viz.fly_from_state(
             ac, field, state, controls, label=label, seconds=seconds, dt=dt,
             window=(-np.inf, np.inf), window_name="whole run",
-            stage_sampled=stage_sampled,
+            stage_sampled=stage_sampled, gust_lag=gust_lag, wind_model=model,
         )
     else:
         enc = vortex_viz.fly(
             ac, field, V, H, label=label,
             start_north=0.0, seconds=seconds, dt=dt,
             window=(-np.inf, np.inf), window_name="whole run",
-            stage_sampled=stage_sampled,
+            stage_sampled=stage_sampled, gust_lag=gust_lag,
         )
 
     ground_speed = float((enc.north[-1] - enc.north[0]) / (enc.t[-1] - enc.t[0]))

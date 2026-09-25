@@ -505,6 +505,37 @@ LEDGER: dict[str, Entry] = {
         "a future low-altitude use would otherwise inherit the wrong length "
         "silently -- the same failure mode as the recovery band.",
     ),
+    "airframe.JSBSIM_HTAILARM_FT": Entry(
+        "SOURCED",
+        "boeing737 48.04 ft, boeing747_jsbsim 106.6 ft: <metrics><htailarm> in "
+        "JSBSim 1.3.1's aircraft/737/737.xml and aircraft/B747/B747.xml, read "
+        "25 September 2026 -- the files those two entries were recovered from. "
+        "Neither entry defines CLq, so effective_tail_arm cannot derive their "
+        "arm. Cross-check: the B747 file's 32.5 m against CR-2144's derived "
+        "-Cmq/CLq * c = 33.5 m, 3% apart (test_wing_tail.py). Used by the "
+        "wing-tail gust delay.",
+    ),
+    "wind.JONES_KUSSNER": Entry(
+        "DECLARED",
+        "((0.5, 0.13), (0.5, 1.0)): Jones's two-exponential approximation to "
+        "Kussner's indicial function, psi(s) = 1 - 0.5 e^(-0.13 s) - 0.5 e^(-s), "
+        "s in semichords. The standard approximation; the document that gives "
+        "it is not held here. Priced against the Sears function that IS held "
+        "(gust.sears): |psi(ik)|/|S(k)| is 0.980-1.051 over k 0.005-1, worst near "
+        "k 0.02, the transports' short period (test_gust_lag.py). Its phase is "
+        "referenced to the gust reaching the leading edge, applied here to the "
+        "gust sampled at the CG, a declared choice kept over a closer fit to "
+        "Sears at the short period. Used only by the opt-in gust lag "
+        "(assumption C12).",
+    ),
+    "wind.KUSSNER_RK4_LIMIT": Entry(
+        "DECLARED",
+        "1.5, the largest lambda dt a lagged run may take on the fast Kussner "
+        "pole. Chosen from a measurement, not a source: RK4 on the filter alone "
+        "is within 0.2% in amplitude and 0.02 deg in phase up to 2.5 Hz at "
+        "lambda dt <= 1.5, and -2.6% / +1.1 deg at 2.45; RK4's stability limit "
+        "is 2.785.",
+    ),
     "wind.VON_KARMAN_LW": Entry(
         "SOURCED",
         "2,500 ft. MIL-F-8785C section 3.7.2.1, printed p. 48: 'L_u = L_v = L_w = "

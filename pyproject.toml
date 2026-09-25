@@ -1,6 +1,6 @@
 [project]
 name = "atisim"
-version = "1.1.0"
+version = "1.2.0"
 description = "Six-degree-of-freedom fixed-wing flight dynamics in JAX, for studying aircraft response to clear-air turbulence"
 readme = "README.md"
 license = "MIT"

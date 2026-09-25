@@ -386,8 +386,11 @@ that the thrust of the aircraft can hold.
 ### 8.1 Integration
 
 `integrate.step` does one step of the classical fourth-order Runge–Kutta method, with a fixed
-time step. The model samples the wind one time for each step, and uses that wind in all four
-stages (assumption E4). After each step, the model sets the quaternion norm to 1.
+time step. For a wind field that is a function of position only, the model samples the wind at
+each of the four stages. This is the default since version 1.2. For a wind model that is not a
+function of position only, such as a filter with a random input, the model samples the wind one
+time for each step, and uses that wind in all four stages (assumption E4). After each step, the
+model sets the quaternion norm to 1.
 
 `integrate.rollout` does the steps in `jax.lax.scan`. JAX compiles the rollout again for each new
 number of steps, and for each new wind model.
@@ -453,7 +456,7 @@ assumption, and a measured bound when one is available.
 | C9 | All lift increments act at the relative wind of the center of gravity. | This breaks the energy balance at very high pitch rates, from 84 °/s to 201 °/s. No state inside the limits of operation shows it. |
 | C10 | The aileron deflection is one angle for a compound control. | This agrees with the definition in the source derivatives. Do not compare `aileron_limit` with the travel of one surface. |
 | C11 | The two estimates of the tail arm do not agree. | The difference is 1.4% to 2.9% on the 747, and 2.0 to 2.9 times on the light aircraft. Do not change a derivative to make them agree. |
-| C12 | A gust gives its full lift immediately. There is no Sears attenuation and no Küssner lag. | C2 is about the motion of the aircraft. This assumption is about the arrival of the gust. At the 747 short period, thin-airfoil theory (Sears) gives a loss of 3.1% of the lift and a lag of 4.2°. The effect on the load depends on the phase too. A model of the lag with its phase (the Jones approximation to the Küssner function) changes $\sigma_{n_z}$ over the Dryden band by −0.6% (747) to −1.0% (737), and increases the load by about 1% near the short period. A calculation of the magnitude only gives −6.78%, and is not correct. The theory is two-dimensional and incompressible, but the aircraft fly at Mach 0.70 to 0.90 with swept wings. Thus these values are approximate. `gust.sears` and `gust.kussner_attenuation` calculate the magnitude. |
+| C12 | A gust gives its full lift immediately. There is no Sears attenuation and no Küssner lag, unless you set `gust_lag=True`. | C2 is about the motion of the aircraft. This assumption is about the arrival of the gust. With `gust_lag=True`, the model applies Jones's approximation to the Küssner function to the vertical gust. Its magnitude agrees with the Sears function to −2% to +5%. The effect depends on frequency. Near the short period and the phugoid, the load **increases** by about 1%. Above 0.5 Hz, the load decreases: by 9% at 1 Hz and 17% at 2 Hz for the 747. Over the Dryden band, $\sigma_{n_z}$ decreases by 0.6% (747) to 1.0% (737). A calculation of the magnitude only, without the phase, gives 6.78%, and is not correct. The lag needs `stage_sampled=True` and a time step less than `wind.kussner_max_dt`. The theory is two-dimensional and incompressible, but the aircraft fly at Mach 0.70 to 0.90 with swept wings. Compressibility is expected to make the real lag larger, so these values are approximate. |
 
 ### 9.4 Atmosphere
 
@@ -469,7 +472,7 @@ assumption, and a measured bound when one is available.
 | E1 | The aircraft does not change the air. | This is correct for atmospheric fields. It is not correct for a wake vortex of a different aircraft. |
 | E2 | The aircraft is a point for the gust, with first-order gust rates. | This is correct for gusts larger than 3 wingspans. For the Hannibal cores (2.3 to 3.1 spans), a sample across the airframe changes the load by 4.4% or less. |
 | E3 | The fields are frozen. The wind is a function of position, not time. | This is correct for vortices, updrafts, microbursts and lee waves, which change slowly during an encounter. |
-| E4 | The wind is constant during one integration step. | A random field stays the same when the time step changes. But in a field that changes in space, the method is first order. At the usual time step, this changes the pitch angle in a vortex core by 0.82%. |
+| E4 | A wind model that is not a function of position only is constant during one integration step. | Since version 1.2, a field that is a function of position only is sampled at each RK4 stage, and the method is fourth order. Before, the wind was constant during the step, and the method was first order in a field that changes in space. That changed the pitch angle in a vortex core by 0.82% at the usual time step. A random filter model still keeps its wind constant during the step, so that its realisation does not change with the time step. Set `stage_sampled=False` to get a version 1.1 result. |
 | E5 | The sum of two fields is exact, except for the ground condition of the microburst. | A field with wind at the ground, added to a microburst, puts wind through the ground. |
 | E6 | The model of the microburst has no outflow depth. | The downdraft on the axis increases with altitude to a limit. Use the microburst only at low altitude. |
 | E7 | The along-track shear needs the turn rate. | The turn term gives $\Delta F = 0.14$ in a standard-rate turn. In straight flight, it is zero. |
@@ -478,7 +481,7 @@ assumption, and a measured bound when one is available.
 | E10 | Only the line-vortex field changes across the span. | Other fields cannot roll the aircraft. No validation of the lateral response is available. |
 | E11 | A response spectrum needs a stationary record. | With fixed controls, the airspeed can change by 13% in 100 s. Give this drift with each spectrum. |
 | E12 | The published descriptions of the Hannibal vortex do not agree. | The model uses each set of core radius, speed and spacing as its paper gives it. A mixed set changes the peak-to-peak load by about 4%. |
-| E13 | The random turbulence changes only along the track. | MIL-F-8785C §3.7.5 gives an independent rolling gust. The model has none. The pitching gust of the model is the pure gradient, without the roll-off of the specification. At the 747 short period, its spectrum is 1.10 times too large. With the roll-off, $\sigma_{n_z}$ of the 747 changes by −1.70% for the magnitude only, and by −9.71% with a minimum-phase lag. The specification does not give the phase. Use `gust.gust_transfer(q_rolloff_span=...)` to see the effect. |
+| E13 | The random turbulence changes only along the track. | MIL-F-8785C §3.7.5 gives an independent rolling gust. The model has none. The pitching gust of the model is the pure gradient, without the roll-off of the specification. At the 747 short period, its spectrum is 1.10 times too large. With the roll-off, $\sigma_{n_z}$ of the 747 changes by −1.70% for the magnitude only, and by −9.71% with a minimum-phase lag. The specification does not give the phase. Use `gust.gust_transfer(q_rolloff_span=...)` to see the effect. To delay the pitching gust by the tail arm instead, fly `wind.sampled_field_model(field, airframe.stations(ac, n_lon=2, tail_arm=l))` with `stage_sampled=True`. This changes $\sigma_{n_z}$ by −3.95% (747) and −1.28% (737). `airframe.JSBSIM_HTAILARM_FT` gives l for the 737. The delay applies to all of $C_{m_q}$ and $C_{L_q}$, and a part of them comes from the wing and not the tail. The model does not include the gust that moves along the span of a swept wing. On the 747 this distance is approximately 23 m, two-thirds of the tail arm. |
 | E14 | The random turbulence is a sum of cosines with fixed amplitudes. It is stationary, and it is not a Gaussian process. | The spectrum is correct. On the 5 s reduction of TPAWS, a Gaussian field changes the peak factor by 0.009 ± 0.038. Measured turbulence comes in patches. A patchy field with a kurtosis from 3 to 39 does not change the peak factor either. |
 
 ### 9.6 Numerical methods
@@ -541,8 +544,13 @@ On 3 April 1981, a DC-10 flew through a row of clear-air-turbulence vortices at 
 Hannibal, Missouri. Mehta (1987) found the wind field from the flight recorder. NASA TM-102186
 gives the load that the aircraft measured.
 
-The 747 model flies through this field on the path of the DC-10. The model gives **70.2% of the
-recorded peak-to-peak load**: 1.90 g, against 2.70 g.
+The 747 model flies through this field on the path of the DC-10. The model gives **70.0% of the
+recorded peak-to-peak load**: 1.89 g, against 2.70 g. Version 1.1 gave 70.2%, because it kept the
+wind constant during each time step (assumption E4).
+
+With the optional gust lag and wing–tail delay (assumptions C12 and E13), the model gives 65.7%: 1.773 g. The wing–tail delay gives nearly all of the change.
+
+The shape of the vortex core has a larger effect than these two corrections. The Rankine core of Parks and Mehta has a sudden change of slope at its edge. With `wind.lamb_oseen_wind`, which has a smooth core with the same radius and speed, the model gives 76.9%: 2.075 g. With the smooth core, the two corrections together change the result by only −1.7%, and the wing–tail delay by −2.6%.
 
 A match is not expected, for these reasons:
 
@@ -586,7 +594,9 @@ These explanations were each predicted before the run that tested them. None clo
 | Patchy turbulence, with patches longer than the 5 s window | no change |
 | A Gaussian field instead of fixed amplitudes (E14) | no change |
 
-The first two effects cancel when they are applied together. Intermittency inside the 5 s
+The first two effects cancel when they are applied together.
+
+With the optional gust lag and wing–tail delay, the Dryden peak factor decreases by 0.068 and the von Kármán peak factor by 0.097. With von Kármán turbulence and both corrections, the model is still approximately 20% low. It gives 2.01 against 2.50. Intermittency inside the 5 s
 window, at scales less than approximately 1 km, is not tested.
 
 **The gust response gain is not validated against the 757.** The comparison must read the model
@@ -613,11 +623,13 @@ These values give the size of the known uncertainties in the headline load:
 | Source of uncertainty | Effect on the load |
 |---|---|
 | Gust sampled at one point (E2) | 4.4% or less |
-| Wind constant during one step (E4) | 0.82% of the pitch change in a core |
+| Wind constant during one step (E4) | None since version 1.2 for a field of position. Before, 0.82% of the pitch change in a core |
 | Different published vortex parameters (E12) | about 4% |
+| Shape of the vortex core, Rankine or Lamb–Oseen | +9.8% |
 | Different aircraft (DC-10 against 747) | not known |
-| No gust lag (C12) | About −0.6% to −1.0% of $\sigma_{n_z}$ over the Dryden band, and about +1% near the short period |
+| No gust lag (C12) | −0.6% to −1.0% of $\sigma_{n_z}$ over the Dryden band. About +1% near the short period, and −9% at 1 Hz. |
 | No pitching-gust roll-off (E13) | −1.70% to −9.71% of $\sigma_{n_z}$ |
+| Pitching gust at the CG, not across the tail arm (E13) | −3.95% (747) and −1.28% (737) of $\sigma_{n_z}$ |
 | Peak factor in random turbulence (section 10.4) | approximately 20% too low |
 
 All comparisons with a recorded encounter use summary values, such as peaks, spacings and

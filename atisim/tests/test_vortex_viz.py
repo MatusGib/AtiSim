@@ -143,7 +143,14 @@ def pushdown():
 # opposes the pitch rate the core builds, so a smaller excursion is the
 # declaration working rather than drift; PROJECT.md section 4 has what else
 # moved with it. Previous: (2.3332704114024994, -1.2462664938758317).
-FIG8_VORTEX = (1.8397047596317972, -1.19626123006131)
+#
+# RE-PINNED FOR v1.2, and not by a change to the model: `fly` now stage-samples
+# a position-only field by default (assumption E4), where it held
+# one wind sample across the RK4 step. d(theta) 1.839705 -> 1.825799 (-0.76%),
+# dn -1.196261 -> -1.193036 (-0.27%) -- E4's measured ~0.8% cost of the hold at
+# this step, removed. `stage_sampled=False` reproduces the previous pin exactly.
+# Previous: (1.8397047596317972, -1.19626123006131).
+FIG8_VORTEX = (1.8257989028697514, -1.1930357257573792)
 FIG8_VORTEX_BEFORE_LOGGING = FIG8_VORTEX  # old name, kept for one release
 
 
