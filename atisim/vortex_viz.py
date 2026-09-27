@@ -85,6 +85,10 @@ class Encounter(NamedTuple):
     p: np.ndarray = None  # (n,) rad/s, body roll rate
     r: np.ndarray = None  # (n,) rad/s, body yaw rate
     p_gust: np.ndarray = None  # (n,) rad/s, ROLLING gust rate across the span
+    # The Kussner lag states, (n, 2), on a gust-lag run and None otherwise.
+    # Kept so the high-fidelity probe (`analysis.diagnostics`) can rebuild the
+    # lagged gust the aerodynamics saw at each sample.
+    gust_lag: np.ndarray = None
 
 
 def fly(
@@ -103,6 +107,7 @@ def fly(
     load_model=None,
     stage_sampled: bool = True,
     gust_lag: bool = False,
+    wind_model=None,
 ) -> Encounter:
     """Fly the trimmed aircraft through `field` with fixed controls.
 
@@ -125,6 +130,10 @@ def fly(
     build from the field alone. `strip=True` is exactly sugar for passing
     `loads.strip_model(field, ac)`, so giving both is a contradiction rather
     than an override and is refused.
+
+    `wind_model` passes through to `fly_from_state`, which documents it: the
+    default is `wind.field_model(field)`, and `wind.sampled_field_model` is how
+    a run flies the wing-tail gust delay.
     """
     if strip and load_model is not None:
         raise ValueError(
@@ -145,7 +154,7 @@ def fly(
         ac, field, state, controls,
         label=label, seconds=seconds, dt=dt, window=window,
         window_name=window_name, load_model=load_model,
-        stage_sampled=stage_sampled, gust_lag=gust_lag,
+        stage_sampled=stage_sampled, gust_lag=gust_lag, wind_model=wind_model,
     )
 
 
@@ -392,6 +401,7 @@ def _measure(
         log=log,
         phi=rows[:, 8], beta=rows[:, 9], p=rows[:, 10], r=rows[:, 11],
         p_gust=rows[:, 12],
+        gust_lag=None if gust_lag is None else np.asarray(gust_lag, dtype=float),
     )
 
 

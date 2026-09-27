@@ -7,7 +7,7 @@
 AtiSim is a flight dynamics model with six degrees of freedom, written in JAX. It calculates
 the response of a fixed-wing aircraft to clear-air turbulence.
 
-![The AtiSim cockpit display](docs/images/panel.png)
+![A test flight through the Hannibal vortex pair. The flight instruments are on the left and the test card is on the right.](docs/images/cockpit.png)
 
 ## Install
 
@@ -27,56 +27,51 @@ You must have Python 3.10 or later.
    source .venv/bin/activate          # Windows: .venv\Scripts\activate
    ```
 
-3. Install AtiSim:
+3. Install AtiSim and its application:
 
    ```bash
-   python -m pip install -e .
+   python -m pip install -e ".[ui]"
    ```
 
-## Run
-
-1. Test the installation. Make sure that the last line is `11/11 checks passed`:
+4. Test the installation. Make sure that the last line is `11/11 checks passed`:
 
    ```bash
    python scripts/sanity.py
    ```
 
-2. Fly a Boeing 747 through a recorded turbulence encounter, and save the figure:
+5. Start the application. The argument is the directory for the run files:
 
    ```bash
-   python scripts/vortex.py --case hannibal --png runs/hannibal.png
+   atisim ui runs
    ```
 
-3. Fly the aircraft manually. Use the arrow keys to fly, and push `a` for the autopilot:
+   The application opens in your web browser at <http://127.0.0.1:8050>. To stop it, push
+   `Ctrl+C` in the terminal.
 
-   ```bash
-   python scripts/fly.py --wind hannibal
-   ```
+## Modes
 
-To use AtiSim from Python:
+The application has three modes. The switch at the top of each page selects the mode.
 
-```python
-import atisim
-from atisim import vortex_viz
+| Mode | Use it to |
+|---|---|
+| **Test card** | fly four test points in a cockpit in the web browser. The debrief gives the peak load factor. |
+| **Lab** | fly a preset case with a few changed values, run four analyses and compare two results. |
+| **Engineering** | set all the values of a run, run all the analyses and scripts, and examine each result in detail. |
 
-enc, info = vortex_viz.fly_mehta("boeing747", dt=0.01, replayed=True)
-print(enc.n_z[enc.window].max())   # the peak load factor, in g
-```
+The User Manual, section 4, gives the procedures.
 
 ## Documentation
 
 The documentation is at **[matusgib.github.io/AtiSim](https://matusgib.github.io/AtiSim/)**.
-Its source is in [`docs/`](docs/).
 
 | Document | Read it to |
 |---|---|
-| [User Manual](https://matusgib.github.io/AtiSim/user-manual.html) | install and use AtiSim: concepts, procedures, scripts and troubleshooting |
-| [Physics and Assumptions](https://matusgib.github.io/AtiSim/physics-and-assumptions.html) | know the equations, the assumptions, the limits of use and the validation |
-| [Development Manual](https://matusgib.github.io/AtiSim/development-manual.html) | change or extend the code, and run the tests |
+| [User Manual](https://matusgib.github.io/AtiSim/user-manual.html) | install and use AtiSim |
+| [Physics and Assumptions](https://matusgib.github.io/AtiSim/physics-and-assumptions.html) | know the equations, the assumptions and the limits of use |
+| [Development Manual](https://matusgib.github.io/AtiSim/development-manual.html) | change the code and run the tests |
 | [API Reference](https://matusgib.github.io/AtiSim/api/index.html) | find a module, a class or a function |
 
-Use AtiSim to compare turbulence encounters. Do not use it to calculate design loads. The
-Physics and Assumptions manual gives the limits.
+Use AtiSim to compare turbulence encounters. Do not use it to calculate design loads.
 
 ## License
 

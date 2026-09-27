@@ -1,6 +1,6 @@
 [project]
 name = "atisim"
-version = "1.2.0"
+version = "1.3.0"
 description = "Six-degree-of-freedom fixed-wing flight dynamics in JAX, for studying aircraft response to clear-air turbulence"
 readme = "README.md"
 license = "MIT"
@@ -26,12 +26,15 @@ Changelog = "https://github.com/MatusGib/AtiSim/blob/main/CHANGELOG.md"
 dev = ["pytest", "pymupdf", "jupyter", "nbval"]
 # Run artifacts and the Dash analysis app. Kept out of the runtime dependencies:
 # the simulator and every script work without it, and pyarrow alone is large.
-ui = ["dash", "plotly", "pyarrow"]
+ui = ["dash", "plotly", "pyarrow", "dash-mantine-components>=2.8.0", "dash-iconify>=0.1.2"]
 # JSBSim, needed only to REGENERATE the frozen cross-code reference data in
 # atisim/tests/data/. The test suite reads the frozen XML and never imports it.
 ref = ["jsbsim"]
 # The documentation site.
 docs = ["sphinx>=7", "myst-parser>=2", "furo"]
+
+[project.scripts]
+atisim = "atisim.cli:main"
 
 [build-system]
 requires = ["setuptools>=77"]
@@ -41,7 +44,7 @@ build-backend = "setuptools.build_meta"
 include = ["atisim*"]
 
 [tool.setuptools.package-data]
-atisim = ["data/*.csv", "data/cr2144_dig/*.dig", "data/cr2144_trace/*.csv", "tests/data/*.xml"]
+atisim = ["apps/assets/*", "apps/assets/fonts/*", "data/*.csv", "data/cr2144_dig/*.dig", "data/cr2144_trace/*.csv", "tests/data/*.xml"]
 
 [tool.pytest.ini_options]
 # The notebooks are a separate gate (`pytest --nbval-lax notebooks/`): putting

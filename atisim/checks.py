@@ -316,6 +316,15 @@ RMS_NORMAL_LOAD_WINDOW = 5.0  # s, Misaka section IV.B
 RMS_NORMAL_LOAD_BANDS = {"moderate": 0.2, "severe": 0.3}  # g
 
 
+def severity_band(sigma: float) -> str:
+    """`rms_normal_load`'s band as one lower-case word, for a reader's summary."""
+    if not np.isfinite(sigma):
+        return "too short to rate"
+    if sigma >= RMS_NORMAL_LOAD_BANDS["severe"]:
+        return "severe"
+    return "moderate" if sigma >= RMS_NORMAL_LOAD_BANDS["moderate"] else "smooth"
+
+
 def rms_normal_load(traj, ac: Aircraft, dt: float | None = None) -> Check:
     """Peak of the moving-window RMS of (n_z - 1), in g, with its severity band.
 

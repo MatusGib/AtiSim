@@ -35,9 +35,11 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 autosummary_generate = True
 autodoc_member_order = "bysource"
 autodoc_default_options = {"members": True, "show-inheritance": True}
-# Optional extras: the analysis UI (dash, plotly, pyarrow) and the JSBSim
-# reference engine. Mocked so the API reference builds from the runtime install.
-autodoc_mock_imports = ["dash", "plotly", "pyarrow", "jsbsim"]
+# Optional extras: the application (Dash, its Mantine components and icons,
+# Plotly, PyArrow) and the JSBSim reference engine. Mocked so the API reference
+# builds from the runtime install.
+autodoc_mock_imports = ["dash", "dash_mantine_components", "dash_iconify", "plotly", "pyarrow",
+                        "jsbsim"]
 
 
 html_theme = "furo"

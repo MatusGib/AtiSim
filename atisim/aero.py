@@ -299,6 +299,94 @@ def coefficients(
     return CL, CD, CY, Cl, Cm, Cn
 
 
+def coefficient_terms(
+    vel_rel: Array,
+    omega_rel: Array,
+    controls: Controls,
+    ac: Aircraft,
+    a_sound: Array,
+    alphadot_gust: Array = 0.0,
+) -> dict[str, dict[str, Array]]:
+    """Every term of `coefficients`, by name: which term makes a peak.
+
+    Returns {"CL": {...}, "CD": {...}, "CY": {...}, "Cl": {...}, "Cm": {...},
+    "Cn": {...}}. Each inner dict's values sum to the matching output of
+    `coefficients` -- to round-off, not bit for bit, because a sum of named
+    terms is associated differently from the build-up there (floating-point
+    addition is not associative; see the Prandtl-Glauert comment above).
+    `test_aero.py` asserts the sums agree to 1e-12 for every aircraft.
+
+    The build-up below is `coefficients`', term for term, and must be kept so:
+    the test fails the day the two part. It is DIAGNOSTICS ONLY. No flight
+    calls it, so nothing here can move a flown number.
+
+    Term names: `zero` (the intercept), `alpha`, `beta`, `q`, `p`, `r` (the
+    non-dimensional rates), `elevator`, `aileron`, `rudder`, `alphadot` (the
+    whole angle-of-attack rate passed in, wind and aircraft halves together),
+    `mach` (the first-order Mach increment), and for drag `induced`, `wave` and
+    `sideslip`. Induced and wave drag are evaluated on the lift BEFORE its Mach
+    increment, as `coefficients` evaluates them.
+    """
+    V, alpha, beta = air_data(vel_rel)
+    p, q, r = omega_rel
+    p_hat = p * ac.b / (2.0 * V)
+    q_hat = q * ac.c / (2.0 * V)
+    r_hat = r * ac.b / (2.0 * V)
+    de, da, dr = controls.elevator, controls.aileron, controls.rudder
+    alphadot_hat = alphadot_gust * ac.c / (2.0 * V)
+    mach = jnp.linalg.norm(vel_rel) / a_sound
+
+    mach_ref = jnp.where(ac.pg_mach_ref < 0.0, 0.0, ac.pg_mach_ref)
+    pg = jnp.where(
+        ac.pg_mach_ref < 0.0,
+        1.0,
+        jnp.sqrt(jnp.maximum(1.0 - jnp.minimum(mach_ref, PG_MACH_MAX) ** 2, 0.0))
+        / jnp.sqrt(jnp.maximum(1.0 - jnp.minimum(mach, PG_MACH_MAX) ** 2, PG_FLOOR)),
+    )
+    if ac.CL_table_alpha.size:
+        CL_alpha_part = jnp.interp(alpha, ac.CL_table_alpha, ac.CL_table_CL)
+        CL0 = jnp.interp(jnp.array(0.0), ac.CL_table_alpha, ac.CL_table_CL)
+    else:
+        CL_alpha_part = ac.CL0 + ac.CLa * alpha
+        CL0 = ac.CL0
+    CL_alpha_part = CL_alpha_part + (pg - 1.0) * (CL_alpha_part - CL0)
+    if ac.Cmde_table_mach.size:
+        Cmde = jnp.interp(mach, ac.Cmde_table_mach, ac.Cmde_table_Cmde)
+    else:
+        Cmde = ac.Cmde
+    CLq, CLde, CLadot = pg * ac.CLq, pg * ac.CLde, pg * ac.CLadot
+    Cma, Cmq, Cmadot = pg * ac.Cma, pg * ac.Cmq, pg * ac.Cmadot
+    Cmde = pg * Cmde
+    if ac.Clda_table_mach.size:
+        Clda = jnp.interp(mach, ac.Clda_table_mach, ac.Clda_table_Clda)
+    else:
+        Clda = ac.Clda
+    d_mach = jnp.where(ac.mach_deriv_ref < 0.0, 0.0, mach - ac.mach_deriv_ref)
+
+    # The lift the drag build-up sees: before the Mach increment, in the same
+    # order `coefficients` sums it.
+    CL_pre = (CL_alpha_part + CLq * q_hat + CLde * de + CLadot * alphadot_hat)
+    return {
+        "CL": {"zero": CL0 + 0.0 * alpha, "alpha": CL_alpha_part - CL0,
+               "q": CLq * q_hat, "elevator": CLde * de,
+               "alphadot": CLadot * alphadot_hat, "mach": ac.CL_M * d_mach},
+        "CD": {"zero": ac.CD0 + 0.0 * alpha,
+               "induced": CL_pre**2 / (jnp.pi * ac.e * ac.AR),
+               "wave": wave_drag(jnp.linalg.norm(vel_rel) / a_sound, CL_pre, ac),
+               "sideslip": ac.CD_beta * beta**2, "alpha": ac.CD_alpha * alpha,
+               "mach": ac.CD_M * d_mach},
+        "CY": {"beta": ac.CYb * beta, "p": ac.CYp * p_hat, "r": ac.CYr * r_hat,
+               "rudder": ac.CYdr * dr},
+        "Cl": {"beta": ac.Clb * beta, "p": ac.Clp * p_hat, "r": ac.Clr * r_hat,
+               "aileron": Clda * da, "rudder": ac.Cldr * dr},
+        "Cm": {"zero": ac.Cm0 + 0.0 * alpha, "alpha": Cma * alpha, "q": Cmq * q_hat,
+               "elevator": Cmde * de, "alphadot": Cmadot * alphadot_hat,
+               "mach": ac.Cm_M * d_mach},
+        "Cn": {"beta": ac.Cnb * beta, "p": ac.Cnp * p_hat, "r": ac.Cnr * r_hat,
+               "aileron": ac.Cnda * da, "rudder": ac.Cndr * dr},
+    }
+
+
 def aero_forces_moments(
     vel_rel: Array,
     omega_rel: Array,

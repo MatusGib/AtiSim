@@ -190,9 +190,10 @@ def test_the_field_is_rebuilt_from_parameters_not_stored_as_samples(small_run):
 
 def test_rebuilding_an_unknown_field_raises_rather_than_going_calm(small_run):
     """Silently substituting still air draws a flat gust trace, which reads as a
-    working aircraft in calm conditions rather than as a failure."""
+    working aircraft in calm conditions rather than as a failure. (This used to
+    name Dryden as the unknown kind; phase 2 made Dryden a run kind.)"""
     with pytest.raises(ValueError, match="refusing to substitute still air"):
-        artifact.rebuild_field({"wind_field": {"kind": "Dryden", "params": {}}})
+        artifact.rebuild_field({"wind_field": {"kind": "NotAField", "params": {}}})
 
 
 def test_a_zero_wind_run_rebuilds_as_still_air(small_run):

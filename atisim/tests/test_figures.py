@@ -603,17 +603,37 @@ def test_the_camera_is_restored_from_a_flattened_relayout(sample):
 
 
 def test_an_unrelated_relayout_leaves_the_camera_alone(sample):
-    """A 2D zoom must not invent a 3D camera."""
+    """A 2D zoom must not invent a 3D camera, or move the one the figure framed."""
     fig = figures.field_3d(sample, lambda p: p * 0.0, representation="none")
+    built = fig.layout.scene.camera.to_plotly_json()
     figures.apply_camera(fig, {"xaxis.range[0]": 3.0, "xaxis.range[1]": 9.0})
-    assert fig.layout.scene.camera.eye.x is None
+    assert fig.layout.scene.camera.to_plotly_json() == built
 
 
 def test_no_relayout_data_is_harmless(sample):
     fig = figures.field_3d(sample, lambda p: p * 0.0, representation="none")
+    built = fig.layout.scene.camera.to_plotly_json()
     figures.apply_camera(fig, None)
     figures.apply_camera(fig, {})
-    assert fig.layout.scene.camera.eye.x is None
+    assert fig.layout.scene.camera.to_plotly_json() == built
+
+
+def test_the_scene_is_framed_in_true_proportion_with_the_path_inside(sample):
+    """The manoeuvre has no east extent: plotly's default camera drew it as one
+    diagonal line off the panel. The box is sized to what is drawn, with the same
+    metres per unit on every axis, so a core is still round."""
+    fig = figures.field_3d(sample, lambda p: p * 0.0, cursor_index=3,
+                           representation="none")
+    scene = fig.layout.scene
+    assert scene.camera.eye.x == pytest.approx(figures.FRAME_EYE[0])
+    assert scene.camera.projection.type == "orthographic"
+    per_metre = [ratio / (axis.range[1] - axis.range[0]) for ratio, axis in
+                 ((scene.aspectratio.x, scene.xaxis), (scene.aspectratio.y, scene.yaxis),
+                  (scene.aspectratio.z, scene.zaxis))]
+    assert per_metre == pytest.approx([per_metre[0]] * 3)
+    for values, axis in ((sample.north, scene.yaxis), (sample.altitude, scene.zaxis)):
+        assert axis.range[0] <= values.min() and values.max() <= axis.range[1]
+    assert scene.xaxis.range[1] - scene.xaxis.range[0] > 0.1 * float(np.ptp(sample.north))
 
 
 def test_a_comparison_is_a_difference_not_two_overlaid_traces(sample):
@@ -622,3 +642,40 @@ def test_a_comparison_is_a_difference_not_two_overlaid_traces(sample):
     fig = figures.difference(sample, other, "n_z", ("h", "h/2"))
     assert len(fig.data) == 1
     assert float(np.max(np.abs(fig.data[0].y))) == pytest.approx(1e-4, rel=1e-3)
+
+
+# --- the geometry preview: centred on the structure, not the path -------------
+
+
+@pytest.mark.parametrize("name", ["vortex-hannibal", "updraft", "lee-wave", "microburst"])
+def test_the_preview_draws_the_field_and_the_planned_path(name):
+    from atisim import run
+
+    spec = run.PRESETS[name]
+    args = run.preview_args(spec)
+    fig = figures.field_preview(run.build_field(spec), **args)
+    kinds = [t.type for t in fig.data]
+    names = [t.name for t in fig.data]
+    assert "heatmap" in kinds, "the field trace is missing"
+    assert "planned path" in names, "the path trace is missing"
+    heat = next(t for t in fig.data if t.type == "heatmap")
+    assert np.abs(np.asarray(heat.z)).max() > 0.0, "the field drew as still air"
+
+
+@pytest.mark.parametrize("name", ["vortex-hannibal", "updraft", "lee-wave", "microburst"])
+def test_the_preview_centres_on_the_structure_not_the_path(name):
+    """The live bug of the 2026-08-16 spec: a view centred on the trajectory
+    midpoint sits ~2.5 km upstream of the cores and shows irrotational air."""
+    from atisim import run
+
+    spec = run.PRESETS[name]
+    args = run.preview_args(spec)
+    fig = figures.field_preview(run.build_field(spec), **args)
+    lo, hi = fig.layout.xaxis.range
+    assert 0.5 * (lo + hi) == pytest.approx(args["structure_north"], abs=1e-6)
+    path_mid = 0.5 * (args["start_north"] + args["end_north"])
+    if name == "vortex-hannibal":
+        # Here the two differ by kilometres, which is the case the bug hid in.
+        assert abs(path_mid - args["structure_north"]) > 1000.0
+    if name == "microburst":
+        assert fig.layout.yaxis.range[0] == 0.0, "the ground must be in view"

@@ -1,0 +1,566 @@
+/* AtiSim engineering mode. Engineering-suite chrome: neutral panels, 1px
+   dividers, 4px radius, one blue. The explorer down the left lists everything;
+   the page is the item chosen in it. Tokens mirror atisim/apps/theme.py; that
+   file is the source and test_app.py checks the two agree. */
+
+:root {
+  --ati-chrome: #eceef1;
+  --ati-panel: #f5f6f8;
+  --ati-surface: #fcfcfb;
+  --ati-divider: #d3d8de;
+  --ati-ink: #14181d;
+  --ati-ink-muted: #4a525c;
+  --ati-accent: #1f5fbf;
+  --ati-accent-hover: #184d9c;
+  --ati-accent-wash: #e1ebf8;
+  --ati-ok: #1a7334;
+  --ati-ok-wash: #e3f1e6;
+  --ati-warn: #8a5a00;
+  --ati-warn-wash: #fbf0d9;
+  --ati-fail: #b42318;
+  --ati-fail-wash: #fbe7e5;
+  --ati-hairline: #e6e9ed;
+  --ati-hover-soft: #f0f2f5;
+  --ati-hover-strong: #e2e5e9;
+  --ati-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --ati-mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  --explorer-w: 288px;
+  --settings-w: 440px;
+  --dock-h: 200px;
+  color-scheme: light;
+}
+
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--ati-panel);
+  color: var(--ati-ink);
+  font-family: var(--ati-font);
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Browser surfaces, themed from the palette. */
+::selection { background: var(--ati-accent-wash); color: var(--ati-ink); }
+:focus-visible { outline: 2px solid var(--ati-accent); outline-offset: 1px; }
+* { scrollbar-width: thin; scrollbar-color: #b3bbc4 transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #b3bbc4; border-radius: 5px; border: 2px solid var(--ati-panel); }
+::-webkit-scrollbar-thumb:hover { background: #8d97a3; }
+::-webkit-scrollbar-track { background: transparent; }
+a { color: var(--ati-accent); text-underline-offset: 2px; }
+a:hover { color: var(--ati-accent-hover); }
+input, textarea, select { caret-color: var(--ati-accent); }
+
+.ati-mono { font-family: var(--ati-mono); font-size: 12px; }
+.ati-num { font-variant-numeric: tabular-nums; }
+.ati-muted { color: var(--ati-ink-muted); }
+
+/* ---- shell ------------------------------------------------------------ */
+.ati-app {
+  display: grid;
+  grid-template-rows: 44px minmax(0, 1fr) 24px;
+  height: 100vh;
+  min-width: 0;
+}
+.ati-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 12px 0 6px;
+  background: var(--ati-chrome);
+  border-bottom: 1px solid var(--ati-divider);
+  min-width: 0;
+}
+.ati-wordmark {
+  font-weight: 700; font-size: 15px; letter-spacing: 0; color: var(--ati-ink);
+  text-decoration: none; padding-right: 14px; border-right: 1px solid var(--ati-divider);
+  line-height: 22px;
+}
+.ati-wordmark:hover { color: var(--ati-accent); }
+.ati-iconbtn {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 32px; height: 32px; padding: 0;
+  border: 1px solid transparent; border-radius: 4px; background: transparent;
+  color: var(--ati-ink-muted); cursor: pointer;
+}
+.ati-iconbtn:hover { background: var(--ati-hover-strong); color: var(--ati-ink); border-color: var(--ati-divider); }
+/* The breadcrumb: where the page on screen sits in the explorer. */
+.ati-crumbs { display: flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; font-size: 13.5px; white-space: nowrap; }
+.ati-crumb { color: var(--ati-ink-muted); text-decoration: none; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+a.ati-crumb:hover { color: var(--ati-accent); text-decoration: underline; }
+.ati-crumb.is-current { color: var(--ati-ink); font-weight: 600; flex-shrink: 1; }
+.ati-crumb-sep { display: inline-flex; color: var(--ati-ink-muted); flex-shrink: 0; }
+.ati-header-spacer { flex: 1 1 auto; }
+.ati-doclink { display: inline-flex; align-items: center; gap: 4px; color: var(--ati-ink-muted); text-decoration: none; white-space: nowrap; }
+.ati-doclink:hover { color: var(--ati-accent); }
+
+/* The body: the explorer, its splitter, and the page. */
+.ati-body {
+  display: grid; grid-template-columns: var(--explorer-w) 1px minmax(0, 1fr);
+  min-height: 0; min-width: 0;
+}
+.ati-page { min-height: 0; min-width: 0; overflow: hidden; }
+html[data-explorer="hidden"] .ati-body { grid-template-columns: 0 0 minmax(0, 1fr); }
+html[data-explorer="hidden"] .ati-explorer,
+html[data-explorer="hidden"] .ati-split-explorer { visibility: hidden; overflow: hidden; }
+.ati-app.is-simple > .ati-body { grid-template-columns: minmax(0, 1fr); }
+.ati-app.is-simple .ati-explorer, .ati-app.is-simple .ati-split-explorer { display: none; }
+
+/* ---- the explorer ------------------------------------------------------ */
+.ati-explorer { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--ati-panel); }
+.ati-xsearch { position: relative; padding: 10px 10px 9px; border-bottom: 1px solid var(--ati-divider); }
+/* dcc.Input wraps its <input> in a container that takes the class. */
+.ati-xfilter { display: block; width: 100%; height: 32px; padding: 0; border: 0; background: none; box-shadow: none; }
+.ati-xfilter input {
+  width: 100%; height: 32px; box-sizing: border-box; margin: 0; padding: 0 34px 0 31px;
+  font: inherit; font-size: 13px; color: var(--ati-ink);
+  background: #fff; border: 1px solid var(--ati-divider); border-radius: 4px; box-shadow: none;
+}
+.ati-xfilter input::placeholder { color: var(--ati-ink-muted); opacity: 1; }
+.ati-xfilter input:focus { outline: 2px solid var(--ati-accent); outline-offset: -1px; border-color: var(--ati-accent); }
+.ati-xfilter input::-webkit-search-cancel-button { cursor: pointer; }
+.ati-xsearch-icon { position: absolute; z-index: 2; left: 20px; top: 50%; transform: translateY(-50%); display: inline-flex; color: var(--ati-ink-muted); pointer-events: none; }
+.ati-xkbd {
+  position: absolute; z-index: 2; right: 18px; top: 50%; transform: translateY(-50%);
+  padding: 0 6px; font-family: var(--ati-mono); font-size: 11px; line-height: 18px;
+  color: var(--ati-ink-muted); background: var(--ati-panel);
+  border: 1px solid var(--ati-divider); border-radius: 4px;
+}
+.ati-xsearch:focus-within .ati-xkbd, .ati-xfilter:has(input:not(:placeholder-shown)) + .ati-xkbd { display: none; }
+.ati-xtree { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 4px 0 20px; font-size: 13px; }
+.ati-xtree summary { list-style: none; }
+.ati-xtree summary::-webkit-details-marker { display: none; }
+.ati-xsec { border-top: 1px solid var(--ati-hairline); }
+.ati-xsec-head {
+  display: flex; align-items: center; gap: 8px;
+  height: 36px; padding: 0 12px 0 8px;
+  font-size: 13.5px; font-weight: 600; color: var(--ati-ink);
+  cursor: pointer; user-select: none;
+}
+.ati-xsec-head:hover { background: var(--ati-hover-soft); }
+.ati-xsec-head:focus-visible, .ati-xgroup-head:focus-visible { outline: 2px solid var(--ati-accent); outline-offset: -2px; }
+.ati-xchev { display: inline-flex; color: var(--ati-ink-muted); transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1); }
+details[open] > summary > .ati-xchev { transform: rotate(90deg); }
+.ati-xcount {
+  margin-left: auto; padding: 0 6px;
+  font-size: 11.5px; font-weight: 600; line-height: 18px; font-variant-numeric: tabular-nums;
+  color: var(--ati-ink-muted); background: var(--ati-hover-strong); border-radius: 4px;
+}
+.ati-xsec-body { padding-bottom: 6px; }
+.ati-xgroup-head {
+  display: flex; align-items: center; gap: 6px;
+  height: 28px; padding: 0 12px 0 calc(8px + var(--depth, 1) * 14px);
+  font-weight: 500; color: var(--ati-ink-muted); cursor: pointer; user-select: none;
+}
+.ati-xgroup-head:hover { background: var(--ati-hover-soft); color: var(--ati-ink); }
+.ati-xgroup-body { position: relative; }
+/* The indent guide: a hairline down the open group, as in an IDE's tree. */
+.ati-xgroup-body::before { content: ""; position: absolute; top: 0; bottom: 4px; left: 28px; width: 1px; background: var(--ati-divider); }
+.ati-xitem {
+  position: relative; display: flex; align-items: center; gap: 7px;
+  min-height: 28px; padding: 3px 12px 3px calc(12px + var(--depth, 0) * 14px);
+  color: var(--ati-ink); text-decoration: none;
+}
+.ati-xitem:hover { background: var(--ati-hover-strong); }
+.ati-xitem.is-active { background: var(--ati-accent-wash); font-weight: 600; }
+.ati-xitem:focus-visible { outline: 2px solid var(--ati-accent); outline-offset: -2px; }
+.ati-xitem.is-static { cursor: default; }
+.ati-xitem svg { flex-shrink: 0; color: var(--ati-ink-muted); }
+.ati-xlabel { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ati-xmeta { flex: 0 0 auto; font-size: 12px; font-weight: 400; color: var(--ati-ink-muted); }
+.ati-xmeta .ati-state { font-size: 12px; }
+.ati-xsec-head > svg { color: var(--ati-ink-muted); }
+.ati-xempty { padding: 8px 14px 8px 36px; color: var(--ati-ink-muted); font-size: 12.5px; line-height: 1.45; }
+/* The run being edited, at the top of Fly a run on Setup: Setup's own model tree. */
+.ati-xmodel { margin: 2px 0 6px; padding: 4px 0; background: var(--ati-surface); border-top: 1px solid var(--ati-hairline); border-bottom: 1px solid var(--ati-hairline); }
+.ati-xmodel .ati-node { padding-left: calc(12px + (var(--depth, 0) + 1) * 14px); }
+.ati-xmodel .ati-node:first-child .ati-node-label { font-weight: 600; }
+
+.ati-status {
+  display: flex; align-items: center; gap: 18px;
+  padding: 0 12px;
+  background: var(--ati-chrome);
+  border-top: 1px solid var(--ati-divider);
+  font-size: 12px; color: var(--ati-ink-muted);
+  white-space: nowrap; overflow: hidden;
+}
+.ati-status-item { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; }
+.ati-status-job { flex-shrink: 1; min-width: 0; overflow: hidden; }
+.ati-status-job > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ati-status-button {
+  font: inherit; font-size: 12px; color: var(--ati-accent);
+  padding: 1px 8px; margin-left: 4px;
+  background: var(--ati-surface); border: 1px solid var(--ati-divider); border-radius: 4px;
+  cursor: pointer;
+}
+.ati-status-button:hover { border-color: var(--ati-accent); background: var(--ati-accent-wash); }
+.ati-status-button:focus-visible { outline: 2px solid var(--ati-accent); outline-offset: 1px; }
+
+/* ---- panels ----------------------------------------------------------- */
+.ati-panel { background: var(--ati-panel); min-width: 0; min-height: 0; overflow: auto; }
+.ati-panel-surface { background: var(--ati-surface); }
+.ati-panel-title {
+  display: flex; align-items: center; gap: 6px;
+  height: 30px; padding: 0 10px;
+  font-size: 12px; font-weight: 600; color: var(--ati-ink);
+  border-bottom: 1px solid var(--ati-divider);
+  background: var(--ati-chrome);
+  position: sticky; top: 0; z-index: 1;
+}
+.ati-split {
+  background: var(--ati-divider);
+  position: relative;
+  touch-action: none;
+}
+.ati-split[aria-orientation="vertical"] { width: 1px; cursor: col-resize; }
+.ati-split[aria-orientation="horizontal"] { height: 1px; cursor: row-resize; }
+.ati-split::after { content: ""; position: absolute; inset: -3px; }
+.ati-split:hover, .ati-split.is-dragging, .ati-split:focus-visible { background: var(--ati-accent); outline: none; }
+
+/* ---- status words (always icon + word + colour) ----------------------- */
+.ati-state { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; white-space: nowrap; }
+.ati-state-ok { color: var(--ati-ok); }
+.ati-state-warn { color: var(--ati-warn); }
+.ati-state-fail { color: var(--ati-fail); }
+.ati-state-neutral { color: var(--ati-ink-muted); }
+.ati-state.is-busy svg { animation: ati-spin 1.2s linear infinite; }
+@keyframes ati-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ati-state.is-busy svg { animation: none; } }
+
+/* ---- Setup: Model Builder ---------------------------------------------- */
+.ati-setup {
+  display: grid;
+  grid-template-columns: var(--settings-w) 1px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) 1px var(--dock-h);
+  height: 100%;
+}
+.ati-setup.is-dock-collapsed { grid-template-rows: minmax(0, 1fr) 1px 32px; }
+.ati-setup > .ati-dock { grid-column: 1 / -1; }
+.ati-setup > .ati-split-h { grid-column: 1 / -1; }
+
+.ati-node {
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  height: 28px; padding: 0 10px 0 calc(10px + var(--depth, 0) * 16px);
+  border: 0; background: transparent; color: var(--ati-ink);
+  font: inherit; text-align: left; cursor: pointer;
+}
+.ati-node:hover { background: var(--ati-hover-strong); }
+.ati-node.is-selected { background: var(--ati-accent-wash); }
+.ati-node-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ati-node-status { display: inline-flex; }
+
+.ati-settings { padding: 0 0 16px; }
+.ati-settings-head { padding: 12px 12px 6px; }
+.ati-settings-head h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.ati-settings-head p { margin: 4px 0 0; color: var(--ati-ink-muted); font-size: 12.5px; line-height: 1.45; }
+.ati-group-title {
+  margin: 16px 12px 4px; padding-bottom: 5px;
+  font-size: 12.5px; font-weight: 600; color: var(--ati-ink);
+  border-bottom: 1px solid var(--ati-divider);
+}
+.ati-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px 116px;
+  align-items: center; gap: 8px;
+  padding: 4px 12px; min-height: 30px;
+}
+.ati-row:hover { background: #eef0f3; }
+.ati-row-label { font-size: 13px; color: var(--ati-ink); line-height: 1.3; }
+.ati-row-label small { display: block; color: var(--ati-ink-muted); font-size: 12px; }
+.ati-row-aside { display: flex; align-items: center; gap: 4px; justify-content: flex-start; }
+.ati-row-wide { grid-template-columns: minmax(0, 1fr) 274px; }
+/* A read-only value is plain text: a box would read as an input. */
+.ati-value { padding: 3px 0; line-height: 1.35; color: var(--ati-ink); overflow-wrap: anywhere; }
+
+/* Provenance markers: the one detail no other simulator has. */
+.ati-marker {
+  display: inline-flex; align-items: center; gap: 3px;
+  height: 20px; padding: 0 6px;
+  border-radius: 4px; border: 1px solid transparent;
+  font-size: 11px; font-weight: 600; line-height: 1; white-space: nowrap; cursor: help;
+}
+.ati-marker-sourced { color: var(--ati-ink-muted); background: #e9ecef; }
+.ati-marker-declared { color: var(--ati-warn); background: var(--ati-surface); border-color: #c98f16; }
+.ati-reset {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0;
+  border: 1px solid transparent; border-radius: 4px; background: transparent;
+  color: var(--ati-ink-muted); cursor: pointer;
+}
+.ati-reset:hover { background: #e2e5e9; color: var(--ati-ink); border-color: var(--ati-divider); }
+.ati-reset:disabled { visibility: hidden; }
+
+.ati-graphics { display: flex; flex-direction: column; background: var(--ati-surface); }
+.ati-graphics .ati-graph { flex: 1 1 auto; min-height: 0; }
+
+.ati-dock { display: flex; flex-direction: column; background: var(--ati-surface); min-height: 0; overflow: hidden; }
+.ati-dock-bar { display: flex; align-items: stretch; background: var(--ati-chrome); border-bottom: 1px solid var(--ati-divider); min-height: 32px; }
+.ati-dock-bar .mantine-Tabs-root { flex: 1 1 auto; }
+.ati-dock-bar .mantine-Tabs-list { align-self: stretch; }
+.ati-dock-bar .mantine-Tabs-list::before { display: none; }
+/* The open pane reads from across a room: the header tabs' treatment. */
+.ati-dock-bar .mantine-Tabs-tab {
+  height: 32px; padding: 0 12px; margin-bottom: -1px;
+  border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+  color: var(--ati-ink-muted); font-weight: 500;
+}
+.ati-dock-bar .mantine-Tabs-tab:hover { background: #e2e5e9; color: var(--ati-ink); }
+.ati-dock-bar .mantine-Tabs-tab[data-active] { background: var(--ati-surface); color: var(--ati-ink); border-bottom-color: var(--ati-accent); }
+.ati-dock-body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.ati-setup.is-dock-collapsed .ati-dock-body { display: none; }
+
+.ati-issue {
+  display: flex; align-items: flex-start; gap: 8px; width: 100%;
+  padding: 6px 12px; border: 0; border-bottom: 1px solid #e6e9ed;
+  background: transparent; font: inherit; text-align: left; color: var(--ati-ink); cursor: pointer;
+}
+.ati-issue:hover { background: #f0f2f5; }
+.ati-issue-where { color: var(--ati-ink-muted); min-width: 110px; }
+.ati-empty { padding: 14px 12px; color: var(--ati-ink-muted); }
+.ati-empty strong { color: var(--ati-ink); }
+
+.ati-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ati-table th {
+  position: sticky; top: 0; z-index: 1;
+  text-align: left; font-weight: 600; color: var(--ati-ink);
+  padding: 6px 10px; background: var(--ati-chrome); border-bottom: 1px solid var(--ati-divider);
+  white-space: nowrap;
+}
+.ati-table td { padding: 7px 10px; border-bottom: 1px solid var(--ati-hairline); vertical-align: top; }
+.ati-table td.num, .ati-table th.num { text-align: right; }
+.ati-table tr.is-clickable { cursor: pointer; }
+.ati-table tr.is-clickable:hover td { background: var(--ati-hover-soft); }
+.ati-table tbody tr:hover td { background: var(--ati-hover-soft); }
+.ati-table tr.is-error td { background: var(--ati-fail-wash); }
+/* Compare's settings: long values (hashes, caveats) wrap inside their column. */
+.ati-diff-table { table-layout: fixed; }
+.ati-diff-table th:first-child { width: 220px; }
+.ati-diff-table td { overflow-wrap: anywhere; }
+/* The step inspector's state and controls: two narrow tables side by side. */
+.ati-table-compact { width: auto; min-width: 220px; }
+.ati-table-compact th, .ati-table-compact td { white-space: nowrap; }
+.ati-inspect-tables { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 24px; margin-bottom: 8px; }
+
+.ati-code {
+  margin: 0; padding: 8px 10px; background: #f3f4f6; border: 1px solid var(--ati-divider); border-radius: 4px;
+  font-family: var(--ati-mono); font-size: 12px; white-space: pre-wrap; word-break: break-all; color: var(--ati-ink);
+}
+.ati-log { margin: 0; padding: 8px 12px; font-family: var(--ati-mono); font-size: 12px; white-space: pre-wrap; color: var(--ati-ink); }
+
+/* ---- Results ---------------------------------------------------------- */
+/* One column: the result bar, then the deep view scrolling under it. */
+.ati-results { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.ati-result-bar { flex: 0 0 auto; background: var(--ati-surface); border-bottom: 1px solid var(--ati-divider); }
+.ati-result-bar .ati-page-head { padding: 14px 20px 10px; border-bottom: 0; }
+.ati-result-bar .ati-page-title { font-size: 18px; }
+.ati-result-bar .ati-page-facts { margin-top: 6px; }
+.ati-result-bar .ati-switch { margin: 0; padding: 0 8px; border-bottom: 0; }
+.ati-results > .ati-deep { flex: 1 1 auto; min-height: 0; }
+html:root { --Dash-Fill-Interactive-Strong: var(--ati-accent); }
+.ati-nowrap { white-space: nowrap; }
+.ati-wrap-name { overflow-wrap: anywhere; min-width: 12ch; }
+.ati-deep { overflow: auto; background: var(--ati-panel); }
+.ati-deep-block { background: var(--ati-surface); border-bottom: 1px solid var(--ati-divider); padding: 10px 16px; }
+.ati-deep-row { display: grid; grid-template-columns: minmax(0, 56fr) 1px minmax(0, 44fr); border-bottom: 1px solid var(--ati-divider); }
+.ati-deep-row > .ati-deep-cell { background: var(--ati-surface); padding: 8px 10px; min-width: 0; }
+.ati-deep-row > .ati-vrule { background: var(--ati-divider); }
+.ati-deep-row.is-even { grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr); }
+.ati-controls { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; font-size: 12.5px; color: var(--ati-ink-muted); flex-wrap: wrap; }
+.ati-note { display: inline-flex; align-items: center; gap: 5px; color: var(--ati-ink-muted); }
+.ati-note:empty { display: none; }
+.ati-badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.ati-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 9px; border: 1px solid var(--ati-divider); border-radius: 4px; background: #fff;
+  font: inherit; font-size: 12.5px; color: var(--ati-ink); cursor: pointer;
+}
+.ati-badge:hover { border-color: var(--ati-accent); }
+/* The run's facts: label | value pairs that flow and wrap. */
+.ati-facts { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 22px; margin: 0; }
+.ati-fact { display: inline-flex; align-items: baseline; gap: 7px; min-height: 22px; }
+.ati-fact dt { color: var(--ati-ink-muted); font-size: 12px; }
+.ati-fact dd { margin: 0; font-weight: 600; }
+.ati-fact .ati-marker { align-self: center; }
+.ati-facts-group {
+  display: flex; align-items: center; gap: 22px;
+  margin-top: 4px; padding-top: 4px; border-top: 1px solid #e6e9ed;
+}
+.ati-facts-title { font-size: 12px; font-weight: 600; color: var(--ati-ink); white-space: nowrap; }
+.ati-caveat { display: flex; gap: 6px; align-items: flex-start; color: var(--ati-warn); font-size: 12px; margin-top: 3px; }
+.ati-stale { display: flex; gap: 8px; align-items: center; color: var(--ati-ink-muted); font-size: 12px; margin-top: 3px; }
+.ati-readout { font-size: 12.5px; }
+.ati-readout table { width: 100%; border-collapse: collapse; }
+.ati-readout td { padding: 1px 0; }
+.ati-readout td:first-child { color: var(--ati-ink-muted); padding-right: 10px; }
+
+/* Below 1024px the panels stack. Acceptable, not optimised. */
+@media (max-width: 1023px) {
+  .ati-app { height: auto; min-height: 100vh; }
+  .ati-page { overflow: visible; }
+  .ati-setup, .ati-results, .ati-deep-row, .ati-deep-row.is-even, .ati-body, .ati-doc-cols, .ati-flow {
+    display: flex; flex-direction: column; height: auto;
+  }
+  .ati-split, .ati-vrule { display: none; }
+  .ati-graphics { min-height: 380px; }
+  .ati-dock { min-height: 240px; }
+  .ati-explorer { max-height: 42vh; border-bottom: 1px solid var(--ati-divider); }
+  .ati-crumbs .ati-crumb:not(.is-current), .ati-crumbs .ati-crumb-sep { display: none; }
+  .ati-status-path { display: none; }
+  .ati-doc { height: auto; overflow: visible; }
+  .ati-doc-main { border-right: 0; }
+  .ati-flow-col + .ati-flow-col { border-left: 0; border-top: 1px solid var(--ati-hairline); }
+}
+
+/* ---- A report in Results ---------------------------------------------- */
+.ati-report-title { margin: 0 0 2px; font-size: 15px; font-weight: 600; }
+.ati-report-summary { margin: 0 0 6px; color: var(--ati-ink-muted); }
+.ati-report-section { margin: 2px 0 4px; font-size: 13px; font-weight: 600; }
+.ati-report-text { margin: 0 0 6px; max-width: 900px; line-height: 1.45; color: var(--ati-ink); }
+.ati-report-table { overflow-x: auto; max-height: 420px; overflow-y: auto; }
+.ati-report-image { display: block; max-width: 100%; max-height: 720px; border: 1px solid var(--ati-divider); border-radius: 4px; background: #fff; }
+.ati-report-log { max-height: 520px; overflow: auto; border: 1px solid var(--ati-divider); border-radius: 4px; background: var(--ati-surface); }
+.ati-file-links { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; }
+.ati-file-link { display: inline-flex; align-items: center; gap: 4px; font-family: var(--ati-mono); font-size: 12px; color: var(--ati-accent); text-decoration: none; }
+.ati-file-link:hover { text-decoration: underline; }
+.ati-file-link:focus-visible { outline: 2px solid var(--ati-accent); outline-offset: 2px; }
+.ati-script-note { display: flex; flex-direction: column; gap: 2px; padding: 2px 12px 8px; color: var(--ati-ink-muted); line-height: 1.4; }
+.ati-member-links { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; }
+
+/* Results workspaces: Overview, Diagnostics, Compare (phase 2, plan section 4). */
+/* The view switch is a row of tabs like the workspaces': square, a 2px blue rule under the one shown. */
+.ati-switch { display: flex; border-bottom: 1px solid var(--ati-divider); margin: 0 0 10px; }
+.ati-switch-item { padding: 6px 14px; font-size: 12.5px; font-weight: 500; color: var(--ati-ink-muted); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.ati-switch-item:hover { color: var(--ati-ink); background: #e2e5e9; }
+.ati-switch-item.is-active { color: var(--ati-ink); border-bottom-color: var(--ati-accent); }
+.ati-switch-item:focus-visible { outline: 2px solid var(--ati-accent); outline-offset: -2px; }
+.ati-diag-channels { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 12px; align-items: start; }
+.ati-diag-picker { max-height: 560px; overflow-y: auto; border: 1px solid var(--ati-divider); border-radius: 4px; background: #fff; font-size: 12px; }
+.ati-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border: 1px solid var(--ati-divider); border-radius: 4px; background: #fff; font-size: 12px; color: var(--ati-ink); }
+.ati-chip-remove { display: inline-flex; color: var(--ati-ink-muted); }
+.ati-controls-labelled { align-items: flex-end; }
+.ati-controls-labelled > .ati-muted { padding-bottom: 6px; }
+.ati-compare-note { padding: 6px 12px; color: var(--ati-ink); }
+.ati-compare-note:empty { display: none; }
+.ati-chip-remove:hover { color: var(--ati-fail); }
+
+/* ======================================================================
+   Pages: a head, then the page's own body
+   ====================================================================== */
+.ati-doc { height: 100%; overflow: auto; background: var(--ati-surface); }
+.ati-page-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 24px;
+  padding: 22px 28px 18px; border-bottom: 1px solid var(--ati-divider); background: var(--ati-surface);
+}
+.ati-page-head-text { min-width: 0; }
+.ati-page-title {
+  margin: 0; font-size: 22px; line-height: 1.25; font-weight: 600; letter-spacing: -0.01em;
+  color: var(--ati-ink); overflow-wrap: anywhere;
+}
+.ati-page-lead { margin: 6px 0 0; max-width: 80ch; font-size: 14.5px; line-height: 1.5; color: var(--ati-ink-muted); }
+.ati-page-facts { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 7px; row-gap: 4px; margin: 12px 0 0; }
+.ati-page-facts dt { font-size: 12.5px; color: var(--ati-ink-muted); }
+.ati-page-facts dd { margin: 0; font-size: 13px; font-weight: 600; color: var(--ati-ink); }
+.ati-page-facts dd + dt { margin-left: 18px; }
+.ati-page-facts a { color: var(--ati-accent); text-decoration: none; }
+.ati-page-facts a:hover { text-decoration: underline; }
+.ati-page-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; padding-top: 2px; }
+
+/* Main column and a side column of related things. */
+.ati-doc-cols { display: grid; grid-template-columns: minmax(0, 1fr) 320px; align-items: stretch; }
+.ati-doc-main { min-width: 0; padding: 6px 28px 36px; border-right: 1px solid var(--ati-hairline); }
+.ati-doc-side { padding: 18px 24px 36px; background: var(--ati-panel); }
+.ati-side-title { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--ati-ink); }
+.ati-side-title:not(:first-child) { margin-top: 24px; }
+.ati-side-list { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--ati-divider); }
+.ati-side-list li { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--ati-hairline); font-size: 13px; }
+.ati-side-list a { min-width: 0; color: var(--ati-accent); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ati-side-list a:hover { text-decoration: underline; }
+.ati-side-list .ati-muted { flex-shrink: 0; font-size: 12px; }
+.ati-side-empty { color: var(--ati-ink-muted); font-size: 13px; line-height: 1.5; }
+
+/* A run form inside a page (an analysis, a research script). */
+.ati-doc-main .ati-group-title { margin: 20px 0 6px; font-size: 13px; }
+.ati-doc-main .ati-settings { padding: 0; max-width: 780px; }
+.ati-doc-main .ati-row { grid-template-columns: minmax(0, 1fr) 280px 80px; padding: 6px 0; }
+.ati-doc-main .ati-row:hover { background: transparent; }
+.ati-row-note { padding: 2px 0 8px; color: var(--ati-ink-muted); font-size: 12.5px; }
+.ati-form-issues { padding: 12px 0 0; }
+.ati-form-issues .ati-issue { padding: 6px 0; }
+.ati-form-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 0 4px; }
+.ati-form-note { margin: 0 0 4px; max-width: 72ch; color: var(--ati-ink-muted); line-height: 1.5; }
+.ati-doc-main .ati-script-note { padding: 2px 0 8px; }
+.ati-doc-main .ati-empty { padding: 10px 0; }
+.ati-doc-main .ati-table { margin-top: 4px; }
+.ati-about p { margin: 0 0 10px; max-width: 78ch; font-size: 14px; line-height: 1.6; color: var(--ati-ink); white-space: pre-line; }
+
+/* The Overview: three ruled columns, one per thing to do. */
+.ati-flow { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--ati-divider); }
+.ati-flow-col { min-width: 0; padding: 20px 28px 22px; }
+.ati-flow-col + .ati-flow-col { border-left: 1px solid var(--ati-hairline); }
+.ati-flow-title { margin: 0; font-size: 16px; font-weight: 600; color: var(--ati-ink); }
+.ati-flow-text { margin: 6px 0 14px; max-width: 48ch; font-size: 13.5px; line-height: 1.5; color: var(--ati-ink-muted); }
+.ati-flow-links { list-style: none; margin: 0 0 14px; padding: 0; border-top: 1px solid var(--ati-hairline); }
+.ati-flow-links a { display: flex; flex-direction: column; gap: 1px; padding: 8px 0; border-bottom: 1px solid var(--ati-hairline); color: var(--ati-ink); text-decoration: none; }
+.ati-flow-links a:hover .ati-flow-name { color: var(--ati-accent); text-decoration: underline; }
+.ati-flow-links a:focus-visible { outline: 2px solid var(--ati-accent); outline-offset: 2px; }
+.ati-flow-name { font-size: 13.5px; font-weight: 600; }
+.ati-flow-sub { font-size: 12.5px; color: var(--ati-ink-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ati-flow-more { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--ati-accent); text-decoration: none; }
+.ati-flow-more:hover { text-decoration: underline; }
+.ati-doc-section { padding: 20px 28px 36px; }
+.ati-section-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+.ati-section-title { margin: 0; font-size: 16px; font-weight: 600; color: var(--ati-ink); }
+
+/* Research scripts: the index, by topic. */
+.ati-topic-nav {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 10px 28px; background: var(--ati-panel); border-bottom: 1px solid var(--ati-divider);
+}
+.ati-topic-jump {
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 9px;
+  font-size: 12.5px; color: var(--ati-ink); text-decoration: none;
+  background: var(--ati-surface); border: 1px solid var(--ati-divider); border-radius: 4px;
+}
+.ati-topic-jump:hover { border-color: var(--ati-accent); color: var(--ati-accent); }
+.ati-topic-jump .ati-xcount { margin-left: 0; }
+.ati-topics { padding: 0 28px 44px; }
+.ati-topic { padding-top: 24px; scroll-margin-top: 56px; }
+.ati-topic-head { display: flex; align-items: baseline; gap: 10px; }
+.ati-topic-title { margin: 0; font-size: 16px; font-weight: 600; color: var(--ati-ink); }
+.ati-topic-blurb { margin: 3px 0 10px; font-size: 13.5px; color: var(--ati-ink-muted); }
+.ati-script-table th { position: static; }
+.ati-script-table td:first-child { width: 260px; }
+.ati-script-table td:last-child { width: 130px; }
+.ati-script-link { font-weight: 600; color: var(--ati-accent); text-decoration: none; }
+.ati-script-link:hover { text-decoration: underline; }
+.ati-status-path { margin-left: auto; min-width: 0; overflow: hidden; }
+.ati-status-path > .ati-mono { overflow: hidden; text-overflow: ellipsis; }
+@media (prefers-reduced-motion: reduce) { .ati-xchev { transition: none; } }
+.ati-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.ati-xsearch { display: block; }
+/* The explorer's filter hides with [hidden]; items are flex boxes, so say it. */
+.ati-xtree [hidden] { display: none !important; }
+
+/* Narrow screens, for the page components above. Acceptable, not optimised. */
+@media (max-width: 1023px) {
+  .ati-flow, .ati-doc-cols { display: flex; flex-direction: column; }
+  .ati-flow-col + .ati-flow-col { border-left: 0; border-top: 1px solid var(--ati-hairline); }
+  .ati-doc-main { border-right: 0; padding: 6px 16px 28px; }
+  .ati-doc-side { padding: 16px; }
+  .ati-page-head { flex-direction: column; padding: 18px 16px 14px; }
+  .ati-flow-col, .ati-doc-section { padding-left: 16px; padding-right: 16px; }
+  .ati-doc-section { overflow-x: auto; }
+  .ati-topics { padding: 0 16px 32px; }
+  .ati-topic-nav { position: static; padding: 10px 16px; }
+  .ati-doc-main .ati-row { grid-template-columns: minmax(0, 1fr); }
+}
+/* The mode switch in engineering mode's header; card.css holds its dark variant. */
+.mode-switch.is-on-light { border: 1px solid var(--ati-divider); background: var(--ati-surface); }
+.mode-switch.is-on-light .mode-item {
+  padding: 5px 12px; font-size: 13px; font-weight: 500; color: var(--ati-ink-muted);
+  text-decoration: none; white-space: nowrap;
+}
+.mode-switch.is-on-light .mode-item + .mode-item { border-left: 1px solid var(--ati-divider); }
+.mode-switch.is-on-light .mode-item:hover { background: var(--ati-hover-strong); color: var(--ati-ink); }
+.mode-switch.is-on-light .mode-item.is-active { background: var(--ati-accent-wash); color: var(--ati-ink); font-weight: 600; }
+.mode-switch.is-on-light .mode-item:focus-visible { outline: 2px solid var(--ati-accent); outline-offset: -2px; }

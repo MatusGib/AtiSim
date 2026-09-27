@@ -61,7 +61,7 @@ uses.
 | `atisim/tests/` | the test suite |
 | `atisim/tests/data/` | the frozen JSBSim reference data |
 | `atisim/analysis/` | run files, time series and figures. Needs the `ui` part. |
-| `atisim/apps/` | the Dash analysis application. Needs the `ui` part. |
+| `atisim/apps/` | the Dash application: the test card and its cockpit, the Lab, and engineering mode (Overview, Setup, Analyses, Research scripts and Results, with the Diagnostics and Compare views). Needs the `ui` part. |
 | `scripts/` | the command-line scripts |
 | `notebooks/` | the validation notebooks |
 | `docs/` | this documentation |
@@ -108,6 +108,18 @@ result.
 | `verification` | checks against exact mathematics |
 | `validation` | the linearization, the modes and the reference values |
 | `checks` | the checks of one run |
+| `run` | a run as data: the spec, the presets, the validation, and `fly` and `save` |
+| `fieldkinds` | the wind fields of the run kinds, made from the parameters in a run file, and the turbulence overlay |
+| `analyses` | the analyses: the spec, the registry `ANALYSES`, the validation and `perform` |
+| `studies` | the scripts in `scripts/` that run as studies, their topics `TOPICS`, and `run_script` |
+| `cockpit` | the test points of the test card, and a flight from the keys that a web page sends |
+| `lab` | the values of each preset that the Lab shows, the Lab analyses, and the summary of a result |
+| `coverage` | the maps from each engine function to the run kind or analysis that uses it |
+| `cli` | the `atisim` command |
+| `analysis.report` | the report directory of an analysis |
+| `analysis.diagnostics` | the high-fidelity probe after a flight, and `diagnostics.parquet` |
+| `analysis.profiles`, `analysis.step_inspector`, `analysis.devfigures` | the check profiles, the step inspector and the figures of the Diagnostics view |
+| `analysis.commits` | a spec flown with the engine of a different commit, in a git worktree |
 | `sensitivity` | the derivatives of results with respect to coefficients |
 | `cr2144_mach`, `jsbsim_ref`, `jsbsim_vortex_ref` | the source data and the reference data for validation |
 | `provenance` | the category and source of each constant |
@@ -212,9 +224,109 @@ and not a pass mark.
 
 1. Put the script in `scripts/`.
 2. Write a docstring that says what the script measures, and the source that it compares with.
+   The first line of the docstring is the description of the study.
 3. Use `argparse`, with `description=__doc__`.
 4. Give the script a `--png` or `--outdir` option to write its figures.
 5. Add the script to {doc}`user-manual`, section 5.1.
+6. Add the script to its topic in `studies.TOPICS` (section 6.7).
+
+The script is a study automatically (`atisim.studies`). A module that other scripts import,
+and that does nothing when it runs, is not a study. `test_studies.py` names these modules.
+Add a new module of this type to that test.
+
+### 6.5 Add an analysis
+
+1. Write a function `name(aspec, directory, stage) -> Report` in `atisim/analyses.py`. Call
+   the engine functions. Do not calculate again what the engine calculates.
+2. Call `stage("...")` before each part that takes time. The application shows each stage.
+3. Give the parameters as `Param` rows. Use the `check` values that `validate` knows.
+4. Add an `Analysis` to `ANALYSES`, with its family, its description and its source.
+5. Add a small case to `SMALL` in `test_analyses.py`. Add a test that compares a number with
+   the script or the source that the analysis replaces.
+6. Add each engine function that the analysis uses to `coverage.SIMULATIONS`.
+7. Add the analysis to {doc}`user-manual`, section 5.4.
+8. To show the analysis in the Lab, add it to `lab.ANALYSES` (section 6.7).
+
+### 6.6 Add an icon to the application
+
+The application holds its icons in `atisim/apps/assets/icons.js`, so that it operates with no
+internet connection. `test_app.py` fails if the code uses an icon that `icons.js` does not
+hold.
+
+1. Use the Tabler name of the icon in the code, for example `ui.icon("plane")`.
+2. Get the Tabler set of Iconify, and write `icons.js` again:
+
+   ```bash
+   npm pack @iconify-json/tabler && tar xzf iconify-json-tabler-*.tgz
+   python -m atisim.apps.icons package/icons.json
+   ```
+
+### 6.7 Update the application after new tests, validation or cases
+
+The application reads most of its content from the engine. Some new items show in the
+application automatically. Other new items need an entry in a table. Do the steps for each item
+that you add. Write all the text in Simplified Technical English (section 8.3).
+
+**A new preset (a case)**
+
+1. Add the `RunSpec` to `run.PRESETS`. Section 6.2 gives the procedure for a new wind field.
+2. If the preset uses a new wind kind, add its parameters to `run.PARAMETERS`. Add its label to
+   `run.KIND_LABELS`.
+3. To show values of the new kind in the Lab, add the kind to `lab.KEY_WIND`. Put the strength
+   of the field first and its size second.
+4. If the preset is a test input or a turbulence field, make sure that
+   `explorer.preset_family` puts it in the correct group.
+
+The explorer, the Lab index and `atisim presets` show the new preset automatically.
+
+**A new test point on the test card**
+
+The test card flies only the fields that `panel.field_ahead` can put ahead of the aircraft.
+
+1. If the field is new, add it to `panel.field_ahead`, with its range function.
+2. Add a `TestPoint` to `cockpit.TEST_POINTS`. Give its source. Give one sentence for a reader
+   who does not know the code.
+3. Add the sentence for the **Watch** row to `WATCH` in `atisim/apps/fly.py`.
+4. In `test_cockpit.py`, add a test that flies the test point and finds its events.
+
+The test card draws the air ahead from the field. Do not draw it by hand.
+
+**A new analysis**
+
+1. Do the procedure in section 6.5. The explorer shows the analysis in its family
+   automatically.
+2. To show the analysis in the Lab, add an `Analysis` to `lab.ANALYSES`. Give one sentence
+   that tells the reader what they learn from it.
+
+**A new research script**
+
+1. Do the procedure in section 6.4.
+2. Add the name of the script to its topic in `studies.TOPICS`. If no topic is correct, add a
+   `Topic`.
+
+A script that no topic names shows under **Other scripts**. `test_studies.py` fails if a topic
+names a script that does not exist.
+
+**A new check or a new validation result**
+
+1. Do the procedure in section 6.3. The result bar, the check badges and the Lab result card
+   show the new check automatically.
+2. Give the check the correct `kind`. A `report` check shows no pass mark. A `tripwire` that did
+   not fire shows "quiet".
+
+**After each change**
+
+1. Run the tests of the application:
+
+   ```bash
+   python -m pytest -q atisim/tests/test_app.py atisim/tests/test_lab.py atisim/tests/test_cockpit.py atisim/tests/test_studies.py
+   ```
+
+2. Start the application. Examine each mode that the change affects.
+3. If a screenshot in the User Manual shows a changed part, make the screenshot again. Use a
+   window of 1440 × 860 pixels. Keep the file name in `docs/images/`.
+4. Update the User Manual, section 4 or section 5.
+5. Add the change to `CHANGELOG.md`, under `[Unreleased]`.
 
 ## 7 Tests
 
@@ -281,7 +393,9 @@ The documentation has the structure of the JSBSim Reference Manual:
 
 ### 8.3 Writing rules
 
-Write the documentation in ASD-STE100 Simplified Technical English. These are the main rules:
+Write the documentation in ASD-STE100 Simplified Technical English. Use these rules for all
+written work: the manuals, `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md` and the text of each
+pull request. These are the main rules:
 
 1. Write one instruction in each sentence. Start the instruction with a verb.
 2. Write not more than 20 words in an instruction, and not more than 25 words in a description.
@@ -315,8 +429,9 @@ history of the code in a docstring. Use a comment for that.
 1. Make sure that the tests and the documentation build pass on `main`.
 2. In `CHANGELOG.md`, move the items under `[Unreleased]` to a new version heading, with the date.
 3. Change `version` in `pyproject.toml`.
-4. Merge the change into `main`.
-5. Make a tag `vX.Y.Z` on the merge commit, and push the tag.
+4. If the application changed, make the screenshots in `docs/images/` again (section 6.7).
+5. Merge the change into `main`.
+6. Make a tag `vX.Y.Z` on the merge commit, and push the tag.
 
 AtiSim uses semantic versioning. Increase the major number for a change that breaks the
 interface. Increase the minor number for a new function. Increase the patch number for a
