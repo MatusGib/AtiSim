@@ -261,37 +261,39 @@ def rebuild_field(meta: dict):
     Raises on an unknown kind rather than returning zero wind. A field silently
     becoming still air would make every gust panel read as a flat line, which is
     a picture of a working aircraft in calm conditions rather than of a failure.
-    """
-    import jax.numpy as jnp
 
-    from atisim import wind
+    A turbulence overlay (`wind_field["overlay"]`) is added on top of the base
+    field with `wind.superpose`, as the run flew it.
+    """
+    from atisim import fieldkinds
 
     spec = meta["wind_field"]
+    return fieldkinds.with_overlay(_rebuild_base(spec), spec)
+
+
+def _rebuild_base(spec: dict):
+    """The field `spec` names, before any turbulence overlay."""
+    import jax.numpy as jnp
+
+    from atisim import fieldkinds, wind
+
     kind, p = spec["kind"], spec.get("params", {})
 
     if kind.startswith("none"):
         return lambda pos_ned: jnp.zeros(3)
     if kind == "VortexArray":
-        array = wind.VortexArray(
-            north=jnp.array(p["north"]), down=jnp.array(p["down"]),
-            r0=jnp.array(p["r0"]), v0=jnp.array(p["v0"]),
-            # Defaulted, so every artifact written before session 23 still
-            # rebuilds byte-identically. It is read rather than assumed because
-            # an oblique array that came back perpendicular would be wrong by
-            # 1/cos(dpsi) in traverse time -- 17% for the Mehta case -- and the
-            # panel would draw that silently, as a plausible flat-looking run.
-            cos_dpsi=jnp.array(p.get("cos_dpsi", 1.0)),
-            # READ AS A PAIR, session 24. `sin_dpsi` is the other half of the
-            # same angle and only `wind.line_vortex_wind` consumes it, but
-            # rebuilding a cosine without its sine reproduces exactly the
-            # inconsistent array that made the line form silently wrong when it
-            # was first written -- an axis of length cos(dpsi) rather than 1.
-            # `wind.vortex_axis` normalises, so the worst case is now a field
-            # rebuilt as perpendicular rather than one scaled by 0.857; both
-            # defaults together still give the pre-session-23 geometry exactly.
-            sin_dpsi=jnp.array(p.get("sin_dpsi", 0.0)),
-        )
-        return lambda pos_ned: wind.vortex_wind(pos_ned, array)
+        # `cos_dpsi` and `sin_dpsi` are defaulted, so every artifact written
+        # before session 23 still rebuilds byte-identically. They are read
+        # rather than assumed because an oblique array that came back
+        # perpendicular would be wrong by 1/cos(dpsi) in traverse time -- 17%
+        # for the Mehta case -- and the panel would draw that silently, as a
+        # plausible flat-looking run. They are READ AS A PAIR (session 24):
+        # rebuilding a cosine without its sine reproduces exactly the
+        # inconsistent array that made the line form silently wrong when it was
+        # first written. `fieldkinds.vortex_array` also reads the phase-2
+        # options (core profile, line form, replayed path), each defaulting to
+        # the field every earlier artifact flew.
+        return fieldkinds.vortex_array(p)
     if kind == "UpdraftColumn":
         column = wind.UpdraftColumn(
             north=jnp.array(p.get("north", 0.0)), east=jnp.array(p.get("east", 0.0)),
@@ -311,10 +313,9 @@ def rebuild_field(meta: dict):
             north=p.get("north", 0.0), east=p.get("east", 0.0),
         )
         return lambda pos_ned: wind.microburst_wind(pos_ned, burst)
-    raise ValueError(
-        f"unknown wind_field kind {kind!r}: refusing to substitute still air, "
-        "which would draw a flat gust trace and look like a calm run"
-    )
+    # The phase-2 kinds, built from the same parameters `run.build_field`
+    # flew them from. Raises on a kind neither side knows.
+    return fieldkinds.build(kind, p)
 
 
 def list_runs(root) -> list[Path]:

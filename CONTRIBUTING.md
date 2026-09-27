@@ -26,8 +26,13 @@ the manual is `docs/development-manual.md`.
    python -m sphinx -b html -W docs docs/_build/html
    ```
 
-5. Add your change to `CHANGELOG.md`, under `[Unreleased]`.
-6. Send the pull request. Say what you changed, what you measured, and what you did not change.
+5. If you add a case, a test point, an analysis, a script or a check, update the application.
+   The Development Manual, section 6.7, gives the procedure.
+6. Add your change to `CHANGELOG.md`, under `[Unreleased]`.
+7. Send the pull request. Say what you changed, what you measured, and what you did not change.
+
+Write all text in Simplified Technical English. The Development Manual, section 8.3, gives the
+rules.
 
 The continuous integration does steps 3 and 4 again for each pull request.
 

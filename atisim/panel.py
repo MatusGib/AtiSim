@@ -661,7 +661,68 @@ class Stick:
             self.position[axis] += float(np.clip(delta, -move, move))
 
 
-class Panel:
+class Keys:
+    """The keyboard half of the panel: the held keys, the stick they ramp, and
+    the two edge-triggered keys.
+
+    `LiveSim` asks this for the stick once per physics step and never looks at
+    a figure, so the same loop flies from a browser page (`atisim.cockpit`),
+    which sends its held keys instead of key events.
+    """
+
+    def __init__(self) -> None:
+        self.held: set[str] = set()
+        self.stick = Stick()
+        self._toggle_requested = False
+        self._trim_here_requested = False
+
+    def press(self, key: str) -> None:
+        if key == TOGGLE_KEY:
+            self._toggle_requested = True
+        if key == TRIM_HERE_KEY:
+            self._trim_here_requested = True
+        self.held.add(key)
+
+    def release(self, key: str) -> None:
+        self.held.discard(key)
+
+    def take_toggle_request(self) -> bool:
+        """Edge-triggered: a press is consumed once, however long the key is held."""
+        requested, self._toggle_requested = self._toggle_requested, False
+        return requested
+
+    def take_trim_here_request(self) -> bool:
+        """Edge-triggered, exactly as the autopilot toggle is."""
+        requested, self._trim_here_requested = self._trim_here_requested, False
+        return requested
+
+    def key_demand(self) -> dict:
+        """Where the keys are asking each axis to go, BEFORE the stick ramp."""
+        axes = {"pitch": 0.0, "roll": 0.0, "yaw": 0.0, "throttle": 0.0, "trim": 0.0}
+        for key in self.held:
+            if key in KEYMAP:
+                axis, sign = KEYMAP[key]
+                axes[axis] += sign
+        # Opposite keys held together cancel; the clip is for a stuck repeat.
+        return {k: float(np.clip(v, -1.0, 1.0)) for k, v in axes.items()}
+
+    def step_stick(self, dt: float) -> None:
+        """Advance the ramp by one PHYSICS step."""
+        self.stick.step(self.key_demand(), dt)
+
+    def pilot_input(self) -> PilotInput:
+        """The stick as the aircraft sees it: ramped surfaces, raw rate keys."""
+        demand = self.key_demand()
+        return PilotInput(
+            pitch=self.stick.position["pitch"],
+            roll=self.stick.position["roll"],
+            yaw=self.stick.position["yaw"],
+            throttle=demand["throttle"],
+            trim=demand["trim"],
+        )
+
+
+class Panel(Keys):
     """The figure, its pre-allocated artists, and the held-keys set.
 
     The panel owns the keyboard because it owns the canvas that generates the
@@ -677,14 +738,11 @@ class Panel:
         fps: float = 20.0,
         aircraft_name: str = "boeing747",
     ):
+        super().__init__()
         self.targets = targets
         self.window = window
         self.fps = fps
         self.aircraft_name = aircraft_name
-        self.held: set[str] = set()
-        self.stick = Stick()
-        self._toggle_requested = False
-        self._trim_here_requested = False
 
         target_speed = float(targets.airspeed)
         target_altitude = float(targets.altitude)
@@ -840,49 +898,10 @@ class Panel:
     def on_press(self, event) -> None:
         if event.key is None:
             return
-        if event.key == TOGGLE_KEY:
-            self._toggle_requested = True
-        if event.key == TRIM_HERE_KEY:
-            self._trim_here_requested = True
-        self.held.add(event.key)
+        self.press(event.key)
 
     def on_release(self, event) -> None:
-        self.held.discard(event.key)
-
-    def take_toggle_request(self) -> bool:
-        """Edge-triggered: a press is consumed once, however long the key is held."""
-        requested, self._toggle_requested = self._toggle_requested, False
-        return requested
-
-    def take_trim_here_request(self) -> bool:
-        """Edge-triggered, exactly as the autopilot toggle is."""
-        requested, self._trim_here_requested = self._trim_here_requested, False
-        return requested
-
-    def key_demand(self) -> dict:
-        """Where the keys are asking each axis to go, BEFORE the stick ramp."""
-        axes = {"pitch": 0.0, "roll": 0.0, "yaw": 0.0, "throttle": 0.0, "trim": 0.0}
-        for key in self.held:
-            if key in KEYMAP:
-                axis, sign = KEYMAP[key]
-                axes[axis] += sign
-        # Opposite keys held together cancel; the clip is for a stuck repeat.
-        return {k: float(np.clip(v, -1.0, 1.0)) for k, v in axes.items()}
-
-    def step_stick(self, dt: float) -> None:
-        """Advance the ramp by one PHYSICS step."""
-        self.stick.step(self.key_demand(), dt)
-
-    def pilot_input(self) -> PilotInput:
-        """The stick as the aircraft sees it: ramped surfaces, raw rate keys."""
-        demand = self.key_demand()
-        return PilotInput(
-            pitch=self.stick.position["pitch"],
-            roll=self.stick.position["roll"],
-            yaw=self.stick.position["yaw"],
-            throttle=demand["throttle"],
-            trim=demand["trim"],
-        )
+        self.release(event.key)
 
     # -- drawing -----------------------------------------------------------
 
@@ -1269,7 +1288,7 @@ def field_ahead(
     raise ValueError(f"unknown wind field {name!r}")
 
 
-def run_live(
+def warm_up(
     sim: SimState,
     ctl: Controller,
     targets: Targets,
@@ -1277,14 +1296,10 @@ def run_live(
     mgains: ManualGains,
     ac: Aircraft,
     *,
-    dt: float = 0.02,
-    fps: float = 20.0,
-    window: float = 60.0,
-    wind_model=zero_wind,
-    field_range=None,
-    aircraft_name: str = "boeing747",
-) -> Trajectory:
-    """Fly interactively until the window is closed, then return the run."""
+    dt: float,
+    wind_model,
+) -> None:
+    """Compile everything the live loop calls, before the first frame."""
     # Warm the jit caches before the window opens. Each of these compiles on
     # first call, which is otherwise a half-second freeze on the first frame --
     # and since that frame's backlog is dropped, it comes straight out of the
@@ -1303,6 +1318,24 @@ def run_live(
     step(sim, warm, dt, ac, wind_model)
     accelerometers(sim.state, warm, ac, sim.wind_ned, sim.omega_gust)
 
+
+def run_live(
+    sim: SimState,
+    ctl: Controller,
+    targets: Targets,
+    gains: Gains,
+    mgains: ManualGains,
+    ac: Aircraft,
+    *,
+    dt: float = 0.02,
+    fps: float = 20.0,
+    window: float = 60.0,
+    wind_model=zero_wind,
+    field_range=None,
+    aircraft_name: str = "boeing747",
+) -> Trajectory:
+    """Fly interactively until the window is closed, then return the run."""
+    warm_up(sim, ctl, targets, gains, mgains, ac, dt=dt, wind_model=wind_model)
     panel = Panel(targets, window=window, fps=fps, aircraft_name=aircraft_name)
     live = LiveSim(
         sim, ctl, targets, gains, mgains, ac, panel,

@@ -4,7 +4,101 @@ This file gives the changes in each version of AtiSim. The format is
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The version numbers use
 [Semantic Versioning](https://semver.org/).
 
-## [1.2.0] — unreleased
+## [Unreleased]
+
+## [1.3.0] — 2026-09-27
+
+### Added
+
+- The application (`atisim ui`) has three modes. A switch at the top of each page selects the
+  mode: the test card, the Lab or engineering mode.
+- The test card: the first page of the application. It gives four test points: calm air, the
+  Hannibal and Morton vortex pairs, and a thunderstorm updraft. Each row shows the vertical wind
+  ahead of the aircraft, calculated from the wind field. **FLY** opens a cockpit that flies the
+  747 in the web browser. The debrief gives the peak load factor from each physics step, and the
+  card keeps the result.
+- `atisim.cockpit`: the test points, and a flight from the keys that a web page sends. It uses
+  the loop of `scripts/fly.py` (`panel.LiveSim`) with no change. `panel.Keys` and
+  `panel.warm_up` come from `panel.Panel`, so that the web page flies the same loop.
+- The Lab: a mode between the test card and engineering mode. It flies each preset with a few
+  changed values: the aircraft, the airspeed, the altitude, and the strength and size of the
+  field. A result card gives the peak load factor, the turbulence severity, the checks and a
+  recorder chart. The Lab also runs four analyses with their defaults, and it compares two
+  results. `atisim.lab` gives its content.
+- Engineering mode has an explorer on the left. It gives the presets, the analyses, the research
+  scripts by topic and the results by kind, with a filter. The header shows the location of the
+  page. The model tree of Setup is in the explorer.
+- A page for each research script: its docstring, a run form and its earlier results. An index
+  gives all the scripts in their topics. `studies.TOPICS`, `studies.by_topic` and
+  `studies.about` give the topics and the docstrings.
+- `checks.severity_band`: the band of the RMS normal load as one word. The cockpit and the Lab
+  use it.
+- `runs.RunRow.analysis`, `runs.RunRow.script` and `runs.RunRow.group`: the analysis that wrote a
+  report, the script of a study, and the group of a result.
+- `atisim.run`: a run as data. `RunSpec` and `WindSpec` round-trip through JSON. `PRESETS`
+  gives the sourced cases and a blank run. `validate` gives the errors and the warnings of a
+  spec. `fly` and `save` fly a spec and write its run file. Each value is Sourced or Declared,
+  and a changed Sourced value becomes Declared.
+- The `atisim` command: `atisim run`, `atisim presets`, `atisim list` and `atisim ui`.
+- Setup: a model tree, a property grid with a Sourced or Declared marker on each value, a
+  geometry preview, and a dock with Messages, Progress, Log, Checks and Script.
+- `figures.field_preview`: the wind field and the planned flight path, before the flight. The
+  view centers on the structure of the field, not on the path.
+- The application flies each wind field of the engine. The run kinds are a vortex array, a
+  single vortex core, the Mehta Hannibal field, an updraft, a lee wave, a microburst, a gust
+  sinusoid, the 1 − cosine gust, and Dryden, von Kármán and Gaussian turbulence. A vortex can
+  have a Lamb–Oseen core. Any run can add turbulence to its field (`RunSpec.overlay`). The Solver
+  item sets the stage sampling, the gust lag and the wing–tail delay. `atisim.coverage` and
+  `test_coverage.py` fail when an engine function has no run kind or analysis.
+- Analyses: `atisim.analyses`, the commands `atisim analyses` and `atisim analyse`, and a page for
+  each analysis. The 13 analyses are seed ensembles, the autopilot, the trim, the modes and their
+  sensitivities, a coefficient sweep, the gust transfer function, the discrete gust, a
+  convergence study, the JSBSim cross-code check and the verification suite. Each writes a
+  report (`atisim.analysis.report`) that Results shows. Each gives the numbers of the script that
+  it replaces.
+- High fidelity: `RunSpec.fidelity="high"` and `atisim run --fidelity high`. The run also writes
+  `diagnostics.parquet`, with each term of each coefficient, the forces and moments by source,
+  the derivatives and the energy at each sample. The flight does not change.
+  `aero.coefficient_terms` gives the terms of `aero.coefficients`. Each run also writes
+  `spec.json`.
+- The Diagnostics view of a run: the channels, the coefficient, force and energy budgets, the
+  check profiles, the step inspector and a detailed scene at the cursor.
+- The Compare view: the values that differ between runs, and each channel with its difference.
+  From run A, it flies one change, a convergence study, or the engine of a different commit
+  (`atisim.analysis.commits`).
+- Engine-development mode, `atisim ui --dev`. The runs fly in a worker process, and
+  **Reload engine** loads a changed engine. The JAX compilation cache makes the first run after a
+  reload faster.
+- Studies: `atisim.studies`, `atisim studies` and `atisim study NAME`. Each script in `scripts/`
+  runs with no change, and Results shows its log and the files that it wrote.
+- User Manual sections 4.10.6, 4.17 and 4.18: the explorer, the test card and its cockpit, and
+  the Lab. Development Manual section 6.7: the procedure to update the application after new
+  tests, validation or cases.
+
+### Changed
+
+- The README gives only the installation and the three modes of the application. The User
+  Manual gives the procedures.
+- `atisim ui` opens on the test card. It compiles the flight of each test point in the
+  background, so that the first flight starts quickly.
+- `scripts/vortex.py --artifacts` uses `atisim.run`. The run files are the same as before,
+  except for the time of the run.
+- `python -m atisim.apps.sweep` opens the application on the Results page.
+- `figures.field_3d` frames its scene. The box contains the flight path and the field, with the
+  same scale on each axis, and the view is orthographic from the south-east. Before, the default
+  camera showed a long path as one diagonal line, partly off the panel.
+- The `ui` part also installs `dash-mantine-components` and `dash-iconify`.
+- The application holds its icons (`atisim/apps/assets/icons.js`) and its fonts
+  (`atisim/apps/assets/fonts/`). Thus it operates with no internet connection.
+- The Development Manual tells you to write all text in Simplified Technical English: the
+  manuals, the README, the changelog and each pull request.
+
+### Fixed
+
+- A study records the paths of the files that it keeps with forward slashes. Before, on Windows,
+  the paths had backslashes, and the links to the files of a study did not operate.
+
+## [1.2.0] — 2026-09-25
 
 ### Added
 
@@ -151,6 +245,8 @@ The first public version.
 - The lift model has no stall. Results above about 10° angle of attack are not valid.
 - AtiSim does not predict absolute loads.
 
-[1.2.0]: https://github.com/MatusGib/AtiSim/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/MatusGib/AtiSim/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/MatusGib/AtiSim/compare/v1.2.0...v1.3.0
+[1.2.0]: https://github.com/MatusGib/AtiSim/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/MatusGib/AtiSim/releases/tag/v1.1.0
 [1.0.0]: https://github.com/MatusGib/AtiSim/releases/tag/v1.0.0

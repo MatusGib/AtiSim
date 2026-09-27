@@ -382,3 +382,35 @@ def test_the_undeclared_prandtl_glauert_sentinel_has_a_FINITE_derivative():
         assert jnp.all(jnp.isfinite(tangent)), (
             f"d(coefficients)/d({field}) is not finite: {tangent}"
         )
+
+
+@pytest.mark.parametrize("key", sorted(REGISTRY))
+def test_the_coefficient_terms_sum_to_the_coefficients(key):
+    """`coefficient_terms` is the diagnostics' split of `coefficients`.
+
+    It repeats the build-up term by term, so the day the two part this fails.
+    Round-off, not bit-identity: a sum of named terms associates differently.
+    Checked away from trim too -- rates, sideslip, every surface, an alphadot,
+    and above and below the reference Mach -- so every term is non-zero
+    somewhere.
+    """
+    ac = REGISTRY[key]
+    V, H = CRUISE[key]["airspeed"], CRUISE[key]["altitude"]
+    a = speed_of_sound(jnp.array(H))
+    rng = np.random.default_rng(7)
+    for scale in (0.8, 1.0, 1.15):
+        for _ in range(4):
+            alpha, beta = rng.uniform(-0.05, 0.12), rng.uniform(-0.05, 0.05)
+            speed = V * scale
+            vel = jnp.array([speed * np.cos(alpha) * np.cos(beta), speed * np.sin(beta),
+                             speed * np.sin(alpha) * np.cos(beta)])
+            omega = jnp.array(rng.uniform(-0.1, 0.1, 3))
+            controls = Controls(*(jnp.array(x) for x in rng.uniform(-0.1, 0.1, 3)),
+                                throttle=jnp.array(0.6))
+            alphadot = jnp.array(rng.uniform(-0.05, 0.05))
+            totals = aero.coefficients(vel, omega, controls, ac, a, alphadot)
+            terms = aero.coefficient_terms(vel, omega, controls, ac, a, alphadot)
+            for name, total in zip(("CL", "CD", "CY", "Cl", "Cm", "Cn"), totals):
+                summed = sum(terms[name].values())
+                assert float(abs(summed - total)) <= 1e-12 * max(1.0, float(abs(total))), \
+                    (key, name, float(summed), float(total))

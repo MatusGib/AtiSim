@@ -84,5 +84,45 @@ Import `atisim` before you make a JAX array. The import sets 64-bit precision.
    atisim.analysis.artifact
    atisim.analysis.figures
    atisim.analysis.series
+   atisim.analysis.runs
+   atisim.analysis.report
+```
+
+## Analyses, studies and engine development
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   atisim.analyses
+   atisim.studies
+   atisim.coverage
+   atisim.fieldkinds
+   atisim.analysis.diagnostics
+   atisim.analysis.profiles
+   atisim.analysis.step_inspector
+   atisim.analysis.devfigures
+   atisim.analysis.commits
+```
+
+## Runs and the application
+
+```{eval-rst}
+.. autosummary::
+   :toctree: generated
+
+   atisim.run
+   atisim.cli
+   atisim.apps.shell
+   atisim.apps.start
+   atisim.apps.setup
+   atisim.apps.results
+   atisim.apps.analyses
+   atisim.apps.diagnostics
+   atisim.apps.compare
+   atisim.apps.jobs
+   atisim.apps.worker
+   atisim.apps.theme
+   atisim.apps.components
    atisim.apps.sweep
 ```

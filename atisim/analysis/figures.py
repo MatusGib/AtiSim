@@ -40,6 +40,15 @@ from atisim.analysis.series import Series, envelope
 # Held constant so a callback never resets the user's camera or zoom. Verified.
 UIREVISION = "atisim-analysis"
 
+# The 3D scene's default view: from the south-east and a little above, so north
+# runs left to right, and the box's plan diagonal in plotly's scene units. Chosen in
+# the browser at 405 px (1280 px at 150%), the narrowest this panel gets, with
+# every tick label in.
+# See `_frame`.
+FRAME_EYE = (2.0, -1.0, 0.55)
+FRAME_BOX = 1.6
+FRAME_FLOOR = 0.25  # half-width of the east floor, as a fraction of the north span
+
 # ---------------------------------------------------------------------------
 # Palette
 #
@@ -167,6 +176,17 @@ HEADER_PAD = 8  # gap between the last band and the plot area
 _BOTTOM = 38  # margin under the plot, for the x-axis and its title
 
 
+def _template() -> str:
+    """The app's "atisim" template when `apps.theme` has registered it.
+
+    Looked up by name so this module keeps no Dash dependency and a notebook
+    with no app gets plotly_white, exactly as before.
+    """
+    import plotly.io as pio
+
+    return "atisim" if "atisim" in pio.templates else "plotly_white"
+
+
 def _base(fig: go.Figure, height: int, title: str | None = None,
           subtitle: str | None = None, legend: bool = False,
           banner: tuple[str, str] | None = None) -> go.Figure:
@@ -228,7 +248,7 @@ def _base(fig: go.Figure, height: int, title: str | None = None,
                    xref="container", x=0.0, xanchor="left",
                    yref="container", y=title_y, yanchor="top")
         if text else None,
-        template="plotly_white",
+        template=_template(),
         paper_bgcolor=SURFACE,
         plot_bgcolor=SURFACE,
         showlegend=legend,
@@ -856,6 +876,141 @@ def field_cross_section(s: Series, field, *, scale: float, peak: float,
 
 
 # ---------------------------------------------------------------------------
+# P7p -- the geometry preview: the field and the PLANNED path, before a flight
+# ---------------------------------------------------------------------------
+
+
+def field_preview(field, *, start_north: float, end_north: float, altitude: float,
+                  structure_north: float, scale: float, peak: float,
+                  window: tuple[float, float] | None = None,
+                  window_name: str = "analysis window",
+                  cores: list[tuple[float, float]] | None = None,
+                  ground: bool = False, label: str = "field") -> go.Figure:
+    """Side view of the field with the planned straight path. Nothing is flown.
+
+    The suite's "preview before solve": what the run will fly through, drawn
+    from the spec alone in a few milliseconds, so a parameter change shows its
+    geometry before anyone pays for a flight.
+
+    THE VIEW CENTRES ON THE STRUCTURE, NOT ON THE PATH. The analysis UI's first
+    cross-section centred on the trajectory midpoint, which a 40 core-radii
+    lead-in puts about 2.5 km upstream of the cores, in irrotational flow -- the
+    panel looked normal and showed nothing (the live bug recorded in the
+    2026-08-16 design spec). `structure_north` comes from the field spec. When
+    the start lies outside the view, it is named at the edge with its distance,
+    rather than widening the view until the structure is a speck.
+
+    Colour is diverging and pinned to +-peak, as in `field_cross_section`. A
+    vortex array is drawn 1:1 so its cores are circles; the other fields are
+    uniform or slowly varying in altitude and would be a thin strip at 1:1.
+    """
+    import jax
+    import jax.numpy as jnp
+
+    cores = cores or []
+    if cores:
+        half = 0.5 * (cores[-1][0] - cores[0][0]) + 3.0 * scale
+    else:
+        half = 3.5 * scale
+    x0, x1 = structure_north - half, structure_north + half
+    if ground:
+        y0, y1 = 0.0, max(3.0 * altitude, altitude + 400.0)
+    elif cores:
+        y0, y1 = altitude - 2.2 * scale, altitude + 2.2 * scale
+    else:
+        pad = max(0.12 * half, 300.0)
+        y0, y1 = altitude - pad, altitude + pad
+
+    north = np.linspace(x0, x1, 240)
+    alt = np.linspace(y0, y1, 90)
+    mesh_n, mesh_a = np.meshgrid(north, alt, indexing="xy")
+    pts = jnp.stack([jnp.asarray(mesh_n.ravel()), jnp.zeros(mesh_n.size),
+                     jnp.asarray(-mesh_a.ravel())], axis=1)
+    w_up = -np.asarray(jax.vmap(field)(pts))[:, 2].reshape(mesh_n.shape)
+
+    fig = go.Figure()
+    fig.add_trace(go.Heatmap(
+        x=north, y=alt, z=w_up, colorscale=DIVERGING,
+        zmin=-peak, zmax=peak, zmid=0.0, name="vertical gust",
+        colorbar=dict(title=dict(text="vertical gust<br>up positive  m/s",
+                                 side="right", font=dict(size=10)),
+                      thickness=11, len=0.9, outlinewidth=0,
+                      tickfont=dict(size=9)),
+        hovertemplate="north %{x:.0f} m<br>alt %{y:.0f} m"
+                      "<br>gust %{z:+.2f} m/s<extra></extra>",
+    ))
+    for cn, ca in cores:
+        fig.add_shape(type="circle", x0=cn - scale, x1=cn + scale,
+                      y0=ca - scale, y1=ca + scale,
+                      line=dict(color=INK, width=1.2, dash="dash"))
+    if window is not None:
+        lo, hi = max(window[0], x0), min(window[1], x1)
+        if hi > lo:
+            fig.add_vrect(x0=lo, x1=hi, fillcolor=SERIES[1], opacity=0.14,
+                          line_width=0, layer="below")
+            fig.add_trace(go.Scatter(
+                x=[lo, hi], y=[altitude, altitude], mode="lines",
+                line=dict(color=SERIES[1], width=5), name=window_name,
+                hovertemplate=f"{window_name}: north {window[0]:.0f} to "
+                              f"{window[1]:.0f} m<extra></extra>",
+            ))
+    px0, px1 = max(start_north, x0), min(end_north, x1)
+    fig.add_trace(go.Scatter(
+        x=[px0, px1], y=[altitude, altitude], mode="lines",
+        line=dict(color=INK, width=2, dash="dot"), name="planned path",
+        hovertemplate="planned straight path at %{y:.0f} m<extra></extra>",
+    ))
+    if x0 <= start_north <= x1:
+        fig.add_trace(go.Scatter(
+            x=[start_north], y=[altitude], mode="markers+text",
+            marker=dict(size=10, color=SURFACE, line=dict(color=INK, width=2)),
+            text=["start"], textposition="top center",
+            textfont=dict(size=10, color=INK), name="start",
+            hovertemplate="start: north %{x:.0f} m<extra></extra>",
+        ))
+    else:
+        side = "left" if start_north < x0 else "right"
+        fig.add_annotation(
+            x=x0 if side == "left" else x1, y=altitude, xanchor=side, yanchor="bottom",
+            text=f"start {abs(start_north - structure_north) / 1000:.1f} km "
+                 f"{'upstream' if side == 'left' else 'downstream'}, off view",
+            showarrow=True, ax=40 if side == "left" else -40, ay=-26,
+            arrowhead=2, arrowcolor=INK, font=dict(size=10, color=INK),
+            bgcolor=SURFACE,
+        )
+    if ground:
+        fig.add_hline(y=0.0, line=dict(color=INK, width=2))
+
+    fig.update_xaxes(title_text="along track (north)  m", range=[x0, x1],
+                     constrain="domain", **_AXIS)
+    yaxis = dict(title_text="altitude  m", range=[y0, y1], **_AXIS)
+    if cores:
+        yaxis.update(scaleanchor="x", scaleratio=1.0, constrain="domain")
+    fig.update_yaxes(**yaxis)
+    return _base(
+        fig, 360,
+        title=f"{label}: geometry preview",
+        subtitle="The field and the planned straight path, drawn from the spec. "
+                 "Nothing is flown. Colour is pinned to ±peak.",
+        legend=True,
+    )
+
+
+def no_field_preview(label: str, seconds: float) -> go.Figure:
+    """The empty state for a run with no wind field: say so, do not draw a map."""
+    fig = go.Figure()
+    fig.add_annotation(
+        x=0.5, y=0.5, xref="paper", yref="paper", showarrow=False,
+        text=f"{label}: no wind field to draw.<br>The run flies {seconds:.1f} s "
+             "of straight, trimmed flight.",
+        font=dict(size=12, color=INK_MUTED),
+    )
+    fig.update_xaxes(visible=False)
+    fig.update_yaxes(visible=False)
+    return _base(fig, 360, title=f"{label}: geometry preview")
+
+
+# ---------------------------------------------------------------------------
 # P7b -- the 3D scene, for fields that genuinely have three-dimensional structure
 # ---------------------------------------------------------------------------
 
@@ -892,8 +1047,8 @@ def field_3d(s: Series, field, *, scalar: str = "n_z", cursor_index: int | None 
     and the isosurface comes out empty while the panel still looks normal.
     `vortex_viz._field_panel` states the rule: zoom to the structure, not the run.
 
-    Axes are all metres with `aspectmode="data"`: a wrong core radius is only
-    visible if the cores are drawn round.
+    Axes are all metres in true proportion (`_frame`): a wrong core radius is
+    only visible if the cores are drawn round.
     """
     label, colorscale, signed = SCALARS.get(scalar, SCALARS["n_z"])
     values = np.asarray(getattr(s, scalar))
@@ -915,8 +1070,12 @@ def field_3d(s: Series, field, *, scalar: str = "n_z", cursor_index: int | None 
     fig.add_trace(go.Scatter3d(
         x=s.east[keep], y=s.north[keep], z=s.altitude[keep], mode="lines",
         line=dict(width=6, color=values[keep], colorscale=colorscale,
-                  colorbar=dict(title=dict(text=label, side="right"),
-                                thickness=10, len=0.7, x=1.02),
+                  # Under the scene and centred on it, not at the panel's
+                  # right edge: the box is sized by the panel's height, so in
+                  # a wide panel a side bar floats far from what it keys.
+                  colorbar=dict(title=dict(text=label, side="top"),
+                                orientation="h", thickness=10, len=0.5,
+                                x=0.5, xanchor="center", y=0.0, yanchor="bottom"),
                   **kwargs),
         name="flight path",
         hovertemplate="north %{y:.0f} m<br>alt %{z:.0f} m<extra></extra>",
@@ -929,14 +1088,64 @@ def field_3d(s: Series, field, *, scalar: str = "n_z", cursor_index: int | None 
             hovertemplate="cursor<extra></extra>",
         ))
 
-    fig.update_layout(
-        scene=dict(
-            xaxis=dict(title="east  m"), yaxis=dict(title="north  m"),
-            zaxis=dict(title="altitude  m"),
-            aspectmode="data",
-        ),
+    scene = dict(
+        xaxis=dict(title="east  m"), yaxis=dict(title="north  m"),
+        zaxis=dict(title="altitude  m"),
+        domain=dict(x=[0.0, 1.0], y=[0.16, 1.0]),  # the colour bar is below
     )
-    return _base(fig, 460)
+    _frame(fig, scene)
+    fig.update_layout(scene=scene)
+    fig = _base(fig, 460)
+    # A 3D scene has no y-axis labels to keep a left margin for; the room goes
+    # to the box, whose own tick labels would otherwise be cut.
+    fig.update_layout(margin_l=8)
+    return fig
+
+
+def _frame(fig: go.Figure, scene: dict) -> None:
+    """Size the box to everything drawn and look at it from the south-east.
+
+    FRAMED, NOT LEFT TO PLOTLY. The default camera is a perspective view from
+    (1.25, 1.25, 1.25) of a box plotly sizes itself, and a flight path is long and
+    thin: the vortex run's is 9.5 km by one wingspan, so the path ran off the
+    panel with the cursor out of view, and a wings-level run with no east extent
+    at all came out as one diagonal line.
+
+    So the box covers the path AND the field's own grid, in TRUE proportions --
+    the same metres per unit on every axis, which is what aspectmode "data"
+    promises and what keeps a wrong core radius visible as a non-round core. The
+    thin axes get a minimum depth so the scene still turns like a scene. The
+    projection is orthographic, so an altitude profile is not foreshortened.
+    """
+    def extent(axis):
+        values = [np.ravel(np.asarray(getattr(t, axis), dtype=float))
+                  for t in fig.data if getattr(t, axis, None) is not None]
+        values = np.concatenate(values) if values else np.zeros(1)
+        values = values[np.isfinite(values)]
+        return float(values.min()), float(values.max())
+
+    (e0, e1), (n0, n1), (a0, a1) = extent("x"), extent("y"), extent("z")
+    span = (n1 - n0) or 1.0
+    # Nothing drawn has east extent (a wings-level run with no field): the east
+    # axis is only depth, so it gets a floor wide enough to read as one and no
+    # tick labels, which would number a range the run never used.
+    flat = (e1 - e0) < 0.01 * span
+    e_half = FRAME_FLOOR * span if flat else max(0.1 * span, 0.55 * (e1 - e0))
+    a_half = max(0.05 * span, 0.55 * (a1 - a0))
+    mid_e, mid_a = 0.5 * (e0 + e1), 0.5 * (a0 + a1)
+    # One scale for all three axes, set by the box's plan diagonal: a square
+    # field grid (the updraft's) then fits the panel as well as a thin path does.
+    k = FRAME_BOX / float(np.hypot(2 * e_half, span))
+    scene.update(aspectmode="manual", aspectratio=dict(
+        x=k * 2 * e_half, y=k * span, z=k * 2 * a_half))
+    scene["xaxis"].update(range=[mid_e - e_half, mid_e + e_half], nticks=3)
+    if flat:
+        scene["xaxis"].update(showticklabels=False, title=dict(text=""))
+    # Four ticks, so none lands mid-axis where plotly puts the title.
+    scene["yaxis"].update(range=[n0, n1], nticks=4)
+    scene["zaxis"].update(range=[mid_a - a_half, mid_a + a_half], nticks=4)
+    scene["camera"] = dict(eye=dict(zip("xyz", FRAME_EYE)), up=dict(x=0, y=0, z=1),
+                           projection=dict(type="orthographic"))
 
 
 def _add_field(fig, field, s: Series, representation, scale, peak,
