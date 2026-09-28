@@ -78,12 +78,9 @@ def _unit(text: str):
 
 def _number(name: str, value, unit: str, placeholder: str | None = None,
             label: str | None = None):
-    return dmc.NumberInput(
-        id={"type": "num", "name": name}, value=value if value is not None else "",
-        rightSection=_unit(unit), rightSectionWidth=44,
-        rightSectionPointerEvents="none", hideControls=True, debounce=400,
-        placeholder=placeholder, **{"aria-label": f"{label or name}, {unit}"},
-    )
+    return ui.number_input({"type": "num", "name": name}, value, unit,
+                           placeholder=placeholder,
+                           **{"aria-label": f"{label or name}, {unit}"})
 
 
 def _param_input(name: str, param: run.Param, value):
@@ -94,10 +91,8 @@ def _param_input(name: str, param: run.Param, value):
                           data=list(param.choices), comboboxProps={"withinPortal": True},
                           **{"aria-label": param.label})
     if param.check == "integer":
-        return dmc.NumberInput(
-            id={"type": "num", "name": name}, value=value if value is not None else "",
-            allowDecimal=False, allowNegative=False, hideControls=True, debounce=400,
-            **{"aria-label": param.label})
+        return ui.number_input({"type": "num", "name": name}, value,
+                               **{"aria-label": param.label})
     return _number(name, value, param.unit, label=param.label)
 
 
@@ -532,8 +527,8 @@ def register(app, ws) -> None:
         value = dash.ctx.triggered[0]["value"]
         name = trigger["name"]
         spec = spec_of(data)
-        if trigger["type"] == "num" and value == "":
-            value = None
+        if trigger["type"] == "num":
+            value = ui.parse_number(value)
         restructure = False
         if name == "wind.preset":
             wind = run.BLANK.wind if value == "none" else run.wind_preset(value)
@@ -726,6 +721,11 @@ def register(app, ws) -> None:
         """Progress, Log and Checks from the job registry. When a run finishes,
         the dock switches once: to Checks, or to Messages when the run failed."""
         job = ws.jobs.get(job_id)
+        if job and job.get("kind") != "run":
+            # Compare shares the job store for the status bar. A job to fly A at
+            # another commit is not this page's run: a bad git ref once showed
+            # here as "The run failed" on a spec with nothing wrong in it.
+            job = None
         switch, failure = no_update, no_update
         if job and job["state"] == "done" and shown != job["id"]:
             switch, shown, failure = "checks", job["id"], None

@@ -112,7 +112,8 @@ result.
 | `fieldkinds` | the wind fields of the run kinds, made from the parameters in a run file, and the turbulence overlay |
 | `analyses` | the analyses: the spec, the registry `ANALYSES`, the validation and `perform` |
 | `studies` | the scripts in `scripts/` that run as studies, their topics `TOPICS`, and `run_script` |
-| `cockpit` | the test points of the test card, and a flight from the keys that a web page sends |
+| `cockpit` | the test points of the test card, a flight from the keys that a web page sends, and `save_run` |
+| `records` | the published record of an encounter, on the time axis of a run |
 | `lab` | the values of each preset that the Lab shows, the Lab analyses, and the summary of a result |
 | `coverage` | the maps from each engine function to the run kind or analysis that uses it |
 | `cli` | the `atisim` command |

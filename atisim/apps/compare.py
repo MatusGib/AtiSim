@@ -165,6 +165,8 @@ def layout(ws, run: str | None, runs_panel, switch, extra: str | None = None):
                        variant="default", disabled=spec is None),
         ], className="ati-controls ati-controls-labelled"),
         html.Div("" if spec is not None or not names else
+                 "A was flown by hand on the test card, so no spec flies it again."
+                 if ws.loaded(names[0]).run.meta.get("flown_by_hand") else
                  "A was written before runs kept their spec (spec.json), so it cannot be "
                  "flown again from here.", className="ati-muted"),
     ], className="ati-deep-block") if names else None

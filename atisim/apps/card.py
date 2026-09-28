@@ -71,6 +71,8 @@ def _result(mark: dict | None):
         html.Span([_tick(), f"{mark['nz_max']:+.2f} g"], className="tc-pencil"),
         html.Span(f"low {mark['nz_min']:+.2f} g · {mark['severity']}",
                   className="tc-pencil-note"),
+        dcc.Link("Open in engineering", href=run_href(mark["run"]),
+                 className="tc-result-link") if mark.get("run") else None,
     ], className="tc-result", title="Your last flight of this point: the peak and "
                                     "lowest load factor, and the turbulence band")
 
@@ -148,14 +150,21 @@ def limits():
     ], className="tc-limits", role="note")
 
 
-def top_bar(dark: bool = False, back: bool = False):
+def top_bar(dark: bool = False, back: bool = False, ws=None):
+    """The card's header. After a flight, its Engineering link opens that flight."""
+    last = getattr(ws, "last_flight", None)
     return html.Header([
         dcc.Link("AtiSim", href="/", className="tc-wordmark"),
         dcc.Link([ui.icon("arrow-left", 15), "Test card"], href="/",
                  className="tc-bar-link") if back else None,
         html.Span(className="tc-bar-spacer"),
-        ui.mode_switch("card"),
+        ui.mode_switch("card", hrefs={"engineering": run_href(last)} if last else None),
     ], className="tc-bar" + (" is-dark" if dark else ""))
+
+
+def run_href(name: str) -> str:
+    """Where engineering mode shows a saved flight."""
+    return f"/results?run={quote(name)}"
 
 
 def layout(ws):
@@ -214,7 +223,7 @@ def layout(ws):
                  className="tc-foot-eng"),
     ], className="tc-foot")
     return html.Div([
-        top_bar(),
+        top_bar(ws=ws),
         html.Article([
             html.Div(className="tc-clip", **{"aria-hidden": "true"}),
             head, objective, table, lower, foot,

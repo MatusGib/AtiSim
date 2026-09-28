@@ -114,6 +114,45 @@ def test_a_microburst_within_a_wingspan_of_the_ground_is_an_error():
     assert "altitude_m" in _fields(spec, "error")
 
 
+@pytest.mark.parametrize("change, field", [
+    (dict(seconds=0.001), "seconds"),  # shorter than a step: an IndexError once
+    (dict(dt=5.0), "dt"),  # diverged into NaN once
+    (dict(lead_in=100000.0), "lead_in"),  # 7.75 million steps, no warning once
+    (dict(altitude_m=100000.0), "altitude_m"),  # above the modelled atmosphere
+    (dict(airspeed_mps=2365.0), "airspeed_mps"),  # Mach 8
+    (dict(name="x" * 300), "name"),  # an OSError after the whole flight once
+])
+def test_values_that_crashed_or_ran_away_are_errors(change, field):
+    spec = run.PRESETS["vortex-hannibal"]._replace(**change)
+    assert field in _fields(spec, "error")
+
+
+def test_a_core_the_step_cannot_resolve_is_an_error_and_the_preset_is_not():
+    base = run.PRESETS["vortex-hannibal"]
+    assert "r0" in _fields(run.with_param(base, "r0", 0.001), "error")
+    assert "r0" not in _fields(base, "error")
+
+
+def test_a_step_longer_than_any_verified_one_warns():
+    base = run.PRESETS["vortex-hannibal"]
+    assert "dt" in _fields(base._replace(dt=0.1), "warning")
+    assert "dt" not in _fields(base._replace(dt=run.MAX_VERIFIED_DT), "warning")
+
+
+def test_overlapping_cores_and_a_steep_gust_warn():
+    base = run.PRESETS["vortex-hannibal"]
+    assert "spacing" in _fields(run.with_param(base, "spacing", 10.0), "warning")
+    assert "v0" in _fields(run.with_param(base, "v0", 500.0), "warning")
+    assert not {"spacing", "v0"} & set(_fields(base, "warning"))
+
+
+def test_the_core_caveat_follows_an_edited_core_radius_and_aircraft():
+    spec = run.with_param(run.PRESETS["vortex-morton"], "r0", 1000.0)
+    assert any("16.77 spans" in c for c in spec.caveats), spec.caveats
+    spec = run.with_field(run.PRESETS["vortex-morton"], "aircraft", "cessna172")
+    assert not any("2.30 spans" in c for c in spec.caveats), spec.caveats
+
+
 def test_editing_a_sourced_value_declares_it_and_reset_restores_it():
     spec = run.PRESETS["vortex-hannibal"]
     assert run.provenance(spec)["r0"].status == "sourced"

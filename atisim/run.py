@@ -38,7 +38,7 @@ import atisim  # noqa: F401  -- enables x64
 from atisim import airframe, checks, fieldkinds, loads, trim, viz, vortex_viz, wind
 from atisim.aircraft import CRUISE, REGISTRY
 from atisim.analysis import artifact, diagnostics
-from atisim.atmosphere import density
+from atisim.atmosphere import density, speed_of_sound
 from atisim.units import FT2M, RAD2DEG
 
 # ---------------------------------------------------------------------------
@@ -177,6 +177,31 @@ MIN_LEAD_IN = 12.0
 # does not flag that and does flag a light aircraft taken 1.2 km down.
 CRUISE_DENSITY_TOLERANCE = 0.05
 CRUISE_AIRSPEED_TOLERANCE = 0.10
+
+# DECLARED limits on what `validate` lets fly. None is a physical law. Each turns
+# an input that crashed, diverged or ran for hours in testing into a message
+# before the run starts.
+#
+# The step. No preset, script or test flies a step longer than 0.05 s, so a
+# longer one is unverified (a warning), and ten times that is refused. The 747's
+# short period is near 1 rad/s and RK4 is unstable near |lambda| dt = 2.8, so a
+# step of seconds diverges: dt = 5 s gave a run of NaN.
+MAX_VERIFIED_DT = 0.05  # s
+MAX_DT = 0.5  # s
+# A lead-in of 100000 core radii asked for 7.75 million steps (21.5 h of flight)
+# with no warning. One million is 2.8 h at dt = 0.01 s.
+MAX_STEPS = 1_000_000
+# The step must resolve the field: a 1 mm core at 236 m/s is crossed in 8.5
+# microseconds, and the run started 4 cm from it.
+MIN_STEPS_ACROSS_FIELD = 4
+# `atmosphere` models the ISA's two layers, which end at 20 km (ICAO Doc 7488).
+# Above that it holds the stratosphere isothermal, which the standard does not.
+MAX_ALTITUDE_M = 20000.0
+# The aerodynamic data of every aircraft here is subsonic.
+MAX_MACH = 1.0
+# The run directory is {name}-{aircraft}-{sha}, and one Windows path component
+# holds 255 characters. 100 leaves room for the suffix and the runs directory.
+MAX_NAME_CHARS = 100
 
 STRIP_CAVEAT = (
     "STRIP loads: quote the loading-shape sensitivity beside any result "
@@ -352,6 +377,21 @@ def _core_caveat(r0: float, aircraft: str) -> str:
         f"The Parks core is {spans:.2f} spans, so the point-gust assumption E2 is "
         "marginal for the vortex case specifically."
     )
+
+
+def _refresh_core_caveat(spec: RunSpec) -> RunSpec:
+    """Recompute the core caveat after an edit to the core radius or the aircraft.
+
+    The ratio is the core radius over the span, so a caveat computed for the
+    preset went on saying "2.30 spans" beside a core of 1 mm."""
+    prefix = "The Parks core is "
+    r0 = spec.wind.params.get("r0")
+    if (not any(c.startswith(prefix) for c in spec.caveats)
+            or spec.aircraft not in REGISTRY or not _number(r0) or r0 <= 0):
+        return spec
+    new = _core_caveat(r0, spec.aircraft)
+    return spec._replace(caveats=type(spec.caveats)(
+        new if c.startswith(prefix) else c for c in spec.caveats))
 
 
 _LEAD_IN_REASON = (
@@ -739,7 +779,8 @@ def with_param(spec: RunSpec, name: str, value) -> RunSpec:
             )
     elif name not in declared and spec.wind.preset is None:
         declared[name] = "set by the user; no source"
-    return spec._replace(wind=spec.wind._replace(params=params, declared=declared))
+    spec = spec._replace(wind=spec.wind._replace(params=params, declared=declared))
+    return _refresh_core_caveat(spec) if name == "r0" else spec
 
 
 def reset_param(spec: RunSpec, name: str) -> RunSpec:
@@ -754,7 +795,8 @@ def reset_param(spec: RunSpec, name: str) -> RunSpec:
     declared.pop(name, None)
     if name in base.declared:
         declared[name] = base.declared[name]
-    return spec._replace(wind=spec.wind._replace(params=params, declared=declared))
+    spec = spec._replace(wind=spec.wind._replace(params=params, declared=declared))
+    return _refresh_core_caveat(spec) if name == "r0" else spec
 
 
 # ---------------------------------------------------------------------------
@@ -890,7 +932,10 @@ def validate(spec: RunSpec) -> list[Issue]:
         error("name", "Run name is empty. Type a name, for example vortex-hannibal.")
     elif any(ch in name for ch in '/\\:*?"<>|') or name.startswith("."):
         error("name", f"Run name {name!r} is not a valid directory name. "
-                      "Use letters, digits, - and _.")
+                      "Do not use / \\ : * ? \" < > | or a first dot.")
+    elif len(name) > MAX_NAME_CHARS:
+        error("name", f"Run name has {len(name)} characters. Use {MAX_NAME_CHARS} "
+                      "or fewer: the name becomes a directory name.")
 
     if spec.aircraft not in REGISTRY:
         error("aircraft", f"Unknown aircraft {spec.aircraft!r}. "
@@ -899,8 +944,26 @@ def validate(spec: RunSpec) -> list[Issue]:
         error("airspeed_mps", "Airspeed must be a positive number of m/s.")
     if not _number(spec.altitude_m) or spec.altitude_m < 0:
         error("altitude_m", "Altitude must be zero or a positive number of m.")
+    elif spec.altitude_m > MAX_ALTITUDE_M:
+        error("altitude_m", f"Altitude {spec.altitude_m:g} m is above {MAX_ALTITUDE_M:,.0f} m, "
+                            "the top of the standard atmosphere that AtiSim models. "
+                            "Set a lower altitude.")
+    elif _number(spec.airspeed_mps) and spec.airspeed_mps > 0:
+        sound = float(speed_of_sound(jnp.array(spec.altitude_m)))
+        if spec.airspeed_mps / sound >= MAX_MACH:
+            error("airspeed_mps", f"Airspeed {spec.airspeed_mps:g} m/s is Mach "
+                                  f"{spec.airspeed_mps / sound:.2f} at this altitude. "
+                                  "The aerodynamic data of each aircraft is subsonic. "
+                                  f"Set less than {sound:.0f} m/s.")
     if not _number(spec.dt) or spec.dt <= 0:
         error("dt", "Time step must be a positive number of s.")
+    elif spec.dt > MAX_DT:
+        error("dt", f"Time step {spec.dt:g} s is longer than {MAX_DT:g} s, where RK4 "
+                    f"diverges for these aircraft. Set {MAX_VERIFIED_DT:g} s or less.")
+    elif spec.dt > MAX_VERIFIED_DT:
+        warning("dt", f"Time step {spec.dt:g} s is longer than {MAX_VERIFIED_DT:g} s, the "
+                      "longest step that a preset, script or test flies. Run the "
+                      "step-size convergence analysis to check it.")
     if spec.seconds is not None and (not _number(spec.seconds) or spec.seconds <= 0):
         error("seconds", "Duration must be a positive number of s, or empty to "
                          "derive it from the field.")
@@ -993,7 +1056,75 @@ def validate(spec: RunSpec) -> list[Issue]:
                         "airspeed.")
     if spec.strip and kind != "manoeuvre":
         warning("strip", STRIP_CAVEAT)
+    # These read the whole spec, so they run only when nothing above is wrong.
+    if not any(i.level == "error" for i in issues):
+        _check_extent(spec, error, warning)
     return issues
+
+
+# The time the aircraft takes to cross each field's structure, from its spec,
+# with the parameter that sets it. None: a field with no one size to resolve.
+def _crossing(kind: str, p: dict, V: float) -> tuple[float, str, str, str] | None:
+    if kind in ("VortexArray", "SingleVortex"):
+        return 2.0 * p["r0"] / V, "a core", "r0", "the core radius"
+    if kind == "UpdraftColumn":
+        return p["traverse_seconds"], "the column", "traverse_seconds", "the traverse time"
+    if kind in ("LeeWave", "Sinusoid"):
+        return p["wavelength"] / V, "one wavelength", "wavelength", "the wavelength"
+    if kind == "Microburst":
+        return 2.0 * p["radius"] / V, "the outflow", "radius", "the radius"
+    if kind == "OneMinusCosine":
+        return (2.0 * p["gradient_distance"] / V, "the gust", "gradient_distance",
+                "the gradient distance")
+    return None
+
+
+# The peak vertical wind of each deterministic field, for the gust angle.
+_PEAK_UP = {"VortexArray": "v0", "SingleVortex": "v0", "UpdraftColumn": "w0",
+            "LeeWave": "w0", "Sinusoid": "amplitude", "OneMinusCosine": "peak"}
+
+
+def _check_extent(spec: RunSpec, error, warning) -> None:
+    """The run's length in steps, and the field against the step and the speed."""
+    kind = spec.wind.kind
+    values = {q.name: param_value(spec.wind, q) for q in PARAMETERS[kind]}
+    V, dt = float(spec.airspeed_mps), float(spec.dt)
+    seconds = geometry(spec).seconds
+    steps = int(round(seconds / dt))  # as `vortex_viz` counts them
+    long_field = ("seconds" if spec.seconds is not None
+                  else "lead_in" if kind in ("VortexArray", "SingleVortex", "MehtaHannibal")
+                  else "dt")
+    if steps < 2:
+        error("seconds" if spec.seconds is not None else "dt",
+              f"The run is {seconds:.3g} s long, less than two time steps of {dt:g} s. "
+              "Make the duration longer or the time step shorter.")
+    elif steps > MAX_STEPS:
+        error(long_field, f"The run needs {steps:,} steps ({seconds:,.0f} s at {dt:g} s). "
+                          f"The limit is {MAX_STEPS:,}. Make the run shorter or the "
+                          "time step longer.")
+
+    crossing = _crossing(kind, values, V)
+    if crossing is not None:
+        t_cross, what, size, noun = crossing
+        if t_cross < MIN_STEPS_ACROSS_FIELD * dt:
+            error(size, f"The aircraft crosses {what} in {t_cross:.3g} s, less than "
+                        f"{MIN_STEPS_ACROSS_FIELD} time steps of {dt:g} s, so the run cannot "
+                        f"resolve it. Make {noun} larger or the time step shorter.")
+
+    if kind == "VortexArray":
+        r0, spacing = values["r0"], values["spacing"]
+        if spacing < 2.0 * r0:
+            warning("spacing", f"Core spacing {spacing:g} m is less than two core radii "
+                               f"({2.0 * r0:g} m), so the cores overlap. Parks' two pairs "
+                               "are 5.8 and 7.1 core radii apart.")
+    peak = _PEAK_UP.get(kind)
+    if peak is not None:
+        up = float(values[peak])
+        angle = math.degrees(math.atan2(up, V))
+        if angle > checks.ALPHA_LINEAR_DEG:
+            warning(peak, f"A peak vertical wind of {up:g} m/s at {V:g} m/s is a gust angle "
+                          f"of attack of {angle:.1f} deg. Past {checks.ALPHA_LINEAR_DEG:g} deg "
+                          "the linear aerodynamics do not hold.")
 
 
 def _check_params(wind_spec: WindSpec, error, prefix: str) -> None:
@@ -1410,13 +1541,24 @@ def _trim(spec: RunSpec):
     return x, residual
 
 
+# m/s, the top of the minimum-drag search in `_speed_hint`. A sweep that ends on
+# its last point has not found V_md: the true one is higher. At 100 km the hint
+# once quoted "400.0 m/s at this altitude" as if it were the answer.
+_V_MD_TOP = 400.0
+
+
 def _speed_hint(spec: RunSpec) -> str:
     """Name the fix: the airspeed against V_md, and the CRUISE entry."""
     ac = REGISTRY[spec.aircraft]
-    v_md = float(trim.minimum_drag_speed(ac, jnp.array(float(spec.altitude_m))))
+    v_md = float(trim.minimum_drag_speed(ac, jnp.array(float(spec.altitude_m)),
+                                         high=_V_MD_TOP))
     cruise = _cruise(spec.aircraft)
     back = (f" Its CRUISE condition is {cruise['airspeed']:.1f} m/s at "
             f"{cruise['altitude']:.0f} m." if cruise else "")
+    if v_md >= _V_MD_TOP - 0.1:  # the sweep's last point
+        return (f"At {spec.altitude_m:.0f} m the air is too thin for this aircraft: its "
+                f"minimum-drag speed is above {_V_MD_TOP:.0f} m/s. Set a lower "
+                f"altitude.{back}")
     if spec.airspeed_mps < v_md:
         return (f"The airspeed is below this aircraft's minimum-drag speed "
                 f"({v_md:.1f} m/s at this altitude).{back}")
@@ -1812,7 +1954,7 @@ def with_field(spec: RunSpec, field: str, value) -> RunSpec:
         declared = dict(spec.declared)
         declared.pop(field)
         spec = spec._replace(declared=declared)
-    return spec
+    return _refresh_core_caveat(spec) if field == "aircraft" else spec
 
 
 def reset_field(spec: RunSpec, field: str) -> RunSpec:

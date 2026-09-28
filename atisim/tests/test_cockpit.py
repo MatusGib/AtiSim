@@ -115,6 +115,34 @@ def test_the_debrief_passes_both_hannibal_cores_where_the_field_puts_them():
     assert all(summary["series"]["autopilot"][1:])
 
 
+def test_a_flight_is_saved_as_a_run_that_engineering_mode_reads(tmp_path):
+    pytest.importorskip("pyarrow")
+    from atisim.analysis import artifact
+
+    flight, clock = fly("hannibal")
+    fly_to(flight, clock, 42.0, presses={"a": 1})
+    path = cockpit.save_run(flight, tmp_path)
+    back = artifact.read_run(path)
+    assert back.meta["flown_by_hand"]["test_point"] == "hannibal"
+    # No spec: nothing can fly a hand-flown run again.
+    assert not (path / "spec.json").exists()
+    # The field is recorded where it was placed: rebuilt, it gives the wind flown.
+    wind = next(c for c in back.checks if c["name"] == "recorded wind")
+    assert wind["passed"], wind
+    # A second save is a second run, never an overwrite.
+    assert cockpit.save_run(flight, tmp_path) != path
+
+
+def test_the_debrief_carries_the_paper_record_for_hannibal_and_none_in_calm_air():
+    flight, clock = fly("hannibal")
+    fly_to(flight, clock, 42.0, presses={"a": 1})
+    record = flight.summary()["record"]
+    assert record["trace"] is not None and record["bands"]
+    calm, clock = fly("calm")
+    fly_to(calm, clock, 5.0)
+    assert calm.summary()["record"] is None
+
+
 def test_the_severity_band_follows_the_sourced_thresholds():
     from atisim import checks
 

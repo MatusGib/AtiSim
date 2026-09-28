@@ -6,6 +6,72 @@ This file gives the changes in each version of AtiSim. The format is
 
 ## [Unreleased]
 
+## [1.3.1] — 2026-09-28
+
+### Added
+
+- The application saves each test card flight as a run: `testcard-{point}-{aircraft}-{commit}`.
+  `cockpit.save_run` writes it when the debrief opens. The run has no `spec.json`, because the
+  controls are the inputs of the pilot. Engineering mode and the Lab open it as a run.
+- After a flight, **Engineering** in the mode switch opens that flight in Results. The debrief
+  and each row of the test card also give a link to the flight.
+- The paper record: `atisim.records` finds what the source measured in the same encounter and
+  puts it on the time axis of a run. A Hannibal run gets the recorded DC-10 load of Parks et al.
+  1985 Fig. 6 and the measured band of TM-102186. The other vortex runs, the updraft and the
+  manoeuvre get the load band of Wingrove and Bach Fig. 8. The record is moved in time so that
+  its deepest downdraft is at the deepest downdraft of the run. This alignment is declared.
+- The Results page, the Lab result card and the debrief of the test card show the paper record
+  on the load factor. On the Results page, the **Paper record** switch shows or hides it.
+- `panel.placed_field` and `panel.field_ahead_meta`: one placement of the field of a test point,
+  for the flight and for its run file.
+- `run.validate` gives more errors: a run of fewer than two steps or more than 1,000,000 steps, a
+  time step longer than 0.5 s, a field that the time step cannot resolve, an airspeed of Mach 1
+  or more, an altitude above 20,000 m, and a run name of more than 100 characters. It gives more
+  warnings: a time step longer than 0.05 s, overlapping vortex cores, and a gust angle of attack
+  past 10°.
+- `studies.split_arguments`: it splits the arguments of a study as the shell of the computer
+  does. `studies.INTERACTIVE` names the scripts that cannot run as a study.
+- A banner on the Results page tells you when a run diverged.
+
+### Changed
+
+- Wingrove and Bach Fig. 8 in Results: the legend has one entry for each category, and each
+  category has its own marker shape. Only the run on the screen has a label. The label of a run
+  is its case, for example `wingrove-morton`, not its first word. The category comes from the
+  wind field, so all the vortex runs are in the vortex category. A run of a different field is
+  not on the figure.
+- The ordering panel uses one run for each category. The run on the screen represents its
+  category.
+- The debrief and the Lab result card show the larger change from level flight first: the
+  lowest load factor when it is further from +1 g than the peak.
+- In still air, the debrief, the card and the Lab say "still air", not a turbulence band. The
+  load then comes from the controls.
+- The Validity row of the debrief agrees with the angle of attack row.
+- The number fields of Setup, the Lab and the analyses accept `1e-3` and a decimal comma. A value
+  that is not a number gives an error that names the field.
+- The Lab compare table gives the wind values of the two runs.
+- The Lab says so when a case or a result does not exist, or when A and B are the same flight.
+- The trim error at a high altitude tells you to decrease the altitude. It does not give the top
+  of the search as the minimum-drag speed.
+- The core caveat of a Parks case changes with the core radius and the aircraft.
+
+### Fixed
+
+- The Progress tab of Setup stopped at "Write the artifact" when the status bar stopped the poll
+  first. The poll now continues for 2 s after the last job.
+- A failure to fly A at a different commit showed on the Setup page as a failure of its run.
+- An analysis page showed the progress of a different analysis.
+- **Re-fly at High** gives a link to the new run when it is written.
+- Compare offered reports and run A in **Add a run to compare**.
+- The `fly` script ran as a study and waited until its time limit.
+- The arguments of a study lost the backslashes of a Windows path.
+- The energy closure failed in each still-air run: the check divided by zero energy change.
+- The hollow markers of Fig. 8 had the default plotly colors.
+- In Results, the 2D cross-section and the load factor against the angle of attack were empty.
+  Plotly drew them in a box of 37 px, before their height was set, and their color bars stopped
+  the draw. The two graphs now have their height from the start.
+- The start label of the Setup preview used a different point than the **Start** row.
+
 ## [1.3.0] — 2026-09-27
 
 ### Added
@@ -245,7 +311,8 @@ The first public version.
 - The lift model has no stall. Results above about 10° angle of attack are not valid.
 - AtiSim does not predict absolute loads.
 
-[Unreleased]: https://github.com/MatusGib/AtiSim/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/MatusGib/AtiSim/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/MatusGib/AtiSim/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/MatusGib/AtiSim/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/MatusGib/AtiSim/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/MatusGib/AtiSim/releases/tag/v1.1.0

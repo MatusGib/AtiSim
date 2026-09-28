@@ -202,6 +202,24 @@ def _energy_and_power(traj, ac: Aircraft, field):
     return energy, p
 
 
+ENERGY_SCALE_FLOOR = 1e-9  # of the aircraft's total energy; see `energy_scale`
+
+
+def energy_scale(energy) -> float:
+    """The denominator of the energy closure: the largest energy change, J.
+
+    Floored at a billionth of the aircraft's energy. In exactly trimmed still
+    air the energy does not change at all, and the old floor of 1e-30 J turned
+    round-off in the work integral (about 4e-7 J) into a closure of 4e23: every
+    still-air run failed. The floor is 1e7 times float64 round-off on the
+    energy and far below any real exchange (a vortex encounter moves ~1e6 J).
+    `analysis.profiles` draws the closure with the same denominator.
+    """
+    energy = np.asarray(energy)
+    return max(float(np.abs(energy - energy[0]).max()),
+               ENERGY_SCALE_FLOOR * float(np.abs(energy).max()), 1e-30)
+
+
 def energy_closure(traj, ac: Aircraft, field) -> Check:
     """|dE - integral(P dt)| over |dE|max.
 
@@ -219,7 +237,7 @@ def energy_closure(traj, ac: Aircraft, field) -> Check:
         [[0.0], np.cumsum(np.diff(t) * 0.5 * (power[1:] + power[:-1]))]
     )
     residual = np.abs((energy - energy[0]) - work)
-    scale = max(np.abs(energy - energy[0]).max(), 1e-30)
+    scale = energy_scale(energy)
     return _verdict(
         residual.max() / scale, 2e-3, "gate", "energy closure",
         "max |dE - integral(P dt)| / |dE|max. Expected order in dt is 1 with a "

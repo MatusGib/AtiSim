@@ -756,17 +756,30 @@ Hannibal vortex pair, the Morton vortex pair and a thunderstorm updraft. The coc
 6. To engage or disengage the autopilot, push `a`. The autopilot holds the start altitude,
    airspeed and heading.
 7. To pause the flight, push `Space` or `Esc`.
-8. Click **End flight and read the recorder**. The debrief shows the peak load factor, the
-   turbulence severity, the bank, the height change, the angle of attack and the validity of
-   the flight. The recorder shows the load factor, the height change and the bank at each step.
+8. Click **End flight and read the recorder**. The debrief shows the load factor that is
+   furthest from +1 g, the turbulence severity, the bank, the height change, the angle of attack
+   and the validity of the flight. The recorder shows the load factor, the height change and the
+   bank at each step. In grey, it shows what the source measured (section 4.19).
+
+   The application saves the flight as a run in the runs directory. Its name is
+   `testcard-{test point}-{aircraft}-{commit}`.
 9. Click **Back to the test card**. The card shows the peak load factor of your flight on the
    row of the test point.
+10. To examine the flight in engineering mode, click **Engineering** in the mode switch. Results
+    opens with your last flight. Or click **Open in engineering** on the row of a test point.
 
 ![The cockpit in the Hannibal vortex pair, with the autopilot engaged](images/cockpit.png)
 
 The cockpit shows the gust rate as SIM TRUTH, because no instrument can measure it. The peak on
 the kneeboard comes from 25 samples each second. The debrief reads each step of 20 ms. Thus the
 peak of the debrief can be a little larger.
+
+In calm air, the debrief shows "None: still air" for the turbulence. The load then comes from
+your control inputs.
+
+A saved flight has no spec, because the controls are your inputs. Thus **Re-fly at High**,
+**Fly the change** and **Fly again with changes** are not available for it. The cockpit steps
+0.02 s, twice the step of the presets. Thus the energy closure check of a saved flight can fail.
 
 ### 4.18 Fly a case in the Lab
 
@@ -786,8 +799,9 @@ values, and it shows the result in plain words.
 4. Examine the **Limits** box. Correct each error. An error disables **Run the case**.
 5. Click **Run the case**. The stages of the run show below the button. When the run is
    complete, the result card opens.
-6. Examine the result card: the peak load factor, the turbulence severity, the values of the
-   flight, the checks and the recorder.
+6. Examine the result card: the load factor that is furthest from +1 g, the turbulence severity,
+   the values of the flight, the checks and the recorder. In grey, the recorder shows what the
+   source measured (section 4.19).
 7. To fly the case again with changes, click **Fly again with changes**.
 
 If you select a different aircraft, the airspeed and the altitude change to the cruise values
@@ -801,12 +815,37 @@ To compare two results:
 
 1. Under **Results** in the index, click **Compare two results**.
 2. Select a result in **A** and a result in **B**.
-3. Examine the table. The mark **differs** shows each value that is not the same.
+3. Examine the table. It gives the aircraft, the flight condition, the values of the wind field
+   and the results. The mark **differs** shows each value that is not the same.
 4. Examine the recorder. It shows the load factor, the height change and the pitch of the two
    results.
 
 The Lab keeps each run in the runs directory. Engineering mode shows the same run with all its
 values.
+
+### 4.19 Compare a run with the paper record
+
+A run of a sourced case can show what the source measured in the same encounter. The application
+shows this record in grey on the load factor:
+
+| Case | Record |
+|---|---|
+| Hannibal: `vortex-hannibal`, `wingrove-hannibal`, `mehta-hannibal`, test point 2 | The load factor of the DC-10, recorded through the encounter (Parks et al. 1985, Fig. 6), and the measured band, +1.7 to −1.0 g (TM-102186) |
+| Other vortex cases, the updraft and the manoeuvre | The band of the lowest load of the DC-10 records, −1.01 to −0.69 g (Wingrove and Bach 1994, Fig. 8) |
+
+1. Open the run in Results. The **Paper record** switch shows the record on the load factor
+   strip.
+2. Read the line below the switch. It names the source and tells you what to compare.
+3. To hide the record, click **Paper record**.
+
+The recorded trace has the clock of the DC-10. The application moves it in time so that the
+deepest downdraft of the record is at the deepest downdraft of the run. This alignment is a
+declared choice. It aligns the wind, not the load, so the loads can differ.
+
+The records are of a DC-10, and the model is a 747. Compare the order and the size of the loads.
+Do not compare their exact values.
+
+The debrief of the test card and the result card of the Lab show the same record.
 
 ## 5 Reference
 
@@ -954,6 +993,11 @@ analysis.
 | The cockpit shows "This flight has ended". | The application started again, or three newer flights replaced this flight. | Click **Fly TP-*n* again**. *n* is the number of the test point. |
 | **Run the case** in the Lab is disabled. | A value has an error, or a run is in progress. | Correct the error that the **Limits** box shows, or wait for the run. |
 | The explorer shows no items. | The filter has text that no item contains. | Push `Esc` in the filter. |
+| The Messages tab shows "The run needs ... steps". | The run is longer than 1,000,000 steps. | Make the duration or the lead-in shorter, or the time step longer. |
+| The Messages tab shows "The aircraft crosses ... in ... s". | The time step cannot resolve the field. | Make the time step shorter, or the field larger. |
+| Results shows "Diverged". | The time step is too long for the aircraft or the field. | Fly the run again with a shorter time step. |
+| A saved test card flight fails the energy closure check. | The cockpit steps 0.02 s, and the check is set for 0.01 s. | Read the check as a limit of the cockpit, not of the flight. |
+| **Paper record** is not available. | No source measured this encounter. | None. The records are in section 4.19. |
 
 ## 7 Glossary
 

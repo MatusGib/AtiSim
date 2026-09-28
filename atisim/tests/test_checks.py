@@ -122,6 +122,31 @@ def test_the_energy_budget_closes(parks_run):
     assert c.value < 2e-3
 
 
+def test_the_energy_budget_closes_in_trimmed_still_air():
+    """Still air, trimmed: the energy does not change, so there is no exchange to
+    close. Round-off in the work integral once divided by a 1e-30 J floor and
+    every still-air run failed this gate at about 4e23."""
+    from atisim import run
+
+    spec = run.BLANK._replace(seconds=5.0)
+    flown = run.fly(spec)
+    c = next(ch for ch in flown.report if ch.name == "energy closure")
+    assert c.passed, c
+
+
+def test_the_energy_budget_still_fails_in_still_air_when_energy_appears():
+    """The negative control for the floor: energy from nowhere must still fail."""
+    from atisim import run
+
+    flown = run.fly(run.BLANK._replace(seconds=5.0))
+    traj = flown.trajectory
+    vel = np.array(traj.vel_body)
+    vel[len(vel) // 2:, 0] += 0.5  # 0.5 m/s of speed that no force made
+    broken = traj._replace(vel_body=vel)
+    c = checks.energy_closure(broken, REGISTRY[flown.spec.aircraft], lambda p: jnp.zeros(3))
+    assert not c.passed, c
+
+
 def test_the_energy_residual_is_largest_at_the_core_boundaries(parks_run):
     """C4. The Rankine gradient discontinuity, located from an energy diagnostic.
 

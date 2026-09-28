@@ -176,6 +176,9 @@
   transform: rotate(-2.5deg); transform-origin: left center;
 }
 .tc-pencil-note { font-family: var(--tc-hand); font-size: 14.5px; color: var(--tc-pencil); }
+.tc-result-link { display: block; margin-top: 6px; font-size: 13px; font-weight: 700;
+  color: var(--tc-stamp); }
+.tc-result-link:hover { text-decoration: underline; }
 .tc-tick { width: 26px; height: 26px; }
 .tc-col-fly { width: 148px; text-align: right; }
 

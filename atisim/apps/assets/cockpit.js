@@ -63,7 +63,7 @@
       overlay: root.querySelector("#fly-overlay"),
       held: new Set(), presses: {a: 0, t: 0},
       frames: [], trace: [], peak: null, info: null, id: null,
-      state: "loading", alive: true, timer: 0, raf: 0, inflight: null, sideAt: 0
+      state: "loading", alive: true, timer: 0, raf: 0, inflight: null, sideAt: 0, run: null
     };
     var s = S;
     s.onKeyDown = function (e) { onKeyDown(s, e); };
@@ -71,11 +71,13 @@
     s.onBlur = function () { s.held.clear(); };
     s.onHide = function () { if (document.hidden && s.state === "flying") { pause(s); } };
     s.onClick = function (e) { onClick(s, e); };
+    s.onNav = function (e) { onNav(s, e); };
     window.addEventListener("keydown", s.onKeyDown);
     window.addEventListener("keyup", s.onKeyUp);
     window.addEventListener("blur", s.onBlur);
     document.addEventListener("visibilitychange", s.onHide);
     root.addEventListener("click", s.onClick);
+    document.addEventListener("click", s.onNav, true);
     s.resize = new ResizeObserver(function () { size(s); });
     s.resize.observe(canvas.parentElement);
     size(s);
@@ -101,6 +103,7 @@
     window.removeEventListener("keyup", s.onKeyUp);
     window.removeEventListener("blur", s.onBlur);
     document.removeEventListener("visibilitychange", s.onHide);
+    document.removeEventListener("click", s.onNav, true);
     s.resize.disconnect();
     if (s.id && s.state === "flying") {
       fetch("/api/flight/" + s.id + "/pause", {method: "POST", keepalive: true}).catch(function () {});
@@ -229,6 +232,7 @@
       return post("/api/flight/" + s.id + "/summary");
     }).then(function (sum) {
       if (!s.alive) { return; }
+      s.run = sum.run || null;
       setState(s, "debrief");
       debrief(s, sum);
     }, function (err) { if (s.alive) { fail(s, err); } });
@@ -285,7 +289,22 @@
     else if (act === "end") { end(s); }
     else if (act === "again") { clear(s); create(s); }
     else if (act === "card") { navigate("/"); }
-    else if (act === "workbench") { navigate("/start"); }
+    else if (act === "workbench") { navigate(s.run ? runHref(s.run) : "/start"); }
+  }
+
+  function runHref(name) { return "/results?run=" + encodeURIComponent(name); }
+
+  // After a flight, the header's Engineering link opens that flight. The link
+  // was drawn before the flight was saved, so its click is taken here, in the
+  // capture phase, before the Dash link acts on its old address.
+  function onNav(s, e) {
+    if (!s.run) { return; }
+    var link = e.target.closest ? e.target.closest(".mode-switch a") : null;
+    var href = link && link.getAttribute("href") || "";
+    if (href.indexOf("/start") !== 0 && href.indexOf("/results") !== 0) { return; }
+    e.preventDefault();
+    e.stopPropagation();
+    navigate(runHref(s.run));
   }
 
   // A Dash page change without a reload: dcc.Location follows this event.
@@ -750,23 +769,40 @@
     var aNote = a.band === "linear" ? "the linear aerodynamics hold below " + fmt(s.info.limits.alpha_linear_deg, 0) + "°"
       : a.band === "marginal" ? "past " + fmt(s.info.limits.alpha_linear_deg, 0) + "° the linear aerodynamics stop holding"
       : "past " + fmt(s.info.limits.alpha_invalid_deg, 0) + "° the model's lift is not real: this flight proves nothing there";
-    var recText = rec.passed === true ? "Flown inside the conditions the 747's derivatives were recovered at."
-      : rec.passed === false ? "Flown outside the conditions the 747's derivatives were recovered at: " + rec.detail
+    // One verdict, not two that disagree: the speed and height can stay inside
+    // the recovered conditions while the angle of attack leaves the valid range.
+    var envelope = rec.passed === true ? "Speed and height stayed inside the conditions the 747's derivatives were recovered at."
+      : rec.passed === false ? "Speed and height left the conditions the 747's derivatives were recovered at: " + rec.detail
       : "Report: " + rec.detail;
-    var sevText = sum.severity_band === "too short to rate" ? "Too short to rate"
-      : cap(sum.severity_band);
-    var sevNote = isFinite(sev.value) ? "RMS normal load " + fmt(sev.value, 2) + " g over 5 s. Moderate from 0.2 g, " +
-      "severe from 0.3 g (Misaka 2008)." : "The index needs at least 5 s of flight.";
+    var valid = rec.passed !== false && a.band !== "invalid";
+    var recText = (a.band === "invalid" ? "Not valid: the angle of attack passed " + fmt(s.info.limits.alpha_invalid_deg, 0) + "°. "
+      : a.band === "marginal" ? "Marginal: the angle of attack passed " + fmt(s.info.limits.alpha_linear_deg, 0) + "°. "
+      : rec.passed === false ? "Not valid. " : "Valid. ") + envelope;
+    // Still air has no turbulence to rate. The index still measures the load,
+    // and there it came from the controls.
+    var still = tp.field === "none";
+    var sevText = still ? "None: still air"
+      : sum.severity_band === "too short to rate" ? "Too short to rate" : cap(sum.severity_band);
+    var sevNote = !isFinite(sev.value) ? "The index needs at least 5 s of flight."
+      : still ? "The load came from your control inputs: RMS " + fmt(sev.value, 2) + " g over 5 s. In turbulence, " +
+        "moderate is from 0.2 g and severe from 0.3 g (Misaka 2008)."
+      : "RMS normal load " + fmt(sev.value, 2) + " g over 5 s. Moderate from 0.2 g, severe from 0.3 g (Misaka 2008).";
+    // The headline is the larger excursion from level flight. A vortex can push
+    // the load to -1 g, and a headline of the highest value alone hides that.
+    var lowFirst = (1 - sum.nz_min.value) > (sum.nz_max.value - 1);
+    var head = lowFirst ? sum.nz_min : sum.nz_max, other = lowFirst ? sum.nz_max : sum.nz_min;
+    var saved = sum.run ? "Saved as the run " + sum.run + ". Engineering mode opens it."
+      : (sum.run_error || "");
     var ac = sum.altitude_change;
     var html =
       '<div class="fly-debrief" role="dialog" aria-label="Results of test point ' + escapeHtml(s.n) + '">' +
       '<div class="fly-debrief-head"><h2>TP-' + escapeHtml(s.n) + " · " + escapeHtml(tp.title) + " · results</h2>" +
       "<span>" + fmt(sum.duration, 1) + " s flown · Boeing 747 model</span></div>" +
       '<div class="fly-debrief-top"><div class="fly-peak-row">' +
-      '<span class="tc-field">Peak load factor</span><div>' +
-      '<div class="fly-peak-big">' + signed(sum.nz_max.value, 2) + " g</div>" +
-      '<p class="fly-peak-what">at ' + fmt(sum.nz_max.t, 1) + " s. Lowest " + signed(sum.nz_min.value, 2) +
-      " g at " + fmt(sum.nz_min.t, 1) + " s. Level flight is +1 g.</p>" +
+      '<span class="tc-field">' + (lowFirst ? "Lowest load factor" : "Peak load factor") + "</span><div>" +
+      '<div class="fly-peak-big">' + signed(head.value, 2) + " g</div>" +
+      '<p class="fly-peak-what">at ' + fmt(head.t, 1) + " s. " + (lowFirst ? "Highest " : "Lowest ") +
+      signed(other.value, 2) + " g at " + fmt(other.t, 1) + " s. Level flight is +1 g.</p>" +
       '<p class="fly-peak-what">Read from every physics step. The panel samples 25 times a second, ' +
       "so its peak can be a little lower.</p></div></div>" +
       '<dl class="fly-facts-grid">' +
@@ -775,15 +811,19 @@
       '<dt class="tc-field">Height</dt><dd>' + signed(ac.min, 0) + " m to " + signed(ac.max, 0) + " m; ended " + signed(ac.end, 0) + " m</dd>" +
       '<dt class="tc-field">Angle of attack</dt><dd' + (a.band === "linear" ? "" : ' class="is-limit"') + ">up to " +
       fmt(Math.abs(a.value), 1) + "°, " + a.band + "<small>" + escapeHtml(aNote) + "</small></dd>" +
-      '<dt class="tc-field">Validity</dt><dd' + (rec.passed === false ? ' class="is-limit"' : "") + ">" + escapeHtml(recText) + "</dd>" +
+      '<dt class="tc-field">Validity</dt><dd' + (valid ? "" : ' class="is-limit"') + ">" + escapeHtml(recText) + "</dd>" +
       "</dl></div>" +
       '<div class="fly-recorder"><div class="fly-recorder-title"><span class="tc-field">Recorder</span>' +
       '<span class="fly-peak-what">every physics step, 50 a second' + (sum.events.length ? " · blue lines: where you met the field" : "") +
+      (sum.record ? " · grey: what the source measured" : "") +
       (sum.series.autopilot.indexOf(true) >= 0 ? " · shaded: autopilot on" : "") +
-      "</span></div><canvas></canvas></div>" +
+      "</span></div><canvas" + (sum.record ? ' style="height:320px"' : "") + "></canvas>" +
+      (sum.record ? '<p class="fly-peak-what fly-record-note">' + escapeHtml(sum.record.case + ". " + sum.record.note) + "</p>" : "") +
+      "</div>" +
       '<div class="fly-note-row"><button type="button" class="fly-btn fly-btn-primary" data-act="again">Fly TP-' + escapeHtml(s.n) + " again</button>" +
       '<button type="button" class="fly-btn" data-act="card">Back to the test card</button>' +
-      '<button type="button" class="fly-btn" data-act="workbench">Engineering mode</button></div></div>';
+      '<button type="button" class="fly-btn" data-act="workbench">Engineering mode</button></div>' +
+      (saved ? '<p class="fly-peak-what fly-saved">' + escapeHtml(saved) + "</p>" : "") + "</div>";
     s.overlay.classList.add("is-dim");
     s.overlay.innerHTML = html;
     var canvas = s.overlay.querySelector(".fly-recorder canvas");
@@ -801,7 +841,11 @@
     var W = box.width, H = box.height, sr = sum.series;
     ctx.fillStyle = C.paper; ctx.fillRect(0, 0, W, H);
     var left = 172, right = 18, top = 14, bottom = 26, gap = 10;
-    var pw = W - left - right, ph = (H - top - bottom - 2 * gap) / 3;
+    // With a record on it, the load factor gets twice the height: its scale then
+    // spans the record too, and at a third of the canvas the shapes flatten.
+    var weights = sum.record ? [2, 1, 1] : [1, 1, 1];
+    var unit = (H - top - bottom - 2 * gap) / (weights[0] + weights[1] + weights[2]);
+    var pw = W - left - right;
     var t0 = 0, t1 = Math.max(1, sum.duration);
     var xOf = function (t) { return left + (t - t0) / (t1 - t0) * pw; };
     // Autopilot spans, under everything.
@@ -819,9 +863,16 @@
       {key: "altitude", name: "Height change", unit: "m", ref: 0, fmtv: function (v) { return signed(v, 0); }},
       {key: "bank", name: "Bank", unit: "°", ref: 0, fmtv: function (v) { return signed(v, 0); }}
     ];
+    var rec = sum.record, recVals = [];
+    if (rec) {
+      if (rec.trace) { recVals = recVals.concat(rec.trace.lo, rec.trace.hi); }
+      rec.bands.forEach(function (b) { recVals.push(b.lo, b.hi); });
+    }
     panels.forEach(function (p, k) {
-      var y0 = top + k * (ph + gap), vals = sr[p.key];
-      var lo = Math.min.apply(null, vals.concat([p.ref])), hi = Math.max.apply(null, vals.concat([p.ref]));
+      var ph = weights[k] * unit, vals = sr[p.key];
+      var y0 = top + k * gap + unit * weights.slice(0, k).reduce(function (a, b) { return a + b; }, 0);
+      var extra = p.key === "nz" ? recVals : [];
+      var lo = Math.min.apply(null, vals.concat([p.ref], extra)), hi = Math.max.apply(null, vals.concat([p.ref], extra));
       var pad = Math.max((hi - lo) * 0.12, p.key === "nz" ? 0.1 : 2);
       lo -= pad; hi += pad;
       var yOf = function (v) { return y0 + (hi - v) / (hi - lo) * ph; };
@@ -832,6 +883,7 @@
       text(ctx, p.unit, 10, y0 + 28, 12, C.ink2, "left", 400);
       text(ctx, p.fmtv(hi), left - 8, y0 + 8, 11.5, C.ink2, "right", 700);
       text(ctx, p.fmtv(lo), left - 8, y0 + ph - 8, 11.5, C.ink2, "right", 700);
+      if (p.key === "nz" && rec) { drawRecord(ctx, rec, xOf, yOf, left, pw, y0, ph, t0, t1); }
       ctx.strokeStyle = C.ink; ctx.lineWidth = 1.5; ctx.lineJoin = "round";
       ctx.beginPath();
       sr.t.forEach(function (t, i) {
@@ -839,12 +891,15 @@
       });
       ctx.stroke();
       if (p.key === "nz") {
-        var px = xOf(sum.nz_max.t), py = yOf(sum.nz_max.value);
+        // The larger excursion from level flight, as the headline says.
+        var mark = (1 - sum.nz_min.value) > (sum.nz_max.value - 1) ? sum.nz_min : sum.nz_max;
+        var px = xOf(mark.t), py = yOf(mark.value);
         ctx.strokeStyle = C.pencil; ctx.lineWidth = 2.5;
         ctx.beginPath(); ctx.arc(px, py, 9, 0, 2 * Math.PI); ctx.stroke();
         ctx.font = "20px " + HAND; ctx.fillStyle = C.pencil;
         ctx.textAlign = px > left + pw - 110 ? "right" : "left"; ctx.textBaseline = "middle";
-        ctx.fillText(signed(sum.nz_max.value, 2) + " g", px + (ctx.textAlign === "right" ? -16 : 16), Math.max(y0 + 12, py - 4));
+        ctx.fillText(signed(mark.value, 2) + " g", px + (ctx.textAlign === "right" ? -16 : 16),
+                     Math.min(y0 + ph - 12, Math.max(y0 + 12, py - 4)));
       }
     });
     // Where the flight met the field.
@@ -859,6 +914,39 @@
     for (var t = 0; t <= t1; t += niceStep(t1)) {
       text(ctx, fmt(t, 0) + " s", xOf(t), H - 10, 11.5, C.ink2, "center", 700);
     }
+  }
+
+  // What the source measured, behind the flight on the load-factor panel: the
+  // recorded trace as the band between the top and bottom of its ink, a wide
+  // published range as two dashed lines, a narrow one as a strip.
+  function drawRecord(ctx, rec, xOf, yOf, left, pw, y0, ph, t0, t1) {
+    var grey = "rgba(137,135,129,";
+    ctx.save();
+    ctx.beginPath(); ctx.rect(left, y0, pw, ph); ctx.clip();
+    rec.bands.forEach(function (b) {
+      if (b.hi - b.lo < 0.5) {
+        ctx.fillStyle = grey + "0.18)";
+        ctx.fillRect(left, yOf(b.hi), pw, yOf(b.lo) - yOf(b.hi));
+      } else {
+        ctx.strokeStyle = grey + "0.9)"; ctx.lineWidth = 1; ctx.setLineDash([5, 4]);
+        line(ctx, left, yOf(b.lo), left + pw, yOf(b.lo));
+        line(ctx, left, yOf(b.hi), left + pw, yOf(b.hi));
+        ctx.setLineDash([]);
+      }
+    });
+    var tr = rec.trace;
+    if (tr && tr.t.length > 1) {
+      ctx.fillStyle = grey + "0.35)";
+      ctx.beginPath();
+      tr.t.forEach(function (t, i) { var x = xOf(t), y = yOf(tr.hi[i]); if (i === 0) { ctx.moveTo(x, y); } else { ctx.lineTo(x, y); } });
+      for (var i = tr.t.length - 1; i >= 0; i--) { ctx.lineTo(xOf(tr.t[i]), yOf(tr.lo[i])); }
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+    var labels = (tr ? [tr.label] : []).concat(rec.bands.map(function (b) { return b.label; }));
+    labels.forEach(function (label, i) {
+      text(ctx, label, left + 6, y0 + ph - 8 - 14 * (labels.length - 1 - i), 11, "#6b6a66", "left", 700);
+    });
   }
 
   // ---- small drawing helpers -----------------------------------------------------------

@@ -22,6 +22,7 @@ from atisim import run as run_mod
 from atisim.aircraft import REGISTRY
 from atisim.analysis import devfigures, diagnostics, profiles, step_inspector
 from atisim.apps import components as ui
+from atisim.apps.jobs import LIVE
 
 _GRAPH = {"displaylogo": False, "responsive": True}
 DEFAULT_CHANNELS = ("n_z", "alpha", "Cm", "alphadot_gust")
@@ -171,10 +172,13 @@ def layout(ws, name: str | None, t=None, runs_panel=None, switch=None):
                                 disabled=spec is None,
                                 leftSection=ui.icon("player-play", 14))),
             html.Div("" if spec is not None else
+                     "This flight was flown by hand on the test card, so no spec flies "
+                     "it again." if loaded.run.meta.get("flown_by_hand") else
                      "This run was written before runs kept their spec (spec.json), so "
                      "the app cannot fly it again. Fly it from Setup at High.",
                      className="ati-muted"),
             html.Div(id="diag-refly-note", className="ati-muted"),
+            dcc.Store(id="diag-refly-job"),
         ], color="gray", variant="light")
     colour_options = ([{"label": f"Colour by {c.name}", "value": c.name}
                        for c in d.channels if c.name != "t"] if high else [])
@@ -442,6 +446,7 @@ def register(app, ws) -> None:
     @app.callback(
         Output("job", "data", allow_duplicate=True),
         Output("diag-refly-note", "children"),
+        Output("diag-refly-job", "data"),
         Input("diag-refly", "n_clicks"), State("diag-shown", "data"),
         prevent_initial_call=True,
     )
@@ -452,6 +457,23 @@ def register(app, ws) -> None:
         if spec is None:
             raise PreventUpdate
         job = ws.jobs.submit(spec._replace(fidelity="high"))
-        return job, ("Flying at High fidelity. The new run appears in the list when it "
-                     "is written; the status bar shows its progress.")
+        return job, ("Flying at High fidelity. The status bar shows its progress, and "
+                     "a link to the new run shows here when it is written."), job
+
+    @app.callback(
+        Output("diag-refly-note", "children", allow_duplicate=True),
+        Input("poll", "n_intervals"), State("diag-refly-job", "data"),
+        prevent_initial_call=True,
+    )
+    def refly_done(_n, job_id):
+        """Say where the High run went. The note once kept saying "Flying" after
+        the run was written, and the reader had to find it in the explorer."""
+        job = ws.jobs.get(job_id)
+        if job is None or job["state"] in LIVE:
+            raise PreventUpdate
+        if job["state"] == "failed":
+            return f"The High run failed: {job['error']}"
+        new = Path(job["path"]).name
+        return ["The High run is written: ",
+                dcc.Link(new, href=f"/results?run={new}&view=diagnostics")]
 

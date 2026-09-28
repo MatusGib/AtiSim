@@ -1212,6 +1212,54 @@ def updraft_range(column, *, label: str):
     return ranged
 
 
+def placed_field(
+    name: str,
+    *,
+    airspeed: float,
+    altitude: float,
+    lead_in: float = 40.0,
+    sharpness: float = 6.0,
+):
+    """The cited wind field `field_ahead` flies, placed ahead of the origin.
+
+    Returns the placed `VortexArray` or `UpdraftColumn`, or None for still air.
+    `field_ahead` builds the flight's wind model and range from it, and
+    `field_ahead_meta` describes it for a saved run, so there is one placement.
+
+    `lead_in` is in core radii, matching vortex.py. Below about 12 the 1/r far
+    field launches the aircraft out of equilibrium. `sharpness` is a DECLARED
+    modelling parameter, not source data.
+    """
+    if name == "none":
+        return None
+    if name in PARKS_CASES:
+        case = PARKS_CASES[name]
+        lead = lead_in * case["r0"]
+        return VortexArray(
+            north=jnp.array([lead, lead + case["spacing"]]),
+            down=jnp.array([-altitude, -altitude]),
+            r0=jnp.array(case["r0"]),
+            v0=jnp.array(case["v0"]),
+        )
+    if name == "updraft":
+        # The paper's 20 s is a TRAVERSE time, so it fixes a diameter only once
+        # a flight speed is chosen -- hence the radius depending on airspeed.
+        radius = 0.5 * UPDRAFT_SECONDS * airspeed
+        # `lead_in` cannot mean the same thing here as it does for a vortex. A
+        # column radius is over a dozen vortex core radii, so 40 of them would be
+        # 90 km -- six minutes of flying before anything happened. It is read as
+        # tenths of a radius beyond the edge instead, which puts the default 40
+        # four radii clear. Stated rather than hidden in the arithmetic.
+        return UpdraftColumn(
+            north=jnp.array(radius * (1.0 + lead_in / 10.0)),
+            east=jnp.array(0.0),
+            w0=jnp.array(UPDRAFT_W0),
+            radius=jnp.array(radius),
+            sharpness=jnp.array(sharpness),
+        )
+    raise ValueError(f"unknown wind field {name!r}")
+
+
 def field_ahead(
     name: str,
     *,
@@ -1231,23 +1279,15 @@ def field_ahead(
     Placement and the range callable come out of the same object on purpose. Two
     functions each deciding for themselves where the field is, is how a readout
     ends up confidently pointing at somewhere the aircraft is not.
-
-    `lead_in` is in core radii, matching vortex.py. Below about 12 the 1/r far
-    field launches the aircraft out of equilibrium. `sharpness` is a DECLARED
-    modelling parameter, not source data.
     """
-    if name == "none":
+    placed = placed_field(name, airspeed=airspeed, altitude=altitude,
+                          lead_in=lead_in, sharpness=sharpness)
+    if placed is None:
         return zero_wind, None, "still air"
 
-    if name in PARKS_CASES:
-        case = PARKS_CASES[name]
-        lead = lead_in * case["r0"]
-        array = VortexArray(
-            north=jnp.array([lead, lead + case["spacing"]]),
-            down=jnp.array([-altitude, -altitude]),
-            r0=jnp.array(case["r0"]),
-            v0=jnp.array(case["v0"]),
-        )
+    if isinstance(placed, VortexArray):
+        array, case = placed, PARKS_CASES[name]
+        lead = float(array.north[0])
         note = (
             f"vortex array ({name}): r0 {case['r0']:.0f} m, V0 {case['v0']:.1f} m/s, "
             f"first core {lead:.0f} m ahead ({lead / airspeed:.0f} s at cruise)"
@@ -1258,34 +1298,42 @@ def field_ahead(
             note,
         )
 
-    if name == "updraft":
-        # The paper's 20 s is a TRAVERSE time, so it fixes a diameter only once
-        # a flight speed is chosen -- hence the radius depending on airspeed.
-        radius = 0.5 * UPDRAFT_SECONDS * airspeed
-        # `lead_in` cannot mean the same thing here as it does for a vortex. A
-        # column radius is over a dozen vortex core radii, so 40 of them would be
-        # 90 km -- six minutes of flying before anything happened. It is read as
-        # tenths of a radius beyond the edge instead, which puts the default 40
-        # four radii clear. Stated rather than hidden in the arithmetic.
-        lead = radius * (1.0 + lead_in / 10.0)
-        column = UpdraftColumn(
-            north=jnp.array(lead),
-            east=jnp.array(0.0),
-            w0=jnp.array(UPDRAFT_W0),
-            radius=jnp.array(radius),
-            sharpness=jnp.array(sharpness),
-        )
-        note = (
-            f"updraft column: w0 {UPDRAFT_W0:.1f} m/s, radius {radius:.0f} m, "
-            f"sharpness {sharpness:.1f} (DECLARED), centre {lead:.0f} m ahead"
-        )
-        return (
-            field_model(lambda p: updraft_wind(p, column)),
-            updraft_range(column, label="updraft column"),
-            note,
-        )
+    column = placed
+    note = (
+        f"updraft column: w0 {UPDRAFT_W0:.1f} m/s, radius {float(column.radius):.0f} m, "
+        f"sharpness {sharpness:.1f} (DECLARED), centre {float(column.north):.0f} m ahead"
+    )
+    return (
+        field_model(lambda p: updraft_wind(p, column)),
+        updraft_range(column, label="updraft column"),
+        note,
+    )
 
-    raise ValueError(f"unknown wind field {name!r}")
+
+def field_ahead_meta(name: str, *, airspeed: float, altitude: float,
+                     lead_in: float = 40.0, sharpness: float = 6.0) -> dict:
+    """`meta["wind_field"]` for the field `field_ahead` flies, in the form
+    `artifact.rebuild_field` reads back, so a flight flown by hand can be saved
+    as a run and its field drawn again."""
+    placed = placed_field(name, airspeed=airspeed, altitude=altitude,
+                          lead_in=lead_in, sharpness=sharpness)
+    common = {"model": "wind.field_model", "omega_gust_estimator": "analytic tangent at CG"}
+    if placed is None:
+        return {"kind": "none (still air)", "source": "no wind field", "params": {}}
+    if isinstance(placed, VortexArray):
+        return {"kind": "VortexArray", "case": name,
+                "source": "Parks, Wingrove, Bach & Mehta 1985, J. Aircraft 22(2) 124-129",
+                "params": {"north": [float(v) for v in placed.north],
+                           "down": [float(v) for v in placed.down],
+                           "r0": float(placed.r0), "v0": float(placed.v0),
+                           "spacing": float(placed.north[1] - placed.north[0])},
+                **common}
+    return {"kind": "UpdraftColumn",
+            "source": "Wingrove & Bach 1994, J. Aircraft 31(4) 753-760, p. 756",
+            "params": {"north": float(placed.north), "east": float(placed.east),
+                       "w0": float(placed.w0), "radius": float(placed.radius),
+                       "sharpness": float(placed.sharpness)},
+            **common}
 
 
 def warm_up(

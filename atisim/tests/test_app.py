@@ -465,3 +465,80 @@ def test_the_mode_switch_is_on_every_mode_and_marks_the_one_on_screen(one_run):
         active = [n for n in _walk(page) if "mode-item is-active" in
                   (getattr(n, "className", "") or "")]
         assert len(active) == 1 and _text(active[0]).startswith(mode), mode
+
+
+# --- the stress-test fixes ----------------------------------------------------------
+
+
+def test_a_debrief_saves_the_flight_once_and_the_card_sends_engineering_to_it(tmp_path):
+    import time
+
+    app = shell.build_app(tmp_path)
+    client = app.server.test_client()
+    started = client.post("/api/flight", json={"tp": "calm"}).get_json()
+    poll = f"/api/flight/{started['id']}/poll"
+    client.post(poll, json={})
+    time.sleep(0.1)
+    client.post(poll, json={})
+    summary = client.post(f"/api/flight/{started['id']}/summary").get_json()
+    assert summary["run"] and (tmp_path / summary["run"] / "run.parquet").exists()
+    # A debrief read twice is not a second flight.
+    again = client.post(f"/api/flight/{started['id']}/summary").get_json()
+    assert again["run"] == summary["run"]
+    page = _route(app)("/", "", 0)[0]
+    hrefs = {getattr(n, "href", None) for n in _walk(page)}
+    assert f"/results?run={summary['run']}" in hrefs
+    # Still air has no turbulence to rate: the card does not call it severe.
+    assert "still air" in _text(page)
+
+
+def test_a_number_is_read_as_a_person_types_it():
+    from atisim.apps import components as ui
+
+    assert ui.parse_number("1e-3") == 0.001  # the number input made this -13
+    assert ui.parse_number("236,5") == 236.5  # and this 2365
+    assert ui.parse_number(" 12 ") == 12 and isinstance(ui.parse_number("12"), int)
+    assert ui.parse_number("") is None
+    # Negative control: text that is not a number stays text, for the validator.
+    assert ui.parse_number("abc") == "abc" and ui.parse_number("1,000.5") == "1,000.5"
+    assert ui.shown_number(21.336000000000002) == "21.336"
+
+
+def test_the_lab_says_an_unknown_case_and_a_same_flight_comparison(one_run):
+    from atisim.apps import lab as lab_page
+
+    root, path = one_run
+    ws = shell.Workspace(root)
+    assert "There is no case" in _text(lab_page.case_page(ws, "nowhere"))
+    assert "same flight" in _text(lab_page.compare_page(ws, path.name, path.name))
+
+
+def test_an_analysis_page_shows_only_its_own_job():
+    from atisim.apps import analyses as page
+
+    job = {"kind": "analysis", "state": "done", "stages": [], "log": [], "path": "modes-x",
+           "summary": "", "spec": {"name": "modes", "analysis": "modes", "params": {}}}
+    assert "Open in Results" in _text(page.progress_view(job, "modes"))
+    # Negative control: the Modes job on the Seed ensemble page.
+    assert "Open in Results" not in _text(page.progress_view(job, "ensemble"))
+
+
+def test_the_poll_runs_on_for_a_moment_after_the_last_job(tmp_path):
+    import time
+
+    from atisim.apps.jobs import JobRunner
+
+    runner = JobRunner(tmp_path)
+    runner._jobs["j"] = {"state": "done", "finished": time.time()}
+    assert runner.live(grace=2.0) and not runner.live()
+    runner._jobs["j"]["finished"] -= 5.0
+    assert not runner.live(grace=2.0)
+
+
+def test_compare_offers_only_runs_that_are_not_already_in_it(one_run):
+    root, path = one_run
+    rows = runs_mod.scan(root)
+    offered = [item["value"] for group in results.picker(
+        rows, None, "compare-add", runs_only=True, exclude=[path.name]).data
+        for item in group["items"]]
+    assert path.name not in offered

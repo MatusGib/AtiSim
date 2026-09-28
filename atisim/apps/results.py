@@ -32,6 +32,7 @@ import numpy as np
 from dash import ALL, Input, Output, State, dcc, html, no_update
 from dash.exceptions import PreventUpdate
 
+from atisim import records
 from atisim.aircraft import REGISTRY
 from atisim.analysis import artifact, figures, report, series
 from atisim.analysis import runs as runs_mod
@@ -58,18 +59,32 @@ REPRESENTATION = {
 _GRAPH = {"displaylogo": False, "responsive": True}
 
 
+def run_spec_kind(path: Path) -> str | None:
+    """The wind kind of the spec a run was flown from, or None without one."""
+    from atisim import run as run_mod
+
+    spec = run_mod.spec_of(path)
+    return spec.wind.kind if spec is not None else None
+
+
 
 class Loaded:
     """One artifact, with its derived series and rebuilt field. Read once."""
 
     def __init__(self, path: Path):
         self.run = artifact.read_run(path)
+        self.path = Path(path)
         self.name = path.name
         meta = self.run.meta
         ac = REGISTRY[meta["aircraft"]["key"]]
         self.series = series.build(self.run.trajectory, ac)
         self.field = artifact.rebuild_field(meta)
         self.kind = meta["wind_field"]["kind"]
+        # What the source measured in this encounter, on this run's clock, or
+        # None. The spec's kind tells the manoeuvre from still air.
+        self.record = records.for_run(
+            run_spec_kind(path) or self.kind, meta["wind_field"].get("case"),
+            self.run.trajectory.t, records.w_up_from_ned(self.run.trajectory.wind_ned))
         self.representation = REPRESENTATION.get(self.kind, "none")
         params = meta["wind_field"].get("params", {})
         self.core_radius = params.get("r0")  # vortex only; the readout's north/r0
@@ -133,11 +148,19 @@ class Loaded:
 
     def fig8(self) -> dict:
         """Windowed and whole-run coordinates. The connector between them IS the
-        panel's content -- it draws the windowing trap rather than describing it."""
+        panel's content -- it draws the windowing trap rather than describing it.
+
+        The label is the case, the directory name without `-{aircraft}-{sha}`:
+        the first word alone named all three Wingrove & Bach cases "wingrove".
+        The category comes from the spec's wind kind, because the manoeuvre and
+        a still-air run both have no wind field in `meta.json`."""
         s, w = self.series, self.window
         theta, n_z = s.theta_deg, s.n_z
+        spec = run_spec_kind(self.path)
         return dict(
-            label=self.name.split("-")[0],
+            name=self.name,
+            label=self.name.split(f"-{self.run.meta['aircraft']['key']}-")[0],
+            category=figures.FIG8_CATEGORY.get(spec or self.kind),
             dtheta=float(theta[w].max() - theta[w].min()),
             dn=float(n_z[w].min() - n_z[0]),
             dtheta_whole=float(theta.max() - theta.min()),
@@ -153,6 +176,15 @@ class Loaded:
         if 0 <= i < len(self.series.t):
             return float(self.series.t[i])
         return None
+
+
+def _record_note(record, shown: bool) -> str:
+    """One line under the Paper record switch: what the band is, or why none."""
+    if record is None:
+        return "No published record of this encounter is held."
+    if not shown:
+        return f"Show what the source measured: {record.case}."
+    return f"{record.case}. {record.note}"
 
 
 def _badge(check: dict):
@@ -262,6 +294,16 @@ def _header(loaded: Loaded):
         _fact("Load path", m["load_model"] or "point sample plus analytic gradient"),
     ]
     children = [html.Dl(facts, className="ati-facts")]
+    bad = ~np.isfinite(np.asarray(loaded.series.n_z, dtype=float))
+    if bad.any():
+        # Said at the top: the plots of a diverged run draw axes of 1e146 and a
+        # readout of "nan", which a reader can take for a display fault.
+        first = float(np.asarray(loaded.series.t)[int(np.argmax(bad))])
+        children.insert(0, dmc.Alert(
+            f"This run diverged: its values are not numbers from t = {first:.2f} s. "
+            "The time step is too long for the aircraft or the field. Fly it again "
+            "with a shorter time step.", color="red", title="Diverged",
+            icon=ui.icon("circle-x", 16)))
     params = declared(m["declared_parameters"])
     if params:
         children.append(html.Div([
@@ -491,14 +533,20 @@ def workspace_switch(run: str | None, view: str) -> html.Div:
                     **{"aria-label": "Workspace"})
 
 
-def picker(rows, value, picker_id, placeholder="Open another result"):
-    """Every readable result, grouped as the explorer groups them, searchable."""
+def picker(rows, value, picker_id, placeholder="Open another result",
+           runs_only=False, exclude=()):
+    """Every readable result, grouped as the explorer groups them, searchable.
+
+    `runs_only` leaves out the reports, and `exclude` the names already chosen:
+    Compare offered a Modes report, which it then dropped without a word, and
+    run A itself."""
     from atisim.apps.explorer import RESULT_GROUPS
 
     data = []
     for group, title in RESULT_GROUPS:
         items = [{"value": r.name, "label": r.name} for r in rows
-                 if r.error is None and r.group == group]
+                 if r.error is None and r.group == group and r.name not in exclude
+                 and not (runs_only and r.verdict == "report")]
         if items:
             data.append({"group": title, "items": items})
     return dmc.Select(id=picker_id, value=value, data=data, searchable=True, w=340,
@@ -539,7 +587,10 @@ def layout(ws, run: str | None = None, t=None, view: str | None = None,
     row = next((r for r in good if r.name == selected), None)
     if view == "compare":
         from atisim.apps import compare
-        bar = result_bar(None, picker(rows, None, "compare-add", "Add a run to compare"),
+        from atisim.apps.compare import parse_runs
+
+        bar = result_bar(None, picker(rows, None, "compare-add", "Add a run to compare",
+                                      runs_only=True, exclude=parse_runs(run, extra)),
                          workspace_switch(run, "compare"), title="Compare runs")
         return compare.layout(ws, run, bar, None, extra)
     if view == "diagnostics" and selected is not None and not is_report:
@@ -578,7 +629,15 @@ def layout(ws, run: str | None = None, t=None, view: str | None = None,
             html.Div(id="badges", className="ati-badges"),
         ], className="ati-deep-block"),
         html.Div([
-            html.Div([dcc.Graph(id="strips", config=_GRAPH)], className="ati-deep-cell"),
+            html.Div([
+                html.Div([
+                    dmc.Switch(id="record-show", checked=loaded.record is not None,
+                               disabled=loaded.record is None, size="xs",
+                               label="Paper record"),
+                    html.Span(id="record-note", className="ati-note"),
+                ], className="ati-controls"),
+                dcc.Graph(id="strips", config=_GRAPH),
+            ], className="ati-deep-cell"),
             html.Div(className="ati-vrule"),
             html.Div([
                 html.Div([
@@ -597,7 +656,9 @@ def layout(ws, run: str | None = None, t=None, view: str | None = None,
                     ),
                     html.Span(note, id="fieldview-note", className="ati-note"),
                 ], className="ati-controls"),
-                dcc.Graph(id="scene", config=_GRAPH),
+                # Tall from the start, as `nzalpha` below: the cross-section has
+                # a colourbar, and a first draw in a 37 px box left it a 2 px plot.
+                dcc.Graph(id="scene", config=_GRAPH, style={"height": "360px"}),
                 html.Div(id="readout", className="ati-readout ati-num"),
             ], className="ati-deep-cell"),
         ], className="ati-deep-row"),
@@ -621,7 +682,11 @@ def layout(ws, run: str | None = None, t=None, view: str | None = None,
                               {"label": "time", "value": "time"}],
                     ),
                 ], className="ati-controls"),
-                dcc.Graph(id="nzalpha", config=_GRAPH),
+                # Tall from the start. The render callback sets its height with
+                # the figure, and the first draw came before it, in a 37 px box:
+                # the colourbar then threw "axis scaling" and the panel stayed
+                # a 3 px plot with no title.
+                dcc.Graph(id="nzalpha", config=_GRAPH, style={"height": "340px"}),
             ], className="ati-deep-cell"),
         ], className="ati-deep-row is-even"),
         dcc.Store(id="cursor", data=cursor),
@@ -720,11 +785,12 @@ def register(app, ws) -> None:
         Output("readout", "children"),
         Output("strips", "style"), Output("scene", "style"), Output("ordering", "style"),
         Output("fig8", "style"), Output("nzalpha", "style"),
+        Output("record-note", "children"),
         Input("run-shown", "data"), Input("scalar", "value"), Input("cursor", "data"),
-        Input("fieldview", "value"), Input("nzx", "value"),
+        Input("fieldview", "value"), Input("nzx", "value"), Input("record-show", "checked"),
         State("scene", "relayoutData"),
     )
-    def render(run_name, scalar, cursor_t, fieldview, nzx, scene_relayout):
+    def render(run_name, scalar, cursor_t, fieldview, nzx, show_record, scene_relayout):
         """Everything updates from the cursor in ONE callback, so nothing tears.
 
         Six outputs, one input set. Splitting this into six callbacks would let
@@ -765,10 +831,11 @@ def register(app, ws) -> None:
             )
         points = ws.fig8_points()
         figs = (
-            figures.strip_stack(s, loaded.window, cursor_t=cursor_t),
+            figures.strip_stack(s, loaded.window, cursor_t=cursor_t,
+                                record=loaded.record if show_record else None),
             scene,
-            figures.ordering(points),
-            figures.discriminator(points),
+            figures.ordering(points, current=loaded.name),
+            figures.discriminator(points, current=loaded.name),
             figures.load_vs_alpha(s, cursor_index=index, against=nzx),
         )
         return (
@@ -780,4 +847,5 @@ def register(app, ws) -> None:
             # only the width; left to fill a grid cell's height, a graph takes
             # the height of its neighbour and the figure's own layout breaks.
             *[{"height": f"{fig.layout.height}px"} for fig in figs],
+            _record_note(loaded.record, show_record),
         )

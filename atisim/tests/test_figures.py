@@ -679,3 +679,36 @@ def test_the_preview_centres_on_the_structure_not_the_path(name):
         assert abs(path_mid - args["structure_north"]) > 1000.0
     if name == "microburst":
         assert fig.layout.yaxis.range[0] == 0.0, "the ground must be in view"
+
+
+# --- Fig. 8 with many runs -----------------------------------------------------------
+
+
+def _vortex(i, dtheta):
+    return dict(label=f"case-{i}", name=f"run-{i}", category=0, dtheta=dtheta, dn=-1.0,
+                dtheta_whole=dtheta + 1.0, dn_whole=-1.1)
+
+
+def test_fig8_has_one_legend_entry_per_category_and_one_label():
+    """Eight runs once gave eight legend entries in a band for one row, drawn
+    through the plot, and a label on every point, piled on top of each other."""
+    points = [_vortex(i, 1.0 + 0.1 * i) for i in range(6)] + _THREE[1:]
+    fig = figures.discriminator(points, current="run-2")
+    shown = [t.name for t in fig.data if t.showlegend]
+    assert shown.count("vortex runs") == 1 and len(shown) == 4, shown
+    labels = [a for a in fig.layout.annotations if "this run" in (a.text or "")]
+    assert len(labels) == 1
+    # An open marker is stroked in its marker colour, so it must have one.
+    for t in fig.data:
+        if str(getattr(t.marker, "symbol", "") or "").endswith("-open"):
+            assert t.marker.color is not None, t.name
+
+
+def test_the_ordering_takes_one_run_per_category_and_prefers_the_one_on_screen():
+    points = _THREE + [_vortex(9, 99.0)]
+    held = " ".join(a.text for a in figures.ordering(points).layout.annotations)
+    assert "HOLDS" in held
+    # The same set with the 99 deg vortex on screen: that run represents vortex.
+    broken = " ".join(a.text for a in
+                      figures.ordering(points, current="run-9").layout.annotations)
+    assert "FAILS" in broken
