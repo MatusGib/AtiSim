@@ -118,9 +118,19 @@ class JobRunner:
         snap["elapsed"] = (snap["finished"] or now) - snap["submitted"]
         return snap
 
-    def live(self) -> bool:
+    def live(self, grace: float = 0.0) -> bool:
+        """True while a job is live, or for `grace` seconds after the last one ended.
+
+        The grace is for the page callbacks that share one poll with the status
+        bar. They run on the same tick in parallel, so the status bar can see a
+        job finished while the page still reads it as writing. If the status bar
+        then stops the poll, the page never sees the job finish.
+        """
+        now = time.time()
         with self._lock:
-            return any(j["state"] in LIVE for j in self._jobs.values())
+            return any(j["state"] in LIVE
+                       or (j["finished"] is not None and now - j["finished"] < grace)
+                       for j in self._jobs.values())
 
     def latest(self) -> dict | None:
         with self._lock:

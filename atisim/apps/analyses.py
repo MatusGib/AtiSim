@@ -45,15 +45,9 @@ def _input(param: run.Param, value):
                           comboboxProps={"withinPortal": True}, **label)
     if param.check in ("text", "arguments"):
         return dmc.TextInput(id=pid, value=value or "", debounce=400, **label)
-    number = dict(value=value if value is not None else "", hideControls=True,
-                  debounce=400, **label)
-    if param.check == "integer":
-        return dmc.NumberInput(id=pid, allowDecimal=False, allowNegative=False, **number)
-    unit = dict(rightSection=setup._unit(param.unit), rightSectionWidth=44,
-                rightSectionPointerEvents="none") if param.unit else {}
     if param.check == "optional":
-        return dmc.NumberInput(id=pid, placeholder="CRUISE", **unit, **number)
-    return dmc.NumberInput(id=pid, **unit, **number)
+        return ui.number_input(pid, value, param.unit, placeholder="CRUISE", **label)
+    return ui.number_input(pid, value, param.unit, **label)
 
 
 def _hint(param: run.Param) -> str | None:
@@ -75,6 +69,8 @@ def coerce(param: run.Param, value):
     """
     if value == "" or value is None:
         return "" if param.check in ("text", "arguments") else None
+    if param.check not in ("text", "arguments", "choice"):
+        value = ui.parse_number(value)
     if param.check == "integer" and isinstance(value, float) and value.is_integer():
         return int(value)
     return value
@@ -232,7 +228,18 @@ def issues_view(issues, noun: str = "analysis") -> list:
     return out
 
 
-def progress_view(job: dict | None, key: str | None = None) -> list:
+def progress_view(job: dict | None, key: str | None = None,
+                  script: str | None = None) -> list:
+    """The stages of `job`, or a placeholder when it is not this page's job.
+
+    The job store holds the last analysis of the session, so without the test
+    the Seed ensemble page showed the progress of a Modes job run earlier."""
+    if job and key is not None:
+        spec = job.get("spec") or {}
+        if spec.get("analysis") != key or (
+                key == "study" and script is not None
+                and (spec.get("params") or {}).get("script") != script):
+            job = None
     if not job or job.get("kind") != "analysis":
         what = ("Not run yet. Press Run script" if key == "study"
                 else "No analysis yet. Press Run analysis")
@@ -332,6 +339,9 @@ def register(app, ws) -> None:
         Output("analysis-progress", "children"),
         Input("poll", "n_intervals"), Input("analysis-job", "data"),
         Input("url", "pathname"), State("analysis-key", "data"),
+        State({"type": "aparam", "name": ALL}, "value"),
+        State({"type": "aparam", "name": ALL}, "id"),
     )
-    def follow(_n, job_id, _path, key):
-        return progress_view(ws.jobs.get(job_id), key)
+    def follow(_n, job_id, _path, key, values, ids):
+        script = next((v for i, v in zip(ids, values) if i["name"] == "script"), None)
+        return progress_view(ws.jobs.get(job_id), key, script)

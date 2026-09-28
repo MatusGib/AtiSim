@@ -16,8 +16,10 @@ them here is the 747, and the card says so.
 Nothing here needs the `ui` extra: a test flies a `Flight` directly.
 """
 
+import math
 import threading
 import time
+from pathlib import Path
 from typing import NamedTuple
 
 import jax
@@ -25,7 +27,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from atisim import autopilot as ap_mod
-from atisim import checks, integrate, manual as man, panel, trim
+from atisim import checks, integrate, manual as man, panel, records, trim
 from atisim.aircraft import CRUISE, REGISTRY
 from atisim.manual import Mode
 from atisim.sensors import accelerometers, sense
@@ -146,7 +148,8 @@ class Flight:
         self.ac = REGISTRY[AIRCRAFT]
         gains, mgains = ap_mod.GAINS[AIRCRAFT], man.MANUAL_GAINS[AIRCRAFT]
         airspeed, altitude = _cruise()
-        x, _ = trim.trim(jnp.array(airspeed), jnp.array(altitude), self.ac)
+        x, residual = trim.trim(jnp.array(airspeed), jnp.array(altitude), self.ac)
+        self.trim_x, self.trim_residual = x, float(jnp.linalg.norm(residual))
         state = trim.trimmed_state(x[0], jnp.array(airspeed), jnp.array(altitude))
         controls = trim.trimmed_controls(x[1], x[2])
         self.targets = ap_mod.Targets(
@@ -165,6 +168,7 @@ class Flight:
         self._clock = clock
         self._last = None  # None: paused, or not started
         self._presses = {"a": 0, "t": 0}
+        self.saved: str | None = None  # the run directory, once `save_run` wrote it
 
     def info(self) -> dict:
         """What does not change during the flight."""
@@ -267,6 +271,7 @@ class Flight:
                           "band": _alpha_band(float(abs(alpha[a_peak])))},
             "severity": severity.as_dict(),
             "severity_band": checks.severity_band(severity.value),
+            "record": self._record(traj),
             "recovery": checks.recovery_band(traj, self.ac).as_dict(),
             "events": self._events(traj),
             "series": {
@@ -278,6 +283,15 @@ class Flight:
                 "autopilot": (np.asarray(traj.mode)[keep] == Mode.AUTOPILOT).tolist(),
             },
         }
+
+    def _record(self, traj) -> dict | None:
+        """What the source measured in this encounter, on this flight's clock."""
+        airspeed, altitude = _cruise()
+        placed = panel.field_ahead_meta(self.test_point.field, airspeed=airspeed,
+                                        altitude=altitude)
+        return records.as_dict(records.for_run(
+            placed["kind"], placed.get("case"), np.asarray(traj.t),
+            records.w_up_from_ned(traj.wind_ned)))
 
     def _events(self, traj) -> list[dict]:
         """Where the flight met the field, sample-exact.
@@ -324,6 +338,78 @@ class Flight:
                         events.append({"t": float(t[k]),
                                        "label": f"passed {at(k - 1).label}"})
         return events
+
+
+# The preset that flies each test point's field. A saved flight carries that
+# preset's caveats, because it is the same case with a pilot in it.
+PRESET_OF = {"hannibal": "vortex-hannibal", "morton": "vortex-morton",
+             "updraft": "updraft"}
+
+HAND_FLOWN_CAVEAT = ("Flown by hand on the test card: the controls are the pilot's "
+                     "inputs, so no spec can fly this run again. The cockpit steps "
+                     f"{DT:g} s, twice the presets' step, so the energy closure, first "
+                     "order in the step, is about twice as large.")
+
+
+def save_run(flight: Flight, root) -> Path:
+    """Write a flight as a run artifact under `root`, as `atisim run` writes one.
+
+    Engineering mode then opens it like any other run. The field is recorded
+    where `panel.field_ahead` placed it, and the checks run on the field rebuilt
+    from that record, so the recorded-wind check proves the record is the field
+    that was flown. No `spec.json` is written: a flight flown by hand has no
+    spec that flies it again. Needs the `ui` extra (pyarrow), as the app does.
+    """
+    from atisim import run as run_mod
+    from atisim.analysis import artifact
+
+    with flight.lock:
+        traj = flight.live.trajectory()
+    tp = flight.test_point
+    airspeed, altitude = _cruise()
+    wind_field = panel.field_ahead_meta(tp.field, airspeed=airspeed, altitude=altitude)
+    field = artifact.rebuild_field({"wind_field": wind_field})
+    p = wind_field["params"]
+    declared: dict = {}
+    if wind_field["kind"] == "VortexArray":
+        lo, hi = p["north"][0] - p["r0"], p["north"][0] + p["r0"]
+        declared["lead_in_core_radii"] = p["north"][0] / p["r0"]
+        declared["window"] = {"kind": "first core", "north_m": [lo, hi]}
+    elif wind_field["kind"] == "UpdraftColumn":
+        lo, hi = p["north"] - p["radius"], p["north"] + p["radius"]
+        declared["sharpness"] = p["sharpness"]
+        declared["sharpness_provenance"] = ("DECLARED: how sharp the column's edges are "
+                                            "is a modelling choice, not source data")
+        declared["window"] = {"kind": "column", "north_m": [lo, hi]}
+    else:
+        lo, hi = -math.inf, math.inf
+        declared["window"] = {"kind": "the whole flight"}
+    declared["window_rule"] = "the field's own extent, as panel.field_ahead placed it"
+    x = flight.trim_x
+    north = np.asarray(traj.pos_ned)[:, 0]
+    report = checks.run_checks(traj, flight.ac, trim.trimmed_controls(x[1], x[2]),
+                               field, (north >= lo) & (north <= hi))
+    preset = run_mod.PRESETS.get(PRESET_OF.get(tp.key, ""))
+    meta = artifact.build_meta(
+        aircraft_key=AIRCRAFT, aircraft=flight.ac,
+        flight_condition={"airspeed_mps": airspeed, "altitude_m": altitude,
+                          "source": run_mod.CONDITION_SOURCES.get(AIRCRAFT, "CRUISE")},
+        trim_solution={"alpha_rad": float(x[0]), "elevator_rad": float(x[1]),
+                       "throttle": float(x[2]), "residual_norm": flight.trim_residual,
+                       "is_physical": bool(trim.is_physical(x, flight.ac))},
+        integrator={"dt_s": DT, "n_steps": len(traj.t)},
+        wind_field=wind_field,
+        declared_parameters=declared,
+        caveats=[HAND_FLOWN_CAVEAT, *(preset.caveats if preset else ())],
+    )
+    meta["flown_by_hand"] = {"test_point": tp.key, "title": tp.title, "source": tp.source}
+    sha = artifact.git_sha()[:7] or "nogit"
+    base = Path(root) / f"testcard-{tp.key}-{AIRCRAFT}-{sha}"
+    directory, n = base, 1
+    while directory.exists():
+        n += 1
+        directory = base.with_name(f"{base.name}-{n}")
+    return artifact.write_run(directory, traj, meta, report)
 
 
 def _alpha_band(alpha_deg: float) -> str:

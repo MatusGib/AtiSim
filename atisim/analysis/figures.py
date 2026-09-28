@@ -64,8 +64,8 @@ FRAME_FLOOR = 0.25  # half-width of the east floor, as a fraction of the north s
 # all-pairs, and three is exactly what the discriminator needs.
 #
 # AQUA IS BELOW 3:1 ON THE LIGHT SURFACE, so the relief rule applies: it never
-# carries meaning alone. Every Fig. 8 point is direct-labelled and every run is
-# in the table view.
+# carries meaning alone. Every Fig. 8 category has its own marker shape as well
+# as its colour, and every run is in the table view.
 # ---------------------------------------------------------------------------
 SERIES = ("#2a78d6", "#eb6834", "#1baf7a")  # blue, orange, aqua
 REFERENCE = "#898781"  # muted ink -- the "wrong" trace, and the paper's markers
@@ -340,7 +340,7 @@ STRIP_ROWS = [
 
 
 def strip_stack(s: Series, window: np.ndarray, cursor_t: float | None = None,
-                alpha_bands: bool = True) -> go.Figure:
+                alpha_bands: bool = True, record=None) -> go.Figure:
     """Gust in at the top, response propagating down, control at the bottom.
 
     The order is the causal chain and it is the point of the panel: a response
@@ -348,6 +348,11 @@ def strip_stack(s: Series, window: np.ndarray, cursor_t: float | None = None,
     FLAT for any turbulence encounter -- fixed controls are a physical statement,
     since the discriminator separates turbulence from manoeuvring by whether pitch
     correlates with the stick.
+
+    `record` (an `atisim.records.Record`) draws what the source measured on the
+    load-factor row, in the REFERENCE ink: a recorded trace as the band between
+    the top and bottom of its ink, and each published range as lines or a strip.
+    Each is labelled on the row, not in the legend, which has one row only.
     """
     from plotly.subplots import make_subplots
 
@@ -390,9 +395,10 @@ def strip_stack(s: Series, window: np.ndarray, cursor_t: float | None = None,
             # offset fills the panel and reads as a defect.
             fig.add_hline(y=float(s.n_z[0]), line=dict(color=AXIS_RULE, width=1,
                                                        dash="dot"), row=i, col=1)
-            fig.update_yaxes(
-                range=list(_pad(min(float(s.n_z.min()), 0.9),
-                                max(float(s.n_z.max()), 1.05))), row=i, col=1)
+            low, high = min(float(s.n_z.min()), 0.9), max(float(s.n_z.max()), 1.05)
+            if record is not None:
+                low, high = record_on_row(fig, record, i, low, high)
+            fig.update_yaxes(range=list(_pad(low, high)), row=i, col=1)
         elif special == "elevator":
             # Pinned wide, so a genuinely fixed control is visibly flat rather
             # than autoscaled into noise.
@@ -417,6 +423,38 @@ def strip_stack(s: Series, window: np.ndarray, cursor_t: float | None = None,
                  "leads its input is a defect.",
         legend=True,
     )
+
+
+def record_on_row(fig: go.Figure, record, row: int, low: float, high: float):
+    """Draw `record` on subplot `row`, behind the run. Returns the widened range."""
+    xref, yref = ("x domain", "y domain") if row == 1 else (f"x{row} domain",
+                                                           f"y{row} domain")
+    labels = []
+    trace = record.trace
+    if trace is not None:
+        common = dict(mode="lines", line=dict(color=REFERENCE, width=0.8),
+                      showlegend=False, hoverinfo="skip")
+        fig.add_trace(go.Scatter(x=trace.t, y=trace.hi, **common), row=row, col=1)
+        fig.add_trace(go.Scatter(x=trace.t, y=trace.lo, fill="tonexty",
+                                 fillcolor="rgba(137,135,129,0.28)", **common),
+                      row=row, col=1)
+        labels.append(trace.label)
+        low, high = min(low, float(trace.lo.min())), max(high, float(trace.hi.max()))
+    for band in record.bands:
+        if band.hi - band.lo < 0.5:
+            fig.add_hrect(y0=band.lo, y1=band.hi, line_width=0, layer="below",
+                          fillcolor="rgba(137,135,129,0.16)", row=row, col=1)
+        else:
+            for y in (band.lo, band.hi):
+                fig.add_hline(y=y, line=dict(color=REFERENCE, width=1, dash="dash"),
+                              row=row, col=1)
+        labels.append(band.label)
+        low, high = min(low, band.lo), max(high, band.hi)
+    fig.add_annotation(xref=xref, yref=yref, x=0.005, y=0.02, xanchor="left",
+                       yanchor="bottom", showarrow=False, align="left",
+                       text="<br>".join(labels), font=dict(size=9, color=INK_MUTED),
+                       bgcolor="rgba(252,252,251,0.8)")
+    return low, high
 
 
 # ---------------------------------------------------------------------------
@@ -547,6 +585,20 @@ FIG8_LOAD_BAND = (-2.01, -1.69)
 #: increasing pitch excursion, left to right.
 CATEGORY_ORDER = ("vortex", "updraft", "manoeuvr")
 
+#: The Fig. 8 category of each wind kind. Wingrove & Bach's vortex records are
+#: the Hannibal, Morton and Cimarron pairs, so every vortex field is "vortex",
+#: whatever the run is called. A kind not here is not one of the three
+#: categories and has no place on Fig. 8.
+FIG8_CATEGORY = {"VortexArray": 0, "SingleVortex": 0, "MehtaHannibal": 0,
+                 "UpdraftColumn": 1, "manoeuvre": 2}
+
+# Colour AND shape per category. Aqua is below 3:1 on the light surface, so the
+# shape carries the category as well and no colour carries meaning alone. This
+# replaced a direct label on every point, which piled up where several vortex
+# runs sit within half a degree of each other.
+_FIG8_SYMBOL = ("circle", "diamond", "triangle-up")
+_FIG8_NAME = ("vortex", "updraft", "manoeuvre")
+
 
 def _category(label: str) -> int | None:
     """Which of the three categories a run label names, or None."""
@@ -557,7 +609,29 @@ def _category(label: str) -> int | None:
     return None
 
 
-def ordering(points: list[dict]) -> go.Figure:
+def _point_category(p: dict) -> int | None:
+    """A point's category: its own `category`, else the one its label names."""
+    return p["category"] if p.get("category") is not None else _category(p["label"])
+
+
+def _one_per_category(points: list[dict], current: str | None) -> list[tuple]:
+    """(category, point) for each category, in category order.
+
+    The run on the screen represents its category. The first point of each
+    other category represents that one, and `fig8_points` lists the newest
+    first. Two runs of one category are not an ordering, so only one counts.
+    """
+    chosen: dict[int, dict] = {}
+    for p in points:
+        c = _point_category(p)
+        if c is None:
+            continue
+        if c not in chosen or (current and p.get("name") == current):
+            chosen[c] = p
+    return sorted(chosen.items())
+
+
+def ordering(points: list[dict], current: str | None = None) -> go.Figure:
     """The discriminator's claim, stated instead of implied.
 
     WHY THIS EXISTS BESIDE FIG. 8 RATHER THAN INSTEAD OF IT. Fig. 8 is the
@@ -575,37 +649,35 @@ def ordering(points: list[dict]) -> go.Figure:
     nothing, which is this project's standing rule about checks.
     """
     fig = go.Figure()
-    ranked = sorted(
-        ((_category(p["label"]), p) for p in points
-         if _category(p["label"]) is not None),
-        key=lambda pair: pair[0],
-    )
+    ranked = _one_per_category(points, current)
     model_x = [p["dtheta"] for _, p in ranked]
     holds = len(ranked) == 3 and all(a < b for a, b in zip(model_x, model_x[1:]))
     names = list(FIG8_REFERENCE)
 
     rows = [
         (1.0, "paper — DC-10 class",
-         list(enumerate(FIG8_REFERENCE.values())), REFERENCE),
-        (0.0, "model — 747", [(i, p["dtheta"]) for i, p in ranked], None),
+         [(i, v, names[i]) for i, v in enumerate(FIG8_REFERENCE.values())], REFERENCE),
+        (0.0, "model — 747",
+         [(i, p["dtheta"], p["label"]) for i, p in ranked], None),
     ]
     for y, row_label, values, fixed in rows:
         if len(values) > 1:
             fig.add_trace(go.Scatter(
-                x=[v for _, v in values], y=[y] * len(values), mode="lines",
+                x=[v for _, v, _ in values], y=[y] * len(values), mode="lines",
                 line=dict(color=AXIS_RULE, width=1), showlegend=False,
                 hoverinfo="skip",
             ))
-        for i, v in values:
+        for i, v, label in values:
             fig.add_trace(go.Scatter(
                 x=[v], y=[y], mode="markers+text",
-                text=[f"{names[i]}<br>{v:.2f}°"],
+                text=[f"{_FIG8_NAME[i] if y == 0.0 else label}<br>{v:.2f}°"],
                 textposition="top center" if y else "bottom center",
                 textfont=dict(size=10, color=INK),
                 marker=dict(size=13, color=fixed or SERIES[i % len(SERIES)],
+                            symbol=_FIG8_SYMBOL[i],
                             line=dict(color=SURFACE, width=2)),
                 showlegend=False,
-                hovertemplate=f"{row_label}: {names[i]} {v:.2f}°<extra></extra>",
+                hovertemplate=f"{row_label}: {label} {v:.2f}°<extra></extra>",
             ))
 
     verdict = "HOLDS" if holds else "FAILS"
@@ -634,10 +706,15 @@ def ordering(points: list[dict]) -> go.Figure:
                 wash))
 
 
-def discriminator(points: list[dict]) -> go.Figure:
+def discriminator(points: list[dict], current: str | None = None) -> go.Figure:
     """Fig. 8, with the whole-run marker and the connector that shames it.
 
-    Each entry: {label, dtheta, dn, dtheta_whole, dn_whole}. The hollow marker is
+    Each entry: {label, dtheta, dn, dtheta_whole, dn_whole}, and optionally
+    `name` (the run directory) and `category` (an index into CATEGORY_ORDER).
+    A point in no category is not drawn. The legend has one entry per category,
+    so it stays on one row however many runs there are. Only the run named
+    `current`, the one on the screen, carries a direct label: the others show
+    their case in the hover. The hollow marker is
     the same run measured over its whole length, and the dotted line between them
     is the windowing trap drawn rather than described -- the vortex migrates from
     2.24 to 8.33 deg between the two windows while the manoeuvre moves 30.37 to
@@ -658,9 +735,11 @@ def discriminator(points: list[dict]) -> go.Figure:
     """
     lo, hi = FIG8_LOAD_BAND
     fig = go.Figure()
+    # The band's note sits top right: bottom right is where the manoeuvre points
+    # land, and the note was drawn through their labels.
     fig.add_hrect(y0=lo, y1=hi, line_width=0, fillcolor="rgba(137,135,129,0.14)",
                   layer="below", annotation_text="paper's load band",
-                  annotation_position="bottom right",
+                  annotation_position="top right",
                   annotation_font=dict(size=9, color=INK_MUTED))
 
     for name, dtheta in FIG8_REFERENCE.items():
@@ -668,47 +747,65 @@ def discriminator(points: list[dict]) -> go.Figure:
             x=[dtheta], y=[0.5 * (lo + hi)], mode="markers+text", text=[name],
             textposition="bottom center",
             textfont=dict(size=9, color=INK_MUTED),
-            marker=dict(size=11, symbol="square-open",
+            # An OPEN symbol is stroked in `marker.color`, not `line.color`:
+            # without it plotly drew these in its default cycle, blue, orange
+            # and green, which read as three model categories.
+            marker=dict(size=11, symbol="square-open", color=REFERENCE,
                         line=dict(color=REFERENCE, width=1.5)),
             name="paper (DC-10 class)", showlegend=name == "vortex",
-            legendgroup="paper",
+            legendgroup="paper", legendrank=0,
             hovertemplate=f"paper: {name}, {dtheta} deg<extra></extra>",
         ))
 
     spread = list(FIG8_REFERENCE.values())
-    for i, p in enumerate(points):
-        colour = SERIES[i % len(SERIES)]
+    placed = [(c, p) for p in points if (c := _point_category(p)) is not None]
+    reach = max([*spread, *(v for _, p in placed
+                            for v in (p["dtheta"], p["dtheta_whole"]))])
+    in_legend: set[int] = set()
+    # The run on the screen last, so it is drawn on top of the others.
+    for c, p in sorted(placed, key=lambda cp: bool(current) and cp[1].get("name") == current):
+        colour, symbol = SERIES[c], _FIG8_SYMBOL[c]
+        here = bool(current) and p.get("name") == current
         fig.add_trace(go.Scatter(
             x=[p["dtheta"], p["dtheta_whole"]], y=[p["dn"], p["dn_whole"]],
             mode="lines", line=dict(color=colour, width=1.2, dash="dot"),
             showlegend=False, hoverinfo="skip",
         ))
-        # Text wears an INK token, never the series colour: the mark beside it
-        # carries identity. Aqua at 2.74:1 on this surface is illegible as text,
-        # and it is also why every point is direct-labelled -- the relief rule
-        # for a sub-3:1 categorical hue.
         fig.add_trace(go.Scatter(
-            x=[p["dtheta"]], y=[p["dn"]], mode="markers+text",
-            text=[f"  {p['label']}  {p['dtheta']:.2f}°, {p['dn']:+.2f} g"],
-            textposition="middle right", textfont=dict(size=10, color=INK),
-            marker=dict(size=11, color=colour,
-                        line=dict(color=SURFACE, width=2)),  # surface ring
-            name=f"{p['label']} (windowed)", legendgroup=p["label"],
-            hovertemplate=f"{p['label']} (windowed)<extra></extra>",
+            x=[p["dtheta"]], y=[p["dn"]], mode="markers",
+            marker=dict(size=14 if here else 10, color=colour, symbol=symbol,
+                        line=dict(color=INK if here else SURFACE,
+                                  width=1.5 if here else 2)),
+            name=f"{_FIG8_NAME[c]} runs", legendgroup=_FIG8_NAME[c],
+            legendrank=c + 1, showlegend=c not in in_legend,
+            hovertemplate=(f"{p['label']} (windowed): {p['dtheta']:.2f}°, "
+                           f"{p['dn']:+.2f} g<extra></extra>"),
         ))
+        in_legend.add(c)
+        if here:
+            # A leader line, not text beside the marker: vortex runs sit within
+            # half a degree of each other, and a label beside one lands on the
+            # next. The label goes up and away from the nearer side edge. Text
+            # wears an INK token: aqua at 2.74:1 on this surface is illegible.
+            left = p["dtheta"] > 0.5 * reach * 1.32
+            fig.add_annotation(
+                x=p["dtheta"], y=p["dn"], ax=-60 if left else 60, ay=-34,
+                text=f"this run  {p['dtheta']:.2f}°, {p['dn']:+.2f} g",
+                showarrow=True, arrowhead=0, arrowwidth=1, arrowcolor=INK_MUTED,
+                font=dict(size=10, color=INK), bgcolor=SURFACE, borderpad=2,
+                xanchor="right" if left else "left",
+            )
         fig.add_trace(go.Scatter(
             x=[p["dtheta_whole"]], y=[p["dn_whole"]], mode="markers",
-            marker=dict(size=11, symbol="circle-open",
+            marker=dict(size=10, symbol=f"{symbol}-open", color=colour,
                         line=dict(color=colour, width=2)),
-            name=f"{p['label']} (whole run)", legendgroup=p["label"],
+            name=f"{p['label']} (whole run)", legendgroup=_FIG8_NAME[c],
             showlegend=False,
             hovertemplate=f"{p['label']} WHOLE RUN — wrong window<extra></extra>",
         ))
         spread += [p["dtheta"], p["dtheta_whole"]]
 
-    shown = {p["label"].split()[0].lower() for p in points}
-    missing = [c for c in ("vortex", "updraft", "manoeuvr")
-               if not any(c in s for s in shown)]
+    missing = [_FIG8_NAME[c] for c in range(3) if c not in {c for c, _ in placed}]
     if missing:
         # INSIDE the plot, hanging from its top edge. Above it is where the
         # legend lives, and two things sharing one band is the collision this
@@ -725,8 +822,10 @@ def discriminator(points: list[dict]) -> go.Figure:
     fig.update_xaxes(title_text="pitch attitude excursion in the window  deg",
                      range=[0, max(spread) * 1.32], **_AXIS)
     fig.update_yaxes(title_text="load excursion from trim  g", **_AXIS)
+    # 400 px, not 360: the header takes about 130 px, and at 360 the plot was
+    # left under 200 px for points a tenth of a degree apart.
     return _base(
-        fig, 360,
+        fig, 400,
         title="Wingrove &amp; Bach Fig. 8 — does the ordering hold?",
         subtitle="The claim is the ORDERING vortex &lt; updraft &lt; manoeuvre, "
                  "never the values (§5: the paper never states an aircraft "
@@ -972,8 +1071,9 @@ def field_preview(field, *, start_north: float, end_north: float, altitude: floa
         side = "left" if start_north < x0 else "right"
         fig.add_annotation(
             x=x0 if side == "left" else x1, y=altitude, xanchor=side, yanchor="bottom",
-            text=f"start {abs(start_north - structure_north) / 1000:.1f} km "
-                 f"{'upstream' if side == 'left' else 'downstream'}, off view",
+            # The same coordinate as Setup's "Start" row. Measured from the
+            # structure's centre, the label read 7.8 km beside a row of -7315 m.
+            text=f"start at north {start_north / 1000:+.1f} km, off view",
             showarrow=True, ax=40 if side == "left" else -40, ay=-26,
             arrowhead=2, arrowcolor=INK, font=dict(size=10, color=INK),
             bgcolor=SURFACE,

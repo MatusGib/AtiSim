@@ -64,6 +64,7 @@ Import `atisim` before you make a JAX array. The import sets 64-bit precision.
    atisim.validation
    atisim.verification
    atisim.checks
+   atisim.records
    atisim.cr2144_mach
    atisim.jsbsim_ref
    atisim.jsbsim_vortex_ref

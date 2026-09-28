@@ -6,6 +6,8 @@ check renders its number and the word "report" in ink, never green: it has no
 threshold, and colouring it would invent a verdict.
 """
 
+import re
+
 from dash import html
 from dash_iconify import DashIconify
 
@@ -143,17 +145,65 @@ MODES = (("card", "Test card", "/"), ("lab", "Lab", "/lab"),
          ("engineering", "Engineering", "/start"))
 
 
-def mode_switch(active: str, on: str = "dark") -> html.Nav:
+def parse_number(text):
+    """A number as a person types it, or the text itself when it is not one.
+
+    Mantine's NumberInput filtered the keys instead: "1e-3" became -13 and
+    "236,5" became 2365, with no message. This reads "1e-3", a decimal comma
+    ("236,5" is 236.5), a Unicode minus and spaces. Empty is None. Any other
+    text comes back as it is, so the validator names the field that is wrong.
+    """
+    if text is None or isinstance(text, bool):
+        return None
+    if isinstance(text, (int, float)):
+        return text
+    t = str(text).strip().replace(" ", "").replace("−", "-")
+    if not t:
+        return None
+    if t.count(",") == 1 and "." not in t:
+        t = t.replace(",", ".")
+    try:
+        value = float(t)
+    except ValueError:
+        return str(text)
+    return int(value) if re.fullmatch(r"[+-]?\d+", t) else value
+
+
+def shown_number(value) -> str:
+    """A number for a text field: 21.336, not 21.336000000000002."""
+    if value is None or value == "":
+        return ""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return f"{value:.10g}"
+    return str(value)
+
+
+def number_input(ident, value, unit: str | None = None, **props):
+    """A text field for a number, read by `parse_number`, with its unit."""
+    import dash_mantine_components as dmc
+
+    if unit:
+        props.update(rightSection=html.Span(unit, className="ati-muted",
+                                            style={"fontSize": "11.5px"}),
+                     rightSectionWidth=44, rightSectionPointerEvents="none")
+    return dmc.TextInput(id=ident, value=shown_number(value), debounce=400,
+                         inputProps={"inputMode": "decimal"}, **props)
+
+
+def mode_switch(active: str, on: str = "dark", hrefs: dict | None = None) -> html.Nav:
     """The three modes, on every page: Test card, Lab, Engineering.
 
     `on` is the ground it sits on: "dark" (the kneeboard and the glareshield)
     or "light" (engineering mode's header). The mode on screen is marked by
-    its ground and says so to a screen reader.
+    its ground and says so to a screen reader. `hrefs` sends a mode somewhere
+    other than its home page: after a test card flight, Engineering opens that
+    flight.
     """
     from dash import dcc
 
     items = []
     for key, label, href in MODES:
+        href = (hrefs or {}).get(key) or href
         here = key == active
         items.append(dcc.Link(
             [label, html.Span(" (this mode)", className="ati-visually-hidden")] if here

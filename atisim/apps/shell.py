@@ -38,6 +38,9 @@ from atisim.apps.jobs import JobRunner
 DOCS_URL = "https://matusgib.github.io/AtiSim/"
 ASSETS = Path(__file__).resolve().parent / "assets"
 SIMPLE = ("/", "/fly")  # the pages with no workbench header or status bar, and /lab/*
+# How long the 500 ms poll runs on after the last job ends: four ticks, so every
+# page callback on the poll reads the finished job at least once.
+POLL_GRACE_S = 2.0
 
 # The simple mode's direction contract (impeccable, seed 9ad3c239). It rides in
 # the served page, first in <body>, so a review of the page can read it.
@@ -72,6 +75,9 @@ class Workspace:
         self.flights = fly.Flights()
         # The test card's results, per test point: kept while the app runs.
         self.marks: dict[str, dict] = {}
+        # The run directory of the last test card flight, which the card's
+        # Engineering link opens.
+        self.last_flight: str | None = None
 
     def loaded(self, name: str) -> "results.Loaded":
         path = self.root / name
@@ -82,15 +88,21 @@ class Workspace:
         return self._cache[name][1]
 
     def fig8_points(self) -> list[dict]:
-        """Fig. 8 coordinates for every readable run; an unreadable one is skipped."""
+        """Fig. 8 coordinates for every readable run of a Fig. 8 category.
+
+        An unreadable run is skipped, and so is a run of any other field: a
+        Dryden run is not a vortex, an updraft or a manoeuvre, and it has no
+        place on the discriminator."""
         points = []
         for row in runs_mod.scan(self.root):
             if row.error or row.verdict == "report":
                 continue
             try:
-                points.append(self.loaded(row.name).fig8())
+                point = self.loaded(row.name).fig8()
             except Exception:  # a broken artifact must not take the page down
                 continue
+            if point["category"] is not None:
+                points.append(point)
         return points
 
 
@@ -298,7 +310,9 @@ def build_app(root, landing: str = "/", dev: bool = False, warm: bool = False) -
                 title="The last run's fidelity" + (f" and stage times: {last}. The first "
                                                    "run's flying includes the JAX compile."
                                                    if last else ".")))
-        live = ws.jobs.live()
+        # Poll on for a moment after the last job: Setup's `follow` must see
+        # "done" on a later tick to fill Checks and offer Open in Results.
+        live = ws.jobs.live(grace=POLL_GRACE_S)
         return items, not live
 
     @app.callback(

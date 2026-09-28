@@ -23,7 +23,6 @@ No Dash at module level. Plotly is imported when a figure is drawn, so the
 
 import json
 import math
-import shlex
 import shutil
 import time
 from pathlib import Path
@@ -1259,7 +1258,7 @@ def _csv_preview(path: Path):
 
 def study(aspec: AnalysisSpec, directory: Path, stage) -> Report:
     script = studies.find(_value(aspec, SCRIPT))
-    args = shlex.split(_value(aspec, ARGUMENTS) or "")
+    args = studies.split_arguments(_value(aspec, ARGUMENTS) or "")
     minutes = float(_value(aspec, MINUTES))
     shown = " ".join(["scripts/" + script.path.name, *args])
     stage(f"running {shown}")
@@ -1439,13 +1438,16 @@ def validate(aspec: AnalysisSpec) -> list[Issue]:
             if value not in p.choices:
                 issues.append(Issue("error", p.name,
                                     f"{p.label} must be one of: {', '.join(p.choices)}."))
+            elif p is SCRIPT and value in studies.INTERACTIVE:
+                issues.append(Issue("error", p.name, f"{value} cannot run as a study. "
+                                                     f"{studies.INTERACTIVE[value]}"))
         elif p.check == "integer":
             if not (isinstance(value, int) and not isinstance(value, bool)) or value < 1:
                 issues.append(Issue("error", p.name, f"{p.label} must be a whole number, "
                                                      "one or more."))
         elif p.check == "arguments":
             try:
-                shlex.split(value if isinstance(value, str) else "")
+                studies.split_arguments(value if isinstance(value, str) else "")
                 if not isinstance(value, str):
                     raise ValueError
             except ValueError:

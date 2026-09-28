@@ -68,7 +68,7 @@ def build(traj, ac: Aircraft, field, check_rows: list[dict]) -> dict:
         if name == "energy closure":
             e, work = energy_terms()
             residual = np.abs((e - e[0]) - work)
-            scale = max(np.abs(e - e[0]).max(), 1e-30)
+            scale = checks.energy_scale(e)
             out[name] = Profile(name, t, [("|dE - W| / |dE|max", residual / scale)], "-",
                                 limit, True, "The gate is the peak of this line.")
         elif name == "energy residual peak":

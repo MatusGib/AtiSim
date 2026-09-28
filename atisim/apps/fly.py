@@ -67,9 +67,10 @@ class Flights:
 def layout(ws, key: str | None):
     if key not in cockpit.TEST_POINTS:
         return html.Div([
-            card.top_bar(dark=True, back=True),
+            card.top_bar(dark=True, back=True, ws=ws),
             html.Div([
-                html.P([html.Strong("There is no test point "), html.Code(str(key)), "."]),
+                html.P([html.Strong("There is no test point "), html.Code(str(key)), "."])
+                if key else html.P(html.Strong("Choose a test point to fly.")),
                 dcc.Link("Choose one on the test card", href="/"),
             ], className="fly-missing"),
         ], className="fly")
@@ -117,7 +118,7 @@ def layout(ws, key: str | None):
         html.Div(id="fly-overlay", className="fly-overlay", **{"aria-live": "polite"}),
     ], className="fly-deck")
     return html.Div([
-        card.top_bar(dark=True, back=True),
+        card.top_bar(dark=True, back=True, ws=ws),
         html.Main([deck, html.Aside(knee, className="fly-side")], className="fly-main"),
     ], id="cockpit", className="fly", **{"data-tp": key, "data-tp-n": str(n)})
 
@@ -162,8 +163,22 @@ def register(app, ws) -> None:
             return missing(ident)
         flight.pause()
         summary = flight.summary()
-        ws.marks[flight.test_point.key] = {
+        # Saved once: the page may ask for the debrief again, and a second
+        # request must not write a second run of the same flight.
+        if flight.saved is None:
+            try:
+                flight.saved = cockpit.save_run(flight, ws.root).name
+            except Exception as exc:  # the debrief must not depend on the disk
+                flight.saved = ""
+                summary["run_error"] = f"The flight was not saved: {exc}"
+        summary["run"] = flight.saved or None
+        tp = flight.test_point
+        ws.marks[tp.key] = {
             "nz_max": summary["nz_max"]["value"], "nz_min": summary["nz_min"]["value"],
-            "severity": summary["severity_band"],
+            # Still air has no turbulence to rate: its load came from the pilot.
+            "severity": "still air" if tp.field == "none" else summary["severity_band"],
+            "run": summary["run"],
         }
+        if summary["run"]:
+            ws.last_flight = summary["run"]
         return jsonify(summary)

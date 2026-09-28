@@ -25,6 +25,7 @@ No Dash here and no JAX: the script is another process.
 import ast
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -44,6 +45,32 @@ SCRIPTS = REPO / "scripts"
 IMAGES = (".png", ".svg")
 KEPT = IMAGES + (".csv", ".json", ".md", ".txt")
 MAX_FILE_BYTES = 50 * 1024 * 1024
+
+# Scripts that need a person at a window, with the reason. A study runs a script
+# with MPLBACKEND=Agg and no keyboard, so `fly` would open no window and wait
+# until its time limit.
+INTERACTIVE = {
+    "fly": "It flies the aircraft from the keyboard in a matplotlib window. "
+           "Run python scripts/fly.py in a terminal, or fly a test point on the "
+           "test card.",
+}
+
+
+def split_arguments(text: str) -> list[str]:
+    r"""Arguments typed as on a command line, split as the host's shell splits them.
+
+    On Windows, POSIX `shlex` reads a backslash as an escape and removes it, so
+    C:\Users\x.pdf became C:Usersx.pdf. There a backslash is a path separator,
+    so it has no escape role, and quotes still group words. Raises ValueError
+    for an unclosed quote.
+    """
+    lex = shlex.shlex(text, posix=True)
+    lex.whitespace_split = True
+    lex.commenters = ""
+    if os.name == "nt":
+        lex.escape = ""
+    return list(lex)
+
 
 # Never looked into for outputs: version control, caches, and tool folders.
 SKIPPED_DIRS = {".git", "__pycache__", "node_modules", ".worktrees", ".jax-cache",

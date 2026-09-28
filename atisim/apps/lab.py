@@ -28,6 +28,7 @@ from plotly.subplots import make_subplots
 
 from atisim import analyses as registry
 from atisim import lab, run
+from atisim.analysis import figures
 from atisim.analysis import runs as runs_mod
 from atisim.apps import analyses as analyses_page
 from atisim.apps import components as ui
@@ -237,15 +238,15 @@ def _base_spec(ws, case: str | None, source: str | None):
     return run.PRESETS[name], None
 
 
-def _value_input(name, value, unit=None, integer=False):
-    number = dict(value=value, hideControls=True, debounce=400, size="sm",
-                  id={"type": "lab-val", "name": name},
-                  **{"aria-label": name})
-    if integer:
-        return dmc.NumberInput(allowDecimal=False, allowNegative=False, **number)
-    return dmc.NumberInput(rightSection=html.Span(unit, className="lab-unit") if unit else None,
-                           rightSectionWidth=48 if unit else None,
-                           rightSectionPointerEvents="none", **number)
+def _value_input(name, value, unit=None, integer=False, label=None):
+    field = ui.number_input({"type": "lab-val", "name": name}, value, size="sm",
+                            **{"aria-label": f"{label}, {unit}" if label and unit
+                               else label or name})
+    if unit and not integer:
+        field.rightSection = html.Span(unit, className="lab-unit")
+        field.rightSectionWidth = 48
+        field.rightSectionPointerEvents = "none"
+    return field
 
 
 def _field_row(label, control, name):
@@ -257,6 +258,15 @@ def _field_row(label, control, name):
 
 
 def case_page(ws, case: str | None, source: str | None = None):
+    if case is not None and case not in run.PRESETS and not source:
+        # Said, not replaced: an unknown name once opened vortex-hannibal as if
+        # that were the case asked for.
+        return frame(ws, ["Lab", "Cases"], "", [
+            _head("No such case", []),
+            _lr("Case", html.P(["There is no case ", html.Code(case),
+                                ". Pick one under Cases in the index."],
+                               className="lab-lead")),
+        ])
     base, from_run = _base_spec(ws, case, source)
     kind = run.KIND_LABELS.get(base.wind.kind, base.wind.kind)
     rows = [
@@ -264,14 +274,15 @@ def case_page(ws, case: str | None, source: str | None = None):
             id={"type": "lab-val", "name": "aircraft"}, value=base.aircraft, size="sm",
             data=[{"value": a, "label": a} for a in lab.AIRCRAFT],
             comboboxProps={"withinPortal": True}, **{"aria-label": "Aircraft"}), "aircraft"),
-        _field_row("Airspeed", _value_input("airspeed_mps", base.airspeed_mps, "m/s"),
-                   "airspeed_mps"),
-        _field_row("Altitude", _value_input("altitude_m", base.altitude_m, "m"), "altitude_m"),
+        _field_row("Airspeed", _value_input("airspeed_mps", base.airspeed_mps, "m/s",
+                                            label="Airspeed"), "airspeed_mps"),
+        _field_row("Altitude", _value_input("altitude_m", base.altitude_m, "m",
+                                            label="Altitude"), "altitude_m"),
     ]
     for p in lab.key_params(base):
         rows.append(_field_row(p.label, _value_input(
             f"wind.{p.name}", run.param_value(base.wind, p), p.unit if p.unit != "-" else None,
-            integer=p.check == "integer"), f"wind.{p.name}"))
+            integer=p.check == "integer", label=p.label), f"wind.{p.name}"))
     title = base.wind.preset or base.name
     main = [
         _head(title, [("Wind field", kind), ("Aircraft", base.aircraft),
@@ -316,8 +327,11 @@ def _check_word(verdict: str):
                      className="lab-check lab-check-" + tone)
 
 
-def recorder(series_list, names=None) -> go.Figure:
-    """Load factor, height change and pitch on one time axis, drawn on card stock."""
+def recorder(series_list, names=None, record=None) -> go.Figure:
+    """Load factor, height change and pitch on one time axis, drawn on card stock.
+
+    `record` (an `atisim.records.Record`) draws what the source measured behind
+    the load factor, as the engineering strips draw it."""
     fig = make_subplots(rows=3, cols=1, shared_xaxes=True, vertical_spacing=0.06,
                         subplot_titles=("Load factor, g", "Height change, m", "Pitch, deg"))
     colours = (INK, STAMP)
@@ -331,7 +345,8 @@ def recorder(series_list, names=None) -> go.Figure:
                                      showlegend=bool(names) and row == 1,
                                      line={"color": colour, "width": 1.6}), row=row, col=1)
         if not names:
-            hi = int(np.argmax(s.n_z))
+            # The larger excursion from level flight, as the card's headline.
+            hi = int(np.argmax(np.abs(np.asarray(s.n_z) - 1.0)))
             fig.add_annotation(x=float(t[hi]), y=float(s.n_z[hi]), row=1, col=1,
                                text=f"{float(s.n_z[hi]):+.2f} g", showarrow=True,
                                arrowcolor=PENCIL, ax=34, ay=-18,
@@ -346,6 +361,11 @@ def recorder(series_list, names=None) -> go.Figure:
     fig.update_xaxes(gridcolor=RULE, linecolor=INK, zeroline=False, showline=True)
     fig.update_yaxes(gridcolor=RULE, linecolor=INK, zeroline=False, showline=True)
     fig.update_xaxes(title_text="time, s", row=3, col=1)
+    if record is not None:
+        n_z = np.concatenate([np.asarray(s.n_z) for s in series_list])
+        low, high = figures.record_on_row(fig, record, 1, float(n_z.min()), float(n_z.max()))
+        pad = 0.06 * (high - low)
+        fig.update_yaxes(range=[low - pad, high + pad], row=1, col=1)
     for a in fig.layout.annotations:
         if a.text in ("Load factor, g", "Height change, m", "Pitch, deg"):
             a.update(x=0, xanchor="left", font={"family": "B612", "size": 12, "color": INK})
@@ -389,7 +409,9 @@ def result_page(ws, name: str | None):
     loaded = ws.loaded(name)
     s = _summary(ws, name)
     spec = run.spec_of(ws.root / name)
-    case = (spec.wind.preset or spec.name) if spec is not None else row.kind
+    by_hand = loaded.run.meta.get("flown_by_hand")
+    case = ((spec.wind.preset or spec.name) if spec is not None
+            else f"{by_hand['title']}, flown by hand" if by_hand else row.kind)
     lines = []
     for c in loaded.run.checks:
         word, tone, icon = ui.check_state(c)
@@ -399,27 +421,49 @@ def result_page(ws, name: str | None):
             html.Td(f"{c['value']:.4g}", className="lab-num"),
         ], title=c.get("detail", "")))
     sigma = "" if math.isnan(s.sigma) else f"RMS normal load {s.sigma:.2f} g over 5 s. "
+    # The headline is the larger excursion from level flight: a vortex can take
+    # the load to -1 g, and a headline of the highest value alone hides that.
+    low_first = (1.0 - s.low) > (s.peak - 1.0)
+    head, t_head = (s.low, s.t_low) if low_first else (s.peak, s.t_peak)
+    other, t_other = (s.peak, s.t_peak) if low_first else (s.low, s.t_low)
+    # Still air has no turbulence to rate: the index then measures the controls.
+    still = loaded.kind.startswith("none")
+    if spec is not None:
+        values = html.Table(html.Tbody(_values_rows(spec)), className="lab-kv")
+    elif by_hand:
+        values = html.P(f"Flown by hand on the test card: {by_hand['title']}, the 747 at "
+                        "its cruise condition. The controls are the pilot's inputs, so no "
+                        "spec flies this run again.", className="lab-muted")
+    else:
+        values = html.P("This run was written before runs kept their spec, so its "
+                        "values are only in engineering mode.", className="lab-muted")
+    again = (_stamp("Fly this test point again", f"/fly?tp={quote(by_hand['test_point'])}",
+                    "plane") if by_hand
+             else _stamp("Fly again with changes", f"/lab/case?from={quote(name)}", "plane"))
     main = [
         _head(case, [("Aircraft", row.aircraft), ("Flown", row.created_local),
                      ("Checks", _check_word(row.verdict))]),
-        _lr("Peak load factor", [
-            html.Div(_g(s.peak), className="lab-peak"),
-            html.P(f"at {s.t_peak:.1f} s. Lowest {_g(s.low)} at {s.t_low:.1f} s. "
-                   "Level flight is +1 g.", className="lab-muted"),
+        _lr("Lowest load factor" if low_first else "Peak load factor", [
+            html.Div(_g(head), className="lab-peak"),
+            html.P(f"at {t_head:.1f} s. {'Highest' if low_first else 'Lowest'} {_g(other)} "
+                   f"at {t_other:.1f} s. Level flight is +1 g.", className="lab-muted"),
         ]),
-        _lr("Turbulence", html.P([html.Strong(s.severity.capitalize()), ". ", sigma,
-                                  "Moderate from 0.2 g, severe from 0.3 g (Misaka 2008)."],
-                                 className="lab-lead")),
-        _lr("Values flown", html.Table(html.Tbody(_values_rows(spec)), className="lab-kv")
-            if spec is not None else html.P("This run was written before runs kept their "
-                                            "spec, so its values are only in engineering "
-                                            "mode.", className="lab-muted")),
+        _lr("Turbulence", html.P(
+            [html.Strong("None: still air"), ". The load came from the controls: ", sigma,
+             "In turbulence, moderate is from 0.2 g and severe from 0.3 g (Misaka 2008)."]
+            if still else
+            [html.Strong(s.severity.capitalize()), ". ", sigma,
+             "Moderate from 0.2 g, severe from 0.3 g (Misaka 2008)."],
+            className="lab-lead")),
+        _lr("Values flown", values),
         _lr("Checks", html.Table(html.Tbody(lines), className="lab-kv lab-checks")),
         html.H2("Recorder", className="lab-h2"),
-        html.Div(dcc.Graph(figure=recorder([loaded.series]), config=_GRAPH),
-                 className="lab-recorder"),
+        html.Div(dcc.Graph(figure=recorder([loaded.series], record=loaded.record),
+                           config=_GRAPH), className="lab-recorder"),
+        html.P(f"Grey: what the source measured. {loaded.record.case}. {loaded.record.note}",
+               className="lab-muted") if loaded.record is not None else None,
         html.Div([
-            _stamp("Fly again with changes", f"/lab/case?from={quote(name)}", "plane"),
+            again,
             _plain("Compare with another result", f"/lab/compare?a={quote(name)}"),
             _plain("Open in engineering mode", f"/results?run={quote(name)}"),
         ], className="lab-actions"),
@@ -455,6 +499,7 @@ def compare_page(ws, a: str | None, b: str | None):
     flights = _flights(ws)
     names = {r.name for r in flights}
     a = a if a in names else None
+    same = b is not None and b == a
     b = b if b in names and b != a else None
     data = [{"value": r.name, "label": r.name} for r in flights]
 
@@ -471,7 +516,9 @@ def compare_page(ws, a: str | None, b: str | None):
                      className="lab-picks")]
     chosen = [n for n in (a, b) if n]
     if len(chosen) < 2:
-        body.append(html.P("Choose two flights to put them side by side.",
+        body.append(html.P("A and B were the same flight, so B is cleared. Choose a "
+                           "different flight for B." if same else
+                           "Choose two flights to put them side by side.",
                            className="lab-lead"))
     else:
         rows = []
@@ -480,18 +527,26 @@ def compare_page(ws, a: str | None, b: str | None):
             spec = run.spec_of(ws.root / n)
             s = _summary(ws, n)
             loaded = ws.loaded(n)
+            # The field values the Lab lets a reader change, so two flights of
+            # one case with a different V0 show what differs, not only the result.
+            wind_rows = {} if spec is None else {
+                p.label: f"{run.param_value(spec.wind, p):g} "
+                         f"{p.unit if p.unit != '-' else ''}".strip()
+                for p in lab.key_params(spec)}
             facts.append({
                 "Case": (spec.wind.preset or spec.name) if spec else loaded.kind,
                 "Aircraft": loaded.run.meta["aircraft"]["key"],
                 "Airspeed": f"{loaded.run.meta['flight_condition']['airspeed_mps']:.1f} m/s",
                 "Altitude": f"{loaded.run.meta['flight_condition']['altitude_m']:.0f} m",
+                **wind_rows,
                 "Peak load factor": _g(s.peak),
                 "Lowest load factor": _g(s.low),
                 "Turbulence": s.severity,
                 "Checks": _verdict_word(s.verdict),
             })
-        for label in facts[0]:
-            va, vb = facts[0][label], facts[1][label]
+        labels = list(facts[0]) + [k for k in facts[1] if k not in facts[0]]
+        for label in labels:
+            va, vb = facts[0].get(label, "—"), facts[1].get(label, "—")
             differs = va != vb
             rows.append(html.Tr([html.Td(label), html.Td(va), html.Td(vb),
                                  html.Td(html.Span("differs", className="lab-pencil")
@@ -531,10 +586,16 @@ def layout(ws, path: str, query: dict):
 def spec_from(base: dict, ids: list, values: list) -> run.RunSpec:
     """The form's spec: the base with every value the form holds applied."""
     got = {i["name"]: v for i, v in zip(ids, values)}
-    wind = {k[5:]: v for k, v in got.items() if k.startswith("wind.") and v not in ("", None)}
-    number = lambda v: None if v in ("", None) else float(v)  # noqa: E731
+    def number(name):
+        value = ui.parse_number(got.get(name))
+        if isinstance(value, str):
+            raise ValueError(f"{value!r} is not a number.")
+        return value
+
+    wind = {k[5:]: number(k) for k in got
+            if k.startswith("wind.") and number(k) is not None}
     return lab.edit(run.RunSpec.from_json(base), got.get("aircraft"),
-                    number(got.get("airspeed_mps")), number(got.get("altitude_m")), wind)
+                    number("airspeed_mps"), number("altitude_m"), wind)
 
 
 def register(app, ws) -> None:
@@ -553,9 +614,14 @@ def register(app, ws) -> None:
             raise PreventUpdate
         try:
             spec = spec_from(base, ids, values)
-        except (TypeError, ValueError):
-            return no_update, [no_update] * len(mark_ids), no_update, True, \
-                "A value is not a number."
+        except (TypeError, ValueError) as exc:
+            # In the Limits box too: left as it was, the box went on showing the
+            # issues of the value before, beside a field it no longer describes.
+            why = f"Fix this first: {str(exc) or 'a value is not a number.'}"
+            box = html.Div([html.Div("Limits", className="tc-limits-title"),
+                            html.Ul(html.Li(why))], className="tc-limits lab-limits",
+                           role="note")
+            return no_update, [no_update] * len(mark_ids), box, True, why
         prov = run.provenance(spec)
         marks = []
         for m in mark_ids:
@@ -592,8 +658,9 @@ def register(app, ws) -> None:
         if not aircraft or aircraft not in CRUISE:
             raise PreventUpdate
         if base and aircraft == base.get("aircraft"):
-            return base["airspeed_mps"], base["altitude_m"]
-        return CRUISE[aircraft]["airspeed"], CRUISE[aircraft]["altitude"]
+            return ui.shown_number(base["airspeed_mps"]), ui.shown_number(base["altitude_m"])
+        return (ui.shown_number(CRUISE[aircraft]["airspeed"]),
+                ui.shown_number(CRUISE[aircraft]["altitude"]))
 
     @app.callback(
         Output("lab-job", "data"), Output("lab-poll", "disabled"),
